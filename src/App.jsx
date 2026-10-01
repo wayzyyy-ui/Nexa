@@ -784,8 +784,8 @@ const [greeting, setGreeting] = useState(
   const messages = currentChat?.messages || [];
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length, isLoading]);
+  bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+}, [messages.length, messages[messages.length - 1]?.text, isLoading]);
 
   const newChat = () => { setCurrentChatId(null); setInput(''); };
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
@@ -796,54 +796,72 @@ const [greeting, setGreeting] = useState(
   };
 
   const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || isLoading) return;
+  const text = input.trim();
+  if (!text || isLoading) return;
 
-    const userMsg = { role: 'user', text };
-    let chatId = currentChatId;
+  const userMsg = { role: 'user', text };
+  let chatId = currentChatId;
 
-    if (!chatId) {
-      chatId = Date.now().toString();
-      setChats(prev => [{
-        id: chatId,
-        title: text.length > 40 ? text.slice(0, 40) + '…' : text,
-        messages: [userMsg],
-        createdAt: Date.now(),
-      }, ...prev]);
-      setCurrentChatId(chatId);
-    } else {
-      setChats(prev => prev.map(c =>
-        c.id === chatId ? { ...c, messages: [...c.messages, userMsg] } : c
-      ));
-    }
+  if (!chatId) {
+    chatId = Date.now().toString();
+    setChats(prev => [{
+      id: chatId,
+      title: text.length > 40 ? text.slice(0, 40) + '…' : text,
+      messages: [userMsg],
+      createdAt: Date.now(),
+    }, ...prev]);
+    setCurrentChatId(chatId);
+  } else {
+    setChats(prev => prev.map(c =>
+      c.id === chatId ? { ...c, messages: [...c.messages, userMsg] } : c
+    ));
+  }
 
-    setInput('');
-    setIsLoading(true);
+  setInput('');
+  setIsLoading(true);
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
-      const data = await res.json();
-      const aiMsg = data.text
-        ? { role: 'ai', text: data.text }
-        : { role: 'ai', text: 'Не удалось получить ответ.' };
-      setChats(prev => prev.map(c =>
-        c.id === chatId ? { ...c, messages: [...c.messages, aiMsg] } : c
-      ));
-    } catch {
-      setChats(prev => prev.map(c =>
-        c.id === chatId
-          ? { ...c, messages: [...c.messages, { role: 'ai', text: 'Ошибка соединения с сервером.' }] }
-          : c
-      ));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    const fullText = data.text || 'Не удалось получить ответ.';
 
+    // Добавляем пустое AI-сообщение — его будем наполнять по буквам
+    setChats(prev => prev.map(c =>
+      c.id === chatId
+        ? { ...c, messages: [...c.messages, { role: 'ai', text: '' }] }
+        : c
+    ));
+    setIsLoading(false);
+
+    // Анимация печати: 12 мс на символ. Для длинных ответов — быстрее.
+    let i = 0;
+    const speed = fullText.length > 400 ? 6 : 12;
+
+    const interval = setInterval(() => {
+      i++;
+      const partial = fullText.slice(0, i);
+      setChats(prev => prev.map(c => {
+        if (c.id !== chatId) return c;
+        const newMsgs = [...c.messages];
+        newMsgs[newMsgs.length - 1] = { role: 'ai', text: partial };
+        return { ...c, messages: newMsgs };
+      }));
+      if (i >= fullText.length) clearInterval(interval);
+    }, speed);
+
+  } catch {
+    setChats(prev => prev.map(c =>
+      c.id === chatId
+        ? { ...c, messages: [...c.messages, { role: 'ai', text: 'Ошибка соединения с сервером.' }] }
+        : c
+    ));
+    setIsLoading(false);
+  }
+};
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
