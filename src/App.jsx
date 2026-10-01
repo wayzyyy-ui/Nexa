@@ -226,18 +226,78 @@ const NAV = [
   { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
   { id: "settings", label: "Настройки", icon: Icon.gear },
 ];
+function MobileTabBar({ active, onChange }) {
+  const mobileNav = [
+    { id: "home",      label: "Главная",   icon: Icon.home },
+    { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
+    { id: "today",     label: "Сегодня",   icon: Icon.calendar },
+    { id: "media",     label: "Медиа",     icon: Icon.image },
+    { id: "files",     label: "Файлы",     icon: Icon.folder },
+  ];
 
+  return (
+    <div
+      className="ng-mobile-tabbar"
+      style={{
+        position: "fixed",
+        left: 16,
+        right: 16,
+        bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+        zIndex: 200,
+        display: "none",
+      }}
+    >
+      <div style={{
+        background: "rgba(20, 22, 28, 0.92)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: `1px solid rgba(255, 255, 255, 0.08)`,
+        borderRadius: 22,
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+        display: "flex",
+        justifyContent: "space-around",
+        alignItems: "center",
+        height: 64,
+        padding: "0 8px",
+      }}>
+        {mobileNav.map((item) => {
+          const isActive = item.id === active;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChange(item.id)}
+              style={{
+                background: isActive ? "rgba(0, 255, 223, 0.12)" : "transparent",
+                border: "none",
+                borderRadius: 14,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                padding: 10,
+                minWidth: 48,
+                height: 48,
+                cursor: "pointer",
+                transition: "background 160ms ease",
+              }}
+            >
+              {item.icon({ c: isActive ? C.mint : C.muted, s: 22 })}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 // Боковая навигация слева. active — id текущего активного раздела,
 // onChange — функция, которая вызывается при клике (переключает экран).
 function Sidebar({ active, onChange }) {
   return (
-    <div style={{
-      width: 78, minWidth: 78, boxSizing: "border-box",
-      background: C.bg,
-      borderRight: `1px solid ${C.border}`,
+      <div
+      className="ng-sidebar" style={{
+      width: 78, minWidth: 78, boxSizing: "border-box", background: C.bg, borderRight: `1px solid ${C.border}`,
       display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "24px 0",
-      position: "relative",
-      zIndex: 100,
     }}>
       {NAV.map((item) => {
         const isActive = item.id === active;
@@ -299,8 +359,8 @@ function TimeDate() {
     month: "long",
   }).format(now);
 
-  return (
-  <div style={{ textAlign: "right" }}>
+ return (
+  <div className="ng-timedate" style={{ textAlign: "right" }}>
     <div
       style={{
         fontSize: 14,
@@ -392,118 +452,254 @@ function Dot({ color }) {
 }
 
 /* ---------- 5. ЭКРАНЫ ---------- */
+// Карточка одного устройства — для мобильной 2×2 сетки.
+function DeviceCard({ device }) {
+  const { icon, name, status, online } = device;
+  return (
+    <div style={{
+      position: "relative",
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: "16px 16px 14px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
+      minHeight: 128,
+      boxSizing: "border-box",
+    }}>
+      {/* Индикатор статуса — точка в правом верхнем углу */}
+      <span style={{
+        position: "absolute", top: 14, right: 14,
+        width: 8, height: 8, borderRadius: "50%",
+        background: online ? C.green : C.red,
+      }} />
 
+      {/* Иконка устройства */}
+      <div style={{
+        width: 36, height: 36,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {icon({ c: C.text, s: 30 })}
+      </div>
+
+      {/* Название и статус — прижаты к низу */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+        <div style={{ fontSize: 15, fontWeight: 500, textAlign: "left" }}>{name}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 2, textAlign: "left" }}>{status}</div>
+      </div>
+
+      {/* Стрелка — правый нижний угол */}
+      <div style={{ position: "absolute", bottom: 12, right: 12, color: C.mutedSoft }}>
+        {Icon.chevron({ c: C.mutedSoft, s: 14 })}
+      </div>
+    </div>
+  );
+}
 // ЭКРАН "ГЛАВНАЯ" — список устройств + складка + карточка ассистента
 function ScreenHome({ onNavigate }) {
   const devices = [
     { icon: Icon.phone,  name: "Смартфон",  status: "Онлайн • 92%", online: true },
     { icon: Icon.laptop, name: "Ноутбук",   status: "Не в сети",    online: false },
     { icon: Icon.watch,  name: "Часы",      status: "Онлайн • 64%", online: true },
-    { icon: Icon.buds,   name: "Наушники",  status: "Онлайн • 83%", online: true },
     { icon: Icon.tv,     name: "Телевизор", status: "Онлайн",       online: true },
   ];
 
   return (
-    <div
-      style={{
-        padding: "8px 40px 40px",
-        display: "grid",
-        gridTemplateColumns: "1fr 420px",
-        gap: 40,
-        // alignItems: "start" убран — колонки растягиваются по высоте друг друга
-      }}
-      className="ng-home-grid"
-    >
-      {/* ── Левая колонка: заголовок + устройства ──────────── */}
-       <div style={{ textAlign: "left" }}>
-        <div style={{
-          fontSize: 25, letterSpacing: "0.2em",
-          color: C.text, marginBottom: 14,
-        }}>
-          ВАША ЭКОСИСТЕМА
-        </div>
-        <div className="ng-display" style={{
-          fontSize: 34, fontWeight: 600, lineHeight: 1,
-        }}>
-          Все устройства в одном месте
-        </div>
-        <div style={{
-          fontSize: 14, color: C.muted, marginTop: 14, marginBottom: 30,
-        }}>
-          Синхронизировано. Работает. Рядом с вами
-        </div>
+    <div className="ng-screen ng-home" style={{ padding: "8px 40px 40px", textAlign: "left" }}>
 
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
-          <div style={{
-            display: "flex", justifyContent: "space-between",
-            alignItems: "center", padding: "16px 18px",
-            borderBottom: `1px solid ${C.border}`,
-          }}>
-            <span style={{ fontSize: 15, fontWeight: 500 }}>Устройства</span>
-            <span style={{
-              display: "flex", alignItems: "center",
-              gap: 6, fontSize: 13, color: C.muted,
+      {/* ══════════ ДЕСКТОПНАЯ ВЕРСИЯ ══════════ */}
+      <div className="ng-home-desktop">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40 }}>
+          {/* Левая колонка: заголовок + список */}
+          <div>
+            <div style={{
+              fontSize: 25, letterSpacing: "0.2em",
+              color: C.text, marginBottom: 14,
             }}>
-              4 <Dot color={C.green} />
-            </span>
+              ВАША ЭКОСИСТЕМА
+            </div>
+            <div className="ng-display" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1 }}>
+              Все устройства в одной системе
+            </div>
+            <div style={{ fontSize: 14, color: C.muted, marginTop: 14, marginBottom: 30 }}>
+              Синхронизировано. Работает. Рядом с вами
+            </div>
+
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
+              <div style={{
+                display: "flex", justifyContent: "space-between",
+                alignItems: "center", padding: "16px 18px",
+                borderBottom: `1px solid ${C.border}`,
+              }}>
+                <span style={{ fontSize: 15, fontWeight: 500 }}>Устройства</span>
+                <span style={{
+                  display: "flex", alignItems: "center",
+                  gap: 6, fontSize: 13, color: C.muted,
+                }}>
+                  4 <Dot color={C.green} />
+                </span>
+              </div>
+              {devices.map((d) => (
+                <Row
+                  key={d.name}
+                  leftIcon={d.icon({ c: C.text, s: 19 })}
+                  title={d.name}
+                  subtitle={<span style={{ display: "flex", alignItems: "center", gap: 6 }}>{d.status}</span>}
+                  right={<Dot color={d.online ? C.green : C.red} />}
+                />
+              ))}
+            </div>
           </div>
-          {devices.map((d) => (
-            <Row
-              key={d.name}
-              leftIcon={d.icon({ c: C.text, s: 19 })}
-              title={d.name}
-              subtitle={<span style={{ display: "flex", alignItems: "center", gap: 6 }}>{d.status}</span>}
-              right={<Dot color={d.online ? C.green : C.red} />}
-            />
-          ))}
+
+          {/* Правая колонка: складка сверху, AI-карточка снизу */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <FoldHero size={340} />
+            </div>
+            <div
+              onClick={() => onNavigate("assistant")}
+              style={{
+                marginTop: "auto",
+                border: `1px solid ${C.border}`, borderRadius: 16,
+                padding: "16px 18px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                background: `linear-gradient(90deg, ${C.blueDark}55, ${C.mintDark}55)`,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: "50%",
+                  background: C.mintDark,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {Icon.sparkle({ c: C.mint, s: 18 })}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
+                  <div style={{ fontSize: 12.5, color: C.muted }}>Чем могу помочь?</div>
+                </div>
+              </div>
+              <div style={{
+                width: 34, height: 34, borderRadius: "50%",
+                border: `1px solid ${C.borderSoft}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {Icon.chevron({ c: C.text })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ── Правая колонка: складка сверху, AI прижат к низу ─── */}
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-      }}>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <FoldHero size={340} />
+      {/* ══════════ МОБИЛЬНАЯ ВЕРСИЯ ══════════ */}
+      <div className="ng-home-mobile">
+        {/* Логотип + eyebrow */}
+        <div style={{ marginBottom: 20 }}>
+          <Logo small />
+          <div style={{
+            fontSize: 11, letterSpacing: "0.12em",
+            color: C.muted, marginTop: 4, textTransform: "uppercase",
+          }}>
+            Ваша экосистема
+          </div>
         </div>
 
+         {/* Hero */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="ng-display" style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.2 }}>
+              Все устройства в одной системе
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>
+              Синхронизировано. Работает. Рядом с вами
+            </div>
+          </div>
+          <div style={{ flexShrink: 0, alignSelf: "center" }}>
+            <FoldHero size={130} />
+          </div>
+        </div>
+
+        {/* Мои устройства */}
+        <div style={{ marginTop: 24 }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            alignItems: "center", marginBottom: 14,
+          }}>
+            <div className="ng-display" style={{ fontSize: 18, fontWeight: 600 }}>
+              Мои устройства
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
+              <span>4</span>
+              <Dot color={C.green} />
+              {Icon.chevron({ c: C.muted, s: 16 })}
+            </div>
+          </div>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: 10,
+          }}>
+            {devices.map((d) => (
+              <div
+                key={d.name}
+                style={{
+                  border: `1px solid ${C.border}`, borderRadius: 14,
+                  padding: 14, cursor: "pointer", position: "relative",
+                  display: "flex", flexDirection: "column", gap: 10,
+                  minHeight: 96,
+                }}
+              >
+                <div style={{ position: "absolute", top: 12, right: 12 }}>
+                  <Dot color={d.online ? C.green : C.red} />
+                </div>
+                <div style={{ width: 26, height: 26 }}>
+                  {d.icon({ c: C.text, s: 24 })}
+                </div>
+                <div style={{ marginTop: "auto" }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{d.name}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{d.status}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* AI-карточка */}
         <div
           onClick={() => onNavigate("assistant")}
           style={{
-            marginTop: "auto",   // ← вот магия: прижимает карточку к низу
-            border: `1px solid ${C.border}`,
-            borderRadius: 16,
-            padding: "16px 18px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            marginTop: 20,
+            border: `1px solid ${C.border}`, borderRadius: 16,
+            padding: "14px 16px",
+            display: "flex", alignItems: "center", gap: 14,
             background: `linear-gradient(90deg, ${C.blueDark}55, ${C.mintDark}55)`,
             cursor: "pointer",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: "50%",
-              background: C.mintDark,
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              {Icon.sparkle({ c: C.mint, s: 18 })}
-            </div>
-            <div>
-              <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
-              <div style={{ fontSize: 12.5, color: C.muted }}>Чем могу помочь?</div>
-            </div>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%",
+            background: C.mintDark,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}>
+            {Icon.sparkle({ c: C.mint, s: 20 })}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Чем могу помочь?</div>
           </div>
           <div style={{
             width: 34, height: 34, borderRadius: "50%",
             border: `1px solid ${C.borderSoft}`,
             display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
           }}>
             {Icon.chevron({ c: C.text })}
           </div>
         </div>
       </div>
+
     </div>
   );
 }
@@ -567,7 +763,7 @@ function ScreenToday() {
     { time: "17:00", title: "Тренировка" },
   ];
   return (
-    <div style={{ padding: "8px 40px 40px" }}>
+     <div className="ng-screen" style={{ padding: "8px 40px 40px" }}>
       <div className="ng-display" style={{ fontSize: 30, fontWeight: 600 }}>Сегодня</div>
       <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6, marginBottom: 30 }}>
         Ваши дела, расписание и погода — всё в одном месте.
@@ -658,14 +854,14 @@ function ScreenMedia() {
         Ваши фотографии, видео, документы и всё, что важно
       </div>
 
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 20, marginBottom: 30, display: "flex", alignItems: "center", gap: 26 }}>
+        <div className="ng-storage-card" style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 20, marginBottom: 30, display: "flex", alignItems: "center", gap: 26 }}>
         <div style={{ flexShrink: 0 }}>
           <div style={{ fontWeight: 500, fontSize: 14 }}>Хранилище</div>
           <div style={{ fontSize: 12.5, color: C.muted }}>247 gb / 512 gb</div>
         </div>
         {/* Собираем диаграмму из массива segs — чтобы поменять пропорции
             или добавить категорию, меняй/добавляй объект в массиве выше */}
-        <div style={{ display: "flex", flex: 1, height: 74 }}>
+        <div className="ng-storage-segments" style={{ display: "flex", flex: 1, height: 74 }}>
           {segs.map((s, i) => <StorageSegment key={s.label} {...s} first={i === 0} />)}
         </div>
       </div>
@@ -721,14 +917,14 @@ function ScreenFiles() {
     name: `IMG_42${87 + i}.jpg`, meta: `Фото · Сегодня 08:4${i} · 4.${i} МБ`,
   }));
   return (
-    <div style={{ padding: "8px 40px 40px" }}>
+    <div className="ng-screen" style={{ padding: "8px 40px 40px", textAlign: "left"}}>
       <div className="ng-display" style={{ fontSize: 30, fontWeight: 600 }}>Файлы</div>
       <div style={{ fontSize: 13.5, color: C.muted, margin: "6px 0 24px" }}>
         Ваши файлы, документы и медиа — всегда под рукой
       </div>
       {/* Путь навигации — просто ряд кнопок-чипсов, последняя (текущая
           папка) подсвечена градиентом */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 22, overflowX: "auto" }}>
+      <div className="ng-crumbs" style={{ display: "flex", gap: 8, marginBottom: 22, overflowX: "auto" }}>
         {crumbs.map((c, i) => (
           <div key={c} style={{
             padding: "9px 16px", fontSize: 13, whiteSpace: "nowrap",
@@ -832,16 +1028,22 @@ const [chats, setChats] = useState(() => {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
+  // Собираем прошлые сообщения этого чата в формате Gemini
+  const history = (currentChat?.messages || []).map(m => ({
+    role: m.role === 'ai' ? 'model' : 'user',
+    parts: [{ text: m.text }],
+  }));
 
-      if (!res.ok) {
-        throw new Error(`Ошибка сервера: ${res.status}`);
-      }
+  // Сам запрос на сервер: теперь отправляем и вопрос, и историю
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text, history }),
+  });
 
+  if (!res.ok) {
+    throw new Error(`Ошибка сервера: ${res.status}`);
+  }
     const fullText = await res.text();
 
       setChats(prev => prev.map(c =>
@@ -897,18 +1099,35 @@ const [chats, setChats] = useState(() => {
   const isEmpty = messages.length === 0 && !isLoading;
 
  const titleOnly = (
-  <div style={{ textAlign: "left" }}>
-    <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
-      AI - Ассистент
-    </div>
-    <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
-      Интеллектуальный центр системы NEXA
+  <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
+    {/* Гамбургер — виден только на мобильном */}
+    <button
+      className="ng-hamburger"
+      onClick={() => setIsHistoryOpen(v => !v)}
+      style={{
+        background: "transparent", border: "none",
+        cursor: "pointer", padding: 4, display: "none",
+        alignItems: "center", justifyContent: "center",
+      }}
+      aria-label="Меню"
+    >
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke={C.text} strokeWidth="2">
+        <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+      </svg>
+    </button>
+    <div style={{ textAlign: "left" }}>
+      <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
+        AI - Ассистент
+      </div>
+      <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
+        Интеллектуальный центр системы NEXA
+      </div>
     </div>
   </div>
 );
 
 const menuBlock = (
-  <div style={{
+  <div className="ng-menu-block" style={{
     position: "fixed",
     top: 24,
     right: 40,
@@ -990,15 +1209,16 @@ const menuBlock = (
     </div>
   );
 
-  const disclaimer = (
-    <div style={{ fontSize: 12, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
+    const disclaimer = (
+    <div className="ng-disclaimer" style={{ fontSize: 12, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
       Искусственный интеллект может допускать ошибки. Пожалуйста, перепроверяйте ответы.
     </div>
   );
 
   // ─── ПАНЕЛЬ ИСТОРИИ (справа) ─────────────────────────────
-  const historyPanel = (
+    const historyPanel = (
     <div
+      className={`ng-history-panel${isHistoryOpen ? " is-open" : ""}`}
       style={{
         width: isHistoryOpen ? 240 : 0,
         marginLeft: isHistoryOpen ? 24 : 0,
@@ -1026,7 +1246,37 @@ const menuBlock = (
           overflowY: "auto",
         }}
       >
-        <div style={{
+        {/* Шапка с крестиком — только на мобильном (CSS покажет) */}
+        <div className="ng-history-header">
+          <div style={{ fontSize: 11, letterSpacing: "0.15em", color: C.mutedSoft, textTransform: "uppercase" }}>
+            История
+          </div>
+          <button
+            onClick={() => setIsHistoryOpen(false)}
+            style={{ background: "transparent", border: "none", cursor: "pointer", color: C.text, fontSize: 26, lineHeight: 1, padding: 0 }}
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Кнопки действий — только на мобильном (CSS покажет) */}
+        <div className="ng-history-actions">
+          <button
+            onClick={() => { newChat(); setIsHistoryOpen(false); }}
+            style={{ flex: 1, padding: "12px 16px", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 14, cursor: "pointer" }}
+          >
+            + Новый диалог
+          </button>
+          <button
+            style={{ flex: 1, padding: "12px 16px", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 14, cursor: "pointer" }}
+          >
+            Поиск
+          </button>
+        </div>
+
+        {/* Заголовок "История" — только на десктопе */}
+        <div className="ng-history-title-desktop" style={{
           fontSize: 11, letterSpacing: "0.15em", color: C.mutedSoft,
           textTransform: "uppercase", paddingLeft: 4, marginBottom: 4,
         }}>
@@ -1042,7 +1292,7 @@ const menuBlock = (
             {chats.map((chat) => (
               <div
                 key={chat.id}
-                onClick={() => openChat(chat.id)}
+                onClick={() => { openChat(chat.id); setIsHistoryOpen(false); }}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "10px 12px", borderRadius: 8, cursor: "pointer",
@@ -1091,10 +1341,10 @@ const menuBlock = (
   boxSizing: "border-box", minHeight: 0,
 };
   return (
-  <div style={wrapperStyle}>
+  <div className="ng-assistant-wrapper" style={wrapperStyle}>
     {menuBlock}
 
-    <div style={innerStyle}>
+    <div className="ng-assistant-inner" style={innerStyle}>
       <div style={{
         flex: 1, display: "flex", flexDirection: "column",
         minWidth: 0, minHeight: 0,
@@ -1382,7 +1632,7 @@ const toggleNotif = (index) => {
   // setTheme меняет это значение при клике на одну из кнопок ниже.
   const [theme, setTheme] = useState("dark");
   return (
-    <div style={{ padding: "8px 40px 40px" }}>
+      <div className="ng-screen" style={{ padding: "8px 40px 40px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26 }}>
         <div className="ng-display" style={{ fontSize: 40, fontWeight: 600 }}>Настройки</div>
         <div style={{
@@ -1502,54 +1752,209 @@ export default function NexaApp() {
       background: C.bg, color: C.text,
       fontFamily: fontBody,
     }}>
-      <style>{`
+            <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
         .ng-display { font-family: 'Space Grotesk', sans-serif; }
         input::placeholder { color: ${C.mutedSoft}; }
 
-        /* Сбрасываем стандартные отступы/центрирование, которые Vite
-           добавляет по умолчанию в html/body/#root — без этого сброса
-           приложение могло показываться маленькой карточкой посреди
-           экрана, а не занимать окно браузера целиком. */
         html, body, #root { margin: 0; padding: 0; width: 100%; min-height: 100vh; }
         body { display: block !important; place-items: unset !important; }
+        .ng-home-desktop { display: block; }
+        .ng-home-mobile { display: none; }
 
-        /* На узких окнах (меньше 960px) двухколоночные сетки экранов
-           "Главная" и "Сегодня" сами схлопываются в один столбец,
-           а категории на "Медиа" — в два столбца вместо четырёх. */
+        /* ─── Десктопные показы ─────────────────────────────── */
+        .ng-mobile-tabbar { display: none; }
+        .ng-hamburger { display: none; }
+        .ng-devices-list { display: block; }
+        .ng-devices-mobile { display: none; }
+        .ng-history-header { display: none; }
+        .ng-history-actions { display: none; }
+        .ng-history-title-desktop { display: block; }
+
+        @keyframes nx-pulse {
+          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+
+        /* ─── Фирменный скроллбар NEXA ──────────────────────── */
+        .nx-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(0, 255, 223, 0.35) transparent;
+        }
+        .nx-scroll::-webkit-scrollbar { width: 8px; }
+        .nx-scroll::-webkit-scrollbar-track { background: transparent; }
+        .nx-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(74, 111, 255, 0.5), rgba(0, 255, 223, 0.5));
+          border-radius: 999px;
+          border: 2px solid transparent;
+          background-clip: padding-box;
+        }
+        .nx-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(180deg, rgba(74, 111, 255, 0.85), rgba(0, 255, 223, 0.85));
+          background-clip: padding-box;
+        }
+
+        /* ─── Планшет ──────────────────────────────────────── */
         @media (max-width: 960px) {
           .ng-home-grid { grid-template-columns: 1fr !important; }
           .ng-today-grid { grid-template-columns: 1fr !important; }
           .ng-cat-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
-           @keyframes nx-pulse {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1); }
+
+        /* ─── Мобильный ────────────────────────────────────── */
+                @media (max-width: 768px) {
+          /* Навигация */
+          .ng-sidebar { display: none !important; }
+          .ng-home-desktop { display: none !important; }
+          .ng-home-mobile { display: block !important; }
+          .ng-mobile-tabbar { display: block !important; }
+          .ng-hamburger { display: flex !important; }
+          .ng-menu-block { display: none !important; }
+
+          /* Отступ снизу под таб-панель */
+          .ng-main-content { padding-bottom: 110px; }
+
+          /* Скрыть время/дату */
+          .ng-timedate { display: none !important; }
+
+          /* Все заголовки-дисплеи меньше */
+          .ng-display { font-size: 24px !important; }
+
+          /* Единый padding для всех экранов */
+          .ng-screen {
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+            padding: 16px 16px 24px !important;
+          }
+
+           /* Складка меньше */
+          .ng-fold-wrapper img {
+            width: 140px !important;
+            height: 140px !important;
+          }
+
+          /* Hero-заголовок компактнее */
+          .ng-home-title {
+            font-size: 20px !important;
+            line-height: 1.2 !important;
+          }
+          .ng-home-hero {
+            display: flex !important;
+            align-items: center !important;
+            gap: 12px !important;
+          }
+          .ng-home-hero-text { flex: 1 !important; min-width: 0 !important; }
+          .ng-home-hero-art { flex-shrink: 0 !important; }
+
+          /* Дисклеймер с переносом */
+          .ng-disclaimer {
+            white-space: normal !important;
+            max-width: 100% !important;
+            padding: 0 8px !important;
+            line-height: 1.4 !important;
+          }
+
+          /* Диаграмма хранилища вертикально */
+          .ng-storage-card {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 16px !important;
+          }
+          .ng-storage-segments {
+            flex-direction: column !important;
+            height: auto !important;
+            gap: 6px !important;
+          }
+          .ng-storage-segments > div {
+            margin-left: 0 !important;
+            clip-path: none !important;
+            border-radius: 8px !important;
+            padding: 12px 16px !important;
+            min-width: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            box-sizing: border-box !important;
+          }
+          .ng-storage-segments > div > div {
+            display: inline-block !important;
+            margin-right: 12px !important;
+            vertical-align: middle !important;
+          }
+
+          /* Крошки в файлах */
+          .ng-crumbs {
+            justify-content: flex-start !important;
+            white-space: nowrap !important;
+          }
+
+          /* Ассистент */
+          .ng-assistant-wrapper { left: 0 !important; }
+          .ng-assistant-inner {
+            padding: 16px 16px 96px 16px !important;
+          }
+
+          /* Панель истории на весь экран */
+          .ng-history-panel {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 80px !important;
+            width: 100% !important;
+            margin-left: 0 !important;
+            background: #01090F !important;
+            z-index: 150 !important;
+            padding: 24px 16px !important;
+            border-left: none !important;
+            border-right: none !important;
+            transform: translateX(-100%);
+            transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease !important;
+            opacity: 0;
+            box-sizing: border-box !important;
+          }
+          .ng-history-panel.is-open {
+            transform: translateX(0) !important;
+            opacity: 1 !important;
+            width: 100% !important;
+            overflow-y: auto !important;
+          }
+          .ng-history-panel > div {
+            width: 100% !important;
+            height: auto !important;
+            border-left: none !important;
+            padding-left: 0 !important;
+          }
+
+          /* Шапка и кнопки истории */
+          .ng-history-header {
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #1C1E26;
+            margin-bottom: 4px;
+          }
+          .ng-history-actions {
+            display: flex !important;
+            gap: 8px;
+            margin-bottom: 12px;
+          }
+          .ng-history-title-desktop { display: none !important; }
+
+          /* Футер на мобильном скрываем */
+          .ng-footer { display: none !important; }
+
+          /* Защита от горизонтальной прокрутки */
+          html, body {
+            overflow-x: hidden !important;
+            max-width: 100vw !important;
+          }
         }
-          /* ─── Фирменный скроллбар NEXA ───────────────────────── */
-  .nx-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 255, 223, 0.35) transparent;
-  }
-  .nx-scroll::-webkit-scrollbar {
-    width: 8px;
-  }
-  .nx-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .nx-scroll::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, rgba(74, 111, 255, 0.5), rgba(0, 255, 223, 0.5));
-    border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-  }
-  .nx-scroll::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, rgba(74, 111, 255, 0.85), rgba(0, 255, 223, 0.85));
-    background-clip: padding-box;
-  }
       `}</style>
 
       <Sidebar active={tab} onChange={setTab} />
+       <MobileTabBar active={tab} onChange={setTab} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* На экране "Ассистент" своя правая панель вместо обычной
@@ -1565,7 +1970,7 @@ export default function NexaApp() {
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
             очень широких мониторах, но при этом свободно заполняет
             обычное окно браузера */}
-        <div style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
+        <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
           {tab === "home" && <ScreenHome onNavigate={setTab} />}
           {tab === "today" && <ScreenToday />}
           {tab === "media" && <ScreenMedia />}
@@ -1575,8 +1980,8 @@ export default function NexaApp() {
         </div>
         {/* Нижняя строка: слева логотип, справа ссылка "Подробнее о системе".
     justifyContent: "space-between" разводит их по разным краям строки. */}
-  {tab !== "assistant" && (
-  <div style={{
+   {tab !== "assistant" && (
+    <div className="ng-footer" style={{
     padding: "0 40px 30px", width: "100%", maxWidth: 1440, margin: "0 auto",
     boxSizing: "border-box",
     display: "flex", justifyContent: "space-between", alignItems: "center",
