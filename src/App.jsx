@@ -327,7 +327,7 @@ function Sidebar({ active, onChange }) {
 // передаём внутрь при вызове компонента (см. использование в App).
 function TopBar({ children }) {
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0" }}>
+    <div className="ng-topbar" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0" }}>
       {children}
     </div>
   );
@@ -595,7 +595,7 @@ function ScreenHome({ onNavigate }) {
       {/* ══════════ МОБИЛЬНАЯ ВЕРСИЯ ══════════ */}
       <div className="ng-home-mobile">
         {/* Логотип + eyebrow */}
-        <div style={{ marginBottom: 20 }}>
+        <div className="ng-home-logo" style={{ marginBottom: 20 }}>
           <Logo small />
           <div style={{
             fontSize: 11, letterSpacing: "0.12em",
@@ -1847,6 +1847,21 @@ export default function NexaApp() {
           .ng-home-hero-text { flex: 1 !important; min-width: 0 !important; }
           .ng-home-hero-art { flex-shrink: 0 !important; }
 
+           /* ─── Логотип NEXA — опустить и уменьшить ──────────── */
+  .ng-home-logo {
+    margin-top: 12px !important;
+    margin-bottom: 20px !important;
+  }
+  .ng-home-logo img {
+    height: 20px !important;
+    margin: 0 !important;
+  }
+  .ng-home-logo > div {
+    font-size: 10px !important;
+    letter-spacing: 0.12em !important;
+    margin-top: 2px !important;
+  }
+
           /* Дисклеймер с переносом */
           .ng-disclaimer {
             white-space: normal !important;
@@ -1950,9 +1965,18 @@ export default function NexaApp() {
             overflow-x: hidden !important;
             max-width: 100vw !important;
           }
+
+          /* TopBar — поверх контента справа сверху */
+          .ng-topbar {
+            position: absolute !important;
+            top: 0 !important;
+            right: 0 !important;
+            padding: 28px 16px 0 0 !important;
+            z-index: 50 !important;
+            gap: 14px !important;
+          }
         }
       `}</style>
-
       <Sidebar active={tab} onChange={setTab} />
        <MobileTabBar active={tab} onChange={setTab} />
 
