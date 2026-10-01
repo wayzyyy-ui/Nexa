@@ -875,7 +875,7 @@ const [greeting, setGreeting] = useState(
 const menuBlock = (
   <div style={{
     position: "fixed",
-    top: 66,
+    top: 24,
     right: 40,
     zIndex: 10,
     display: "flex",
@@ -883,6 +883,18 @@ const menuBlock = (
     gap: 14,
     alignItems: "flex-end",
   }}>
+    {/* Верхняя строка: время/дата + иконка профиля */}
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 18,
+      marginBottom: 8,
+    }}>
+      <TimeDate />
+      <IconBtn icon={Icon.user} />
+    </div>
+
+    {/* Меню: Новый диалог / Поиск / История */}
     {rightItems.map((it) => (
       <div
         key={it.label}
@@ -1413,12 +1425,27 @@ const toggleNotif = (index) => {
    setTab меняется при клике по иконке в Sidebar — от этого зависит,
    какой из шести экранов показывается ниже. */
 export default function NexaApp() {
-  const [tab, setTab] = useState("home");
-  useEffect(() => {
-  document.body.style.overflow = tab === "assistant" ? "hidden" : "";
-  return () => { document.body.style.overflow = ""; };
-}, [tab]);
+  // Ленивая инициализация: берём сохранённый экран из localStorage,
+  // если его нет — начинаем с Главной.
+  const [tab, setTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nexa-tab');
+      return saved || 'home';
+    } catch { return 'home'; }
+  });
 
+  // Каждый раз, когда экран меняется — сохраняем его id
+  useEffect(() => {
+    if (tab !== 'assistant') {
+  try { localStorage.setItem('nexa-tab', tab); } catch {}
+}
+  }, [tab]);
+
+  // Отдельный эффект для скрытия скролла на ассистенте
+  useEffect(() => {
+    document.body.style.overflow = tab === "assistant" ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [tab]);
   return (
     <div style={{
       display: "flex",
