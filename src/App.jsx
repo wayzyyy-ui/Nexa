@@ -746,6 +746,24 @@ function ScreenFiles() {
 
 // ЭКРАН "АССИСТЕНТ" — поле ввода по центру + правая панель (новый диалог/поиск/...)
 function ScreenAssistant() {
+  const greetings = [
+  "Что сегодня в повестке дня?",
+  "Чем могу помочь сегодня?",
+  "С чего начнём?",
+  "Задайте любой вопрос — я готов помочь",
+  "Что нового хотите узнать?",
+  "О чём поговорим?",
+  "Как дела? Расскажите, что нужно",
+  "Готов помочь — с чего начнём?",
+  "Есть вопросы? Я слушаю",
+  "Что вас интересует сегодня?",
+];
+const [greeting, setGreeting] = useState(
+  () => greetings[Math.floor(Math.random() * greetings.length)]
+);
+ useEffect(() => {
+    setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
+  }, []);
   const [chats, setChats] = useState(() => {
     try {
       const saved = localStorage.getItem('nexa-chats');
@@ -1042,7 +1060,7 @@ const menuBlock = (
             alignItems: "center", justifyContent: "center", gap: 24,
             paddingBottom: 120,
           }}>
-            <div className="ng-display" style={{ fontSize: 22 }}>Что сегодня в повестке дня?</div>
+            <div className="ng-display" style={{ fontSize: 22 }}>{greeting}</div>
             <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
               {inputRow}
             </div>
