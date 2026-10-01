@@ -232,8 +232,12 @@ const NAV = [
 function Sidebar({ active, onChange }) {
   return (
     <div style={{
-      width: 78, minWidth: 78, background: C.bg, borderRight: `1px solid ${C.border}`,
+      width: 78, minWidth: 78, boxSizing: "border-box",
+      background: C.bg,
+      borderRight: `1px solid ${C.border}`,
       display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "24px 0",
+      position: "relative",
+      zIndex: 100,
     }}>
       {NAV.map((item) => {
         const isActive = item.id === active;
@@ -758,18 +762,16 @@ function ScreenAssistant() {
   "Есть вопросы? Я слушаю",
   "Что вас интересует сегодня?",
 ];
-const [greeting, setGreeting] = useState(
-  () => greetings[Math.floor(Math.random() * greetings.length)]
-);
- useEffect(() => {
-    setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
-  }, []);
-  const [chats, setChats] = useState(() => {
-    try {
-      const saved = localStorage.getItem('nexa-chats');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+const [greeting, setGreeting] = useState('');
+useEffect(() => {
+  setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
+}, []);
+const [chats, setChats] = useState(() => {
+  try {
+    const saved = localStorage.getItem('nexa-chats');
+    return saved ? JSON.parse(saved) : [];
+  } catch { return []; }
+});
   const [currentChatId, setCurrentChatId] = useState(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -796,72 +798,78 @@ const [greeting, setGreeting] = useState(
   };
 
   const sendMessage = async () => {
-  const text = input.trim();
-  if (!text || isLoading) return;
+    const text = input.trim();
+    if (!text || isLoading) return;
 
-  const userMsg = { role: 'user', text };
-  let chatId = currentChatId;
+    const userMsg = { role: 'user', text };
+    let chatId = currentChatId;
 
-  if (!chatId) {
-    chatId = Date.now().toString();
-    setChats(prev => [{
-      id: chatId,
-      title: text.length > 40 ? text.slice(0, 40) + '…' : text,
-      messages: [userMsg],
-      createdAt: Date.now(),
-    }, ...prev]);
-    setCurrentChatId(chatId);
-  } else {
-    setChats(prev => prev.map(c =>
-      c.id === chatId ? { ...c, messages: [...c.messages, userMsg] } : c
-    ));
-  }
+    if (!chatId) {
+      chatId = Date.now().toString();
+      setChats(prev => [{
+        id: chatId,
+        title: text.length > 40 ? text.slice(0, 40) + '…' : text,
+        messages: [userMsg],
+        createdAt: Date.now(),
+      }, ...prev]);
+      setCurrentChatId(chatId);
+    } else {
+      setChats(prev => prev.map(c =>
+        c.id === chatId ? { ...c, messages: [...c.messages, userMsg] } : c
+      ));
+    }
 
-  setInput('');
-  setIsLoading(true);
+    setInput('');
+    setIsLoading(true);
 
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
-    });
-    const data = await res.json();
-    const fullText = data.text || 'Не удалось получить ответ.';
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
 
-    // Добавляем пустое AI-сообщение — его будем наполнять по буквам
-    setChats(prev => prev.map(c =>
-      c.id === chatId
-        ? { ...c, messages: [...c.messages, { role: 'ai', text: '' }] }
-        : c
-    ));
-    setIsLoading(false);
+      if (!res.ok) {
+        throw new Error(`Ошибка сервера: ${res.status}`);
+      }
 
-    // Анимация печати: 12 мс на символ. Для длинных ответов — быстрее.
-    let i = 0;
-    const speed = fullText.length > 400 ? 6 : 12;
+    const fullText = await res.text();
 
-    const interval = setInterval(() => {
-      i++;
-      const partial = fullText.slice(0, i);
-      setChats(prev => prev.map(c => {
-        if (c.id !== chatId) return c;
-        const newMsgs = [...c.messages];
-        newMsgs[newMsgs.length - 1] = { role: 'ai', text: partial };
-        return { ...c, messages: newMsgs };
-      }));
-      if (i >= fullText.length) clearInterval(interval);
-    }, speed);
+      setChats(prev => prev.map(c =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, { role: 'ai', text: '' }] }
+          : c
+      ));
 
-  } catch {
-    setChats(prev => prev.map(c =>
-      c.id === chatId
-        ? { ...c, messages: [...c.messages, { role: 'ai', text: 'Ошибка соединения с сервером.' }] }
-        : c
-    ));
-    setIsLoading(false);
-  }
-};
+      // Имитация печати: показываем текст посимвольно
+      let i = 0;
+      const speed = 15; // миллисекунд на символ — хочешь медленнее — 25, быстрее — 8
+      await new Promise(resolve => {
+        const timer = setInterval(() => {
+          i++;
+          const partial = fullText.slice(0, i);
+          setChats(prev => prev.map(c => {
+            if (c.id !== chatId) return c;
+            const newMsgs = [...c.messages];
+            newMsgs[newMsgs.length - 1] = { role: 'ai', text: partial };
+            return { ...c, messages: newMsgs };
+          }));
+          if (i >= fullText.length) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, speed);
+      });
+    } catch (error) {
+      setChats(prev => prev.map(c =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, { role: 'ai', text: 'Ошибка соединения с сервером.' }] }
+          : c
+      ));
+    } finally {
+      setIsLoading(false);
+    }
+  };
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
@@ -908,7 +916,7 @@ const menuBlock = (
       gap: 18,
       marginBottom: 8,
     }}>
-      <TimeDate />
+       <TimeDate />
       <IconBtn icon={Icon.user} />
     </div>
 
@@ -1062,7 +1070,7 @@ const menuBlock = (
 
   const wrapperStyle = {
     position: "fixed",
-    top: 0, left: 78, right: 0, bottom: 0,
+    top: 0, left: 79, right: 0, bottom: 0,
     background: C.bg, zIndex: 5, overflow: "hidden",
     display: "flex", flexDirection: "column",
   };
@@ -1099,8 +1107,12 @@ const menuBlock = (
         ) : (
           <>
             <div
-              className="nx-scroll"
-              style={{ flex: 1, overflowY: "auto", marginTop: 24, marginBottom: 16, minHeight: 0 }}
+            className="nx-scroll"
+            style={{
+            flex: 1, overflowY: "auto",
+            marginTop: 24, marginBottom: 16, minHeight: 0,
+            paddingLeft: 8, paddingRight: 8,
+            }}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
                 {messages.map((m, i) => (
@@ -1233,8 +1245,11 @@ function MessageBubble({ role, text }) {
           paddingLeft: 4,
           textTransform: "uppercase",
           fontWeight: 500,
+          textAlign: "left",
+          alignSelf: "flex-start",
+          width: "100%",
         }}>
-          NEXA AI
+          NEXA Assistant
         </div>
 
         {/* Сам пузырь */}
@@ -1280,9 +1295,9 @@ function TypingIndicator() {
         display: "flex", gap: 6, alignItems: "center",
       }}>
         <span style={{ fontSize: 13, color: C.muted, marginRight: 4 }}>Печатает</span>
-        <DotPulse delay="0s" />
-        <DotPulse delay="0.2s" />
-        <DotPulse delay="0.4s" />
+<DotPulse delay="0s" />
+<DotPulse delay="0.2s" />
+<DotPulse delay="0.4s" />
       </div>
     </div>
   );
