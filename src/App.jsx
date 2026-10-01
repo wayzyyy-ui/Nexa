@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 // Подключаем свой логотип из папки assets
 import logoSvg from "./assets/logo.svg";
 import speralSvg from "./assets/speral.svg";
@@ -746,53 +746,509 @@ function ScreenFiles() {
 
 // ЭКРАН "АССИСТЕНТ" — поле ввода по центру + правая панель (новый диалог/поиск/...)
 function ScreenAssistant() {
+  const [chats, setChats] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nexa-chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    try { localStorage.setItem('nexa-chats', JSON.stringify(chats)); } catch {}
+  }, [chats]);
+
+  const currentChat = chats.find(c => c.id === currentChatId);
+  const messages = currentChat?.messages || [];
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length, isLoading]);
+
+  const newChat = () => { setCurrentChatId(null); setInput(''); };
+  const openChat = (id) => { setCurrentChatId(id); setInput(''); };
+  const deleteChat = (id, e) => {
+    e.stopPropagation();
+    setChats(prev => prev.filter(c => c.id !== id));
+    if (id === currentChatId) setCurrentChatId(null);
+  };
+
+  const sendMessage = async () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+
+    const userMsg = { role: 'user', text };
+    let chatId = currentChatId;
+
+    if (!chatId) {
+      chatId = Date.now().toString();
+      setChats(prev => [{
+        id: chatId,
+        title: text.length > 40 ? text.slice(0, 40) + '…' : text,
+        messages: [userMsg],
+        createdAt: Date.now(),
+      }, ...prev]);
+      setCurrentChatId(chatId);
+    } else {
+      setChats(prev => prev.map(c =>
+        c.id === chatId ? { ...c, messages: [...c.messages, userMsg] } : c
+      ));
+    }
+
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await res.json();
+      const aiMsg = data.text
+        ? { role: 'ai', text: data.text }
+        : { role: 'ai', text: 'Не удалось получить ответ.' };
+      setChats(prev => prev.map(c =>
+        c.id === chatId ? { ...c, messages: [...c.messages, aiMsg] } : c
+      ));
+    } catch {
+      setChats(prev => prev.map(c =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, { role: 'ai', text: 'Ошибка соединения с сервером.' }] }
+          : c
+      ));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  };
+
   const rightItems = [
-    { label: "Новый диалог", icon: Icon.plus },
+    { label: "Новый диалог", icon: Icon.plus, onClick: newChat },
     { label: "Поиск", icon: Icon.search },
-    { label: "Проекты", icon: Icon.archive },
-    { label: "Прочее", icon: Icon.dots },
+    {
+      label: "История",
+      icon: Icon.list,
+      onClick: () => setIsHistoryOpen(v => !v),
+      active: isHistoryOpen,
+    },
   ];
-  return (
-    <div style={{ padding: "8px 40px 40px", position: "relative", minHeight: 520 }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <div>
-          <div className="ng-display" style={{ fontSize: 30, fontWeight: 600 }}>AI - Ассистент</div>
-          <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6 }}>Интеллектуальный центр системы NEXA</div>
+
+  const isEmpty = messages.length === 0 && !isLoading;
+
+ const titleOnly = (
+  <div style={{ textAlign: "left" }}>
+    <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
+      AI - Ассистент
+    </div>
+    <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
+      Интеллектуальный центр системы NEXA
+    </div>
+  </div>
+);
+
+const menuBlock = (
+  <div style={{
+    position: "fixed",
+    top: 66,
+    right: 40,
+    zIndex: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    alignItems: "flex-end",
+  }}>
+    {rightItems.map((it) => (
+      <div
+        key={it.label}
+        onClick={it.onClick}
+        style={{
+          display: "flex", alignItems: "center", gap: 10,
+          fontSize: 14,
+          cursor: it.onClick ? "pointer" : "default",
+        }}
+      >
+        {it.label}
+        <div style={{
+          width: 30, height: 30, borderRadius: 4,
+          border: `1px solid ${it.active ? C.mint : C.border}`,
+          background: it.active ? C.mintDark : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "border-color 140ms ease, background 140ms ease",
+        }}>
+          {it.icon({ c: it.active ? C.mint : C.text, s: 15 })}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "flex-end" }}>
-          {rightItems.map((it) => (
-            <div key={it.label} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-              {it.label}
-              <div style={{ width: 30, height: 30, borderRadius: 4, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {it.icon({ c: C.text, s: 15 })}
+      </div>
+    ))}
+  </div>
+);
+
+  const inputRow = (
+    <div style={{
+      width: "100%", maxWidth: 820, padding: 1.5, borderRadius: 999,
+      background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+      boxShadow: `0 0 24px ${C.blue}33, 0 0 40px ${C.mint}22`,
+    }}>
+      <div style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 10,
+        padding: "10px 10px 10px 22px", borderRadius: 999,
+        background: C.bg, boxSizing: "border-box",
+      }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Написать сообщение..."
+          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14 }}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={isLoading || !input.trim()}
+          style={{
+            width: 34, height: 34, borderRadius: "50%",
+            background: (isLoading || !input.trim()) ? "#2A2C34" : C.mint,
+            border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: (isLoading || !input.trim()) ? "default" : "pointer",
+            transition: "background 140ms ease",
+          }}
+        >
+          {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : "#07080C", s: 16 })}
+        </button>
+      </div>
+    </div>
+  );
+
+  const disclaimer = (
+    <div style={{ fontSize: 12, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
+      Искусственный интеллект может допускать ошибки. Пожалуйста, перепроверяйте ответы.
+    </div>
+  );
+
+  // ─── ПАНЕЛЬ ИСТОРИИ (справа) ─────────────────────────────
+  const historyPanel = (
+    <div
+      style={{
+        width: isHistoryOpen ? 240 : 0,
+        marginLeft: isHistoryOpen ? 24 : 0,
+        flexShrink: 0,
+        overflow: "hidden",
+        opacity: isHistoryOpen ? 1 : 0,
+        transition:
+          "width 320ms cubic-bezier(0.4, 0, 0.2, 1), " +
+          "margin-left 320ms cubic-bezier(0.4, 0, 0.2, 1), " +
+          "opacity 220ms ease",
+      }}
+    >
+      <div
+        className="nx-scroll"
+        style={{
+          width: 240,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          borderLeft: `1px solid ${C.border}`,
+          paddingLeft: 20,
+          paddingRight: 4,
+          boxSizing: "border-box",
+          overflowY: "auto",
+        }}
+      >
+        <div style={{
+          fontSize: 11, letterSpacing: "0.15em", color: C.mutedSoft,
+          textTransform: "uppercase", paddingLeft: 4, marginBottom: 4,
+        }}>
+          История
+        </div>
+
+        {chats.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "4px", lineHeight: 1.5 }}>
+            Здесь появятся ваши диалоги
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {chats.map((chat) => (
+              <div
+                key={chat.id}
+                onClick={() => openChat(chat.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                  background: chat.id === currentChatId ? C.panel : "transparent",
+                  border: `1px solid ${chat.id === currentChatId ? C.border : "transparent"}`,
+                  transition: "background 140ms ease",
+                }}
+              >
+                <div style={{
+                  flex: 1, minWidth: 0, fontSize: 13.5, color: C.text,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}>
+                  {chat.title}
+                </div>
+                <button
+                  onClick={(e) => deleteChat(chat.id, e)}
+                  title="Удалить"
+                  style={{
+                    background: "transparent", border: "none",
+                    color: C.mutedSoft, cursor: "pointer",
+                    fontSize: 16, padding: 2, lineHeight: 1,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const wrapperStyle = {
+    position: "fixed",
+    top: 0, left: 78, right: 0, bottom: 0,
+    background: C.bg, zIndex: 5, overflow: "hidden",
+    display: "flex", flexDirection: "column",
+  };
+
+  const innerStyle = {
+  flex: 1, display: "flex", flexDirection: "row",
+  width: "100%", maxWidth: 1440, margin: "0 auto",
+  padding: "66px 40px 20px 40px",
+  boxSizing: "border-box", minHeight: 0,
+};
+  return (
+  <div style={wrapperStyle}>
+    {menuBlock}
+
+    <div style={innerStyle}>
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        minWidth: 0, minHeight: 0,
+      }}>
+        {titleOnly}
+
+        {isEmpty ? (
+          <div style={{
+            flex: 1, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 24,
+            paddingBottom: 120,
+          }}>
+            <div className="ng-display" style={{ fontSize: 22 }}>Что сегодня в повестке дня?</div>
+            <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+              {inputRow}
+            </div>
+            {disclaimer}
+          </div>
+        ) : (
+          <>
+            <div
+              className="nx-scroll"
+              style={{ flex: 1, overflowY: "auto", marginTop: 24, marginBottom: 16, minHeight: 0 }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
+                {messages.map((m, i) => (
+                  <MessageBubble key={i} role={m.role} text={m.text} />
+                ))}
+                {isLoading && <TypingIndicator />}
+                <div ref={bottomRef} />
               </div>
             </div>
-          ))}
-        </div>
+
+            <div style={{
+              flexShrink: 0, display: "flex", flexDirection: "column",
+              alignItems: "center", gap: 10,
+            }}>
+              {inputRow}
+              {disclaimer}
+            </div>
+          </>
+        )}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 110 }}>
-        <div className="ng-display" style={{ fontSize: 22, marginBottom: 26 }}>Что сегодня в повестке дня?</div>
-        <div style={{
-          width: "100%", maxWidth: 760, display: "flex", alignItems: "center", gap: 10,
-          border: `1px solid ${C.border}`, borderRadius: 999, padding: "10px 10px 10px 22px",
+      {historyPanel}
+    </div>
+  </div>
+);
+}
+
+// Мини-парсер выделений: **жирный**, *курсив*, `код`.
+function renderRich(text) {
+  if (typeof text !== 'string') return text;
+  const regex = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Обычный текст до совпадения
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+
+    if (token.startsWith('**')) {
+      parts.push(<strong key={key++} style={{ fontWeight: 700, color: "#FFFFFF" }}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('`')) {
+      parts.push(
+        <code key={key++} style={{
+          fontFamily: "'Space Grotesk', monospace",
+          background: "rgba(0, 255, 223, 0.1)",
+          border: "1px solid rgba(0, 255, 223, 0.25)",
+          borderRadius: 6,
+          padding: "1px 6px",
+          fontSize: "0.92em",
+          color: C.mint,
         }}>
-          <input placeholder="Написать сообщение..." style={{
-            flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14,
+          {token.slice(1, -1)}
+        </code>
+      );
+    } else if (token.startsWith('*')) {
+      parts.push(<em key={key++} style={{ fontStyle: "italic", color: "#D9E4EC" }}>{token.slice(1, -1)}</em>);
+    }
+
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+// Обёртка — просто вызывает парсер и вставляет результат.
+function RichText({ children }) {
+  return <>{renderRich(children)}</>;
+}
+
+// ─── ПУЗЫРЬ СООБЩЕНИЯ ─────────────────────────────────────
+function MessageBubble({ role, text }) {
+  const isUser = role === 'user';
+
+  // ─── ТВОИ СООБЩЕНИЯ ────────────────────────────────────
+  if (isUser) {
+    return (
+      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+        <div style={{
+          maxWidth: "72%",
+          padding: "12px 18px",
+          borderRadius: 16,
+          borderTopRightRadius: 4,
+          background: C.blue,
+          color: "#FFFFFF",
+          fontSize: 14.5,
+          lineHeight: 1.55,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          textAlign: "left",
+        }}>
+          <RichText>{text}</RichText>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── ОТВЕТЫ AI ─────────────────────────────────────────
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", width: "100%", gap: 12 }}>
+      {/* Аватарка с иконкой-искрой */}
+      <div style={{
+        flexShrink: 0,
+        width: 36, height: 36, borderRadius: "50%",
+        background: `linear-gradient(135deg, ${C.blueDark}, ${C.mintDark})`,
+        border: `1px solid ${C.mint}44`,
+        boxShadow: `0 0 16px ${C.mint}33`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        marginTop: 4,
+      }}>
+        {Icon.sparkle({ c: C.mint, s: 18 })}
+      </div>
+
+      {/* Пузырь с ответом */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "72%" }}>
+        {/* Подпись "NEXA AI" над пузырём */}
+        <div style={{
+          fontSize: 11.5,
+          letterSpacing: "0.12em",
+          color: C.mint,
+          opacity: 0.85,
+          paddingLeft: 4,
+          textTransform: "uppercase",
+          fontWeight: 500,
+        }}>
+          NEXA AI
+        </div>
+
+        {/* Сам пузырь */}
+        <div style={{
+          padding: "14px 18px",
+          borderRadius: 16,
+          borderTopLeftRadius: 4,
+          background: `linear-gradient(135deg, ${C.panel} 0%, #12141B 100%)`,
+          border: `1px solid ${C.border}`,
+          color: "#EAF2F7",
+          fontSize: 14.5,
+          lineHeight: 1.6,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          textAlign: "left",
+          position: "relative",
+          overflow: "hidden",
+        }}>
+          {/* Тонкая цветная полоска слева внутри пузыря */}
+          <div style={{
+            position: "absolute",
+            left: 0, top: 0, bottom: 0,
+            width: 3,
+            background: `linear-gradient(180deg, ${C.blue}, ${C.mint})`,
+            opacity: 0.85,
           }} />
-          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.mint, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {Icon.up({})}
+          <div style={{ paddingLeft: 8 }}>
+            <RichText>{text}</RichText>
           </div>
         </div>
-      </div>
-
-      <div style={{ position: "absolute", bottom: 6, right: 40, fontSize: 12, color: C.mutedSoft, maxWidth: 420, textAlign: "right" }}>
-        Искусственный интеллект может допускать ошибки. Пожалуйста, перепроверяйте ответы.
       </div>
     </div>
   );
 }
 
+// ─── ИНДИКАТОР «ПЕЧАТАЕТ…» ──────────────────────────────────
+function TypingIndicator() {
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", width: "100%" }}>
+      <div style={{
+        padding: "12px 16px", borderRadius: 16, borderTopLeftRadius: 4,
+        background: C.panel, border: `1px solid ${C.border}`,
+        display: "flex", gap: 6, alignItems: "center",
+      }}>
+        <span style={{ fontSize: 13, color: C.muted, marginRight: 4 }}>Печатает</span>
+        <DotPulse delay="0s" />
+        <DotPulse delay="0.2s" />
+        <DotPulse delay="0.4s" />
+      </div>
+    </div>
+  );
+}
+
+function DotPulse({ delay }) {
+  return (
+    <span style={{
+      width: 6, height: 6, borderRadius: "50%", background: C.muted,
+      display: "inline-block",
+      animation: `nx-pulse 1.2s ${delay} infinite ease-in-out`,
+    }} />
+  );
+}
 // Переключатель вкл/выкл.
 // on — включён сейчас или нет (true/false)
 // onClick — функция, которая сработает при клике
@@ -814,7 +1270,23 @@ function Toggle({ on, onClick }) {
     </div>
   );
 }
-
+function SectionTitle({ children }) {
+  return (
+    <div
+      className="ng-display"
+      style={{
+        fontSize: 26,
+        fontWeight: 600,
+        color: C.text,
+        marginBottom: 14,
+        marginTop: 0,
+        textAlign: "left",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 // ЭКРАН "НАСТРОЙКИ" — профиль, тема, уведомления, аккаунт
 function ScreenSettings() {
   // Список уведомлений теперь хранится в состоянии (useState),
@@ -848,15 +1320,15 @@ const toggleNotif = (index) => {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "left",fontSize: 21.66, marginBottom: 10 }}>Профиль</div>
+      <SectionTitle>Профиль</SectionTitle>
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 26 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px" }}>
           <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#2A2C34", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {Icon.user({ c: C.muted, s: 20 })}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "left", fontSize: 19.33 }}>Пользователь</div>
-            <div style={{ display: "flex", alignItems: "left",fontSize: 12.65, color: C.mutedSoft }}>user@example.com</div>
+            <div style={{ display: "flex", fontSize: 19.33 }}>Пользователь</div>
+            <div style={{ display: "flex", fontSize: 12.65, color: C.mutedSoft }}>user@example.com</div>
             <div style={{ fontSize: 12.65, color: C.green, display: "flex", alignItems: "center", gap: 5 }}>
               <Dot color={C.green} /> Активный аккаунт
             </div>
@@ -865,7 +1337,7 @@ const toggleNotif = (index) => {
         </div>
       </div>
 
-      <div style={{display: "flex", alignItems: "left", fontSize: 21.66, marginBottom: 10 }}>Внешний вид</div>
+      <SectionTitle>Внешний вид</SectionTitle>
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 26, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           {/* Иконка слева от "Тема оформления" — маленькая складка,
@@ -893,7 +1365,7 @@ const toggleNotif = (index) => {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "left", fontSize: 21.66, marginBottom: 10 }}>Уведомления</div>
+      <SectionTitle>Уведомления</SectionTitle>
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 26 }}>
         {notifs.map((n, i) => (
           <div key={n.label} style={{
@@ -909,7 +1381,7 @@ const toggleNotif = (index) => {
         ))}
       </div>
 
-      <div style={{display: "flex", alignItems: "left", fontSize: 21.66, marginBottom: 10 }}>Об аккаунте</div>
+     <SectionTitle>Об аккаунте</SectionTitle>
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 4 }}>
         <Row leftIcon={Icon.logout({ c: C.text, s: 18 })} title="Выйти из аккаунта" />
         <Row leftIcon={Icon.info({ c: C.text, s: 18 })} title="О системе" />
@@ -924,6 +1396,10 @@ const toggleNotif = (index) => {
    какой из шести экранов показывается ниже. */
 export default function NexaApp() {
   const [tab, setTab] = useState("home");
+  useEffect(() => {
+  document.body.style.overflow = tab === "assistant" ? "hidden" : "";
+  return () => { document.body.style.overflow = ""; };
+}, [tab]);
 
   return (
     <div style={{
@@ -936,7 +1412,6 @@ export default function NexaApp() {
       minHeight: "100vh", width: "100%",
       background: C.bg, color: C.text,
       fontFamily: fontBody,
-      backgroundImage: `linear-gradient(#111319 1px, transparent 1px), linear-gradient(90deg, #111319 1px, transparent 1px)`
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
@@ -958,6 +1433,31 @@ export default function NexaApp() {
           .ng-today-grid { grid-template-columns: 1fr !important; }
           .ng-cat-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
+           @keyframes nx-pulse {
+          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+          /* ─── Фирменный скроллбар NEXA ───────────────────────── */
+  .nx-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 255, 223, 0.35) transparent;
+  }
+  .nx-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .nx-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .nx-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(74, 111, 255, 0.5), rgba(0, 255, 223, 0.5));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .nx-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(74, 111, 255, 0.85), rgba(0, 255, 223, 0.85));
+    background-clip: padding-box;
+  }
       `}</style>
 
       <Sidebar active={tab} onChange={setTab} />
@@ -986,21 +1486,21 @@ export default function NexaApp() {
         </div>
         {/* Нижняя строка: слева логотип, справа ссылка "Подробнее о системе".
     justifyContent: "space-between" разводит их по разным краям строки. */}
+  {tab !== "assistant" && (
   <div style={{
-  padding: "0 40px 30px", width: "100%", maxWidth: 1440, margin: "0 auto",
-  boxSizing: "border-box",
-  display: "flex", justifyContent: "space-between", alignItems: "center",
-}}>
-  <Logo small />
-  {/* Ссылку показываем только на главном экране (tab === "home"),
-      на остальных экранах справа в футере пусто */}
-  {tab === "home" && (
-    <div style={{ fontSize: 13, color: C.mutedSoft }}>
-      Подробнее о системе →
-    </div>
-  )}
-</div>
-        </div>
+    padding: "0 40px 30px", width: "100%", maxWidth: 1440, margin: "0 auto",
+    boxSizing: "border-box",
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+  }}>
+    <Logo small />
+    {tab === "home" && (
+      <div style={{ fontSize: 13, color: C.mutedSoft }}>
+        Подробнее о системе →
       </div>
+    )}
+  </div>
+)}
+</div>
+     </div>
   );
 }

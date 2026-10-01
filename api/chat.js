@@ -3,9 +3,12 @@ import { GoogleGenAI } from '@google/genai';
 async function tryGenerate(ai, message, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const response = await ai.models.generateContent({
+       const response = await ai.models.generateContent({
         model: 'gemini-3.5-flash',
         contents: message,
+        config: {
+          systemInstruction: 'Отвечай обычным текстом. Для выделения важных слов можешь использовать **жирный** (двойные звёздочки). Не используй ### для заголовков, не делай маркированные списки через - или *, не используй обратные кавычки и подчёркивания. Пиши короткими абзацами, отделяя их пустой строкой.',
+        },
       });
       return response.text;
     } catch (error) {
