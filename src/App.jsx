@@ -355,7 +355,8 @@ function Row({ leftIcon, title, subtitle, right, accent }) {
       display: "flex", alignItems: "center", justifyContent: "space-between",
       padding: "16px 18px", borderBottom: `1px solid ${C.border}`, gap: 14,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      {/* Левая часть: иконка + текст — занимает всё свободное место */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
         {leftIcon && (
           <div style={{
             width: 42, height: 42, borderRadius: 4, border: `1px solid ${C.border}`,
@@ -364,12 +365,20 @@ function Row({ leftIcon, title, subtitle, right, accent }) {
             {leftIcon}
           </div>
         )}
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 500 }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>{subtitle}</div>}
+        <div style={{ display: "flex", flexDirection: "column", textAlign: "left", minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, textAlign: "left", lineHeight: 1.2 }}>
+            {title}
+          </div>
+          {subtitle && (
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3, textAlign: "left", lineHeight: 1.3 }}>
+              {subtitle}
+            </div>
+          )}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+
+      {/* Правая часть: индикатор + стрелка — фиксированной ширины */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         {right}
         {accent !== false && Icon.chevron({})}
       </div>
@@ -406,7 +415,7 @@ function ScreenHome({ onNavigate }) {
       className="ng-home-grid"
     >
       {/* ── Левая колонка: заголовок + устройства ──────────── */}
-      <div>
+       <div style={{ textAlign: "left" }}>
         <div style={{
           fontSize: 25, letterSpacing: "0.2em",
           color: C.text, marginBottom: 14,
@@ -424,7 +433,7 @@ function ScreenHome({ onNavigate }) {
           Синхронизировано. Работает. Рядом с вами
         </div>
 
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 4 }}>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
           <div style={{
             display: "flex", justifyContent: "space-between",
             alignItems: "center", padding: "16px 18px",
@@ -464,7 +473,7 @@ function ScreenHome({ onNavigate }) {
           style={{
             marginTop: "auto",   // ← вот магия: прижимает карточку к низу
             border: `1px solid ${C.border}`,
-            borderRadius: 4,
+            borderRadius: 16,
             padding: "16px 18px",
             display: "flex",
             alignItems: "center",
@@ -1237,18 +1246,20 @@ function MessageBubble({ role, text }) {
       {/* Пузырь с ответом */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "72%" }}>
         {/* Подпись "NEXA AI" над пузырём */}
-        <div style={{
-          fontSize: 11.5,
-          letterSpacing: "0.12em",
-          color: C.mint,
-          opacity: 0.85,
-          paddingLeft: 4,
-          textTransform: "uppercase",
-          fontWeight: 500,
-          textAlign: "left",
-          alignSelf: "flex-start",
-          width: "100%",
-        }}>
+          <div
+          style={{
+            fontSize: 11.5,
+            letterSpacing: "0.12em",
+            color: C.mint,
+            opacity: 0.85,
+            paddingLeft: 4,
+            textTransform: "uppercase",
+            fontWeight: 500,
+            textAlign: "left",
+            alignSelf: "flex-start",
+            marginRight: "auto",
+          }}
+        >
           NEXA Assistant
         </div>
 
