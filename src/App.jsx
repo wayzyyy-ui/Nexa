@@ -1180,9 +1180,9 @@ const menuBlock = (
       background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
       boxShadow: `0 0 24px ${C.blue}33, 0 0 40px ${C.mint}22`,
     }}>
-      <div style={{
+      <div className="ng-input-inner" style={{
         width: "100%", display: "flex", alignItems: "center", gap: 10,
-        padding: "10px 10px 10px 22px", borderRadius: 999,
+        padding: "8px 8px 8px 18px", borderRadius: 999,
         background: C.bg, boxSizing: "border-box",
       }}>
         <input
@@ -1196,14 +1196,14 @@ const menuBlock = (
           onClick={sendMessage}
           disabled={isLoading || !input.trim()}
           style={{
-            width: 34, height: 34, borderRadius: "50%",
+            width: 32, height: 32, borderRadius: "50%",
             background: (isLoading || !input.trim()) ? "#2A2C34" : C.mint,
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
             cursor: (isLoading || !input.trim()) ? "default" : "pointer",
             transition: "background 140ms ease",
           }}
         >
-          {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : "#07080C", s: 16 })}
+          {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : "#07080C", s: 15 })}
         </button>
       </div>
     </div>
@@ -1338,6 +1338,7 @@ const menuBlock = (
   flex: 1, display: "flex", flexDirection: "row",
   width: "100%", maxWidth: 1440, margin: "0 auto",
   padding: "66px 40px 20px 40px",
+  overflow: "hidden",
   boxSizing: "border-box", minHeight: 0,
 };
   return (
@@ -1355,7 +1356,7 @@ const menuBlock = (
           <div style={{
             flex: 1, display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", gap: 24,
-            paddingBottom: 120,
+            paddingBottom: 40,
           }}>
             <div className="ng-display" style={{ fontSize: 22 }}>{greeting}</div>
             <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
@@ -1757,7 +1758,11 @@ export default function NexaApp() {
         .ng-display { font-family: 'Space Grotesk', sans-serif; }
         input::placeholder { color: ${C.mutedSoft}; }
 
-        html, body, #root { margin: 0; padding: 0; width: 100%; min-height: 100vh; }
+        html, body, #root {
+        margin: 0; padding: 0; width: 100%; min-height: 100vh;
+        background: #01090F;
+        color-scheme: dark;
+}
         body { display: block !important; place-items: unset !important; }
         .ng-home-desktop { display: block; }
         .ng-home-mobile { display: none; }
@@ -1928,6 +1933,13 @@ export default function NexaApp() {
             opacity: 0;
             box-sizing: border-box !important;
           }
+             .ng-history-panel .nx-scroll > div:last-child > div > div {
+    padding: 14px 14px !important;
+    border-radius: 10px !important;
+  }
+  .ng-history-panel .nx-scroll > div:last-child > div > div > div:first-child {
+    font-size: 14.5px !important;
+  }
           .ng-history-panel.is-open {
             transform: translateX(0) !important;
             opacity: 1 !important;
@@ -1941,20 +1953,42 @@ export default function NexaApp() {
             padding-left: 0 !important;
           }
 
-          /* Шапка и кнопки истории */
-          .ng-history-header {
-            display: flex !important;
-            align-items: center;
-            justify-content: space-between;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #1C1E26;
-            margin-bottom: 4px;
-          }
+            .ng-history-header {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px 16px;
+    border-bottom: 1px solid #1C1E26;
+    margin-bottom: 16px;
+  }
+  .ng-history-header > div {
+    font-size: 13px !important;
+    letter-spacing: 0.2em !important;
+    color: #92A2AF !important;
+    font-weight: 500 !important;
+  }
+  .ng-history-header button {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 20px !important;
+
           .ng-history-actions {
-            display: flex !important;
-            gap: 8px;
-            margin-bottom: 12px;
-          }
+    display: flex !important;
+    gap: 10px !important;
+    margin-bottom: 20px !important;
+  }
+  .ng-history-actions button {
+    padding: 14px 16px !important;
+    border-radius: 12px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    background: #0E1016 !important;
+  }
           .ng-history-title-desktop { display: none !important; }
 
           /* Футер на мобильном скрываем */
@@ -1976,6 +2010,46 @@ export default function NexaApp() {
             gap: 14px !important;
           }
         }
+          .ng-assistant-inner .ng-display {
+    font-size: 22px !important;
+  }
+  .ng-assistant-inner > div > div > div:last-child {
+    font-size: 12px !important;
+    margin-top: 4px !important;
+  }
+     /* ─── Поле ввода в Ассистенте ───────────────────── */
+  .ng-assistant-inner input {
+    font-size: 15px !important;
+  }
+  /* Внешняя обёртка поля — уменьшаем паддинги */
+  .ng-assistant-inner > div > div:last-child > div:first-child {
+    padding: 1px !important;
+  }
+  /* Внутренний div поля */
+  .ng-assistant-inner input + button {
+    width: 30px !important;
+    height: 30px !important;
+  }
+  /* Контейнер поля — компактнее */
+  .ng-assistant-inner > div > div:last-child > div > div {
+    padding: 8px 8px 8px 18px !important;
+  }
+     body {
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    background: #01090F;
+  }
+
+  .ng-mobile-tabbar {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+
+  .ng-mobile-tabbar > div {
+    margin: 16px 16px 8px 16px;
+  }
       `}</style>
       <Sidebar active={tab} onChange={setTab} />
        <MobileTabBar active={tab} onChange={setTab} />
