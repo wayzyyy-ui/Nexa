@@ -193,6 +193,27 @@ const Icon = {
       <circle cx="6" cy="12" r="1.2" fill={p.c} /><circle cx="12" cy="12" r="1.2" fill={p.c} /><circle cx="18" cy="12" r="1.2" fill={p.c} />
     </svg>
   ),
+    copy: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
+      <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" strokeLinecap="round" />
+    </svg>
+  ),
+  refresh: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  edit: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  check: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="2">
+      <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
 };
 
 /* ---------- 3. СКЛАДКА — фирменный визуал (FoldHero) ----------
@@ -967,6 +988,14 @@ function ScreenAssistant() {
   "Есть вопросы? Я слушаю",
   "Что вас интересует сегодня?",
 ];
+ useEffect(() => {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, []);
 const [greeting, setGreeting] = useState('');
 useEffect(() => {
   setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
@@ -982,6 +1011,7 @@ const [chats, setChats] = useState(() => {
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const bottomRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     try { localStorage.setItem('nexa-chats', JSON.stringify(chats)); } catch {}
@@ -1002,11 +1032,81 @@ const [chats, setChats] = useState(() => {
     if (id === currentChatId) setCurrentChatId(null);
   };
 
+    // Главная функция: отправляет вопрос на сервер и по мере прихода
+  // текста вписывает ответ в чат. Используется и при обычной отправке,
+  // и при повторе ответа, и при редактировании сообщения.
+  // previousMessages это сообщения чата ДО вопроса, text это сам вопрос.
+  const streamAnswer = async (chatId, previousMessages, text) => {
+    setIsLoading(true);
+    let fullText = '';
+
+    // Записывает текст в последний ответ ИИ. Если ответа ещё нет, создаёт его.
+    // Именно тут появляется пузырь, а вместе с ним пропадает "Печатает".
+    const writeAnswer = (answerText, isError = false) => {
+      setChats(prev => prev.map(c => {
+        if (c.id !== chatId) return c;
+        const msgs = [...c.messages];
+        const answer = { role: 'ai', text: answerText, ...(isError ? { error: true } : {}) };
+        if (msgs[msgs.length - 1]?.role === 'ai') msgs[msgs.length - 1] = answer;
+        else msgs.push(answer);
+        return { ...c, messages: msgs };
+      }));
+    };
+
+    try {
+      // История для модели: сообщения с ошибками в неё не берём
+      const history = previousMessages
+        .filter(m => !m.error)
+        .map(m => ({
+          role: m.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: m.text }],
+        }));
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history }),
+      });
+
+      if (!res.ok) {
+        // Сервер присылает понятный текст ошибки, достаём его
+        let serverMsg = '';
+        try { serverMsg = (await res.json()).error; } catch {}
+        const err = new Error('server');
+        err.userMessage = serverMsg || `Ошибка сервера (${res.status})`;
+        throw err;
+      }
+
+      // Читаем ответ кусками и сразу показываем
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+        if (fullText) writeAnswer(fullText);
+      }
+
+      if (!fullText.trim()) writeAnswer('Пустой ответ. Нажмите "повторить".', true);
+    } catch (error) {
+      if (fullText) {
+        // Ответ оборвался посередине: оставляем то, что успело прийти
+        writeAnswer(fullText + '\n\n(ответ оборвался, нажмите "повторить")', true);
+      } else {
+        writeAnswer(error.userMessage || 'Ошибка соединения с сервером.', true);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Обычная отправка сообщения из поля ввода
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
 
     const userMsg = { role: 'user', text };
+    const before = currentChat?.messages || [];
     let chatId = currentChatId;
 
     if (!chatId) {
@@ -1025,69 +1125,66 @@ const [chats, setChats] = useState(() => {
     }
 
     setInput('');
-    setIsLoading(true);
-
-    try {
-  // Собираем прошлые сообщения этого чата в формате Gemini
-  const history = (currentChat?.messages || []).map(m => ({
-    role: m.role === 'ai' ? 'model' : 'user',
-    parts: [{ text: m.text }],
-  }));
-
-  // Сам запрос на сервер: теперь отправляем и вопрос, и историю
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text, history }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Ошибка сервера: ${res.status}`);
-  }
-    const fullText = await res.text();
-
-      setChats(prev => prev.map(c =>
-        c.id === chatId
-          ? { ...c, messages: [...c.messages, { role: 'ai', text: '' }] }
-          : c
-      ));
-
-      // Имитация печати: показываем текст посимвольно
-      let i = 0;
-      const speed = 15; // миллисекунд на символ — хочешь медленнее — 25, быстрее — 8
-      await new Promise(resolve => {
-        const timer = setInterval(() => {
-          i++;
-          const partial = fullText.slice(0, i);
-          setChats(prev => prev.map(c => {
-            if (c.id !== chatId) return c;
-            const newMsgs = [...c.messages];
-            newMsgs[newMsgs.length - 1] = { role: 'ai', text: partial };
-            return { ...c, messages: newMsgs };
-          }));
-          if (i >= fullText.length) {
-            clearInterval(timer);
-            resolve();
-          }
-        }, speed);
-      });
-    } catch (error) {
-      setChats(prev => prev.map(c =>
-        c.id === chatId
-          ? { ...c, messages: [...c.messages, { role: 'ai', text: 'Ошибка соединения с сервером.' }] }
-          : c
-      ));
-    } finally {
-      setIsLoading(false);
-    }
+    await streamAnswer(chatId, before, text);
   };
+
+  // ПОВТОРИТЬ: удаляет последний ответ и запрашивает новый на тот же вопрос
+  const regenerate = () => {
+    if (isLoading || !currentChatId) return;
+
+    // Ищем последний вопрос пользователя
+    let lastUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { lastUserIdx = i; break; }
+    }
+    if (lastUserIdx === -1) return;
+
+    const questionText = messages[lastUserIdx].text;
+    const previous = messages.slice(0, lastUserIdx);
+
+    // Оставляем чат до вопроса включительно, старый ответ убираем
+    setChats(prev => prev.map(c =>
+      c.id === currentChatId ? { ...c, messages: messages.slice(0, lastUserIdx + 1) } : c
+    ));
+    streamAnswer(currentChatId, previous, questionText);
+  };
+
+  // РЕДАКТИРОВАНИЕ: заменяет сообщение пользователя, всё, что было после него, удаляется,
+  // и ответ генерируется заново
+  const editMessage = (index, newText) => {
+    if (isLoading || !currentChatId) return;
+
+    const previous = messages.slice(0, index);
+    setChats(prev => prev.map(c => {
+      if (c.id !== currentChatId) return c;
+      return {
+        ...c,
+        // Если правим самое первое сообщение, обновляем и название чата в истории
+        title: index === 0
+          ? (newText.length > 40 ? newText.slice(0, 40) + '…' : newText)
+          : c.title,
+        messages: [...previous, { role: 'user', text: newText }],
+      };
+    }));
+    streamAnswer(currentChatId, previous, newText);
+  };
+  
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  const rightItems = [
+    const rightItems = [
     { label: "Новый диалог", icon: Icon.plus, onClick: newChat },
-    { label: "Поиск", icon: Icon.search },
+    {
+      label: "Поиск",
+      icon: Icon.search,
+      onClick: () => {
+        setIsHistoryOpen(true);
+        // сбрасываем поиск при новом открытии
+        setSearchQuery('');
+      },
+      active: isHistoryOpen,
+    },
     {
       label: "История",
       icon: Icon.list,
@@ -1119,14 +1216,39 @@ const [chats, setChats] = useState(() => {
       <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
         AI - Ассистент
       </div>
-      <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
+       <div className="nx-assistant-subtitle" style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
         Интеллектуальный центр системы NEXA
       </div>
     </div>
   </div>
 );
 
-const menuBlock = (
+const menuBlock = isHistoryOpen ? (
+  // Когда открыта история — показываем только крестик закрытия
+  <div className="ng-menu-block" style={{
+    position: "fixed",
+    top: 24,
+    right: 40,
+    zIndex: 200,
+  }}>
+    <button
+      onClick={() => setIsHistoryOpen(false)}
+      title="Закрыть историю"
+      style={{
+        width: 40, height: 40, borderRadius: "50%",
+        border: `1px solid ${C.border}`,
+        background: C.panel,
+        color: C.text,
+        cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 22, lineHeight: 1,
+      }}
+    >
+      ×
+    </button>
+  </div>
+) : (
+  // Обычное меню — когда история закрыта
   <div className="ng-menu-block" style={{
     position: "fixed",
     top: 24,
@@ -1144,7 +1266,7 @@ const menuBlock = (
       gap: 18,
       marginBottom: 8,
     }}>
-       <TimeDate />
+      <TimeDate />
       <IconBtn icon={Icon.user} />
     </div>
 
@@ -1174,33 +1296,52 @@ const menuBlock = (
   </div>
 );
 
-  const inputRow = (
-    <div style={{
-      width: "100%", maxWidth: 820, padding: 1.5, borderRadius: 999,
-      background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
-      boxShadow: `0 0 24px ${C.blue}33, 0 0 40px ${C.mint}22`,
-    }}>
-      <div className="ng-input-inner" style={{
-        width: "100%", display: "flex", alignItems: "center", gap: 10,
-        padding: "8px 8px 8px 18px", borderRadius: 999,
-        background: C.bg, boxSizing: "border-box",
-      }}>
+    const inputRow = (
+  <div style={{
+    width: "100%", maxWidth: 820,
+    padding: 1,
+    borderRadius: 999,
+    background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+    boxShadow: `0 0 60px ${C.blue}80`,   // ← мягкое свечение, 10px вместо 24+40
+  }}>
+      <div style={{
+  width: "100%", display: "flex", alignItems: "center", gap: 10,
+  padding: "8px 8px 8px 18px", borderRadius: 999,
+  background: C.bg, boxSizing: "border-box",
+}}
+      >
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Написать сообщение..."
-          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14 }}
+          className="ng-input-field"
+          style={{
+            flex: 1,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: C.text,
+            fontSize: 14,
+            minWidth: 0,
+          }}
         />
         <button
           onClick={sendMessage}
           disabled={isLoading || !input.trim()}
+          className="ng-input-send"
           style={{
-            width: 32, height: 32, borderRadius: "50%",
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
             background: (isLoading || !input.trim()) ? "#2A2C34" : C.mint,
-            border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             cursor: (isLoading || !input.trim()) ? "default" : "pointer",
             transition: "background 140ms ease",
+            flexShrink: 0,
           }}
         >
           {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : "#07080C", s: 15 })}
@@ -1260,7 +1401,7 @@ const menuBlock = (
           </button>
         </div>
 
-        {/* Кнопки действий — только на мобильном (CSS покажет) */}
+                {/* Кнопки действий — только на мобильном (CSS покажет) */}
         <div className="ng-history-actions">
           <button
             onClick={() => { newChat(); setIsHistoryOpen(false); }}
@@ -1268,13 +1409,7 @@ const menuBlock = (
           >
             + Новый диалог
           </button>
-          <button
-            style={{ flex: 1, padding: "12px 16px", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 14, cursor: "pointer" }}
-          >
-            Поиск
-          </button>
         </div>
-
         {/* Заголовок "История" — только на десктопе */}
         <div className="ng-history-title-desktop" style={{
           fontSize: 11, letterSpacing: "0.15em", color: C.mutedSoft,
@@ -1283,44 +1418,84 @@ const menuBlock = (
           История
         </div>
 
+                {/* Поле поиска */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 12px", marginBottom: 4,
+          border: `1px solid ${C.border}`, borderRadius: 8,
+          background: C.panel,
+        }}>
+          {Icon.search({ c: C.mutedSoft, s: 14 })}
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Поиск по диалогам..."
+            style={{
+              flex: 1, background: "transparent", border: "none",
+              outline: "none", color: C.text, fontSize: 13, minWidth: 0,
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                background: "transparent", border: "none",
+                color: C.mutedSoft, cursor: "pointer", padding: 0,
+                fontSize: 16, lineHeight: 1,
+              }}
+              title="Очистить"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
         {chats.length === 0 ? (
           <div style={{ fontSize: 13, color: C.mutedSoft, padding: "4px", lineHeight: 1.5 }}>
             Здесь появятся ваши диалоги
           </div>
+        ) : chats.filter(c =>
+            c.title.toLowerCase().includes(searchQuery.toLowerCase().trim())
+          ).length === 0 ? (
+          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "4px", lineHeight: 1.5 }}>
+            Ничего не найдено
+          </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {chats.map((chat) => (
-              <div
-                key={chat.id}
-                onClick={() => { openChat(chat.id); setIsHistoryOpen(false); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-                  background: chat.id === currentChatId ? C.panel : "transparent",
-                  border: `1px solid ${chat.id === currentChatId ? C.border : "transparent"}`,
-                  transition: "background 140ms ease",
-                }}
-              >
-                <div style={{
-                  flex: 1, minWidth: 0, fontSize: 13.5, color: C.text,
-                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                }}>
-                  {chat.title}
-                </div>
-                <button
-                  onClick={(e) => deleteChat(chat.id, e)}
-                  title="Удалить"
+            {chats
+              .filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+              .map((chat) => (
+                <div
+                  key={chat.id}
+                  onClick={() => { openChat(chat.id); setIsHistoryOpen(false); }}
                   style={{
-                    background: "transparent", border: "none",
-                    color: C.mutedSoft, cursor: "pointer",
-                    fontSize: 16, padding: 2, lineHeight: 1,
-                    display: "flex", alignItems: "center", justifyContent: "center",
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                    background: chat.id === currentChatId ? C.panel : "transparent",
+                    border: `1px solid ${chat.id === currentChatId ? C.border : "transparent"}`,
+                    transition: "background 140ms ease",
                   }}
                 >
-                  ×
-                </button>
-              </div>
-            ))}
+                  <div style={{
+                    flex: 1, minWidth: 0, fontSize: 13.5, color: C.text,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>
+                    {chat.title}
+                  </div>
+                  <button
+                    onClick={(e) => deleteChat(chat.id, e)}
+                    title="Удалить"
+                    style={{
+                      background: "transparent", border: "none",
+                      color: C.mutedSoft, cursor: "pointer",
+                      fontSize: 16, padding: 2, lineHeight: 1,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    ×
+                  </button>
+                   </div>
+              ))}
           </div>
         )}
       </div>
@@ -1352,52 +1527,90 @@ const menuBlock = (
       }}>
         {titleOnly}
 
-        {isEmpty ? (
-          <div style={{
-            flex: 1, display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center", gap: 24,
-            paddingBottom: 40,
-          }}>
-            <div className="ng-display" style={{ fontSize: 22 }}>{greeting}</div>
-            <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+         {isEmpty ? (
+          <>
+            {/* Приветствие — по центру свободного места */}
+            <div style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: 0,
+            padding: "0 16px",
+            marginTop: 0,
+}}>
+          <div
+            className="ng-greeting"
+            style={{ textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+            {greeting}
+          </div>
+        </div>
+
+            {/* Поле ввода — прижато к низу, без дисклеймера */}
+            <div style={{
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 10,
+              paddingBottom: 8,
+            }}>
               {inputRow}
             </div>
-            {disclaimer}
-          </div>
+          </>
         ) : (
           <>
+            {/* Сообщения сверху */}
             <div
-            className="nx-scroll"
-            style={{
-            flex: 1, overflowY: "auto",
-            marginTop: 24, marginBottom: 16, minHeight: 0,
-            paddingLeft: 8, paddingRight: 8,
-            }}
+              className="nx-scroll"
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                marginTop: 24,
+                marginBottom: 16,
+                minHeight: 0,
+                paddingLeft: 8,
+                paddingRight: 8,
+              }}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
                 {messages.map((m, i) => (
-                  <MessageBubble key={i} role={m.role} text={m.text} />
+                  <MessageBubble
+                    key={i}
+                    role={m.role}
+                    text={m.text}
+                    isLastAi={m.role === 'ai' && i === messages.length - 1}
+                    disabled={isLoading}
+                    onRegenerate={regenerate}
+                    onEdit={(newText) => editMessage(i, newText)}
+                  />
                 ))}
-                {isLoading && <TypingIndicator />}
+                {isLoading && messages[messages.length - 1]?.role !== 'ai' && <TypingIndicator />}
                 <div ref={bottomRef} />
               </div>
             </div>
 
+            {/* Поле ввода + дисклеймер (дисклеймер только в чате) */}
             <div style={{
-              flexShrink: 0, display: "flex", flexDirection: "column",
-              alignItems: "center", gap: 10,
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 10,
+              paddingBottom: 8,
             }}>
               {inputRow}
               {disclaimer}
             </div>
-          </>
+           </>
         )}
       </div>
 
       {historyPanel}
     </div>
   </div>
-);
+  );
 }
 
 // Мини-парсер выделений: **жирный**, *курсив*, `код`.
@@ -1451,96 +1664,184 @@ function RichText({ children }) {
   return <>{renderRich(children)}</>;
 }
 
-// ─── ПУЗЫРЬ СООБЩЕНИЯ ─────────────────────────────────────
-function MessageBubble({ role, text }) {
-  const isUser = role === 'user';
+// Маленькая кнопка под сообщением (копировать, повторить, править)
+function ActionBtn({ title, onClick, disabled, children }) {
+  return (
+    <button
+      className="nx-action"
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: 28, height: 28, borderRadius: 4,
+        border: "1px solid transparent", background: "transparent",
+        color: C.muted, display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.35 : 1,
+        transition: "color 140ms ease, background 140ms ease, border-color 140ms ease",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
-  // ─── ТВОИ СООБЩЕНИЯ ────────────────────────────────────
+// ─── ПУЗЫРЬ СООБЩЕНИЯ ─────────────────────────────────────
+// isLastAi: это последний ответ ИИ (под ним есть кнопка "повторить")
+// disabled: пока идёт генерация, кнопки редактирования и повтора неактивны
+function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit }) {
+  const isUser = role === 'user';
+  const [copied, setCopied] = useState(false);       // показываем галочку после копирования
+  const [isEditing, setIsEditing] = useState(false); // включён ли режим редактирования
+  const [draft, setDraft] = useState(text);          // текст в поле редактирования
+
+  // Копируем текст без звёздочек выделения
+  const handleCopy = async () => {
+    const clean = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+    try {
+      // Современный способ (работает по HTTPS)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(clean);
+      } else {
+        // Резервный способ для HTTP
+        const ta = document.createElement('textarea');
+        ta.value = clean;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  const startEdit = () => { setDraft(text); setIsEditing(true); };
+  const cancelEdit = () => setIsEditing(false);
+  const saveEdit = () => {
+    const clean = draft.trim();
+    setIsEditing(false);
+    if (clean && clean !== text) onEdit(clean);
+  };
+
+  const copyButton = (
+    <ActionBtn title={copied ? "Скопировано" : "Копировать"} onClick={handleCopy}>
+      {copied ? Icon.check({ c: C.mint, s: 15 }) : Icon.copy({ c: "currentColor", s: 15 })}
+    </ActionBtn>
+  );
+
+  // ─── СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ ────────────────────────────
   if (isUser) {
     return (
-      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-        <div style={{
-          maxWidth: "72%",
-          padding: "12px 18px",
-          borderRadius: 16,
-          borderTopRightRadius: 4,
-          background: C.blue,
-          color: "#FFFFFF",
-          fontSize: 14.5,
-          lineHeight: 1.55,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          textAlign: "left",
-        }}>
-          <RichText>{text}</RichText>
-        </div>
+      <div className="nx-msg" style={{
+        display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, width: "100%",
+      }}>
+        {isEditing ? (
+          <div style={{
+            width: "72%", display: "flex", flexDirection: "column", gap: 8,
+            padding: 12, borderRadius: 16, borderTopRightRadius: 4,
+            border: `1px solid ${C.blue}`, background: C.panel, boxSizing: "border-box",
+          }}>
+            <textarea
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                if (e.key === 'Escape') cancelEdit();
+              }}
+              rows={Math.min(8, Math.max(2, draft.split('\n').length))}
+              style={{
+                width: "100%", resize: "none", boxSizing: "border-box",
+                background: "transparent", border: "none", outline: "none",
+                color: C.text, fontSize: 14.5, lineHeight: 1.55, fontFamily: "inherit",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button onClick={cancelEdit} style={{
+                padding: "6px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+                background: "transparent", border: `1px solid ${C.border}`, color: C.muted,
+              }}>Отмена</button>
+              <button onClick={saveEdit} disabled={!draft.trim()} style={{
+                padding: "6px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+                background: C.mint, border: "none", color: "#07080C", fontWeight: 500,
+                opacity: draft.trim() ? 1 : 0.4,
+              }}>Отправить</button>
+            </div>
+          </div>
+        ) : (
+          <div className="nx-bubble-text nx-user-bubble" style={{
+            maxWidth: "72%", padding: "12px 18px", borderRadius: 16, borderTopRightRadius: 4,
+            background: C.blue, color: "#FFFFFF", fontSize: 14.5, lineHeight: 1.55,
+            whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left",
+          }}>
+            <RichText>{text}</RichText>
+          </div>
+        )}
+
+        {!isEditing && (
+          <div className="nx-actions" style={{ display: "flex", gap: 4 }}>
+            {copyButton}
+            <ActionBtn title="Редактировать" onClick={startEdit} disabled={disabled}>
+              {Icon.edit({ c: "currentColor", s: 15 })}
+            </ActionBtn>
+          </div>
+        )}
       </div>
     );
   }
 
   // ─── ОТВЕТЫ AI ─────────────────────────────────────────
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start", width: "100%", gap: 12 }}>
+    <div
+      className={`nx-msg${isLastAi ? ' nx-last' : ''}`}
+      style={{ display: "flex", justifyContent: "flex-start", width: "100%", gap: 12 }}
+    >
       {/* Аватарка с иконкой-искрой */}
       <div style={{
-        flexShrink: 0,
-        width: 36, height: 36, borderRadius: "50%",
+        flexShrink: 0, width: 36, height: 36, borderRadius: "50%",
         background: `linear-gradient(135deg, ${C.blueDark}, ${C.mintDark})`,
         border: `1px solid ${C.mint}44`,
-        boxShadow: `0 0 16px ${C.mint}33`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        marginTop: 4,
+        display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4,
       }}>
         {Icon.sparkle({ c: C.mint, s: 18 })}
       </div>
 
-      {/* Пузырь с ответом */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "72%" }}>
-        {/* Подпись "NEXA AI" над пузырём */}
-          <div
-          style={{
-            fontSize: 11.5,
-            letterSpacing: "0.12em",
-            color: C.mint,
-            opacity: 0.85,
-            paddingLeft: 4,
-            textTransform: "uppercase",
-            fontWeight: 500,
-            textAlign: "left",
-            alignSelf: "flex-start",
-            marginRight: "auto",
-          }}
-        >
+            <div className="nx-ai-col" style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "72%" }}>
+        <div style={{
+          fontSize: 11.5, letterSpacing: "0.12em", color: C.mint, opacity: 0.85,
+          paddingLeft: 4, textTransform: "uppercase", fontWeight: 500,
+          textAlign: "left", alignSelf: "flex-start",
+        }}>
           NEXA Assistant
         </div>
 
-        {/* Сам пузырь */}
-        <div style={{
-          padding: "14px 18px",
-          borderRadius: 16,
-          borderTopLeftRadius: 4,
+        <div className="nx-bubble-text" style={{
+          padding: "14px 18px", borderRadius: 16, borderTopLeftRadius: 4,
           background: `linear-gradient(135deg, ${C.panel} 0%, #12141B 100%)`,
-          border: `1px solid ${C.border}`,
-          color: "#EAF2F7",
-          fontSize: 14.5,
-          lineHeight: 1.6,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          textAlign: "left",
-          position: "relative",
-          overflow: "hidden",
+          border: `1px solid ${C.border}`, color: "#EAF2F7", fontSize: 14.5, lineHeight: 1.6,
+          whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left",
+          position: "relative", overflow: "hidden",
         }}>
           {/* Тонкая цветная полоска слева внутри пузыря */}
           <div style={{
-            position: "absolute",
-            left: 0, top: 0, bottom: 0,
-            width: 3,
-            background: `linear-gradient(180deg, ${C.blue}, ${C.mint})`,
-            opacity: 0.85,
+            position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
+            background: `linear-gradient(180deg, ${C.blue}, ${C.mint})`, opacity: 0.85,
           }} />
           <div style={{ paddingLeft: 8 }}>
             <RichText>{text}</RichText>
           </div>
+        </div>
+
+        {/* Кнопки под ответом: копировать, а у последнего ответа ещё и повторить */}
+        <div className="nx-actions" style={{ display: "flex", gap: 4, paddingLeft: 2 }}>
+          {copyButton}
+          {isLastAi && (
+            <ActionBtn title="Повторить ответ" onClick={onRegenerate} disabled={disabled}>
+              {Icon.refresh({ c: "currentColor", s: 15 })}
+            </ActionBtn>
+          )}
         </div>
       </div>
     </div>
@@ -1756,6 +2057,11 @@ export default function NexaApp() {
             <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
         .ng-display { font-family: 'Space Grotesk', sans-serif; }
+        .ng-greeting {
+        font-size: 28px !important;
+        line-height: 1.3 !important;
+        font-weight: 600 !important;
+}
         input::placeholder { color: ${C.mutedSoft}; }
 
         html, body, #root {
@@ -1775,7 +2081,8 @@ export default function NexaApp() {
         .ng-history-header { display: none; }
         .ng-history-actions { display: none; }
         .ng-history-title-desktop { display: block; }
-
+        
+        
         @keyframes nx-pulse {
           0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
           40% { opacity: 1; transform: scale(1); }
@@ -1976,6 +2283,7 @@ export default function NexaApp() {
     align-items: center !important;
     justify-content: center !important;
     font-size: 20px !important;
+            }
 
           .ng-history-actions {
     display: flex !important;
@@ -2009,31 +2317,11 @@ export default function NexaApp() {
             z-index: 50 !important;
             gap: 14px !important;
           }
-        }
-          .ng-assistant-inner .ng-display {
-    font-size: 22px !important;
-  }
-  .ng-assistant-inner > div > div > div:last-child {
-    font-size: 12px !important;
-    margin-top: 4px !important;
-  }
-     /* ─── Поле ввода в Ассистенте ───────────────────── */
-  .ng-assistant-inner input {
-    font-size: 15px !important;
-  }
-  /* Внешняя обёртка поля — уменьшаем паддинги */
-  .ng-assistant-inner > div > div:last-child > div:first-child {
-    padding: 1px !important;
-  }
-  /* Внутренний div поля */
-  .ng-assistant-inner input + button {
-    width: 30px !important;
-    height: 30px !important;
-  }
-  /* Контейнер поля — компактнее */
-  .ng-assistant-inner > div > div:last-child > div > div {
-    padding: 8px 8px 8px 18px !important;
-  }
+
+           /* Поле ввода: 16px, чтобы iPhone не приближал страницу при вводе */
+          .ng-assistant-inner input {
+            font-size: 16px !important;
+          }
      body {
     padding-top: env(safe-area-inset-top, 0);
     padding-bottom: env(safe-area-inset-bottom, 0);
@@ -2047,9 +2335,27 @@ export default function NexaApp() {
     right: 0 !important;
   }
 
-  .ng-mobile-tabbar > div {
+    .ng-mobile-tabbar > div {
     margin: 16px 16px 8px 16px;
   }
+    /* Убираем скроллбар страницы, когда открыт Ассистент.
+     Внутренние блоки всё равно скроллятся, если нужно. */
+  body:has(.ng-assistant-wrapper) {
+    overflow: hidden !important;
+    height: 100vh;
+  }
+  html:has(.ng-assistant-wrapper) {
+    overflow: hidden !important;
+    height: 100vh;
+  }
+      /* Приветствие, подзаголовок и сообщения в чате на телефоне */
+          .ng-assistant-inner .ng-greeting { font-size: 24px !important; }
+          .nx-assistant-subtitle { font-size: 12.5px !important; margin-top: 4px !important; }
+          .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
+          .nx-user-bubble { max-width: 88% !important; }
+          .nx-ai-col { max-width: calc(100% - 48px) !important; }
+        }
+        
       `}</style>
       <Sidebar active={tab} onChange={setTab} />
        <MobileTabBar active={tab} onChange={setTab} />
