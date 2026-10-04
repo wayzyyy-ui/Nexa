@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 // Подключаем свой логотип из папки assets
 import logoSvg from "./assets/logo.svg";
 import speralSvg from "./assets/speral.svg";
-const VERSION = "0.0.5";
+import pkg from "../package.json";
+const VERSION = pkg.version;
 
 /* =========================================================================
    NEXA — демо-интерфейс экосистемы
