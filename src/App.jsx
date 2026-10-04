@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 // Подключаем свой логотип из папки assets
 import logoSvg from "./assets/logo.svg";
 import speralSvg from "./assets/speral.svg";
+const VERSION = "0.0.5";
 
 /* =========================================================================
    NEXA — демо-интерфейс экосистемы
@@ -1218,7 +1219,7 @@ const [chats, setChats] = useState(() => {
         AI - Ассистент
       </div>
        <div className="nx-assistant-subtitle" style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
-        Интеллектуальный центр системы NEXA
+        Интеллектуальный центр системы NEXA · v{VERSION}
       </div>
     </div>
   </div>
@@ -2395,18 +2396,23 @@ export default function NexaApp() {
         </div>
         {/* Нижняя строка: слева логотип, справа ссылка "Подробнее о системе".
     justifyContent: "space-between" разводит их по разным краям строки. */}
-   {tab !== "assistant" && (
+    {tab !== "assistant" && (
     <div className="ng-footer" style={{
     padding: "0 40px 30px", width: "100%", maxWidth: 1440, margin: "0 auto",
     boxSizing: "border-box",
     display: "flex", justifyContent: "space-between", alignItems: "center",
   }}>
     <Logo small />
-    {tab === "home" && (
-      <div style={{ fontSize: 13, color: C.mutedSoft }}>
-        Подробнее о системе →
+    <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+      {tab === "home" && (
+        <div style={{ fontSize: 13, color: C.mutedSoft }}>
+          Подробнее о системе →
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: C.mutedSoft, opacity: 0.6, fontFamily: "monospace" }}>
+        v{VERSION}
       </div>
-    )}
+    </div>
   </div>
 )}
 </div>
