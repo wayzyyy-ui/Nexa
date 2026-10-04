@@ -988,14 +988,6 @@ function ScreenAssistant() {
   "Есть вопросы? Я слушаю",
   "Что вас интересует сегодня?",
 ];
- useEffect(() => {
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.documentElement.style.overflow = '';
-      document.body.style.overflow = '';
-    };
-  }, []);
 const [greeting, setGreeting] = useState('');
 useEffect(() => {
   setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
@@ -1010,12 +1002,21 @@ const [chats, setChats] = useState(() => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);   // ← новая строка
   const bottomRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     try { localStorage.setItem('nexa-chats', JSON.stringify(chats)); } catch {}
   }, [chats]);
+  useEffect(() => {
+    if (isInputFocused) {
+      document.body.classList.add('kb-open');
+    } else {
+      document.body.classList.remove('kb-open');
+    }
+    return () => document.body.classList.remove('kb-open');
+  }, [isInputFocused]);
 
   const currentChat = chats.find(c => c.id === currentChatId);
   const messages = currentChat?.messages || [];
@@ -1314,6 +1315,8 @@ const menuBlock = isHistoryOpen ? (
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
+          onFocus={() => setIsInputFocused(true)}
+          onBlur={() => setIsInputFocused(false)}
           placeholder="Написать сообщение..."
           className="ng-input-field"
           style={{
@@ -2355,10 +2358,18 @@ export default function NexaApp() {
           .nx-user-bubble { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }
         }
+            body.kb-open .ng-mobile-tabbar {
+            transform: translateY(120%);
+            opacity: 0;
+            pointer-events: none;
+          }
+          .ng-mobile-tabbar {
+            transition: transform 220ms ease, opacity 220ms ease;
+          }
         
       `}</style>
       <Sidebar active={tab} onChange={setTab} />
-       <MobileTabBar active={tab} onChange={setTab} />
+          <MobileTabBar active={tab} onChange={setTab} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* На экране "Ассистент" своя правая панель вместо обычной
