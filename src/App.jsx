@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 // Подключаем свой логотип из папки assets
 import logoSvg from "./assets/logo.svg";
 import speralSvg from "./assets/speral.svg";
-const VERSION = "0.0.6";
+const VERSION = "0.0.7";
 
 
 /* =========================================================================
@@ -40,7 +40,7 @@ const C = {
 // Два шрифта: Space Grotesk для заголовков (класс ng-display),
 // Inter для всего остального текста.
 const fontDisplay = "'Space Grotesk', sans-serif";
-const fontBody = "'Inter', sans-serif";
+const fontBody = "'NexaNumbers', 'Raleway', sans-serif";
 
 /* ---------- 2. ИКОНКИ ----------
    Каждая иконка — обычная svg-картинка, нарисованная прямо кодом.
@@ -1298,7 +1298,7 @@ const [chats, setChats] = useState(() => {
     </button>
     <div style={{ textAlign: "left" }}>
       <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
-        AI - Ассистент
+        ИИ - Ассистент
       </div>
        <div className="nx-assistant-subtitle" style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
         Интеллектуальный центр системы NEXA · v{VERSION}
@@ -1385,8 +1385,12 @@ const menuBlock = isHistoryOpen ? (
     width: "100%", maxWidth: 820,
     padding: 1,
     borderRadius: 999,
-    background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
-    boxShadow: `0 0 60px ${C.blue}80`,   // ← мягкое свечение, 10px вместо 24+40
+    // Градиент симметричный (синий, мятный, синий), чтобы при движении не было шва
+    background: `linear-gradient(90deg, ${C.blue}, ${C.mint}, ${C.blue})`,
+    backgroundSize: "200% 100%",
+    // Пока ассистент отвечает, граница плавно перетекает
+    animation: isLoading ? "nx-border-flow 2.4s linear infinite" : "none",
+    boxShadow: `0 0 60px ${C.blue}80`,
   }}>
             <div
         onClick={() => document.querySelector('.ng-input-field')?.focus()}
@@ -1443,10 +1447,10 @@ const menuBlock = isHistoryOpen ? (
     </div>
   );
     const disclaimer = (
-    <div className="ng-disclaimer" style={{ fontSize: 12, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
-      Искусственный интеллект может допускать ошибки. Пожалуйста, перепроверяйте ответы.
-    </div>
-  );
+  <div className="ng-disclaimer" style={{ fontSize: 11, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
+    ИИ может допускать ошибки.
+  </div>
+);
 
   // ─── ПАНЕЛЬ ИСТОРИИ (справа) ─────────────────────────────
     const historyPanel = (
@@ -1609,7 +1613,7 @@ const menuBlock = isHistoryOpen ? (
   boxSizing: "border-box", minHeight: 0,
 };
   return (
-  <div className="ng-assistant-wrapper" style={wrapperStyle}>
+  <div className="ng-assistant-wrapper ng-assistant-anim" style={wrapperStyle}>
     {menuBlock}
 
     <div className="ng-assistant-inner" style={innerStyle}>
@@ -1632,7 +1636,7 @@ const menuBlock = isHistoryOpen ? (
             marginTop: 0,
 }}>
           <div
-            className="ng-greeting"
+            className="ng-greeting nx-greeting-anim"
             style={{ textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}
             >
             {greeting}
@@ -1663,7 +1667,7 @@ const menuBlock = isHistoryOpen ? (
                 marginBottom: 16,
                 minHeight: 0,
                 paddingLeft: 8,
-                paddingRight: 100,
+                paddingRight: 8,
               }}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
@@ -1787,16 +1791,11 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
   const [draft, setDraft] = useState(text);          // текст в поле редактирования
 
   // Копируем текст без звёздочек выделения
-   const handleCopy = async () => {
+    const handleCopy = async () => {
     const clean = text.replace(/\*\*([^*]+)\*\*/g, '$1');
-    console.log('--- COPY ---');
-    console.log('clean text:', clean);
-    console.log('navigator.clipboard:', !!navigator.clipboard);
-    console.log('isSecureContext:', window.isSecureContext);
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(clean);
-        console.log('copied via navigator.clipboard');
       } else {
         const ta = document.createElement('textarea');
         ta.value = clean;
@@ -1804,14 +1803,13 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
         ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.select();
-        const ok = document.execCommand('copy');
-        console.log('copied via execCommand:', ok);
+        document.execCommand('copy');
         document.body.removeChild(ta);
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (err) {
-      console.error('COPY ERROR:', err);
+      console.error('Copy failed:', err);
     }
   };
 
@@ -2153,7 +2151,33 @@ export default function NexaApp() {
       fontFamily: fontBody,
     }}>
             <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap');
+        
+        @font-face {
+        font-family: 'NexaNumbers';
+        src: url('/fonts/SpaceGrotesk-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-display: swap;
+        unicode-range: U+0030-0039;
+}
+        @font-face {
+        font-family: 'NexaNumbers';
+        src: url('/fonts/SpaceGrotesk-Medium.ttf') format('truetype');
+        font-weight: 500;
+        font-display: swap;
+        unicode-range: U+0030-0039;
+}
+        @font-face {
+        font-family: 'NexaNumbers';
+        src: url('/fonts/SpaceGrotesk-Bold.ttf') format('truetype');
+        font-weight: 600 700;
+        font-display: swap;
+        unicode-range: U+0030-0039;
+}
+
+        body, button, input, textarea, select {
+          font-family: 'NexaNumbers', 'Raleway', sans-serif;
+        }
         * {
        -webkit-tap-highlight-color: transparent;
       }
@@ -2206,6 +2230,46 @@ export default function NexaApp() {
   width: 100%;
   min-height: 100%;
 }
+  .ng-assistant-anim {
+  animation: ng-screen-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+          /* Приветствие: всплывает, цвет перетекает от синего к мятному */
+        @keyframes nx-greet-in {
+          0%   { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+          100% { opacity: 1; transform: translateY(0);    filter: blur(0); }
+        }
+        @keyframes nx-gradient-flow {
+          0%   { background-position: 0% 50%; }
+          100% { background-position: 200% 50%; }
+        }
+        .nx-greeting-anim {
+          background: linear-gradient(90deg, #FFFFFF 0%, #7C97FF 30%, #00FFDF 50%, #7C97FF 70%, #FFFFFF 100%);
+          background-size: 200% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+          animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both,
+                     nx-gradient-flow 5s linear infinite;
+        }
+
+        /* Новые сообщения мягко появляются снизу */
+        @keyframes nx-msg-in {
+          0%   { opacity: 0; transform: translateY(8px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .nx-msg { animation: nx-msg-in 320ms ease backwards; }
+
+        /* Граница поля ввода перетекает, пока ассистент отвечает */
+        @keyframes nx-border-flow {
+          0%   { background-position: 0% 50%; }
+          100% { background-position: 200% 50%; }
+        }
+
+        /* Для тех, у кого в системе отключена анимация */
+        @media (prefers-reduced-motion: reduce) {
+          .nx-greeting-anim, .nx-msg { animation: none !important; }
+        }
 
         /* ─── Фирменный скроллбар NEXA ──────────────────────── */
         .nx-scroll {
