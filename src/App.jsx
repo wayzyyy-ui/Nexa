@@ -258,6 +258,33 @@ function MobileTabBar({ active, onChange }) {
     { id: "files",     label: "Файлы",     icon: Icon.folder },
   ];
 
+  // Ширина одной ячейки в процентах (при пяти вкладках это 20%)
+  const slotWidth = 100 / mobileNav.length;
+
+  // pos: где сейчас стоит подсветка (номер вкладки, -1 если раздела нет в панели).
+  // Храним отдельно от active, чтобы подсветка стартовала сразу при нажатии,
+  // а не ждала, пока приложение перерисует новый экран.
+  const [pos, setPos] = useState(() => mobileNav.findIndex((i) => i.id === active));
+
+  // Запоминаем последнюю вкладку из панели, чтобы подсветка не прыгала в начало,
+  // когда открыт раздел вне панели
+  const lastPos = useRef(Math.max(pos, 0));
+  useEffect(() => { if (pos >= 0) lastPos.current = pos; }, [pos]);
+
+  // Если раздел сменился не нажатием на панель (например, через карточку
+  // ассистента на главной), подтягиваем подсветку к нему
+  useEffect(() => {
+    setPos(mobileNav.findIndex((i) => i.id === active));
+  }, [active]);
+
+  const handleClick = (item, index) => {
+    if (item.id === active) return;
+    setPos(index);                              // подсветка поехала сразу
+    setTimeout(() => onChange(item.id), 60);    // экран меняем на долю секунды позже
+  };
+
+  const shownIndex = pos >= 0 ? pos : lastPos.current;
+
   return (
     <div
       className="ng-mobile-tabbar"
@@ -277,38 +304,70 @@ function MobileTabBar({ active, onChange }) {
         border: `1px solid rgba(255, 255, 255, 0.08)`,
         borderRadius: 22,
         boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
-        display: "flex",
-        justifyContent: "space-around",
-        alignItems: "center",
         height: 64,
         padding: "0 8px",
+        display: "flex",
       }}>
-        {mobileNav.map((item) => {
-          const isActive = item.id === active;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onChange(item.id)}
-              style={{
-                background: isActive ? "rgba(0, 255, 223, 0.12)" : "transparent",
-                border: "none",
-                borderRadius: 14,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 4,
-                padding: 10,
-                minWidth: 48,
-                height: 48,
-                cursor: "pointer",
-                transition: "background 160ms ease",
-              }}
-            >
-              {item.icon({ c: isActive ? C.mint : C.muted, s: 22 })}
-            </button>
-          );
-        })}
+        <div style={{ position: "relative", flex: 1, display: "flex", height: "100%" }}>
+
+          {/* Движущаяся подсветка: один элемент, который едет к нужной ячейке */}
+          <div style={{
+            position: "absolute",
+            top: 8,
+            left: 0,
+            height: 48,
+            width: `${slotWidth}%`,
+            transform: `translateX(${shownIndex * 100}%)`,
+            opacity: pos === -1 ? 0 : 1,
+            // Плавное движение без отскока, поэтому за край панели не вылезает
+            transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease",
+            willChange: "transform",   // просит браузер анимировать на видеокарте, без рывков
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            <div style={{
+              width: 52,
+              height: 48,
+              borderRadius: 14,
+              background: "rgba(0, 255, 223, 0.12)",
+            }} />
+          </div>
+
+          {mobileNav.map((item, index) => {
+            const isActive = index === pos;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleClick(item, index)}
+                aria-label={item.label}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  position: "relative",
+                  zIndex: 1,
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span style={{
+                  display: "flex",
+                  color: isActive ? C.mint : C.muted,
+                  transform: isActive ? "scale(1.1)" : "scale(1)",
+                  transition: "color 240ms ease, transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+                }}>
+                  {item.icon({ c: "currentColor", s: 22 })}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1004,21 +1063,43 @@ const [chats, setChats] = useState(() => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isInputFocused, setIsInputFocused] = useState(false);   // ← новая строка
   const bottomRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     try { localStorage.setItem('nexa-chats', JSON.stringify(chats)); } catch {}
   }, [chats]);
-  useEffect(() => {
-    if (isInputFocused) {
-      document.body.classList.add('kb-open');
-    } else {
+    // Определяем клавиатуру через visualViewport — работает надёжнее, чем focus/blur,
+  // особенно на iOS. Если высота видимой области уменьшилась больше чем на 150px —
+  // значит открылась клавиатура.
+    // Определяем клавиатуру по уменьшению visualViewport.
+  // Порог снижен до 80px, чтобы ловить и панель AutoFill iOS.
+ useEffect(() => {
+    const onFocusIn = (e) => {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+        document.body.classList.add('kb-open');
+      }
+    };
+    const onFocusOut = () => {
+      // Небольшая задержка — даём браузеру переключить фокус
+      setTimeout(() => {
+        const a = document.activeElement;
+        const stillFocused = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+        if (!stillFocused) {
+          document.body.classList.remove('kb-open');
+        }
+      }, 100);
+    };
+
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
       document.body.classList.remove('kb-open');
-    }
-    return () => document.body.classList.remove('kb-open');
-  }, [isInputFocused]);
+    };
+  }, []);
 
   const currentChat = chats.find(c => c.id === currentChatId);
   const messages = currentChat?.messages || [];
@@ -1317,13 +1398,17 @@ const menuBlock = isHistoryOpen ? (
         }}
       >
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          onFocus={() => setIsInputFocused(true)}
-          onBlur={() => setIsInputFocused(false)}
-          placeholder="Написать сообщение..."
-          className="ng-input-field"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Написать сообщение..."
+        className="ng-input-field"
+        type="search"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck="false"
+        name="nexa-message-nofill"
           style={{
             flex: 1,
             background: "transparent",
@@ -1357,7 +1442,6 @@ const menuBlock = isHistoryOpen ? (
       </div>
     </div>
   );
-
     const disclaimer = (
     <div className="ng-disclaimer" style={{ fontSize: 12, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
       Искусственный интеллект может допускать ошибки. Пожалуйста, перепроверяйте ответы.
@@ -2070,6 +2154,16 @@ export default function NexaApp() {
     }}>
             <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        * {
+       -webkit-tap-highlight-color: transparent;
+      }
+        button, a, [role="button"] {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        touch-action: manipulation;
+}
         .ng-display { font-family: 'Space Grotesk', sans-serif; }
         .ng-greeting {
         font-size: 28px !important;
@@ -2097,10 +2191,21 @@ export default function NexaApp() {
         .ng-history-title-desktop { display: block; }
         
         
-        @keyframes nx-pulse {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1); }
-        }
+        @keyframes ng-screen-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.ng-screen-anim {
+  animation: ng-screen-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  width: 100%;
+  min-height: 100%;
+}
 
         /* ─── Фирменный скроллбар NEXA ──────────────────────── */
         .nx-scroll {
@@ -2232,7 +2337,11 @@ export default function NexaApp() {
           /* Ассистент */
           .ng-assistant-wrapper { left: 0 !important; }
           .ng-assistant-inner {
-            padding: 16px 16px 96px 16px !important;
+            padding: 24px 16px 76px 16px !important;
+          }
+          /* Когда клавиатура открыта — уменьшаем нижний отступ */
+          body.kb-open .ng-assistant-inner {
+            padding-bottom: 16px !important;
           }
 
           /* Панель истории на весь экран */
@@ -2241,7 +2350,7 @@ export default function NexaApp() {
             top: 0 !important;
             left: 0 !important;
             right: 0 !important;
-            bottom: 80px !important;
+            bottom: 60px !important;
             width: 100% !important;
             margin-left: 0 !important;
             background: #01090F !important;
@@ -2368,15 +2477,15 @@ export default function NexaApp() {
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
           .nx-user-bubble { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }
-        }
+          }
             body.kb-open .ng-mobile-tabbar {
             transform: translateY(120%);
             opacity: 0;
             pointer-events: none;
           }
-          .ng-mobile-tabbar {
+            .ng-mobile-tabbar {
             transition: transform 220ms ease, opacity 220ms ease;
-          }
+}
         
       `}</style>
       <Sidebar active={tab} onChange={setTab} />
@@ -2397,13 +2506,18 @@ export default function NexaApp() {
             очень широких мониторах, но при этом свободно заполняет
             обычное окно браузера */}
         <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
-          {tab === "home" && <ScreenHome onNavigate={setTab} />}
-          {tab === "today" && <ScreenToday />}
-          {tab === "media" && <ScreenMedia />}
-          {tab === "files" && <ScreenFiles />}
-          {tab === "assistant" && <ScreenAssistant />}
-          {tab === "settings" && <ScreenSettings />}
-        </div>
+  {tab === "assistant" ? (
+    <ScreenAssistant />
+  ) : (
+    <div key={tab} className="ng-screen-anim">
+      {tab === "home" && <ScreenHome onNavigate={setTab} />}
+      {tab === "today" && <ScreenToday />}
+      {tab === "media" && <ScreenMedia />}
+      {tab === "files" && <ScreenFiles />}
+      {tab === "settings" && <ScreenSettings />}
+    </div>
+  )}
+</div>
         {/* Нижняя строка: слева логотип, справа ссылка "Подробнее о системе".
     justifyContent: "space-between" разводит их по разным краям строки. */}
     {tab !== "assistant" && (
