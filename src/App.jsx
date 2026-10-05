@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from "react";
 // Подключаем свой логотип из папки assets
 import logoSvg from "./assets/logo.svg";
 import speralSvg from "./assets/speral.svg";
-import pkg from "../package.json";
-const VERSION = pkg.version;
+const VERSION = "0.0.6";
+
 
 /* =========================================================================
    NEXA — демо-интерфейс экосистемы
@@ -1307,11 +1307,14 @@ const menuBlock = isHistoryOpen ? (
     background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
     boxShadow: `0 0 60px ${C.blue}80`,   // ← мягкое свечение, 10px вместо 24+40
   }}>
-      <div style={{
-  width: "100%", display: "flex", alignItems: "center", gap: 10,
-  padding: "8px 8px 8px 18px", borderRadius: 999,
-  background: C.bg, boxSizing: "border-box",
-}}
+            <div
+        onClick={() => document.querySelector('.ng-input-field')?.focus()}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 10,
+          padding: "8px 8px 8px 18px", borderRadius: 999,
+          background: C.bg, boxSizing: "border-box",
+          cursor: "text",
+        }}
       >
         <input
           value={input}
@@ -1576,7 +1579,7 @@ const menuBlock = isHistoryOpen ? (
                 marginBottom: 16,
                 minHeight: 0,
                 paddingLeft: 8,
-                paddingRight: 8,
+                paddingRight: 100,
               }}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
@@ -1700,26 +1703,32 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
   const [draft, setDraft] = useState(text);          // текст в поле редактирования
 
   // Копируем текст без звёздочек выделения
-  const handleCopy = async () => {
+   const handleCopy = async () => {
     const clean = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+    console.log('--- COPY ---');
+    console.log('clean text:', clean);
+    console.log('navigator.clipboard:', !!navigator.clipboard);
+    console.log('isSecureContext:', window.isSecureContext);
     try {
-      // Современный способ (работает по HTTPS)
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(clean);
+        console.log('copied via navigator.clipboard');
       } else {
-        // Резервный способ для HTTP
         const ta = document.createElement('textarea');
         ta.value = clean;
         ta.style.position = 'fixed';
         ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand('copy');
+        const ok = document.execCommand('copy');
+        console.log('copied via execCommand:', ok);
         document.body.removeChild(ta);
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {}
+    } catch (err) {
+      console.error('COPY ERROR:', err);
+    }
   };
 
   const startEdit = () => { setDraft(text); setIsEditing(true); };
