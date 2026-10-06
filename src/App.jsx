@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 // flushSync нужен для плавной смены темы: React обновляет экран сразу,
 // пока браузер делает снимок для анимации
 import { flushSync } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.1.1";
+const VERSION = "0.2.1";
 
 
 /* =========================================================================
@@ -44,7 +44,8 @@ const C = {
   panel2: "var(--panel-2)",      // второй тон панели для лёгкого градиента
   glass: "var(--glass)",         // полупрозрачная панель таб-бара
   glassBorder: "var(--glass-border)",
-  hover: "var(--hover)",         // лёгкая подсветка кнопок
+  hover: "var(--hover)",         // лёгкая подсветка кнопок (наведение)
+  pressed: "var(--pressed)",     // подложка нажатой кнопки
   borderStrong: "var(--border-strong)", // заметная обводка карточек (Медиа, Файлы)
   onFold: "var(--on-fold)",      // белый текст на цветных складках (в обеих темах)
   // Цвета складок-стёкол на экранах "Медиа" и "Файлы". Это как картинка,
@@ -328,6 +329,33 @@ const Icon = {
       <path d="M4 11.5 20 4l-6 16-2.5-6.5L4 11.5ZM11.5 13.5 20 4" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   ),
+  // Питание: разомкнутое кольцо с чертой сверху (подключить / отключить)
+  power: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M7.5 6.5a7.5 7.5 0 1 0 9 0M12 3.5v8" strokeLinecap="round" />
+    </svg>
+  ),
+  // Батарея (режим энергосбережения)
+  battery: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="3" y="7.5" width="16" height="9" rx="1" />
+      <path d="M21 10.5v3M6 10.5v3" strokeLinecap="round" />
+    </svg>
+  ),
+  // Не беспокоить: круг с чертой
+  dnd: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M8 12h8" strokeLinecap="round" />
+    </svg>
+  ),
+  // Внимание / ошибка: острый треугольник со знаком "!"
+  alert: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M12 3.5 21 19.5H3L12 3.5Z" strokeLinejoin="round" />
+      <path d="M12 9.5v4.5M12 16.6v.4" strokeLinecap="round" />
+    </svg>
+  ),
 };
 
 /* ---------- 3. СКЛАДКА — фирменный визуал (FoldHero) ----------
@@ -391,8 +419,10 @@ function MobileTabBar({ active, onChange }) {
 
   const handleClick = (item, index) => {
     if (item.id === active) return;
-    setPos(index);                              // подсветка поехала сразу
-    setTimeout(() => onChange(item.id), 60);    // экран меняем на долю секунды позже
+    setPos(index); // подсветка поехала сразу
+    // Экран меняем со следующего кадра и в режиме «перехода»: React рисует
+    // тяжёлый новый экран по кусочкам и не замораживает анимацию подсветки
+    requestAnimationFrame(() => startTransition(() => onChange(item.id)));
   };
 
   const shownIndex = pos >= 0 ? pos : lastPos.current;
@@ -400,34 +430,26 @@ function MobileTabBar({ active, onChange }) {
   return (
     <div
       className="ng-mobile-tabbar"
-      style={{
-        position: "fixed",
-        left: 16,
-        right: 16,
-        bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-        zIndex: 200,
-        display: "none",
-      }}
+      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 200, display: "none" }}
     >
+      {/* Сама панель: во всю ширину, прижата к низу, скруглены только верхние углы.
+          Снизу отступ под системную полоску телефона */}
       <div style={{
-        background: C.glass,
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        border: `1px solid ${C.glassBorder}`,
-        borderRadius: 22,
-        boxShadow: "var(--glass-shadow)",
-        height: 64,
-        padding: "0 8px",
+        background: C.panel,
+        border: `1px solid ${C.borderStrong}`,
+        borderBottom: "none",
+        borderRadius: "24px 24px 0 0",
+        padding: "0 12px env(safe-area-inset-bottom, 0px)",
         display: "flex",
       }}>
-        <div style={{ position: "relative", flex: 1, display: "flex", height: "100%" }}>
+        <div style={{ position: "relative", flex: 1, display: "flex", height: 68 }}>
 
           {/* Движущаяся подсветка: один элемент, который едет к нужной ячейке */}
-          <div style={{
+          <div className="nx-tab-move" style={{
             position: "absolute",
-            top: 8,
+            top: 0,
             left: 0,
-            height: 48,
+            height: "100%",
             width: `${slotWidth}%`,
             transform: `translateX(${shownIndex * 100}%)`,
             opacity: pos === -1 ? 0 : 1,
@@ -441,44 +463,38 @@ function MobileTabBar({ active, onChange }) {
           }}>
             <div style={{
               width: 52,
-              height: 48,
+              height: 42,
+              boxSizing: "border-box",
               borderRadius: 14,
-              background: "color-mix(in srgb, var(--mint) 12%, transparent)",
+              background: C.chip,
+              border: `1px solid ${C.borderStrong}`,
             }} />
           </div>
 
-          {mobileNav.map((item, index) => {
-            const isActive = index === pos;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleClick(item, index)}
-                aria-label={item.label}
-                style={{
-                  flex: 1,
-                  height: "100%",
-                  position: "relative",
-                  zIndex: 1,
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <span style={{
-                  display: "flex",
-                  color: isActive ? C.mint : C.muted,
-                  transform: isActive ? "scale(1.1)" : "scale(1)",
-                  transition: "color 240ms ease, transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-                }}>
-                  {item.icon({ c: "currentColor", s: 22 })}
-                </span>
-              </button>
-            );
-          })}
+          {mobileNav.map((item, index) => (
+            <button
+              key={item.id}
+              onClick={() => handleClick(item, index)}
+              aria-label={item.label}
+              aria-current={index === pos ? "page" : undefined}
+              style={{
+                flex: 1,
+                height: "100%",
+                position: "relative",
+                zIndex: 1,
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: C.text,
+              }}
+            >
+              {item.icon({ c: "currentColor", s: 22 })}
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -519,9 +535,14 @@ function Sidebar({ active, onChange }) {
 
 // Верхняя строка справа (время/дата, поиск, профиль). children — то, что
 // передаём внутрь при вызове компонента (см. использование в App).
+// Лежит поверх экрана в правом верхнем углу и не занимает свою полосу,
+// поэтому заголовки всех экранов стоят на одной высоте с часами.
 function TopBar({ children }) {
   return (
-    <div className="ng-topbar" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0" }}>
+    <div className="ng-topbar" style={{
+      position: "absolute", top: 0, right: 0, zIndex: 50,
+      display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
+    }}>
       {children}
     </div>
   );
@@ -713,19 +734,46 @@ function DeviceCard({ device }) {
     </div>
   );
 }
+// Устройства пользователя. Лежат снаружи экранов, потому что ими
+// пользуются и «Главная», и общий поиск
+// battery — заряд в % (null — работает от сети), memory — объём памяти в ГБ,
+// alias — короткое имя, под которым устройство записано в данных файлов,
+// lastSeen — когда было в сети (показываем, если устройство отключено).
+// online здесь — состояние по умолчанию; в приложении его можно переключать.
+const DEVICES = [
+  { id: "phone",  icon: Icon.phone,  name: "Смартфон",  battery: 92,   memory: 256, online: true,  lastSeen: "только что" },
+  { id: "laptop", icon: Icon.laptop, name: "Ноутбук",   battery: 41,   memory: 512, online: false, lastSeen: "вчера в 22:14" },
+  { id: "watch",  icon: Icon.watch,  name: "Часы",      battery: 64,   memory: 32,  online: true,  lastSeen: "только что" },
+  { id: "tv",     icon: Icon.tv,     name: "Телевизор", battery: null, memory: 64,  online: true,  lastSeen: "только что", alias: "ТВ" },
+];
+
+// Настройки устройства по умолчанию (переключатели в окне устройства)
+const DEVICE_DEFAULTS = { sync: true, dnd: false, saver: false };
+const DEVICES_KEY = "nexa-devices"; // ключ в localStorage
+
+// Подпись статуса: "Онлайн • 92%", "Онлайн" или "Не в сети"
+const deviceStatus = (d) =>
+  !d.online ? "Не в сети" : d.battery != null ? `Онлайн • ${d.battery}%` : "Онлайн";
+
+// Сколько ГБ занимают файлы на устройстве — считаем по данным хранилища
+const deviceUsed = (d) =>
+  MEDIA_CATS.reduce((sum, c) => sum + c.devices
+    .filter(([n]) => n === d.name || n === d.alias)
+    .reduce((s, [, gb]) => s + gb, 0), 0);
+
 // ЭКРАН "ГЛАВНАЯ" — список устройств + складка + карточка ассистента
-function ScreenHome({ onNavigate }) {
-  const devices = [
-    { icon: Icon.phone,  name: "Смартфон",  status: "Онлайн • 92%", online: true },
-    { icon: Icon.laptop, name: "Ноутбук",   status: "Не в сети",    online: false },
-    { icon: Icon.watch,  name: "Часы",      status: "Онлайн • 64%", online: true },
-    { icon: Icon.tv,     name: "Телевизор", status: "Онлайн",       online: true },
-  ];
+// devices — устройства с текущим состоянием (в сети или нет) из App,
+// onOpenDevice открывает окно устройства
+function ScreenHome({ devices, onNavigate, onOpenDevice }) {
+  // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
+  const onlineCount = devices.filter((d) => d.online).length;
 
   return (
-    <div className="ng-screen ng-home" style={{ padding: "8px 40px 40px", textAlign: "left" }}>
+    <div className="ng-screen ng-home" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
 
       {/* ══════════ ДЕСКТОПНАЯ ВЕРСИЯ ══════════ */}
+      {/* Высота — почти на всё окно (минус футер и отступы), а содержимое
+          стоит по центру по вертикали, чтобы снизу не было пустоты */}
       <div className="ng-home-desktop">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40 }}>
           {/* Левая колонка: заголовок + список */}
@@ -750,29 +798,38 @@ function ScreenHome({ onNavigate }) {
                 borderBottom: `1px solid ${C.border}`,
               }}>
                 <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>
-                <span style={{
+                <span title="В сети" style={{
                   display: "flex", alignItems: "center",
                   gap: 6, fontSize: 13, color: C.muted,
                 }}>
-                  4 <Dot color={C.green} />
+                  {onlineCount} <Dot color={C.green} />
                 </span>
               </div>
+              {/* Каждая строка — кнопка: открывает окно устройства */}
               {devices.map((d) => (
-                <Row
-                  key={d.name}
-                  leftIcon={d.icon({ c: C.text, s: 19 })}
-                  title={d.name}
-                  subtitle={<span style={{ display: "flex", alignItems: "center", gap: 6 }}>{d.status}</span>}
-                  right={<Dot color={d.online ? C.green : C.red} />}
-                />
+                <button key={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
+                  style={{ ...btnReset, display: "block", width: "100%" }}>
+                  <Row
+                    leftIcon={d.icon({ c: C.text, s: 19 })}
+                    title={d.name}
+                    subtitle={deviceStatus(d)}
+                    right={<Dot color={d.online ? C.green : C.red} />}
+                  />
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Правая колонка: складка сверху, AI-карточка снизу */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <FoldHero size={340} />
+          {/* Правая колонка: складка сверху, AI-карточка снизу.
+              Отступ сверху — чтобы складка не залезала под часы */}
+          <div style={{ display: "flex", flexDirection: "column", paddingTop: 48 }}>
+            {/* Складка крупнее за счёт scale: место в раскладке остаётся
+                прежним (340px), поэтому остальные блоки не сдвигаются.
+                Края картинки прозрачные, так что на соседей она не «наезжает» */}
+            <div style={{ display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{ transform: "scale(1.4)", transformOrigin: "center" }}>
+                <FoldHero size={340} />
+              </div>
             </div>
             <div
               onClick={() => onNavigate("assistant")}
@@ -847,10 +904,9 @@ function ScreenHome({ onNavigate }) {
             <div className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>
               Мои устройства
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
-              <span>4</span>
+            <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
+              <span>{onlineCount}</span>
               <Dot color={C.green} />
-              {Icon.chevron({ c: C.muted, s: 16 })}
             </div>
           </div>
           <div style={{
@@ -858,10 +914,15 @@ function ScreenHome({ onNavigate }) {
             gridTemplateColumns: "repeat(2, 1fr)",
             gap: 10,
           }}>
+            {/* Карточка — кнопка: открывает окно устройства */}
             {devices.map((d) => (
-              <div
-                key={d.name}
+              <button
+                type="button"
+                key={d.id}
+                className="nx-row-btn"
+                onClick={() => onOpenDevice(d.id)}
                 style={{
+                  ...btnReset,
                   border: `1px solid ${C.border}`, borderRadius: 14,
                   padding: 14, cursor: "pointer", position: "relative",
                   display: "flex", flexDirection: "column", gap: 10,
@@ -876,9 +937,9 @@ function ScreenHome({ onNavigate }) {
                 </div>
                 <div style={{ marginTop: "auto" }}>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{d.name}</div>
-                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{d.status}</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{deviceStatus(d)}</div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -922,47 +983,88 @@ function ScreenHome({ onNavigate }) {
   );
 }
 
-// Карточка погоды (используется дважды на экране "Сегодня": на сегодня и на завтра).
-// details — необязательный массив (ветер/влажность/давление), если не передать,
-// строка с деталями просто не рисуется — так у карточки "на завтра" её и нет.
-function WeatherCard({ date, temp, cond, feels, details }) {
+// Значок погоды: ромб в круге
+const weatherMark = (s = 24) => (
+  <svg viewBox="0 0 24 24" width={s} height={s} fill="none" stroke={C.text} strokeWidth="1.3">
+    <circle cx="12" cy="12" r="10.5" />
+    <polygon points="12,6.5 17.5,12 12,17.5 6.5,12" />
+  </svg>
+);
+
+// Знак перед температурой: "+18", "-3", "0"
+const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
+
+// Крупная температура, за градусом острая складка.
+// tone — цвет складки: мятный для ясной погоды, серый для пасмурной.
+function TempFold({ temp, tone }) {
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 20, marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 500 }}>
-          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke={C.text} strokeWidth="1.6"><polygon points="12,3 20,12 12,21 4,12" /></svg>
-          Погода
+    <div className="nx-temp" style={{ position: "relative", display: "inline-flex", alignItems: "flex-start", paddingRight: 22, flexShrink: 0 }}>
+      {/* Складка: светлая у верхней вершины и тающая книзу */}
+      <div aria-hidden="true" style={{
+        position: "absolute", top: -8, bottom: 0, left: "36%", right: 0,
+        clipPath: "polygon(0 22%, 100% 0, 42% 100%)",
+        background: `linear-gradient(to bottom left, ${tone}, transparent 80%)`,
+      }} />
+      <span style={{ position: "relative", fontFamily: fontDisplay, fontSize: 64, fontWeight: 500, lineHeight: 1, letterSpacing: "-0.03em" }}>
+        {signed(temp)}
+      </span>
+      <span style={{ position: "relative", fontFamily: fontDisplay, fontSize: 40, lineHeight: 0.8, marginLeft: 2 }}>°</span>
+    </div>
+  );
+}
+
+// Карточка погоды (на экране "Сегодня" их две: на сегодня и на завтра).
+// city и details необязательные: у карточки "на завтра" их нет.
+// art — показать складку внутри карточки (только на телефоне, как в макете).
+// note — своя подпись под состоянием вместо «Ощущается как …» (для завтра)
+function WeatherCard({ title, date, city, temp, cond, feels, note, tone, details, art }) {
+  return (
+    <div className="nx-weather" style={{
+      position: "relative", overflow: "hidden",
+      border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "22px 24px",
+    }}>
+      {art && (
+        <div className="nx-weather-art" aria-hidden="true" style={{ display: "none", position: "absolute", right: -8, top: 44 }}>
+          <FoldHero size={128} />
         </div>
-        <div style={{ fontSize: 11, color: C.mutedSoft }}>{date}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.muted, margin: "6px 0 18px" }}>
-        {Icon.pin({ c: C.muted, s: 13 })} Казань
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        {/* Маленький фрагмент складки вместо иконки солнца/тучки —
-            угол и цвет можно менять в зависимости от погоды */}
-        <div style={{ position: "relative", width: 60, height: 60, display: "flex", alignItems: "center" }}>
-          <svg viewBox="0 0 60 60" width="60" height="60" style={{ position: "absolute" }}>
-            <defs>
-              <linearGradient id={`wg-${temp}`} x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor={C.mintLight} /><stop offset="100%" stopColor={C.blueDark} />
-              </linearGradient>
-            </defs>
-            <polygon points="12,50 20,8 48,20 40,55" fill={`url(#wg-${temp})`} opacity="0.85" />
-          </svg>
+      )}
+
+      {/* Шапка: на компьютере "Погода" и дата, под ними город;
+          на телефоне "Погода" прячется, город и дата встают в одну строку */}
+      <div className="nx-weather-head" style={{
+        display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto",
+        gridTemplateAreas: `"title date" "city ."`, alignItems: "center", columnGap: 12,
+      }}>
+        <div className="nx-weather-title" style={{ gridArea: "title", display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20 }}>
+          {weatherMark()} {title}
         </div>
-        <div className="ng-display" style={{ fontSize: 40, fontWeight: 600 }}>{temp}°</div>
+        <div style={{ gridArea: "date", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{date}</div>
+        {city && (
+          <div className="nx-weather-city" style={{ gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8 }}>
+            <span className="nx-weather-pin" style={{ display: "flex", width: 24, justifyContent: "center" }}>{Icon.pin({ c: C.muted, s: 20 })}</span>
+            {city}
+          </div>
+        )}
+      </div>
+
+      <div className="nx-weather-main" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 22 }}>
+        <TempFold temp={temp} tone={tone} />
         <div>
-          <div style={{ fontWeight: 500 }}>{cond}</div>
-          <div style={{ fontSize: 12.5, color: C.muted }}>Ощущается как {feels}°</div>
+          <div style={{ fontSize: 20 }}>{cond}</div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
         </div>
       </div>
+
       {details && (
-        <div style={{ display: "flex", gap: 26, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-          {details.map((d) => (
-            <div key={d.label}>
-              <div style={{ fontSize: 11.5, color: C.mutedSoft }}>{d.label}</div>
-              <div style={{ fontSize: 14, marginTop: 2 }}>{d.value}</div>
+        <div className="nx-weather-details" style={{ position: "relative", display: "flex", marginTop: 26 }}>
+          {details.map((d, i) => (
+            <div key={d.label} className="nx-weather-detail" style={{
+              flex: 1, minWidth: 0,
+              paddingLeft: i ? 16 : 0,
+              borderLeft: i ? `1px solid ${C.borderStrong}` : "none",
+            }}>
+              <div style={{ fontSize: 12, color: C.muted }}>{d.label}</div>
+              <div className="nx-weather-value" style={{ fontSize: 19, fontWeight: 300, color: C.muted, marginTop: 2, whiteSpace: "nowrap" }}>{d.value}</div>
             </div>
           ))}
         </div>
@@ -971,56 +1073,275 @@ function WeatherCard({ date, temp, cond, feels, details }) {
   );
 }
 
-// ЭКРАН "СЕГОДНЯ" — расписание (таймлайн) + погода
+// Расписание на сегодня. place — где проходит (видно только на телефоне)
+const SCHEDULE = [
+  { time: "09:30", title: "Лекция по проектированию", place: "Колледж" },
+  { time: "11:00", title: "Встреча с куратором", place: "Колледж" },
+  { time: "13:00", title: "Обед", place: "Кафе у дома" },
+  { time: "14:30", title: "Работа над дипломом", place: "Дома" },
+  { time: "17:00", title: "Тренировка", place: "Фитнес-клуб" },
+];
+
+/* ---------- РЕАЛЬНАЯ ПОГОДА (Open-Meteo) ----------
+   Бесплатный сервис без ключа, браузер ходит в него напрямую.
+   Город — Казань. Обновляем раз в 15 минут. */
+const WEATHER_URL =
+  "https://api.open-meteo.com/v1/forecast?latitude=55.79&longitude=49.11" +
+  "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,surface_pressure,weather_code" +
+  "&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Europe/Moscow&forecast_days=2";
+const WEATHER_REFRESH_MS = 15 * 60 * 1000;
+const WEATHER_TZ = "Europe/Moscow"; // даты показываем по времени Казани
+const WEATHER_TIMEOUT_MS = 10000;   // дольше 10 секунд ответа не ждём
+
+// Понятная причина, почему погода не загрузилась (для строки под карточкой)
+function weatherErrorText(err, timedOut) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "нет интернета";
+  if (timedOut) return "сервис погоды не ответил";
+  // "Failed to fetch" / "Load failed" — запрос не дошёл: сеть, VPN или блокировщик
+  if (err instanceof TypeError) return "нет связи с сервисом погоды";
+  return err.message || "неизвестная ошибка";
+}
+
+// Заглушки: показываются, пока погода грузится или если загрузить не вышло,
+// чтобы карточки не пустели. Даты — сегодня и завтра, не захардкожены.
+const WEATHER_FALLBACK = {
+  now: { temp: 18, feels: 17, wind: 3, humidity: 62, pressure: 758, code: 0, date: new Date() },
+  tomorrow: { temp: 12, min: 7, code: 3, date: new Date(Date.now() + 86400000) },
+};
+
+// WMO-код погоды → русский текст и цвет складки:
+// мятный — ясно и почти ясно, серый — облачно, осадки, туман
+function weatherCodeToText(code) {
+  const clear = { tone: C.mint };
+  const gray = { tone: C.muted };
+  if (code === 0) return { text: "Ясно", ...clear };
+  if (code === 1) return { text: "Почти ясно", ...clear };
+  if (code === 2) return { text: "Переменная облачность", ...clear };
+  if (code === 3) return { text: "Пасмурно", ...gray };
+  if (code === 45 || code === 48) return { text: "Туман", ...gray };
+  if (code >= 51 && code <= 55) return { text: "Морось", ...gray };
+  if (code === 56 || code === 57) return { text: "Ледяная морось", ...gray };
+  if (code === 61 || code === 63) return { text: "Дождь", ...gray };
+  if (code === 65) return { text: "Сильный дождь", ...gray };
+  if (code === 66 || code === 67) return { text: "Ледяной дождь", ...gray };
+  if (code === 71 || code === 73) return { text: "Снег", ...gray };
+  if (code === 75) return { text: "Сильный снег", ...gray };
+  if (code === 77) return { text: "Снежная крупа", ...gray };
+  if (code >= 80 && code <= 82) return { text: "Ливень", ...gray };
+  if (code === 85 || code === 86) return { text: "Снегопад", ...gray };
+  if (code === 95) return { text: "Гроза", ...gray };
+  if (code === 96 || code === 99) return { text: "Гроза с градом", ...gray };
+  return { text: "Облачно", ...gray }; // неизвестный код — нейтрально
+}
+
+// Дата для карточки: «7 октября 2026», по времени Казани
+function formatWeatherDate(date) {
+  const dayMonth = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: WEATHER_TZ });
+  // Год берём отдельной частью: иначе некоторые браузеры допишут «г.»
+  const year = new Intl.DateTimeFormat("ru-RU", { year: "numeric", timeZone: WEATHER_TZ })
+    .formatToParts(date).find((p) => p.type === "year").value;
+  return `${dayMonth} ${year}`;
+}
+
+// "2026-10-07" из ответа → дата. Берём полдень по UTC, чтобы
+// при переводе во время Казани день точно не съехал
+const dayFromIso = (iso) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12));
+};
+
+// Разбор ответа Open-Meteo в наш вид. Единицы:
+// ветер км/ч → м/с (÷3.6), давление гПа → мм рт. ст. (×0.750062), температура — целая
+function parseWeather(data) {
+  const c = data.current;
+  const d = data.daily;
+  if (!c || !d || !Array.isArray(d.time) || d.time.length < 2) throw new Error("Неполный ответ погоды");
+  return {
+    now: {
+      temp: Math.round(c.temperature_2m),
+      feels: Math.round(c.apparent_temperature),
+      wind: Math.round(c.wind_speed_10m / 3.6),
+      humidity: Math.round(c.relative_humidity_2m),
+      pressure: Math.round(c.surface_pressure * 0.750062),
+      code: c.weather_code,
+      date: dayFromIso(d.time[0]),
+    },
+    tomorrow: {
+      temp: Math.round(d.temperature_2m_max[1]),
+      min: Math.round(d.temperature_2m_min[1]),
+      code: d.weather_code[1],
+      date: dayFromIso(d.time[1]),
+    },
+  };
+}
+
+/* Хук погоды. Возвращает { loading, error, now, tomorrow, refetch }.
+   now / tomorrow — null, пока ни разу не загрузилось (тогда экран берёт
+   заглушки). Если очередное обновление упало, остаются последние
+   удачные данные. Незаконченный запрос отменяется (AbortController),
+   когда начинается новый или экран закрывается. */
+function useWeather() {
+  const [state, setState] = useState({ loading: true, error: null, now: null, tomorrow: null, updatedAt: null });
+  const ctrlRef = useRef(null);
+
+  const load = () => {
+    ctrlRef.current?.abort();
+    const ctrl = new AbortController();
+    ctrlRef.current = ctrl;
+    // Если сервис молчит дольше WEATHER_TIMEOUT_MS — прекращаем ждать
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, WEATHER_TIMEOUT_MS);
+    setState((s) => ({ ...s, loading: true, error: null }));
+    fetch(WEATHER_URL, { signal: ctrl.signal, cache: "no-store" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`ответ сервера ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setState({
+        loading: false, error: null, updatedAt: Date.now(), ...parseWeather(data),
+      }))
+      .catch((err) => {
+        // Запрос отменили сами (новый запрос или ушли с экрана) — это не ошибка
+        if (err.name === "AbortError" && !timedOut) return;
+        // Подробности — в консоль браузера (F12 → Console), чтобы найти причину
+        console.warn("[NEXA] Погода не загрузилась:", err);
+        setState((s) => ({ ...s, loading: false, error: weatherErrorText(err, timedOut) }));
+      })
+      .finally(() => clearTimeout(timer));
+  };
+
+  // Загружаем при открытии экрана и потом раз в 15 минут
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    loadRef.current();
+    const id = setInterval(() => loadRef.current(), WEATHER_REFRESH_MS);
+    return () => {
+      clearInterval(id);
+      ctrlRef.current?.abort();
+    };
+  }, []);
+
+  return { ...state, refetch: load };
+}
+
+// ЭКРАН "СЕГОДНЯ" — расписание (таймлайн) + погода на сегодня и завтра.
+// На компьютере: расписание слева, погода справа, ещё правее складка.
+// На телефоне сначала погода, под ней расписание (порядок меняет CSS).
 function ScreenToday() {
-  const items = [
-    { time: "09:30", title: "Лекция по проектированию" },
-    { time: "11:00", title: "Встреча с куратором" },
-    { time: "13:00", title: "Обед" },
-    { time: "14:30", title: "Работа над дипломом" },
-    { time: "17:00", title: "Тренировка" },
-  ];
+  // Реальная погода; пока её нет (грузится или ошибка) — заглушки
+  const weather = useWeather();
+  const now = weather.now || WEATHER_FALLBACK.now;
+  const tomorrow = weather.tomorrow || WEATHER_FALLBACK.tomorrow;
+  const nowSky = weatherCodeToText(now.code);
+  const tomorrowSky = weatherCodeToText(tomorrow.code);
+
+  // Тихая строка под карточкой: идёт обновление или не вышло обновить
+  const statusLine = { fontSize: 11.5, color: C.mutedSoft };
+
   return (
-     <div className="ng-screen" style={{ padding: "8px 40px 40px" }}>
-      <div className="ng-display" style={{ fontSize: 30, fontWeight: 600 }}>Сегодня</div>
-      <div style={{ fontSize: 13.5, color: C.muted, marginTop: 6, marginBottom: 30 }}>
-        Ваши дела, расписание и погода — всё в одном месте.
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 30 }} className="ng-today-grid">
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: "18px 20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 500, marginBottom: 20 }}>
-            {Icon.calendar({ c: C.text, s: 18 })} Расписание
+    <MediaLayout>
+      <MediaTitle title="Сегодня" subtitle="Ваши дела, расписание и погода — всё в одном месте." />
+
+      <div className="nx-today-grid" style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 356px)",
+        gridTemplateAreas: `"sched now" "sched next" "sched month" "sched ."`,
+        gridTemplateRows: "auto auto auto 1fr",
+        gap: "18px 44px", alignItems: "start",
+      }}>
+        <section className="nx-sched" style={{ gridArea: "sched", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "26px 28px 30px" }}>
+          <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 22 }}>
+            {Icon.calendar({ c: C.text, s: 24 })} Расписание
           </div>
-          {/* Вертикальная линия таймлайна рисуется одним абсолютно
-              позиционированным div, точки — кружки поверх неё */}
-          <div style={{ position: "relative", paddingLeft: 20 }}>
-            <div style={{ position: "absolute", left: 4, top: 6, bottom: 6, width: 1, background: C.border }} />
-            {items.map((it) => (
-              <div key={it.time} style={{ position: "relative", marginBottom: 18 }}>
-                <span style={{ position: "absolute", left: -20, top: 5, width: 9, height: 9, borderRadius: "50%", border: `2px solid ${C.text}`, background: C.bg }} />
-                <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{it.time}</div>
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 14.5 }}>{it.title}</span>
-                  {Icon.chevron({})}
+
+          {/* Вертикальная линия таймлайна — один div. --dot-x — где центр
+              кружков; на телефоне время стоит слева, и линия сдвигается */}
+          <div className="nx-sched-list" style={{ position: "relative", "--dot-x": "12px" }}>
+            <div className="nx-sched-line" style={{ position: "absolute", left: "var(--dot-x)", top: 8, bottom: -10, width: 1, background: C.muted }} />
+            {SCHEDULE.map((it) => (
+              <div key={it.time} className="nx-sched-item" style={{
+                display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)",
+                gridTemplateAreas: `"dot time" ". box"`, columnGap: 20, marginBottom: 14,
+              }}>
+                <span className="nx-sched-dot" style={{
+                  gridArea: "dot", justifySelf: "center", alignSelf: "center", position: "relative",
+                  width: 12, height: 12, boxSizing: "border-box", borderRadius: "50%",
+                  border: `1.5px solid ${C.text}`, background: C.bg,
+                }} />
+                <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6 }}>{it.time}</div>
+                <div className="nx-sched-box" style={{
+                  gridArea: "box", border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "9px 14px",
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="nx-sched-title" style={{ fontSize: 18 }}>{it.title}</div>
+                    <div className="nx-sched-place" style={{ display: "none", fontSize: 12, color: C.muted, marginTop: 2 }}>{it.place}</div>
+                  </div>
+                  {Icon.chevron({ c: C.text })}
                 </div>
               </div>
             ))}
           </div>
-        </div>
-        <div>
-          <WeatherCard date="11 сентября 2026" temp={18} cond="Ясно" feels={17}
-            details={[{ label: "Ветер", value: "3 м/с" }, { label: "Влажность", value: "62%" }, { label: "Давление", value: "758 мм" }]} />
-          <WeatherCard date="12 сентября 2026" temp={12} cond="Пасмурно" feels={10} />
-          <button style={{
-            width: "100%", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 4,
-            padding: "12px 16px", color: C.text, fontSize: 14, display: "flex", justifyContent: "space-between",
-            alignItems: "center", cursor: "pointer",
+        </section>
+
+        <div style={{ gridArea: "now" }}>
+          <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city="Казань" art
+            temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone}
+            details={[
+              { label: "Ветер", value: `${now.wind} м/с` },
+              { label: "Влажность", value: `${now.humidity} %` },
+              { label: "Давление", value: `${now.pressure} мм` },
+            ]} />
+                    <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            marginTop: 8, paddingLeft: 2, minHeight: 22,
           }}>
-            Прогноз на месяц {Icon.chevron({})}
-          </button>
+            {/* Кнопка обновления доступна всегда — можно потянуть погоду заново */}
+            <button
+              type="button"
+              className="nx-icon-btn"
+              onClick={weather.refetch}
+              disabled={weather.loading}
+              aria-label="Обновить погоду"
+              title="Обновить погоду"
+              style={{
+                ...btnReset, width: 26, height: 26, borderRadius: 4,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              {weather.loading
+                ? <Spinner s={14} />
+                : Icon.refresh({ c: C.muted, s: 14 })}
+            </button>
+
+            {/* Что происходит: обновляемся, ошибка или «обновлено в 14:32» */}
+            <div role="status" style={statusLine}>
+              {weather.loading
+                ? "Обновление…"
+                : weather.error
+                  ? `Не удалось обновить: ${weather.error} · нажмите ↻`
+                  : weather.updatedAt
+                    ? `Обновлено в ${new Date(weather.updatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`
+                    : null}
+            </div>
+          </div>
         </div>
+        <div style={{ gridArea: "next" }}>
+          <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow.date)}
+            temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone} />
+        </div>
+        <button type="button" className="nx-ghost-btn" style={{
+          ...btnReset, gridArea: "month", width: "100%", boxSizing: "border-box",
+          border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "6px 14px",
+          display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
+        }}>
+          <span />
+          <span>Прогноз на месяц</span>
+          <span style={{ justifySelf: "end", display: "flex" }}>{Icon.chevron({ c: C.text })}</span>
+        </button>
       </div>
-    </div>
+    </MediaLayout>
   );
 }
 
@@ -1097,6 +1418,15 @@ const DEMO_FILES = [
 
 // Устройства, на которые можно "отправить" файл из окна просмотра
 const SEND_TARGETS = ["Смартфон", "Ноутбук", "Часы", "ТВ"];
+const SETTINGS_INDEX = [
+  { title: "Пользователь", subtitle: "user@example.com", keywords: ["профиль", "аккаунт", "почта"] },
+  { title: "Тема оформления", subtitle: "Светлая или тёмная", keywords: ["тема", "оформление", "светлая", "тёмная"] },
+  { title: "Уведомления о событиях", subtitle: "Календарь, встречи, напоминания", keywords: ["уведомления", "события", "календарь"] },
+  { title: "Сообщения и комментарии", subtitle: "Упоминания, ответы, новые сообщения", keywords: ["сообщения", "комментарии"] },
+  { title: "Рекомендации и новости", subtitle: "Полезные советы и обновления", keywords: ["рекомендации", "новости"] },
+  { title: "Выйти из аккаунта", subtitle: "Завершить сессию на всех устройствах", keywords: ["выход", "logout", "выйти"] },
+  { title: "О системе", subtitle: `NEXA ${VERSION}`, keywords: ["версия", "о системе", "nexa"] },
+];
 
 /* ---------- Мелкие помощники для файлов ---------- */
 
@@ -1186,7 +1516,7 @@ function FolderThumb() {
    складка, как в макете. На узком экране складка прячется (см. .nx-media-art). */
 function MediaLayout({ children }) {
   return (
-    <div className="ng-screen" style={{ padding: "8px 40px 40px", textAlign: "left" }}>
+    <div className="ng-screen" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
       <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>{children}</div>
         <div className="nx-media-art" style={{ position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 60, marginRight: -40 }}>
@@ -1197,12 +1527,14 @@ function MediaLayout({ children }) {
   );
 }
 
-// Заголовок экрана: крупный и лёгкий, как в макете
+// Заголовок экрана: крупный и лёгкий, как в макете.
+// На телефоне подзаголовок прячется, а заголовок встаёт в одну строку
+// с иконками поиска и профиля (см. .nx-page-title в мобильных стилях)
 function MediaTitle({ title, subtitle }) {
   return (
     <>
-      <div className="ng-display" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{title}</div>
-      <div style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
+      <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{title}</div>
+      <div className="nx-page-sub" style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
     </>
   );
 }
@@ -1230,7 +1562,7 @@ function StorageSegment({ cat, first, dimmed, active, onClick }) {
     }}>
       {/* paddingLeft в % считается от ширины самой складки,
           поэтому подпись всегда попадает внутрь фигуры */}
-      <div className="nx-seg-label" style={{ paddingLeft: cat.labelX, lineHeight: 1.25 }}>
+      <div className="nx-seg-label" style={{ "--lx": cat.labelX, paddingLeft: "var(--lx)", lineHeight: 1.25, whiteSpace: "nowrap" }}>
         <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>{cat.label}</span>
         <span style={{ display: "block", fontSize: 12 }}>{cat.gb} ГБ</span>
         <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{cat.pct}%</span>
@@ -1255,9 +1587,15 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
     <MediaLayout>
       <MediaTitle title="Медиа и файлы" subtitle="Ваши фотографии, видео, документы и всё, что важно" />
 
-      <div style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", marginBottom: 34 }}>
+      {/* Только на телефоне: заголовок хранилища над карточкой, как в макете */}
+      <div className="nx-only-mobile nx-storage-head" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+        <div className="ng-display" style={{ fontSize: 22, fontWeight: 400 }}>Хранилище</div>
+        <div style={{ fontSize: 13, color: C.muted }}>{used} ГБ / {STORAGE_TOTAL} ГБ</div>
+      </div>
+
+      <div className="nx-storage-box" style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", marginBottom: 34 }}>
         <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
-          <div style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 150 }}>
+          <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 150 }}>
             {Icon.drive({ c: C.text, s: 24 })}
             <div>
               <div style={{ fontSize: 14 }}>Хранилище</div>
@@ -1409,9 +1747,11 @@ function Crumb({ children, active, onClick }) {
 // ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
 // filter — id категории, если пришли сюда из "Медиа" (тогда показываем
 // плоский список файлов этой категории из всех папок).
-function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
+// device — устройство, если пришли из окна устройства (тогда показываем
+// плоский список файлов с этого устройства).
+function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder }) {
   // Текущая папка (null — корень хранилища)
-  const [folder, setFolder] = useState(null);
+  const [folder, setFolder] = useState(initialFolder || null);
   // Строка поиска: ищет только в текущей папке (или категории)
   const [query, setQuery] = useState("");
   // Положение прокрутки строки пути: для полоски под чипсами и затухания справа
@@ -1438,7 +1778,7 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
     if (el) el.scrollLeft = el.scrollWidth;
     measure();
     setQuery("");
-  }, [folder, filter]);
+  }, [folder, filter, device]);
 
   // Ширина окна поменялась — пересчитываем полоску прокрутки
   useEffect(() => {
@@ -1452,12 +1792,18 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
 
   const q = query.trim().toLowerCase();
   const match = (name) => !q || name.toLowerCase().includes(q);
-  const subfolders = cat ? [] : FOLDERS.filter((f) => f.parent === folder && match(f.name));
-  const list = sortByRecent((cat ? files.filter((f) => f.cat === cat.id) : files.filter((f) => f.folder === folder)).filter((f) => match(f.name)));
+  // flat — включён отбор (по категории или устройству): показываем
+  // все подходящие файлы из всех папок одним списком
+  const flat = Boolean(cat || device);
+  const onDevice = (f) => f.device === device.name || f.device === device.alias;
+  const subfolders = flat ? [] : FOLDERS.filter((f) => f.parent === folder && match(f.name));
+  const list = sortByRecent((flat
+    ? files.filter((f) => (!cat || f.cat === cat.id) && (!device || onDevice(f)))
+    : files.filter((f) => f.folder === folder)).filter((f) => match(f.name)));
   // Сколько всего лежит внутри папки (подпапки + файлы)
   const countIn = (id) => FOLDERS.filter((f) => f.parent === id).length + files.filter((f) => f.folder === id).length;
 
-  const heading = cat ? `${cat.label} · все папки` : folder ? folderById(folder).name : "Хранилище";
+  const heading = device ? `${device.name} · все папки` : cat ? `${cat.label} · все папки` : folder ? folderById(folder).name : "Хранилище";
 
   const rowStyle = {
     ...btnReset, width: "100%", boxSizing: "border-box",
@@ -1482,10 +1828,12 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
               WebkitMaskImage: scroll.more ? "linear-gradient(90deg, black 82%, transparent)" : "none",
             }}
           >
-            {cat ? (
+            {flat ? (
               <>
                 <Crumb onClick={onClearFilter}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Все папки</Crumb>
-                <Crumb active>{cat.icon({ c: C.onFold, s: 15 })} {cat.label} · {list.length} {plural(list.length, ["файл", "файла", "файлов"])}</Crumb>
+                <Crumb active>
+                  {(device || cat).icon({ c: C.onFold, s: 15 })} {device ? device.name : cat.label} · {list.length} {plural(list.length, ["файл", "файла", "файлов"])}
+                </Crumb>
               </>
             ) : (
               <>
@@ -1520,7 +1868,7 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
           {Icon.search({ c: C.muted, s: 16 })}
           <input
             value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder={cat ? "Поиск в категории…" : "Поиск в этой папке…"}
+            placeholder={device ? "Поиск по устройству…" : cat ? "Поиск в категории…" : "Поиск в этой папке…"}
             style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 12.5, padding: 0 }}
           />
           {query && (
@@ -1540,7 +1888,7 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
 
       {/* Список прокручивается внутри себя, как в макете.
           key меняется при смене папки — список появляется заново с анимацией */}
-      <div key={cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-pop nx-scroll nx-files-list" style={{
+      <div key={device ? `dev-${device.id}` : cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-pop nx-scroll nx-files-list" style={{
         maxHeight: "calc(100vh - 400px)", minHeight: 260, overflowY: "auto", paddingRight: 14,
       }}>
         {subfolders.map((sf) => {
@@ -1564,19 +1912,126 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
               <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
-                {fileMeta(f)}{cat ? ` · ${folderById(f.folder).name}` : ""}
+                {fileMeta(f)}{flat ? ` · ${folderById(f.folder).name}` : ""}
               </div>
             </div>
             {Icon.chevron({ s: 18 })}
           </button>
         ))}
         {subfolders.length === 0 && list.length === 0 && (
-          <div style={{ padding: "48px 4px", fontSize: 13.5, color: C.mutedSoft, textAlign: "center" }}>
-            {q ? `Ничего не нашлось по запросу «${query.trim()}»` : "Здесь пока пусто"}
-          </div>
+          q ? (
+            <EmptyState
+              title="Ничего не нашлось"
+              text={`По запросу «${query.trim()}» здесь ничего нет. Попробуйте другое слово.`}
+              action={
+                <button type="button" className="nx-ghost-btn" onClick={() => setQuery("")} style={{
+                  ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "8px 14px", fontSize: 13,
+                }}>
+                  Очистить поиск
+                </button>
+              }
+            />
+          ) : (
+            <EmptyState
+              title={device ? `На устройстве «${device.name}» пока нет файлов` : "Здесь пока пусто"}
+              text={device ? "Файлы появятся, когда устройство что-нибудь сохранит." : "Добавьте файлы с любого устройства — они появятся тут."}
+            />
+          )
         )}
       </div>
     </MediaLayout>
+  );
+}
+
+/* ═══ СОСТОЯНИЯ: загрузка, успех, ошибка, пусто ═══════════════
+   Общие детали, чтобы эти состояния везде выглядели одинаково.
+   hover / pressed / focus / disabled задаются классами в блоке <style>
+   (см. «ЕДИНАЯ СИСТЕМА СОСТОЯНИЙ»). */
+
+// Индикатор загрузки: контур квадрата, по которому бежит мятная грань
+function Spinner({ s = 14, c = C.mint }) {
+  return (
+    <svg className="nx-spin" viewBox="0 0 16 16" width={s} height={s} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1.6" />
+      <path d="M2 8V3a1 1 0 0 1 1-1h5" stroke={c} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/* Кнопка с состоянием.
+   state: "idle" (обычная) | "loading" (идёт действие) | "success" | "error".
+   variant: "primary" — главная, с градиентом; "ghost" — с рамкой.
+   Подписи для каждого состояния передаются отдельно; если не переданы,
+   остаётся основная подпись (children). */
+function StateButton({ state = "idle", variant = "ghost", icon, children, labels = {}, onClick, disabled, style }) {
+  const primary = variant === "primary" && (state === "idle" || state === "loading");
+  const base = {
+    ...btnReset, borderRadius: 6, padding: "10px 14px", fontSize: 13,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    border: `1px solid ${C.borderStrong}`,
+  };
+  // Цвет рамки и текста по состоянию
+  const look =
+    state === "success" ? { borderColor: C.green, color: C.green } :
+    state === "error"   ? { borderColor: C.red, color: C.red } :
+    primary ? {
+      border: "1px solid transparent", color: C.onFold, fontWeight: 500,
+      background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+    } : {};
+  const mark =
+    state === "loading" ? <Spinner c={primary ? C.onFold : C.mint} /> :
+    state === "success" ? Icon.check({ c: C.green, s: 16 }) :
+    state === "error"   ? Icon.alert({ c: C.red, s: 16 }) :
+    icon;
+  return (
+    <button
+      type="button"
+      // nx-shake: при переходе в ошибку кнопка один раз вздрагивает
+      className={`${primary ? "nx-primary" : "nx-ghost-btn"}${state === "error" ? " nx-shake" : ""}`}
+      onClick={onClick}
+      disabled={disabled || state === "loading"}
+      aria-busy={state === "loading"}
+      style={{ ...base, ...look, ...style }}
+    >
+      {mark}
+      <span>{labels[state] || children}</span>
+    </button>
+  );
+}
+
+// Короткое сообщение о результате внутри панели: ошибка или успех
+function StateNote({ kind = "error", children }) {
+  const color = kind === "error" ? C.red : C.green;
+  return (
+    <div role={kind === "error" ? "alert" : "status"} className="nx-pop" style={{
+      display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px",
+      border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`, borderRadius: 4,
+      background: `color-mix(in srgb, ${color} 8%, transparent)`, fontSize: 12.5, lineHeight: 1.45,
+    }}>
+      <span style={{ display: "flex", marginTop: 1 }}>
+        {(kind === "error" ? Icon.alert : Icon.check)({ c: color, s: 16 })}
+      </span>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+// Пустое состояние: контурная складка, заголовок, подсказка и, если нужно, кнопка
+function EmptyState({ title, text, action, compact }) {
+  return (
+    <div className="nx-pop" style={{
+      padding: compact ? "26px 18px" : "48px 16px", textAlign: "center",
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+    }}>
+      {/* Пустая складка: только контур и линия сгиба */}
+      <svg viewBox="0 0 64 44" width={compact ? 52 : 64} height={compact ? 36 : 44} fill="none" aria-hidden="true" style={{ marginBottom: 6 }}>
+        <path d="M10 4 62 1 54 41 2 43Z" stroke={C.borderStrong} strokeWidth="1.4" strokeLinejoin="round" />
+        <path d="M62 1 34 22 54 41" stroke={C.borderStrong} strokeWidth="1.4" strokeDasharray="3 3" strokeLinejoin="round" />
+      </svg>
+      <div style={{ fontSize: 14.5 }}>{title}</div>
+      {text && <div style={{ fontSize: 12.5, color: C.mutedSoft, maxWidth: 320, lineHeight: 1.5 }}>{text}</div>}
+      {action && <div style={{ marginTop: 8 }}>{action}</div>}
+    </div>
   );
 }
 
@@ -1584,10 +2039,28 @@ function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
    Всё работает в демо-режиме: "отправка" и "ссылка" только показывают
    сообщение, а удаление убирает файл из списка до перезагрузки страницы.
    Закрывается крестиком, клавишей Esc или кликом по затемнению. */
-function FileViewer({ file, onClose, onDelete }) {
+// devices — устройства с текущим статусом: отправить можно только на те, что в сети
+function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
   const [sendOpen, setSendOpen] = useState(false);   // открыт ли выбор устройства
+  // Состояние отправки: на какое устройство и как идёт ("loading" / "success" / "error")
+  const [send, setSend] = useState(null);
+  const sendTimer = useRef(null);
+  useEffect(() => () => clearTimeout(sendTimer.current), []);
+  const deviceByName = (n) => devices.find((d) => d.name === n || d.alias === n);
+  const sendTo = (target) => {
+    setSend({ to: target, state: "loading" });
+    clearTimeout(sendTimer.current);
+    sendTimer.current = setTimeout(() => {
+      const dev = deviceByName(target);
+      if (dev && !dev.online) {
+        setSend({ to: target, state: "error" });
+        return;
+      }
+      setSend({ to: target, state: "success" });
+      onToast?.({ title: "Файл отправлен", text: `${file.name} → ${target}` });
+    }, 900);
+  };
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
-  const [notice, setNotice] = useState("");           // сообщение после действия
   const cat = catOf(file);
   const folder = FOLDERS.find((f) => f.id === file.folder);
 
@@ -1603,10 +2076,10 @@ function FileViewer({ file, onClose, onDelete }) {
     };
   }, [onClose]);
 
-  const share = () => {
+   const share = () => {
     const link = `nexa://file/${file.id}`;
     try { navigator.clipboard?.writeText(link); } catch {}
-    setNotice("Ссылка скопирована");
+    onToast?.({ title: "Ссылка скопирована", text: link });
     setSendOpen(false);
   };
 
@@ -1678,7 +2151,7 @@ function FileViewer({ file, onClose, onDelete }) {
                 Это демо: файл пропадёт из списков, но вернётся после перезагрузки страницы.
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" onClick={() => onDelete(file)} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
+                  <button type="button" onClick={() => { onDelete(file); onToast?.({ title: "Файл удалён", text: file.name }); }} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
                   {Icon.trash({ c: C.red, s: 16 })} Удалить
                 </button>
                 <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>Отмена</button>
@@ -1687,7 +2160,7 @@ function FileViewer({ file, onClose, onDelete }) {
           ) : (
             <>
               <div className="nx-viewer-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={() => { setSendOpen(!sendOpen); setNotice(""); }} aria-expanded={sendOpen} style={{
+                <button type="button" className="nx-primary" onClick={() => { setSendOpen(!sendOpen); setSend(null); }} aria-expanded={sendOpen} style={{
                   ...ghostBtn, border: "1px solid transparent", color: C.onFold, fontWeight: 500,
                   background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
                 }}>
@@ -1706,19 +2179,32 @@ function FileViewer({ file, onClose, onDelete }) {
                 <div className="nx-pop" style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Куда отправить?</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {SEND_TARGETS.filter((d) => d !== file.device).map((d) => (
-                      <button type="button" key={d} className="nx-ghost-btn" style={{ ...ghostBtn, padding: "8px 14px" }}
-                        onClick={() => { setNotice(`Отправлено: ${d}`); setSendOpen(false); }}>
-                        {d}
-                      </button>
-                    ))}
+                    {SEND_TARGETS.filter((d) => d !== file.device).map((d) => {
+                      const dev = deviceByName(d);
+                      return (
+                        <StateButton
+                          key={d}
+                          state={send && send.to === d ? send.state : "idle"}
+                          labels={{ loading: "Отправка…", success: "Отправлено", error: "Не в сети" }}
+                          // Отключённые устройства видно сразу: серая точка рядом с именем
+                          icon={<Dot color={dev && !dev.online ? C.mutedSoft : C.green} />}
+                          disabled={send?.state === "loading"}
+                          onClick={() => sendTo(d)}
+                          style={{ padding: "8px 14px" }}
+                        >
+                          {d}
+                        </StateButton>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-
-              {notice && (
-                <div key={notice} className="nx-pop" role="status" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.green }}>
-                  {Icon.check({ c: C.green, s: 16 })} {notice}
+                  {send?.state === "error" && (
+                    <div style={{ marginTop: 10 }}>
+                      <StateNote kind="error">
+                        {send.to} сейчас не в сети, файл не отправлен. Подключите устройство
+                        на главном экране и попробуйте ещё раз.
+                      </StateNote>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1729,8 +2215,543 @@ function FileViewer({ file, onClose, onDelete }) {
   );
 }
 
+/* ОКНО УСТРОЙСТВА — открывается по нажатию на устройство на «Главной»
+   или из поиска. Всё в демо-режиме: состояние (в сети ли, переключатели)
+   живёт в App и запоминается в браузере.
+   Закрывается крестиком, клавишей Esc или кликом по затемнению. */
+const DEVICE_SETTINGS = [
+  { key: "sync",  icon: Icon.refresh, title: "Синхронизация",    sub: "Файлы и уведомления на всех устройствах" },
+  { key: "dnd",   icon: Icon.dnd,     title: "Не беспокоить",    sub: "Без звуков и всплывающих уведомлений" },
+  { key: "saver", icon: Icon.battery, title: "Энергосбережение", sub: "Реже синхронизируется, дольше работает", battery: true },
+];
+const FIND_MS = 3600; // сколько "звонит" устройство при поиске
+
+const CONNECT_MS = 1400;    // сколько длится подключение (столько же идёт полоса по складке)
+const DISCONNECT_MS = 600;  // отключение быстрее
+const RESULT_MS = 1600;     // сколько кнопка показывает «Подключено» / «Отключено»
+
+function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, onOpenFiles, onToast }) {
+  const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
+  // Кнопка питания: "idle" → "loading" (подключаем/отключаем) → "success" → "idle"
+  const [power, setPower] = useState("idle");
+  const turningOn = useRef(false); // что сейчас делаем: подключаем или отключаем
+  // Номер последнего переключения: меняется — анимация складки запускается заново
+  const [flip, setFlip] = useState(null);
+  const used = deviceUsed(d);
+
+  // Таймеры подключения: при закрытии окна их нужно отменить
+  const timers = useRef([]);
+  const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  // Esc закрывает окно; пока окно открыто, страница под ним не скроллится.
+  // onClose храним в ref, чтобы эффект не перезапускался на каждой перерисовке
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // Сигнал звучит FIND_MS, потом кнопка "Найти" снова доступна
+  useEffect(() => {
+    if (!ringing) return;
+    const t = setTimeout(() => setRinging(false), FIND_MS);
+    return () => clearTimeout(t);
+  }, [ringing]);
+
+  const find = () => {
+    setRinging(true);
+    onToast?.({ title: `${d.name} подаёт сигнал`, text: "Звук слышно, даже если включён беззвучный режим" });
+  };
+
+  // Подключить / отключить: сначала «загрузка» (по складке идёт полоса),
+  // потом статус меняется, складка анимированно меняет цвет, кнопка
+  // на секунду показывает результат и возвращается в обычный вид
+  const toggleOnline = () => {
+    if (power === "loading") return;
+    const on = !d.online;
+    turningOn.current = on;
+    setRinging(false);
+    setPower("loading");
+    later(() => {
+      onSetOnline(on);
+      setFlip({ on, n: Date.now() });
+      setPower("success");
+      onToast?.(on
+        ? { title: `${d.name}: подключено`, text: "Устройство снова в системе NEXA" }
+        : { title: `${d.name}: отключено`, text: "Синхронизация на паузе до следующего подключения" });
+      later(() => setPower("idle"), RESULT_MS);
+    }, on ? CONNECT_MS : DISCONNECT_MS);
+  };
+  const connecting = power === "loading" && turningOn.current;
+  const powerLabels = turningOn.current
+    ? { loading: "Подключение…", success: "Подключено" }
+    : { loading: "Отключение…", success: "Отключено" };
+
+  // Полоски заряда и памяти. Мало заряда — полоска красная.
+  // У отключённого устройства полоски серые: данные на момент отключения
+  const bars = [
+    {
+      label: "Заряд",
+      value: d.battery == null ? "от сети" : `${d.battery}%`,
+      pct: d.battery == null ? 100 : d.battery,
+      low: d.battery != null && d.battery < 20,
+    },
+    { label: "Память", value: `${used} из ${d.memory} ГБ`, pct: Math.min(100, (used / d.memory) * 100) },
+  ];
+
+  const ghostBtn = {
+    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+    padding: "10px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 8,
+  };
+
+  return (
+    <div className="nx-viewer" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      {/* stopPropagation — клик внутри окна не должен его закрывать */}
+      <div
+        role="dialog" aria-modal="true" aria-label={d.name}
+        className="nx-viewer-panel nx-pop nx-scroll"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+          boxSizing: "border-box", textAlign: "left",
+        }}
+      >
+        {/* Шапка: название и статус */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.mutedSoft, marginTop: 3 }}>
+              <Dot color={d.online ? C.green : C.red} />
+              {d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
+            </div>
+          </div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
+            ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.close({ c: C.muted, s: 18 })}
+          </button>
+        </div>
+
+        {/* Сцена: крупное устройство на стеклянной складке. Складка
+            цветная, пока устройство в сети, и серая, когда отключено.
+            Во время поиска от устройства расходятся волны сигнала */}
+        <div style={{ padding: "0 18px" }}>
+          <div style={{
+            position: "relative", height: 190, borderRadius: 8, overflow: "hidden",
+            border: `1px solid ${C.border}`, background: C.panel2,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {/* Складка. key меняется при каждом переключении — так анимация
+                «раскрылась» (nx-fold-on) или «сжалась» (nx-fold-off) играет заново */}
+            <div
+              key={flip ? flip.n : "fold"}
+              className={flip ? (flip.on ? "nx-fold-on" : "nx-fold-off") : undefined}
+              style={{ position: "absolute", width: 210, height: 148, overflow: "hidden",
+                clipPath: "polygon(16% 6%, 100% 0, 84% 94%, 0 100%)" }}
+            >
+              {/* Светлая грань: цветная в сети, серая без сети */}
+              <div style={{
+                position: "absolute", inset: 0,
+                background: d.online
+                  ? `linear-gradient(135deg, ${C.foldDeep}, ${C.foldBlue} 55%, ${C.foldCyan})`
+                  : C.chip,
+                transition: "background 420ms ease",
+              }} />
+              {/* Тёмный треугольник сгиба */}
+              <div style={{
+                position: "absolute", inset: 0,
+                clipPath: "polygon(100% 0, 84% 94%, 52% 50%)",
+                background: `color-mix(in srgb, ${C.foldDeep} 40%, transparent)`,
+              }} />
+              {/* Пока идёт подключение, по складке один раз проходит мятная полоса */}
+              {connecting && (
+                <div className="nx-scan" style={{
+                  position: "absolute", top: -10, bottom: -10, left: "50%", width: 46, marginLeft: -23,
+                  background: `linear-gradient(90deg, transparent, color-mix(in srgb, ${C.mint} 55%, transparent), transparent)`,
+                }} />
+              )}
+            </div>
+            {ringing && [0, 1, 2].map((i) => (
+              <span key={i} className="nx-ping" style={{ animationDelay: `${i * 400}ms` }} />
+            ))}
+            <div
+              key={flip && flip.on ? `icon-${flip.n}` : "icon"}
+              className={flip && flip.on ? "nx-icon-on" : undefined}
+              style={{ position: "relative", display: "flex" }}
+            >
+              {d.icon({ c: d.online ? C.onFold : C.muted, s: 72 })}
+            </div>
+          </div>
+        </div>
+
+        {/* Заряд и память */}
+        <div style={{ padding: "18px 18px 4px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {bars.map((b) => (
+            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
+              <div style={{ width: 62, flexShrink: 0, color: C.mutedSoft }}>{b.label}</div>
+              <div style={{ flex: 1, height: 6, background: C.chip, overflow: "hidden" }}>
+                <div className="nx-bar" style={{
+                  width: `${b.pct}%`, height: "100%",
+                  background: !d.online ? C.muted : b.low ? C.red : `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+                }} />
+              </div>
+              <div style={{ width: 96, flexShrink: 0, textAlign: "right" }}>{b.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Действия */}
+        <div className="nx-viewer-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "16px 18px 4px" }}>
+          {/* Пока устройство звонит, кнопка в состоянии «загрузка» */}
+          <StateButton
+            variant="primary"
+            state={ringing ? "loading" : "idle"}
+            labels={{ loading: "Звонит…" }}
+            icon={Icon.search({ c: C.onFold, s: 16 })}
+            disabled={!d.online || power === "loading"}
+            onClick={find}
+          >
+            Найти
+          </StateButton>
+          <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={ghostBtn}>
+            {Icon.folder({ c: C.text, s: 16 })} Файлы · {fileCount}
+          </button>
+          <StateButton
+            state={power}
+            labels={powerLabels}
+            icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
+            onClick={toggleOnline}
+          >
+            {d.online ? "Отключить" : "Подключить"}
+          </StateButton>
+        </div>
+        {!d.online && power === "idle" && (
+          <div style={{ padding: "8px 18px 0", fontSize: 12, color: C.mutedSoft }}>
+            Найти можно только устройство в сети
+          </div>
+        )}
+
+        {/* Переключатели. Энергосбережение — только у устройств с батареей */}
+        <div style={{ margin: "16px 18px 18px", border: `1px solid ${C.border}`, borderRadius: 6 }}>
+          {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
+            <div key={s.key} style={{
+              display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+              borderTop: i ? `1px solid ${C.border}` : "none",
+            }}>
+              <div style={{ display: "flex", flexShrink: 0 }}>{s.icon({ c: C.muted, s: 18 })}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{s.sub}</div>
+              </div>
+              <Toggle on={d[s.key]} onClick={() => onSetting(s.key)} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── СИСТЕМНЫЕ УВЕДОМЛЕНИЯ (ТОСТЫ) ────────────────────────
+   Короткая обратная связь поверх приложения: файл отправлен,
+   ссылка скопирована, диалог удалён и т.п. Показываются стеком
+   справа сверху, автоматически исчезают через несколько секунд.
+   Вызов: onToast({ title, text }), где onToast = showToast из NexaApp. */
+function ToastHost({ toasts, onDismiss }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="nx-toast-host" aria-live="polite">
+      {toasts.map((t) => (
+        <ToastItem key={t.id} toast={t} onClose={() => onDismiss(t.id)} />
+      ))}
+    </div>
+  );
+}
+
+function ToastItem({ toast, onClose }) {
+  return (
+    <div className="nx-toast" role="status">
+      <div className="nx-toast-icon">
+        {Icon.sparkle({ c: C.mint, s: 16 })}
+      </div>
+      <div className="nx-toast-body">
+        <div className="nx-toast-title">{toast.title}</div>
+        {toast.text && <div className="nx-toast-text">{toast.text}</div>}
+      </div>
+      <button type="button" className="nx-toast-close" onClick={onClose} aria-label="Закрыть">
+        {Icon.close({ c: C.muted, s: 14 })}
+      </button>
+    </div>
+  );
+}
+
+/* ─── ГЛОБАЛЬНЫЙ ПОИСК ──────────────────────────────────────
+   Оверлей поверх любого экрана. Ищет по разделам, устройствам,
+   файлам, папкам, диалогам ассистента и строкам настроек.
+   Открывается по иконке поиска в верхней строке (или кнопке
+   в настройках), закрывается по Esc или клику по затемнению. */
+function GlobalSearch({ files, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate }) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef(null);
+  const q = query.trim().toLowerCase();
+  const hasQuery = q.length > 0;
+
+  // Фокус в поле сразу при открытии, закрытие по Esc
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const match = (text) => hasQuery && typeof text === "string" && text.toLowerCase().includes(q);
+  const hitKeys = (arr) => (arr || []).some((k) => match(k));
+
+  // Результаты. Пока запрос пуст, ничего не ищем.
+  const tabs = hasQuery ? NAV.filter((t) => match(t.label)) : [];
+  const devices = hasQuery ? allDevices.filter((d) => match(d.name)) : [];
+  const folders = hasQuery ? FOLDERS.filter((f) => match(f.name)) : [];
+  const fileHits = hasQuery ? sortByRecent(files.filter((f) => match(f.name))) : [];
+  const chatHits = (() => {
+    if (!hasQuery) return [];
+    try {
+      const saved = JSON.parse(localStorage.getItem("nexa-chats") || "[]");
+      return saved.filter((c) => match(c.title));
+    } catch { return []; }
+  })();
+  const settingHits = hasQuery
+    ? SETTINGS_INDEX.filter((s) => match(s.title) || match(s.subtitle) || hitKeys(s.keywords))
+    : [];
+
+  const total = tabs.length + devices.length + folders.length + fileHits.length + chatHits.length + settingHits.length;
+
+  // Обработчик клика: делаем действие и закрываем поиск
+  const go = (fn) => () => { fn(); onClose(); };
+
+  return (
+    <div
+      className="nx-search-overlay"
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 400,
+        background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        padding: "10vh 20px 20px", boxSizing: "border-box",
+      }}
+    >
+      <div
+        role="dialog" aria-modal="true" aria-label="Поиск"
+        className="nx-search-panel nx-pop"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(640px, 100%)", maxHeight: "calc(100vh - 10vh - 20px)",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+          display: "flex", flexDirection: "column", overflow: "hidden", boxSizing: "border-box",
+        }}
+      >
+        {/* Строка ввода */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "14px 16px", borderBottom: `1px solid ${C.border}`,
+        }}>
+          {Icon.search({ c: C.muted, s: 18 })}
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Найти файл, папку, диалог, настройку…"
+            style={{
+              flex: 1, minWidth: 0, background: "transparent", border: "none",
+              outline: "none", color: C.text, fontSize: 15,
+            }}
+          />
+          <kbd style={{
+            fontSize: 10, letterSpacing: "0.06em", color: C.mutedSoft,
+            border: `1px solid ${C.border}`, borderRadius: 4, padding: "2px 6px", fontFamily: "inherit",
+          }}>Esc</kbd>
+        </div>
+
+        {/* Область результатов */}
+        <div className="nx-scroll" style={{ overflowY: "auto", padding: "8px 0" }}>
+          {!hasQuery && (
+            <div style={{ padding: "22px 18px", fontSize: 13, color: C.mutedSoft, lineHeight: 1.6 }}>
+              Начните вводить — найдём по всему приложению.
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+                Например: «Диплом», «Фото», «Отпуск», «Тема».
+              </div>
+            </div>
+          )}
+
+          {hasQuery && total === 0 && (
+            <EmptyState compact title="Ничего не нашлось" text={`По запросу «${query.trim()}» нет ни разделов, ни файлов. Попробуйте другое слово.`} />
+          )}
+
+          {tabs.length > 0 && (
+            <SearchGroup title="Разделы">
+              {tabs.map((t) => (
+                <SearchRow
+                  key={t.id}
+                  icon={t.icon({ c: C.muted, s: 16 })}
+                  title={t.label}
+                  subtitle="Перейти в раздел"
+                  onClick={go(() => onNavigate(t.id))}
+                />
+              ))}
+            </SearchGroup>
+          )}
+
+          {devices.length > 0 && (
+            <SearchGroup title="Устройства">
+              {devices.map((d) => (
+                <SearchRow
+                  key={d.id}
+                  icon={d.icon({ c: C.muted, s: 16 })}
+                  title={d.name}
+                  subtitle={deviceStatus(d)}
+                  onClick={go(() => onOpenDevice ? onOpenDevice(d.id) : onNavigate("home"))}
+                />
+              ))}
+            </SearchGroup>
+          )}
+
+          {fileHits.length > 0 && (
+            <SearchGroup title={`Файлы · ${fileHits.length}`}>
+              {fileHits.slice(0, 8).map((f) => (
+                <SearchRow
+                  key={f.id}
+                  thumb={<FileThumb file={f} w={34} h={22} iconSize={12} radius={4} />}
+                  title={f.name}
+                  subtitle={fileMeta(f)}
+                  onClick={go(() => onOpenFile(f))}
+                />
+              ))}
+              {fileHits.length > 8 && (
+                <div style={{ padding: "6px 18px", fontSize: 11.5, color: C.mutedSoft }}>
+                  и ещё {fileHits.length - 8}…
+                </div>
+              )}
+            </SearchGroup>
+          )}
+
+          {folders.length > 0 && (
+            <SearchGroup title="Папки">
+              {folders.map((f) => (
+                <SearchRow
+                  key={f.id}
+                  icon={Icon.folder({ c: C.muted, s: 16 })}
+                  title={f.name}
+                  subtitle="Открыть в файлах"
+                  onClick={go(() => onOpenFolder(f.id))}
+                />
+              ))}
+            </SearchGroup>
+          )}
+
+          {chatHits.length > 0 && (
+            <SearchGroup title="Диалоги">
+              {chatHits.map((c) => (
+                <SearchRow
+                  key={c.id}
+                  icon={Icon.chat({ c: C.muted, s: 16 })}
+                  title={c.title}
+                  subtitle="Открыть в ассистенте"
+                  onClick={go(() => onOpenChat(c.id))}
+                />
+              ))}
+            </SearchGroup>
+          )}
+
+          {settingHits.length > 0 && (
+            <SearchGroup title="Настройки">
+              {settingHits.map((s) => (
+                <SearchRow
+                  key={s.title}
+                  icon={Icon.gear({ c: C.muted, s: 16 })}
+                  title={s.title}
+                  subtitle={s.subtitle}
+                  onClick={go(() => onNavigate("settings"))}
+                />
+              ))}
+            </SearchGroup>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Заголовок группы результатов
+function SearchGroup({ title, children }) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <div style={{
+        fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase",
+        color: C.mutedSoft, padding: "8px 18px 4px",
+      }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Одна строка результата. Либо иконка, либо миниатюра файла слева.
+function SearchRow({ icon, thumb, title, subtitle, onClick }) {
+  const visual = thumb || icon;
+  return (
+    <button
+      type="button"
+      className="nx-search-row"
+      onClick={onClick}
+      style={{
+        width: "100%", boxSizing: "border-box",
+        background: "transparent", border: "none", padding: "9px 18px",
+        font: "inherit", color: "inherit", textAlign: "left", cursor: "pointer",
+        display: "flex", alignItems: "center", gap: 12,
+      }}
+    >
+      {visual && (
+        <div style={{
+          width: 34, height: 26, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {visual}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13.5, color: C.text,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>{title}</div>
+        {subtitle && (
+          <div style={{
+            fontSize: 11.5, color: C.mutedSoft, marginTop: 2,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{subtitle}</div>
+        )}
+      </div>
+      <div style={{ color: C.mutedSoft, flexShrink: 0 }}>
+        {Icon.chevron({ c: C.mutedSoft, s: 14 })}
+      </div>
+    </button>
+  );
+}
 // ЭКРАН "АССИСТЕНТ" — поле ввода по центру + правая панель (новый диалог/поиск/...)
-function ScreenAssistant() {
+function ScreenAssistant({ initialChatId, onToast }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -1753,11 +2774,17 @@ const [chats, setChats] = useState(() => {
     return saved ? JSON.parse(saved) : [];
   } catch { return []; }
 });
-  const [currentChatId, setCurrentChatId] = useState(null);
+  const [currentChatId, setCurrentChatId] = useState(initialChatId || null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const bottomRef = useRef(null);
+  // Окно со списком сообщений: прокручиваем вниз только его, а не всю страницу
+  const listRef = useRef(null);
+  const scrollToBottom = () => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -1799,8 +2826,35 @@ const [chats, setChats] = useState(() => {
   const messages = currentChat?.messages || [];
 
   useEffect(() => {
-  bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-}, [messages.length, messages[messages.length - 1]?.text, isLoading]);
+    scrollToBottom();
+  }, [messages.length, messages[messages.length - 1]?.text, isLoading]);
+
+  // Клавиатура как в мессенджерах. Экран ассистента всегда ровно по видимой
+  // области над клавиатурой: шапка стоит на месте, поле ввода сидит прямо
+  // на клавиатуре, сжимается только список сообщений. Размер видимой области
+  // кладём в CSS-переменные --vvh (высота) и --vvt (сдвиг сверху).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const sync = () => {
+      root.style.setProperty('--vvh', `${vv.height}px`);
+      root.style.setProperty('--vvt', `${vv.offsetTop}px`);
+      // Браузер любит сдвигать страницу к полю ввода — возвращаем её на место
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+      // Последнее сообщение остаётся видно над клавиатурой
+      scrollToBottom();
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+      root.style.removeProperty('--vvh');
+      root.style.removeProperty('--vvt');
+    };
+  }, []);
 
   const newChat = () => { setCurrentChatId(null); setInput(''); };
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
@@ -1808,6 +2862,7 @@ const [chats, setChats] = useState(() => {
     e.stopPropagation();
     setChats(prev => prev.filter(c => c.id !== id));
     if (id === currentChatId) setCurrentChatId(null);
+    onToast?.({ title: "Диалог удалён" });
   };
 
     // Главная функция: отправляет вопрос на сервер и по мере прихода
@@ -2293,8 +3348,10 @@ const menuBlock = isHistoryOpen ? (
   );
 
   const wrapperStyle = {
+    // Высота и сдвиг — по видимой области экрана (см. эффект с visualViewport),
+    // чтобы при открытой клавиатуре экран не уезжал вверх
     position: "fixed",
-    top: 0, left: 79, right: 0, bottom: 0,
+    top: "var(--vvt, 0px)", left: 79, right: 0, height: "var(--vvh, 100%)",
     background: C.bg, zIndex: 5, overflow: "hidden",
     display: "flex", flexDirection: "column",
   };
@@ -2353,10 +3410,12 @@ const menuBlock = isHistoryOpen ? (
           <>
             {/* Сообщения сверху */}
             <div
+              ref={listRef}
               className="nx-scroll"
               style={{
                 flex: 1,
                 overflowY: "auto",
+                overscrollBehavior: "contain", // прокрутка списка не тянет за собой страницу
                 marginTop: 24,
                 marginBottom: 16,
                 minHeight: 0,
@@ -2370,6 +3429,7 @@ const menuBlock = isHistoryOpen ? (
                     key={i}
                     role={m.role}
                     text={m.text}
+                    error={m.error}
                     isLastAi={m.role === 'ai' && i === messages.length - 1}
                     disabled={isLoading}
                     onRegenerate={regenerate}
@@ -2478,7 +3538,8 @@ function ActionBtn({ title, onClick, disabled, children }) {
 // ─── ПУЗЫРЬ СООБЩЕНИЯ ─────────────────────────────────────
 // isLastAi: это последний ответ ИИ (под ним есть кнопка "повторить")
 // disabled: пока идёт генерация, кнопки редактирования и повтора неактивны
-function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit }) {
+// error — ответ не получен (нет сети, ошибка сервера): пузырь в цветах ошибки
+function MessageBubble({ role, text, error, isLastAi, disabled, onRegenerate, onEdit }) {
   const isUser = role === 'user';
   const [copied, setCopied] = useState(false);       // показываем галочку после копирования
   const [isEditing, setIsEditing] = useState(false); // включён ли режим редактирования
@@ -2603,21 +3664,25 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
           fontSize: 12, letterSpacing: "0.12em", color: C.mint, opacity: 0.85,
           paddingLeft: 4, textTransform: "uppercase", fontWeight: 500,
           textAlign: "left", alignSelf: "flex-start",
+          ...(error ? { color: C.red, display: "flex", alignItems: "center", gap: 6 } : {}),
         }}>
-          NEXA Assistant
+          {error ? <>{Icon.alert({ c: C.red, s: 14 })} Ответ не получен</> : "NEXA Assistant"}
         </div>
 
         <div className="nx-bubble-text" style={{
           padding: "14px 18px", borderRadius: 16, borderTopLeftRadius: 4,
-          background: `linear-gradient(135deg, ${C.panel} 0%, ${C.panel2} 100%)`,
-          border: `1px solid ${C.border}`, color: C.textSoft, fontSize: 16, lineHeight: 1.6,
+          background: error
+            ? `color-mix(in srgb, ${C.red} 7%, ${C.panel})`
+            : `linear-gradient(135deg, ${C.panel} 0%, ${C.panel2} 100%)`,
+          border: `1px solid ${error ? `color-mix(in srgb, ${C.red} 40%, transparent)` : C.border}`,
+          color: C.textSoft, fontSize: 16, lineHeight: 1.6,
           whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left",
           position: "relative", overflow: "hidden",
         }}>
-          {/* Тонкая цветная полоска слева внутри пузыря */}
+          {/* Тонкая цветная полоска слева внутри пузыря (у ошибки — красная) */}
           <div style={{
             position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
-            background: `linear-gradient(180deg, ${C.blue}, ${C.mint})`, opacity: 0.85,
+            background: error ? C.red : `linear-gradient(180deg, ${C.blue}, ${C.mint})`, opacity: 0.85,
           }} />
           <div style={{ paddingLeft: 8 }}>
             <RichText>{text}</RichText>
@@ -2788,7 +3853,7 @@ function SettingsGroup({ children }) {
 }
 
 // ЭКРАН "НАСТРОЙКИ": профиль, тема, уведомления, аккаунт
-function ScreenSettings() {
+function ScreenSettings({ onOpenSearch }) {
   // Список уведомлений хранится в состоянии (useState),
   // потому что он меняется при кликах
   const [notifs, setNotifs] = useState([
@@ -2822,18 +3887,26 @@ function ScreenSettings() {
   );
 
   return (
-    <div className="ng-screen" style={{ padding: "8px 40px 40px" }}>
-      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-        <div className="ng-display" style={{ fontSize: 40, fontWeight: 600 }}>Настройки</div>
-        {/* Поиск по настройкам. На телефоне скрыт: там уже есть иконка поиска сверху */}
-        <div className="nx-settings-search" style={{
-          display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.border}`, borderRadius: 999,
-          padding: "8px 16px", width: 220,
-        }}>
+    <div className="ng-screen" style={{ padding: "28px 40px 40px" }}>
+      {/* Справа отступ под иконки поиска и профиля, которые лежат поверх экрана */}
+      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: 110 }}>
+        <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>Настройки</div>
+        {/* Поиск по настройкам. Открывает общий поиск по всему приложению.
+            На телефоне скрыт: там есть иконка поиска в верхней строке */}
+        <button
+          type="button"
+          className="nx-settings-search nx-ghost-btn"
+          onClick={onOpenSearch}
+          style={{
+            ...btnReset,
+            display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.border}`,
+            borderRadius: 999, padding: "8px 16px", width: 220,
+          }}
+        >
           {Icon.search({ c: C.mutedSoft, s: 15 })}
           <span style={{ fontSize: 13, color: C.mutedSoft }}>Поиск</span>
+        </button>
         </div>
-      </div>
 
       <SectionTitle>Профиль</SectionTitle>
       <SettingsGroup>
@@ -2924,11 +3997,61 @@ export default function NexaApp() {
   const [files, setFiles] = useState(DEMO_FILES);
   const [filesFilter, setFilesFilter] = useState(null);
   const [openFile, setOpenFile] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchFolder, setSearchFolder] = useState(null);
+  const [searchChatId, setSearchChatId] = useState(null);
+    // Системные уведомления (тосты). Живут в корне — любой экран
+  // может показать сообщение через onToast = showToast.
+  const [toasts, setToasts] = useState([]);
+  const toastIdRef = useRef(0);
+  const showToast = (t) => {
+    const id = ++toastIdRef.current;
+    setToasts((list) => [...list, { id, ...t }]);
+    setTimeout(
+      () => setToasts((list) => list.filter((x) => x.id !== id)),
+      t.duration || 3800
+    );
+  };
+  const dismissToast = (id) => setToasts((list) => list.filter((x) => x.id !== id));
+
+  // Устройства: в сети ли и положение переключателей. Запоминаем в браузере,
+  // чтобы после перезагрузки всё осталось как было
+  const [deviceState, setDeviceState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DEVICES_KEY)) || {}; } catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(DEVICES_KEY, JSON.stringify(deviceState)); } catch {}
+  }, [deviceState]);
+  // Итоговый список: данные устройства + настройки по умолчанию + сохранённое
+  const devices = DEVICES.map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceState[d.id] }));
+  const patchDevice = (id, patch) => setDeviceState((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
+  const [openDeviceId, setOpenDeviceId] = useState(null);   // чьё окно открыто
+  const openDevice = devices.find((d) => d.id === openDeviceId);
+  const [filesDevice, setFilesDevice] = useState(null);     // отбор файлов по устройству
+  const onDeviceFile = (d) => (f) => f.device === d.name || f.device === d.alias;
 
   // Переход по меню всегда открывает "Файлы" без фильтра
-  const goTab = (t) => { setFilesFilter(null); setTab(t); };
+  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setTab(t); };
   // Из "Медиа" в "Файлы" с фильтром по категории (null — без фильтра)
-  const openCategory = (cat) => { setFilesFilter(cat); setTab("files"); };
+  const openCategory = (cat) => { setFilesFilter(cat); setFilesDevice(null); setTab("files"); };
+  // Из окна устройства в "Файлы" с отбором по этому устройству
+  const openDeviceFiles = (id) => {
+    setFilesFilter(null);
+    setFilesDevice(id);
+    setOpenDeviceId(null);
+    setTab("files");
+  };
+  const openFolderFromSearch = (folderId) => {
+    setFilesFilter(null);
+    setFilesDevice(null);
+    setSearchFolder(folderId);
+    setTab("files");
+  };
+  // Открыть конкретный диалог ассистента из глобального поиска
+  const openChatFromSearch = (chatId) => {
+    setSearchChatId(chatId);
+    setTab("assistant");
+  };
   const deleteFile = (f) => {
     setFiles((list) => list.filter((x) => x.id !== f.id));
     setOpenFile(null);
@@ -2939,6 +4062,13 @@ export default function NexaApp() {
   useEffect(() => {
     document.body.style.overflow = tab === "assistant" ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
+  }, [tab]);
+
+  // Сбрасываем «заказы» при уходе с соответствующего экрана,
+  // чтобы при следующем заходе они не сработали повторно
+  useEffect(() => {
+    if (tab !== "files") setSearchFolder(null);
+    if (tab !== "assistant") setSearchChatId(null);
   }, [tab]);
   return (
     <div style={{
@@ -3014,7 +4144,7 @@ export default function NexaApp() {
           --glass: rgba(20, 22, 28, 0.92);
           --glass-border: rgba(255, 255, 255, 0.08);
           --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          --hover: rgba(255, 255, 255, 0.05);
+          --hover: rgba(255, 255, 255, 0.05);  --pressed: rgba(255, 255, 255, 0.10);
           --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
           --border-strong: rgba(255, 255, 255, 0.28);
           --on-fold: #FFFFFF;
@@ -3036,7 +4166,7 @@ export default function NexaApp() {
           --glass: rgba(248, 250, 252, 0.9);
           --glass-border: rgba(24, 32, 58, 0.10);
           --glass-shadow: 0 6px 20px rgba(24, 32, 58, 0.10);
-          --hover: rgba(24, 32, 58, 0.06);
+          --hover: rgba(24, 32, 58, 0.06);  --pressed: rgba(24, 32, 58, 0.12);
           --input-glow: none;
           --border-strong: rgba(24, 32, 58, 0.24);
           --on-fold: #FFFFFF;
@@ -3052,7 +4182,12 @@ export default function NexaApp() {
         color: var(--text);
 }
         body { display: block !important; place-items: unset !important; }
-        .ng-home-desktop { display: block; }
+        /* Главная на компьютере: высота почти на всё окно (минус футер
+           и отступы), содержимое по центру по вертикали */
+        .ng-home-desktop {
+          display: flex; flex-direction: column; justify-content: center;
+          min-height: calc(100vh - 170px);
+        }
         .ng-home-mobile { display: none; }
 
         /* ─── Десктопные показы ─────────────────────────────── */
@@ -3139,6 +4274,60 @@ export default function NexaApp() {
 
         /* В светлой теме карточки настроек чуть светлее фона страницы */
         :root[data-theme="light"] .nx-set-group { background: var(--panel); }
+        /* ─── Глобальный поиск ─────────────────────────────── */
+        .nx-search-row:hover { background-color: var(--hover) !important; }
+        .nx-search-row:focus-visible { outline: 1px solid var(--mint); outline-offset: -2px; }
+                /* ─── Системные уведомления (тосты) ──────────────────
+           Плашка сверху справа, как системное уведомление телефона:
+           иконка NEXA, заголовок, текст, крестик закрытия. */
+        @keyframes nx-toast-in  { from { opacity: 0; transform: translateY(-14px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes nx-toast-out { to   { opacity: 0; transform: translateY(-8px) scale(0.98); } }
+        .nx-toast-host {
+          position: fixed; top: 16px; right: 16px; z-index: 500;
+          display: flex; flex-direction: column; gap: 10px;
+          width: 380px; max-width: calc(100vw - 32px);
+          pointer-events: none;
+        }
+        .nx-toast {
+          pointer-events: auto;
+          background: var(--glass);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid var(--glass-border);
+          border-radius: 14px;
+          padding: 12px 12px 12px 14px;
+          display: flex; align-items: flex-start; gap: 12px;
+          box-shadow: var(--glass-shadow);
+          animation: nx-toast-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .nx-toast-icon {
+          width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+          background: linear-gradient(135deg, var(--blue-dark), var(--mint-dark));
+          border: 1px solid color-mix(in srgb, var(--mint) 27%, transparent);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .nx-toast-body { flex: 1; min-width: 0; padding-top: 1px; text-align: left; }
+        .nx-toast-title { font-size: 13.5px; font-weight: 500; line-height: 1.3; }
+        .nx-toast-text {
+          font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.4;
+          overflow: hidden; text-overflow: ellipsis;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        }
+          .nx-toast-close {
+          background: transparent; border: none; padding: 4px;
+          cursor: pointer; flex-shrink: 0; display: flex; color: var(--muted);
+          align-self: center;
+        }
+        @media (max-width: 768px) {
+          .nx-toast-host {
+            top: calc(env(safe-area-inset-top, 0px) + 10px);
+            left: 10px; right: 10px; width: auto;
+          }
+        }
+        @media (max-width: 768px) {
+          .nx-search-overlay { padding: 6vh 12px 12px !important; }
+          .nx-search-panel input { font-size: 16px !important; }
+        }
 
         /* ─── Медиа и Файлы ─────────────────────────────────── */
         /* Блок мягко появляется: подробности хранилища, окно файла, список папки */
@@ -3150,22 +4339,107 @@ export default function NexaApp() {
         /* Полоски "где хранится" вырастают слева направо */
         @keyframes nx-bar-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
         .nx-bar { transform-origin: left; animation: nx-bar-in 420ms cubic-bezier(0.16, 1, 0.3, 1); }
-        /* Подсветка при наведении */
-        .nx-row-btn, .nx-ghost-btn, .nx-icon-btn, .nx-crumb { transition: background-color 160ms ease, border-color 160ms ease; }
+        /* Поиск устройства: квадратные волны расходятся от устройства
+           и гаснут. Две волны на каждый из трёх сигналов, потом стоп */
+        @keyframes nx-ping {
+          from { transform: scale(1); opacity: 0.9; }
+          to   { transform: scale(2.6); opacity: 0; }
+        }
+        .nx-ping {
+          position: absolute; left: 50%; top: 50%;
+          width: 76px; height: 76px; margin: -38px 0 0 -38px;
+          box-sizing: border-box; border: 1.5px solid var(--mint); border-radius: 4px;
+          opacity: 0; pointer-events: none;
+          animation: nx-ping 1200ms cubic-bezier(0.16, 1, 0.3, 1) 2 both;
+        }
+        /* Подключение устройства: по серой складке один раз проходит
+           мятная полоса — показывает, что идёт поиск связи */
+        @keyframes nx-scan {
+          from { transform: translateX(-140px) skewX(-18deg); opacity: 0; }
+          20%  { opacity: 1; }
+          80%  { opacity: 1; }
+          to   { transform: translateX(140px) skewX(-18deg); opacity: 0; }
+        }
+        .nx-scan { animation: nx-scan 1400ms cubic-bezier(0.4, 0, 0.2, 1) 1 both; }
+        /* Подключилось: складка «раскрывается» и наливается цветом */
+        @keyframes nx-fold-on {
+          0%   { transform: scale(0.9) rotate(-4deg); }
+          60%  { transform: scale(1.04) rotate(1deg); }
+          100% { transform: none; }
+        }
+        .nx-fold-on { animation: nx-fold-on 520ms cubic-bezier(0.16, 1, 0.3, 1) 1; }
+        /* Отключилось: складка коротко «сжимается» и сереет */
+        @keyframes nx-fold-off {
+          0%   { transform: none; }
+          45%  { transform: scale(0.92) rotate(2deg); }
+          100% { transform: none; }
+        }
+        .nx-fold-off { animation: nx-fold-off 420ms cubic-bezier(0.4, 0, 0.2, 1) 1; }
+        /* Иконка устройства проявляется при подключении */
+        @keyframes nx-icon-on {
+          from { opacity: 0.3; transform: translateY(6px); }
+          to   { opacity: 1; transform: none; }
+        }
+        .nx-icon-on { animation: nx-icon-on 420ms cubic-bezier(0.16, 1, 0.3, 1) 1; }
+        /* ═══ ЕДИНАЯ СИСТЕМА СОСТОЯНИЙ ═══════════════════════════
+           Все нажимаемые элементы ведут себя одинаково:
+             hover    — лёгкая подложка (--hover) или чуть ярче;
+             pressed  — подложка плотнее (--pressed), элемент «вдавливается»;
+             focus    — мятная рамка (управление с клавиатуры);
+             disabled — бледный, не реагирует;
+             loading  — aria-busy: не бледнеет, курсор «ждите».
+           Чтобы новая кнопка вела себя так же, дай ей один из классов:
+             nx-row-btn   — строка списка        nx-ghost-btn — кнопка с рамкой
+             nx-icon-btn  — кнопка-иконка        nx-primary   — главная (градиент)
+             nx-cat-card  — карточка             nx-link-btn  — текстовая ссылка
+             nx-crumb, nx-seg-btn — скошенные складки (путь и хранилище)
+           Состояния loading / success / error / empty — компоненты
+           StateButton, StateNote и EmptyState. */
+        .nx-row-btn, .nx-ghost-btn, .nx-icon-btn, .nx-primary, .nx-cat-card, .nx-link-btn, .nx-crumb {
+          transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease,
+                      transform 120ms ease, filter 160ms ease, opacity 200ms ease;
+        }
+        /* hover */
         .nx-row-btn:hover, .nx-ghost-btn:hover, .nx-icon-btn:hover { background-color: var(--hover) !important; }
         .nx-cat-card:hover { border-color: var(--muted-soft) !important; }
         .nx-link-btn:hover { color: var(--text) !important; }
-        /* Рамка фокуса для управления с клавиатуры */
+        .nx-primary:hover, .nx-crumb:hover, .nx-seg-btn:hover { filter: brightness(1.12); }
+        /* pressed */
+        .nx-row-btn:active, .nx-ghost-btn:active, .nx-icon-btn:active { background-color: var(--pressed) !important; }
+        .nx-ghost-btn:active, .nx-icon-btn:active, .nx-primary:active, .nx-cat-card:active { transform: scale(0.97); }
+        .nx-row-btn:active { transform: scale(0.99); }
+        .nx-primary:active, .nx-crumb:active, .nx-seg-btn:active { filter: brightness(0.9); }
+        /* focus — рамка для управления с клавиатуры */
         .nx-row-btn:focus-visible, .nx-ghost-btn:focus-visible, .nx-icon-btn:focus-visible,
-        .nx-cat-card:focus-visible, .nx-link-btn:focus-visible {
+        .nx-primary:focus-visible, .nx-cat-card:focus-visible, .nx-link-btn:focus-visible {
           outline: 1px solid var(--mint); outline-offset: 2px;
         }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }
-        .nx-crumb:hover { filter: brightness(1.15); }
+        /* disabled — нельзя нажать */
+        :is(.nx-row-btn, .nx-ghost-btn, .nx-icon-btn, .nx-primary, .nx-cat-card, .nx-link-btn):disabled {
+          opacity: 0.45; cursor: default !important; transform: none !important;
+          filter: none !important; background-color: transparent !important;
+        }
+        .nx-primary:disabled { background-color: initial !important; }
+        /* loading — кнопка занята, но не бледнеет */
+        :is(.nx-ghost-btn, .nx-primary)[aria-busy="true"] { opacity: 1; cursor: progress !important; }
+
+        /* Индикатор загрузки: у квадрата крутится одна мятная грань */
+        @keyframes nx-spin { to { transform: rotate(360deg); } }
+        .nx-spin { animation: nx-spin 800ms linear infinite; }
+        /* Ошибка: элемент один раз коротко вздрагивает */
+        @keyframes nx-shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-4px); } 75% { transform: translateX(4px); }
+        }
+        .nx-shake { animation: nx-shake 260ms ease 1; }
         /* Строка пути прокручивается, но свой скроллбар не рисует:
            вместо него тонкая полоска под чипсами */
         .nx-no-scrollbar { scrollbar-width: none; }
+        /* Блоки только для телефона (на телефоне становятся flex-строкой) */
+        .nx-only-mobile { display: none; }
+        @media (max-width: 768px) { .nx-only-mobile { display: flex !important; } }
         .nx-no-scrollbar::-webkit-scrollbar { display: none; }
         /* Складка справа на "Медиа" и "Файлах" — только на широком экране */
         /* На средних экранах складки уже — подписи на них чуть мельче */
@@ -3180,6 +4454,12 @@ export default function NexaApp() {
         @media (prefers-reduced-motion: reduce) {
           .nx-greeting-anim, .nx-msg { animation: none !important; }
           .nx-pop, .nx-bar { animation: none !important; }
+          .nx-tab-move { transition: none !important; }
+          .nx-ping, .nx-scan { display: none; }
+          .nx-fold-on, .nx-fold-off, .nx-icon-on, .nx-shake { animation: none !important; }
+          .nx-spin { animation-duration: 2400ms; }
+          .nx-row-btn:active, .nx-ghost-btn:active, .nx-icon-btn:active,
+          .nx-primary:active, .nx-cat-card:active { transform: none; }
         }
 
         /* ─── Фирменный скроллбар NEXA ──────────────────────── */
@@ -3203,7 +4483,6 @@ export default function NexaApp() {
         /* ─── Планшет ──────────────────────────────────────── */
         @media (max-width: 960px) {
           .ng-home-grid { grid-template-columns: 1fr !important; }
-          .ng-today-grid { grid-template-columns: 1fr !important; }
           .ng-cat-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
 
@@ -3288,34 +4567,60 @@ export default function NexaApp() {
             line-height: 1.4 !important;
           }
 
-          /* Диаграмма хранилища вертикально */
-          .ng-storage-card {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 16px !important;
+          /* Заголовок страницы в одну строку с иконками поиска и профиля.
+             Справа оставляем место под эти иконки, подзаголовок прячем */
+          .ng-display.nx-page-title {
+            font-size: 30px !important;
+            margin: 12px 0 24px !important;
+            padding-right: 96px;
           }
-          .ng-storage-segments {
-            flex-direction: column !important;
-            height: auto !important;
-            gap: 6px !important;
+          .nx-page-sub { display: none !important; }
+
+          /* Хранилище: те же складки в один ряд, только меньше.
+             Заголовок "Хранилище" стоит над карточкой (.nx-storage-head) */
+          .nx-storage-label { display: none !important; }
+          .nx-storage-box { padding: 12px 10px !important; margin-bottom: 28px !important; }
+          .ng-storage-segments { height: 84px !important; }
+          .ng-storage-segments > * { margin-left: -14px !important; }
+          .ng-storage-segments > *:first-child { margin-left: 0 !important; }
+          /* Подпись ближе к левому краю складки, чтобы поместилась в узкие */
+          .ng-storage-segments .nx-seg-label { padding-left: calc(var(--lx) * 0.75) !important; }
+          .ng-storage-segments .nx-seg-label span:nth-child(1) { font-size: 9.5px !important; }
+          .ng-storage-segments .nx-seg-label span:nth-child(2) { font-size: 9.5px !important; }
+          .ng-storage-segments .nx-seg-label span:nth-child(3) { font-size: 9px !important; }
+
+          /* ─── Сегодня на телефоне ─── */
+          /* Блоки друг под другом: погода, расписание, завтра, прогноз */
+          .nx-today-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            grid-template-areas: "now" "sched" "next" "month" !important;
+            grid-template-rows: auto !important;
+            gap: 28px !important;
           }
-          .ng-storage-segments > * {
-            margin-left: 0 !important;
-            clip-path: none !important;
-            border-radius: 8px !important;
-            padding: 12px 16px !important;
-            min-width: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            box-sizing: border-box !important;
+          /* Карточка погоды: город и дата в одну строку, складка справа */
+          .nx-weather { padding: 18px !important; }
+          .nx-weather-head { grid-template-areas: "city date" !important; }
+          .nx-weather-title { display: none !important; }
+          .nx-weather-city { margin-top: 0 !important; gap: 6px !important; color: var(--text) !important; font-size: 15px !important; }
+          .nx-weather-pin { width: auto !important; }
+          .nx-weather-art { display: block !important; }
+          .nx-weather-main { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
+          /* Детали: крупное значение сверху, подпись под ним, без разделителей */
+          .nx-weather-detail { display: flex; flex-direction: column-reverse; border-left: none !important; padding-left: 0 !important; }
+          .nx-weather-value { color: var(--text) !important; font-size: 18px !important; margin-top: 0 !important; }
+          /* Расписание без рамки, время слева от линии */
+          .nx-sched { border: none !important; padding: 0 !important; }
+          .nx-sched-head { font-size: 22px !important; margin-bottom: 18px !important; }
+          .nx-sched-head svg { display: none; }
+          .nx-sched-list { --dot-x: 62px !important; } /* 46 время + 4 отступ + 12 половина кружка */
+          .nx-sched-item {
+            grid-template-columns: 46px 24px minmax(0, 1fr) !important;
+            grid-template-areas: "time dot box" !important;
+            column-gap: 4px !important;
           }
-          .ng-storage-segments > * { top: 0 !important; }
-          .ng-storage-segments .nx-seg-label { padding-left: 0 !important; }
-          .ng-storage-segments .nx-seg-label > span {
-            display: inline-block !important;
-            margin-right: 12px !important;
-            vertical-align: middle !important;
-          }
+          .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 12.5px !important; }
+          .nx-sched-title { font-size: 15px !important; }
+          .nx-sched-place { display: block !important; }
           /* Файлы: поиск под путём на всю ширину, список без своей прокрутки */
           .nx-files-top { flex-direction: column !important; align-items: stretch !important; gap: 18px !important; }
           .nx-files-search { width: 100% !important; margin-top: 0 !important; }
@@ -3461,16 +4766,6 @@ export default function NexaApp() {
     background: var(--bg);
   }
 
-  .ng-mobile-tabbar {
-    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-  }
-
-    .ng-mobile-tabbar > div {
-    margin: 16px 16px 8px 16px;
-  }
     /* Убираем скроллбар страницы, когда открыт Ассистент.
      Внутренние блоки всё равно скроллятся, если нужно. */
   body:has(.ng-assistant-wrapper) {
@@ -3501,15 +4796,13 @@ export default function NexaApp() {
       <Sidebar active={tab} onChange={goTab} />
           <MobileTabBar active={tab} onChange={goTab} />
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
         {/* На экране "Ассистент" своя правая панель вместо обычной
             строки времени/поиска/профиля, поэтому TopBar тут не рисуем */}
         {tab !== "assistant" && (
           <TopBar>
             {tab === "settings" ? null : <TimeDate />}
-            <IconBtn icon={Icon.search} />
-            {/* Профиль открывает настройки: на телефоне это единственный путь к ним,
-                в таб-баре для настроек места нет */}
+            <IconBtn icon={Icon.search} onClick={() => setSearchOpen(true)} label="Поиск" />
             <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
           </TopBar>
         )}
@@ -3518,17 +4811,25 @@ export default function NexaApp() {
             очень широких мониторах, но при этом свободно заполняет
             обычное окно браузера */}
         <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
-  {tab === "assistant" ? (
-    <ScreenAssistant />
+    {tab === "assistant" ? (
+    <ScreenAssistant initialChatId={searchChatId} onToast={showToast} />
   ) : (
     <div key={tab} className="ng-screen-anim">
-      {tab === "home" && <ScreenHome onNavigate={goTab} />}
+      {tab === "home" && <ScreenHome devices={devices} onNavigate={goTab} onOpenDevice={setOpenDeviceId} />}
       {tab === "today" && <ScreenToday />}
       {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} />}
       {tab === "files" && (
-        <ScreenFiles files={files} filter={filesFilter} onClearFilter={() => setFilesFilter(null)} onOpenFile={setOpenFile} />
+        <ScreenFiles
+          key={`files-${searchFolder || "root"}`}
+          files={files}
+          filter={filesFilter}
+          device={devices.find((d) => d.id === filesDevice)}
+          initialFolder={searchFolder}
+          onClearFilter={() => { setFilesFilter(null); setFilesDevice(null); }}
+          onOpenFile={setOpenFile}
+        />
       )}
-      {tab === "settings" && <ScreenSettings />}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} />}
     </div>
   )}
 </div>
@@ -3556,7 +4857,34 @@ export default function NexaApp() {
 </div>
       {/* Окно просмотра файла поверх всего. key — чтобы для нового файла
           окно открывалось "с нуля", без сообщений от прошлого */}
-      {openFile && <FileViewer key={openFile.id} file={openFile} onClose={closeViewer} onDelete={deleteFile} />}
+      {openFile && <FileViewer key={openFile.id} file={openFile} devices={devices} onClose={closeViewer} onDelete={deleteFile} onToast={showToast} />}
+      {/* Окно устройства поверх всего. key — чтобы для другого устройства
+          окно открывалось "с нуля" (без идущего поиска от прошлого) */}
+      {openDevice && (
+        <DeviceViewer
+          key={openDevice.id}
+          device={openDevice}
+          fileCount={files.filter(onDeviceFile(openDevice)).length}
+          onClose={() => setOpenDeviceId(null)}
+          onSetOnline={(online) => patchDevice(openDevice.id, { online })}
+          onSetting={(key) => patchDevice(openDevice.id, { [key]: !openDevice[key] })}
+          onOpenFiles={() => openDeviceFiles(openDevice.id)}
+          onToast={showToast}
+        />
+      )}
+      {searchOpen && (
+        <GlobalSearch
+          files={files}
+          devices={devices}
+          onOpenDevice={setOpenDeviceId}
+          onClose={() => setSearchOpen(false)}
+          onOpenFile={(f) => setOpenFile(f)}
+          onOpenFolder={openFolderFromSearch}
+          onOpenChat={openChatFromSearch}
+          onNavigate={goTab}
+        />
+      )}
+      <ToastHost toasts={toasts} onDismiss={dismissToast} />
      </div>
   );
 }
