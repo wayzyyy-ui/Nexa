@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.vercel
+.env*
 
 # Editor directories and files
 .vscode/*
@@ -22,6 +24,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-.vercel
-.env*
+*.backup.jsx
+App.backup.jsx
+App.backup-before-media.jsx

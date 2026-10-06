@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+// flushSync нужен для плавной смены темы: React обновляет экран сразу,
+// пока браузер делает снимок для анимации
+import { flushSync } from "react-dom";
 // Подключаем свой логотип из папки assets
-import logoSvg from "./assets/logo.svg";
-import speralSvg from "./assets/speral.svg";
-const VERSION = "0.0.7";
+import foldSvg from "./assets/fold.svg";
+const VERSION = "0.1.1";
 
 
 /* =========================================================================
@@ -20,22 +22,79 @@ const VERSION = "0.0.7";
    Меняешь цвет здесь — он поменяется сразу везде, где используется.
    Не нужно искать и менять hex-код в каждом месте по отдельности. */
 const C = {
-  bg: "#01090F",        // фон всего приложения
-  panel: "#0E1016",      // фон панелей/кнопок в навигации
-  border: "#1C1E26",     // основной цвет тонких границ.
-  borderSoft: "#22242C", // граница чуть светлее, для мелких элементов
-  text: "#FFFFFF",       // основной цвет текста
-  muted: "#92A2AF",      // приглушённый текст (подписи, метаданные)
-  mutedSoft: "#6B6B72",  // ещё более приглушённый текст (даты, футер)
-  blue: "#4A6FFF",       // фирменный синий (локальное устройство)
-  blueDark: "#1A2454",   // синий тёмный — для теневой стороны градиентов
-  blueLight: "#7C97FF",  // синий светлый — для световой стороны градиентов
-  mint: "#00FFDF",       // фирменный мятный (связь/облако)
-  mintDark: "#0F3D38",   // мятный тёмный
-  mintLight: "#7EF0E0",  // мятный светлый
-  green: "#47DE8E",      // статус "онлайн"
-  red: "#DE4747",        // статус "не в сети"
+  bg: "var(--bg)",               // фон всего приложения
+  panel: "var(--panel)",         // фон панелей и кнопок в навигации
+  border: "var(--border)",       // основной цвет тонких границ
+  borderSoft: "var(--border-soft)", // граница чуть мягче, для мелких элементов
+  text: "var(--text)",           // основной цвет текста
+  muted: "var(--muted)",         // приглушённый текст (подписи, метаданные)
+  mutedSoft: "var(--muted-soft)",// ещё более приглушённый текст (даты, футер)
+  blue: "var(--blue)",           // фирменный синий (локальное устройство)
+  blueDark: "var(--blue-dark)",  // синий для теневой стороны градиентов
+  blueLight: "var(--blue-light)",// синий для световой стороны градиентов
+  mint: "var(--mint)",           // фирменный мятный (связь, облако)
+  mintDark: "var(--mint-dark)",  // мятный для теней и фона активных элементов
+  mintLight: "var(--mint-light)",// мятный для света
+  green: "var(--green)",         // статус "онлайн"
+  red: "var(--red)",             // статус "не в сети"
+  onAccent: "var(--on-accent)",  // текст и иконки на мятной или синей заливке
+  chip: "var(--chip)",           // нейтральная заливка: выключенный переключатель, заглушки
+  textStrong: "var(--text-strong)", // выделенный текст (жирный в ответах ассистента)
+  textSoft: "var(--text-soft)",  // текст внутри пузыря ассистента
+  panel2: "var(--panel-2)",      // второй тон панели для лёгкого градиента
+  glass: "var(--glass)",         // полупрозрачная панель таб-бара
+  glassBorder: "var(--glass-border)",
+  hover: "var(--hover)",         // лёгкая подсветка кнопок
+  borderStrong: "var(--border-strong)", // заметная обводка карточек (Медиа, Файлы)
+  onFold: "var(--on-fold)",      // белый текст на цветных складках (в обеих темах)
+  // Цвета складок-стёкол на экранах "Медиа" и "Файлы". Это как картинка,
+  // поэтому в обеих темах они одинаковые
+  foldDeep: "var(--fold-deep)",  // глубокий синий
+  foldBlue: "var(--fold-blue)",  // яркий синий
+  foldCyan: "var(--fold-cyan)",  // голубой
+  foldMint: "var(--fold-mint)",  // мятный
+  foldGreen: "var(--fold-green)",// зелёный
 };
+
+/* ---------- ТЕМА ----------
+   Выбор темы хранится в localStorage и вешается атрибутом data-theme на <html>.
+   Применяем сразу при загрузке модуля, чтобы не было вспышки не той темы. */
+const THEME_KEY = "nexa-theme";
+function readTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch (e) {}
+  return "dark";
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+}
+
+// Смена темы с плавным переходом.
+// update — функция, которая меняет состояние React (подсветку кнопки и т.п.).
+// Если браузер умеет View Transitions (Chrome, Edge, свежий Safari), старый
+// и новый вид экрана плавно перетекают друг в друга целиком.
+// Если не умеет, включаем на 400 мс CSS-переходы цветов у всех элементов.
+function switchTheme(theme, update) {
+  const run = () => { applyTheme(theme); if (update) flushSync(update); };
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (reduce) { run(); return; }
+
+  if (document.startViewTransition) {
+    document.startViewTransition(run);
+    return;
+  }
+
+  const root = document.documentElement;
+  root.classList.add("nx-theme-anim");
+  run();
+  setTimeout(() => root.classList.remove("nx-theme-anim"), 400);
+}
+applyTheme(readTheme());
+
 
 // Два шрифта: Space Grotesk для заголовков (класс ng-display),
 // Inter для всего остального текста.
@@ -103,7 +162,7 @@ const Icon = {
     </svg>
   ),
   up: (p) => (
-    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c || "#07080C"} strokeWidth="2">
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c || C.onAccent} strokeWidth="2">
       <path d="M12 19V6M6 11l6-6 6 6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
@@ -211,9 +270,62 @@ const Icon = {
       <path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  drive: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M7 9h6" strokeLinecap="round" />
+      <path d="M3.5 13.5h17" />
+      <circle cx="16.5" cy="16.3" r="0.6" fill={p.c} />
+    </svg>
+  ),
+  arrowLeft: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.8">
+      <path d="M19 12H5M11 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   check: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="2">
       <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Иконки для "Медиа" и "Файлов"
+  video: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="3.5" y="5" width="17" height="14" rx="2" />
+      <path d="M10 9.5v5l4.5-2.5-4.5-2.5Z" strokeLinejoin="round" />
+    </svg>
+  ),
+  doc: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M6 3.5h8l4 4v13H6v-17Z" strokeLinejoin="round" />
+      <path d="M14 3.5v4h4M9 12h6M9 15.5h6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  music: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M9 17.5V6l10-2v11.5" strokeLinejoin="round" />
+      <circle cx="7" cy="17.5" r="2" />
+      <circle cx="17" cy="15.5" r="2" />
+    </svg>
+  ),
+  close: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.8">
+      <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+    </svg>
+  ),
+  trash: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  share: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 13v6.5h14V13" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  send: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M4 11.5 20 4l-6 16-2.5-6.5L4 11.5ZM11.5 13.5 20 4" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   ),
 };
@@ -227,8 +339,8 @@ const Icon = {
 function FoldHero({ size = 340 }) {
   return (
     <img
-      src={speralSvg}
-      alt="SPERAL"
+      src={foldSvg}
+      alt="NEXA"
       style={{ width: size, height: size, display: "block" }}
     />
   );
@@ -298,12 +410,12 @@ function MobileTabBar({ active, onChange }) {
       }}
     >
       <div style={{
-        background: "rgba(20, 22, 28, 0.92)",
+        background: C.glass,
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
-        border: `1px solid rgba(255, 255, 255, 0.08)`,
+        border: `1px solid ${C.glassBorder}`,
         borderRadius: 22,
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+        boxShadow: "var(--glass-shadow)",
         height: 64,
         padding: "0 8px",
         display: "flex",
@@ -331,7 +443,7 @@ function MobileTabBar({ active, onChange }) {
               width: 52,
               height: 48,
               borderRadius: 14,
-              background: "rgba(0, 255, 223, 0.12)",
+              background: "color-mix(in srgb, var(--mint) 12%, transparent)",
             }} />
           </div>
 
@@ -397,7 +509,7 @@ function Sidebar({ active, onChange }) {
               transition: "background 140ms ease, border-color 140ms ease",
             }}
           >
-            {item.icon({ c: isActive ? "#07080C" : C.text, s: 19 })}
+            {item.icon({ c: isActive ? C.onAccent : C.text, s: 19 })}
           </button>
         );
       })}
@@ -466,25 +578,49 @@ function TimeDate() {
   );
 }
 
-function IconBtn({ icon, s = 18 }) {
+// onClick необязательный: если передан, кнопка становится нажимаемой.
+function IconBtn({ icon, s = 18, onClick, label }) {
   return (
-    <div style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      aria-label={label}
+      style={{
+        width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: onClick ? "pointer" : "default",
+      }}
+    >
       {icon({ c: C.text, s })}
     </div>
   );
 }
 
-// Логотип NEXA — теперь это твоя картинка из Figma, а не рисунок кодом.
-// height задаёт высоту (small — для футера), width: "auto" сам
-// подбирает ширину по пропорциям, чтобы логотип не искажался.
+// Логотип NEXA. Это тот же SVG из Figma (assets/logo.svg), только вставлен
+// прямо в код. Все фигуры залиты fill="currentColor", то есть берут цвет
+// текста: в тёмной теме логотип белый, в светлой тёмный. Отдельный чёрный
+// файл не нужен, иначе в тёмной теме он пропал бы на фоне.
 function Logo({ small }) {
+  const h = small ? 28 : 36;
   return (
-    <img
-      src={logoSvg}
-      alt="NEXA"
-      style={{
-        marginBottom: 20, marginRight: 20, height: small ? 28 : 36, width: "auto", display: "block"}}
-    />
+    <svg
+      viewBox="0 0 149 25" height={h} width={(h * 149) / 25}
+      fill="currentColor" role="img" aria-label="NEXA"
+      style={{ color: C.text, marginBottom: 20, marginRight: 20, display: "block" }}
+    >
+      <rect y="0.128967" width="2.89847" height="23.7675" />
+      <rect x="25.521" y="0.143463" width="2.89847" height="23.7675" />
+      <path d="M129.539 0.151154H132.437L118.687 23.9031H115.789L129.539 0.151154Z" />
+      <path d="M134.201 0.151154H131.302L145.113 23.9031H148.011L134.201 0.151154Z" />
+      <rect x="40.2455" y="0.143463" width="2.89847" height="23.7675" />
+      <rect x="43.144" y="2.66751" width="2.52403" height="23.624" transform="rotate(-90 43.144 2.66751)" />
+      <rect x="43.144" y="23.8965" width="2.5248" height="23.624" transform="rotate(-90 43.144 23.8965)" />
+      <rect x="49.5683" y="13.2896" width="2.5248" height="13.2019" transform="rotate(-90 49.5683 13.2896)" />
+      <path d="M0.966423 2.29059L2.89298 0.125062L27.4566 21.754L25.5301 23.9195L0.966423 2.29059Z" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M78.689 0H82.5192L89.789 9.25263H85.9467L78.689 0Z" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M89.7889 14.5148H85.9587L78.6889 23.7675H82.5312L89.7889 14.5148Z" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M103.963 0H100.133L92.8628 9.25263H96.705L103.963 0Z" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M92.8628 14.5148H96.693L103.963 23.7675H100.121L92.8628 14.5148Z" />
+    </svg>
   );
 }
 
@@ -508,11 +644,11 @@ function Row({ leftIcon, title, subtitle, right, accent }) {
           </div>
         )}
         <div style={{ display: "flex", flexDirection: "column", textAlign: "left", minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 500, textAlign: "left", lineHeight: 1.2 }}>
+          <div style={{ fontSize: 16, fontWeight: 500, textAlign: "left", lineHeight: 1.2 }}>
             {title}
           </div>
           {subtitle && (
-            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3, textAlign: "left", lineHeight: 1.3 }}>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 3, textAlign: "left", lineHeight: 1.3 }}>
               {subtitle}
             </div>
           )}
@@ -595,12 +731,12 @@ function ScreenHome({ onNavigate }) {
           {/* Левая колонка: заголовок + список */}
           <div>
             <div style={{
-              fontSize: 25, letterSpacing: "0.2em",
+              fontSize: 30, letterSpacing: "0.2em",
               color: C.text, marginBottom: 14,
             }}>
               ВАША ЭКОСИСТЕМА
             </div>
-            <div className="ng-display" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1 }}>
+            <div className="ng-display" style={{ fontSize: 30, fontWeight: 600, lineHeight: 1 }}>
               Все устройства в одной системе
             </div>
             <div style={{ fontSize: 14, color: C.muted, marginTop: 14, marginBottom: 30 }}>
@@ -613,7 +749,7 @@ function ScreenHome({ onNavigate }) {
                 alignItems: "center", padding: "16px 18px",
                 borderBottom: `1px solid ${C.border}`,
               }}>
-                <span style={{ fontSize: 15, fontWeight: 500 }}>Устройства</span>
+                <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>
                 <span style={{
                   display: "flex", alignItems: "center",
                   gap: 6, fontSize: 13, color: C.muted,
@@ -645,7 +781,7 @@ function ScreenHome({ onNavigate }) {
                 border: `1px solid ${C.border}`, borderRadius: 16,
                 padding: "16px 18px",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                background: `linear-gradient(90deg, ${C.blueDark}55, ${C.mintDark}55)`,
+                background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
                 cursor: "pointer",
               }}
             >
@@ -659,7 +795,7 @@ function ScreenHome({ onNavigate }) {
                 </div>
                 <div>
                   <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
-                  <div style={{ fontSize: 12.5, color: C.muted }}>Чем могу помочь?</div>
+                  <div style={{ fontSize: 13, color: C.muted }}>Чем могу помочь?</div>
                 </div>
               </div>
               <div style={{
@@ -708,7 +844,7 @@ function ScreenHome({ onNavigate }) {
             display: "flex", justifyContent: "space-between",
             alignItems: "center", marginBottom: 14,
           }}>
-            <div className="ng-display" style={{ fontSize: 18, fontWeight: 600 }}>
+            <div className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>
               Мои устройства
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
@@ -740,7 +876,7 @@ function ScreenHome({ onNavigate }) {
                 </div>
                 <div style={{ marginTop: "auto" }}>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{d.name}</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{d.status}</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{d.status}</div>
                 </div>
               </div>
             ))}
@@ -755,7 +891,7 @@ function ScreenHome({ onNavigate }) {
             border: `1px solid ${C.border}`, borderRadius: 16,
             padding: "14px 16px",
             display: "flex", alignItems: "center", gap: 14,
-            background: `linear-gradient(90deg, ${C.blueDark}55, ${C.mintDark}55)`,
+            background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
             cursor: "pointer",
           }}
         >
@@ -769,7 +905,7 @@ function ScreenHome({ onNavigate }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
-            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Чем могу помочь?</div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Чем могу помочь?</div>
           </div>
           <div style={{
             width: 34, height: 34, borderRadius: "50%",
@@ -888,148 +1024,706 @@ function ScreenToday() {
   );
 }
 
-/* Один сегмент диаграммы хранилища на экране "Медиа".
-   ВАЖНО: форма вырезается через css clip-path прямо на самом div,
-   а не отдельной svg-картинкой поверх текста — раньше подписи (название,
-   объём, проценты) были нарисованы отдельным слоем поверх svg и на
-   разной ширине окна съезжали относительно формы. Сейчас подпись лежит
-   прямо внутри той же самой фигуры, поэтому она никогда не разъедется
-   с формой, на каком бы экране это ни открыли. */
-function StorageSegment({ label, val, pct, from, to, flex, first }) {
+/* ---------- ДЕМО-ДАННЫЕ ДЛЯ "МЕДИА" И "ФАЙЛОВ" ----------
+   Один общий набор: оба экрана берут файлы отсюда, поэтому
+   цифры и списки на них всегда совпадают. Данные выдуманные. */
+
+// Категории хранилища. gb — сколько места занято, devices — на каких
+// устройствах лежат эти файлы (сумма должна совпадать с gb).
+// Форма складки на диаграмме:
+//   flex   — ширина сегмента,
+//   clip   — сама фигура (точки многоугольника в % от сегмента),
+//   top, h — сдвиг сверху и высота: складки стоят "лесенкой", а не в ряд,
+//   labelX — где начинается подпись внутри фигуры,
+//   facet  — угол тёмной грани, которая делает стекло "согнутым".
+const MEDIA_CATS = [
+  { id: "photo", label: "Фото", gb: 96, pct: 38, from: C.foldDeep, to: C.foldBlue, icon: Icon.image,
+    flex: 2.2, clip: "polygon(0 100%, 30% 4%, 100% 0, 72% 96%)", top: "8%", h: "86%", labelX: "30%", facet: "118deg",
+    devices: [["Смартфон", 61], ["Ноутбук", 27], ["Облако", 8]] },
+  { id: "video", label: "Видео", gb: 68, pct: 27, from: C.foldDeep, to: C.foldBlue, icon: Icon.video,
+    flex: 1.7, clip: "polygon(0 100%, 28% 12%, 54% 0, 100% 80%, 94% 100%)", top: "16%", h: "84%", labelX: "27%", facet: "150deg",
+    devices: [["Смартфон", 40], ["Ноутбук", 22], ["ТВ", 6]] },
+  { id: "doc", label: "Документы", gb: 49, pct: 20, from: C.foldBlue, to: C.foldCyan, icon: Icon.doc,
+    flex: 1.5, clip: "polygon(0 78%, 40% 6%, 100% 0, 74% 100%, 28% 96%)", top: "0%", h: "94%", labelX: "28%", facet: "100deg",
+    devices: [["Ноутбук", 38], ["Облако", 9], ["Смартфон", 2]] },
+  { id: "music", label: "Музыка", gb: 24, pct: 10, from: C.foldCyan, to: C.foldMint, icon: Icon.music,
+    flex: 1.2, clip: "polygon(6% 100%, 30% 6%, 100% 0, 82% 96%)", top: "6%", h: "90%", labelX: "30%", facet: "108deg",
+    devices: [["Смартфон", 14], ["Ноутбук", 7], ["Часы", 3]] },
+  { id: "other", label: "Другое", gb: 10, pct: 5, from: C.foldMint, to: C.foldGreen, icon: Icon.archive,
+    flex: 1.1, clip: "polygon(0 96%, 14% 0, 100% 12%, 94% 88%)", top: "12%", h: "80%", labelX: "26%", facet: "128deg",
+    devices: [["Ноутбук", 6], ["Облако", 4]] },
+];
+const STORAGE_TOTAL = 512; // объём хранилища в ГБ
+
+// Папки. parent — id родительской папки (null — лежит в корне).
+const FOLDERS = [
+  { id: "photo", name: "Фото", parent: null },
+  { id: "camera", name: "Камера", parent: "photo" },
+  { id: "screens", name: "Скриншоты", parent: "photo" },
+  { id: "video", name: "Видео", parent: null },
+  { id: "docs", name: "Документы", parent: null },
+  { id: "study", name: "Учёба", parent: "docs" },
+  { id: "music", name: "Музыка", parent: null },
+  { id: "other", name: "Разное", parent: null },
+];
+
+// Файлы. days — сколько дней назад (0 — сегодня), time — время,
+// mb — размер в мегабайтах. Даты считаются от сегодняшнего дня,
+// поэтому демо не "устаревает".
+const DEMO_FILES = [
+  { id: 1, name: "IMG_4291.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:43", mb: 5.5 },
+  { id: 2, name: "IMG_4290.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:42", mb: 4.3 },
+  { id: 3, name: "IMG_4289.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:42", mb: 5.6 },
+  { id: 4, name: "IMG_4287.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:41", mb: 4.6 },
+  { id: 5, name: "IMG_4270.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 2, time: "18:05", mb: 6.1 },
+  { id: 6, name: "IMG_4244.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 5, time: "12:30", mb: 3.9 },
+  { id: 7, name: "Снимок экрана 14-22.png", cat: "photo", folder: "screens", device: "Ноутбук", days: 1, time: "14:22", mb: 1.2 },
+  { id: 8, name: "Снимок экрана 09-05.png", cat: "photo", folder: "screens", device: "Смартфон", days: 3, time: "09:05", mb: 0.8 },
+  { id: 9, name: "Отпуск_море.mp4", cat: "video", folder: "video", device: "Смартфон", days: 1, time: "20:14", mb: 1240 },
+  { id: 10, name: "Запись_экрана.mov", cat: "video", folder: "video", device: "Ноутбук", days: 2, time: "11:40", mb: 312 },
+  { id: 11, name: "День рождения.mp4", cat: "video", folder: "video", device: "Смартфон", days: 6, time: "19:02", mb: 864 },
+  { id: 12, name: "Отчёт_за_сентябрь.pdf", cat: "doc", folder: "docs", device: "Ноутбук", days: 0, time: "10:15", mb: 2.4 },
+  { id: 13, name: "Договор_аренды.pdf", cat: "doc", folder: "docs", device: "Ноутбук", days: 4, time: "16:48", mb: 0.9 },
+  { id: 14, name: "Бюджет_2026.xlsx", cat: "doc", folder: "docs", device: "Ноутбук", days: 1, time: "09:30", mb: 0.4 },
+  { id: 15, name: "Диплом_черновик.docx", cat: "doc", folder: "study", device: "Ноутбук", days: 0, time: "07:58", mb: 3.1 },
+  { id: 16, name: "Презентация_защиты.pptx", cat: "doc", folder: "study", device: "Ноутбук", days: 2, time: "22:10", mb: 18.4 },
+  { id: 17, name: "Список_литературы.docx", cat: "doc", folder: "study", device: "Ноутбук", days: 7, time: "15:00", mb: 0.1 },
+  { id: 18, name: "Утренний плейлист.mp3", cat: "music", folder: "music", device: "Смартфон", days: 3, time: "07:20", mb: 8.2 },
+  { id: 19, name: "Запись_голоса_012.m4a", cat: "music", folder: "music", device: "Часы", days: 0, time: "09:12", mb: 1.6 },
+  { id: 20, name: "Лекция_аудио.mp3", cat: "music", folder: "music", device: "Ноутбук", days: 5, time: "13:00", mb: 46 },
+  { id: 21, name: "Архив_проекта.zip", cat: "other", folder: "other", device: "Ноутбук", days: 1, time: "17:44", mb: 156 },
+  { id: 22, name: "Резервная копия часов.bak", cat: "other", folder: "other", device: "Часы", days: 8, time: "03:00", mb: 22 },
+];
+
+// Устройства, на которые можно "отправить" файл из окна просмотра
+const SEND_TARGETS = ["Смартфон", "Ноутбук", "Часы", "ТВ"];
+
+/* ---------- Мелкие помощники для файлов ---------- */
+
+// Склонение: plural(5, ["файл", "файла", "файлов"]) → "файлов"
+function plural(n, forms) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  if (a > 10 && a < 20) return forms[2];
+  if (b === 1) return forms[0];
+  if (b >= 2 && b <= 4) return forms[1];
+  return forms[2];
+}
+
+// Размер: 0.4 → "400 КБ", 5.5 → "5.5 МБ", 1240 → "1.2 ГБ"
+function formatSize(mb) {
+  if (mb < 1) return `${Math.round(mb * 1000)} КБ`;
+  if (mb < 1000) return `${mb} МБ`;
+  return `${(mb / 1000).toFixed(1)} ГБ`;
+}
+
+// Дата: "Сегодня 08:42", "Вчера 20:14" или "3 окт."
+function formatWhen(f) {
+  if (f.days === 0) return `Сегодня ${f.time}`;
+  if (f.days === 1) return `Вчера ${f.time}`;
+  const d = new Date(Date.now() - f.days * 86400000);
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
+
+// Сортировка "сначала новые"
+function sortByRecent(list) {
+  const key = (f) => {
+    const [h, m] = f.time.split(":").map(Number);
+    return f.days * 1440 - (h * 60 + m);
+  };
+  return [...list].sort((a, b) => key(a) - key(b));
+}
+
+const catOf = (f) => MEDIA_CATS.find((c) => c.id === f.cat);
+const fileMeta = (f) => `${catOf(f).label} · ${formatWhen(f)} · ${formatSize(f.mb)}`;
+
+// Сброс стандартного вида кнопки: убираем рамку, фон и системный шрифт,
+// чтобы кнопка выглядела как обычный блок, но нажималась и с клавиатуры
+const btnReset = {
+  background: "none", border: "none", padding: 0, margin: 0,
+  font: "inherit", color: "inherit", textAlign: "left", cursor: "pointer",
+};
+
+/* Заливка складки: основной градиент + тёмная грань с резким краем.
+   Резкий край (две точки на одном проценте) и даёт ощущение сгиба стекла. */
+const foldFill = (c) =>
+  `linear-gradient(${c.facet}, transparent 56%, color-mix(in srgb, ${C.foldDeep} 45%, transparent) 56%), ` +
+  `linear-gradient(135deg, ${c.from}, ${c.to})`;
+
+/* Миниатюра файла: цветная плашка по категории + иконка.
+   У фото угол градиента зависит от id, поэтому карточки не одинаковые. */
+function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6 }) {
+  const cat = catOf(file);
+  const plain = file.cat === "doc" || file.cat === "other";
   return (
     <div style={{
-      flex,
-      marginLeft: first ? 0 : -18, // грани слегка наезжают друг на друга, без щели
-      clipPath: "polygon(18% 0, 100% 0, 82% 100%, 0% 100%)", // скошенная трапеция
-      background: `linear-gradient(135deg, ${from}, ${to})`,
-      padding: "14px 12px 14px 30px",
-      minWidth: 92,
-      color: "#07080C",
+      width: w, height: h, borderRadius: radius, flexShrink: 0, position: "relative", overflow: "hidden",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: plain ? C.chip : `linear-gradient(${(file.id * 47) % 360}deg, ${cat.from}, ${cat.to})`,
     }}>
-      <div style={{ fontWeight: 700, fontSize: 12 }}>{label}</div>
-      <div style={{ fontSize: 11.5, opacity: 0.85 }}>{val}</div>
-      <div style={{ fontSize: 11.5, opacity: 0.7 }}>{pct}</div>
+      {/* Складка: тёмная треугольная грань поверх цвета */}
+      {!plain && <div style={{
+        position: "absolute", inset: 0,
+        clipPath: "polygon(55% 0, 100% 0, 100% 100%)",
+        background: `color-mix(in srgb, ${C.foldDeep} 30%, transparent)`,
+      }} />}
+      <div style={{ position: "relative", display: "flex" }}>
+        {cat.icon({ c: plain ? C.muted : C.onFold, s: iconSize })}
+      </div>
     </div>
+  );
+}
+
+// Миниатюра папки
+function FolderThumb() {
+  return (
+    <div style={{ width: 52, height: 34, borderRadius: 6, flexShrink: 0, background: C.chip, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {Icon.folder({ c: C.muted, s: 18 })}
+    </div>
+  );
+}
+
+/* Общая раскладка "Медиа" и "Файлов": слева контент, справа фирменная
+   складка, как в макете. На узком экране складка прячется (см. .nx-media-art). */
+function MediaLayout({ children }) {
+  return (
+    <div className="ng-screen" style={{ padding: "8px 40px 40px", textAlign: "left" }}>
+      <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
+        <div style={{ minWidth: 0 }}>{children}</div>
+        <div className="nx-media-art" style={{ position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 60, marginRight: -40 }}>
+          <FoldHero size={440} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Заголовок экрана: крупный и лёгкий, как в макете
+function MediaTitle({ title, subtitle }) {
+  return (
+    <>
+      <div className="ng-display" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{title}</div>
+      <div style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
+    </>
+  );
+}
+
+/* Один сегмент диаграммы хранилища — стеклянная складка.
+   ВАЖНО: форма вырезается через css clip-path прямо на самом элементе,
+   а не отдельной svg-картинкой поверх текста — раньше подписи были
+   нарисованы отдельным слоем и на разной ширине окна съезжали
+   относительно формы. Сейчас подпись лежит внутри той же фигуры.
+   Сегмент — это кнопка: по нажатию он выделяется, остальные бледнеют.
+   Нажимается только сама фигура: clip-path обрезает и область клика. */
+function StorageSegment({ cat, first, dimmed, active, onClick }) {
+  return (
+    <button type="button" className="nx-seg-btn" onClick={onClick} aria-pressed={active} style={{
+      ...btnReset,
+      flex: cat.flex,
+      position: "relative", top: cat.top, height: cat.h,
+      marginLeft: first ? 0 : -30, // складки наезжают друг на друга
+      clipPath: cat.clip,
+      background: foldFill(cat),
+      color: C.onFold,
+      opacity: dimmed ? 0.4 : 1,
+      transition: "opacity 200ms ease",
+      display: "flex", alignItems: "center",
+    }}>
+      {/* paddingLeft в % считается от ширины самой складки,
+          поэтому подпись всегда попадает внутрь фигуры */}
+      <div className="nx-seg-label" style={{ paddingLeft: cat.labelX, lineHeight: 1.25 }}>
+        <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>{cat.label}</span>
+        <span style={{ display: "block", fontSize: 12 }}>{cat.gb} ГБ</span>
+        <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{cat.pct}%</span>
+      </div>
+    </button>
   );
 }
 
 // ЭКРАН "МЕДИА И ФАЙЛЫ" — диаграмма хранилища + категории + недавние файлы
-function ScreenMedia() {
-  const segs = [
-    { label: "Фото", val: "96gb", pct: "38%", from: C.blueLight, to: C.blue, flex: 2.2 },
-    { label: "Видео", val: "68gb", pct: "27%", from: C.blue, to: C.blueDark, flex: 1.7 },
-    { label: "Документы", val: "49gb", pct: "20%", from: C.blue, to: C.mintDark, flex: 1.3 },
-    { label: "Музыка", val: "24gb", pct: "10%", from: C.mint, to: C.mintDark, flex: 0.9 },
-    { label: "Другое", val: "10gb", pct: "5%", from: C.mintLight, to: C.mint, flex: 0.6 },
-  ];
-  const categories = ["Фото", "Видео", "Документы", "Музыка"];
-  const recent = [
-    { name: "IMG_4287.jpg", meta: "Фото · Сегодня 08:42 · 4.6 МБ" },
-    { name: "IMG_4289.jpg", meta: "Фото · Сегодня 08:42 · 5.6 МБ" },
-    { name: "IMG_4290.jpg", meta: "Фото · Сегодня 08:42 · 4.3 МБ" },
-    { name: "IMG_4291.jpg", meta: "Фото · Сегодня 08:43 · 5.5 МБ" },
-  ];
+// files — общий список файлов из App, onOpenFile открывает окно просмотра,
+// onOpenCategory переводит на экран "Файлы" с фильтром по категории
+// (null — без фильтра).
+function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
+  // Какой сегмент хранилища выбран (id категории или null)
+  const [selected, setSelected] = useState(null);
+  const sel = MEDIA_CATS.find((c) => c.id === selected);
+  const used = MEDIA_CATS.reduce((sum, c) => sum + c.gb, 0);
+  const countOf = (id) => files.filter((f) => f.cat === id).length;
+  const recent = sortByRecent(files).slice(0, 4);
+
   return (
-    <div style={{ padding: "8px 40px 40px" }}>
-      <div className="ng-display" style={{ fontSize: 30, fontWeight: 600 }}>Медиа и файлы</div>
-      <div style={{ fontSize: 13.5, color: C.muted, margin: "6px 0 24px" }}>
-        Ваши фотографии, видео, документы и всё, что важно
-      </div>
+    <MediaLayout>
+      <MediaTitle title="Медиа и файлы" subtitle="Ваши фотографии, видео, документы и всё, что важно" />
 
-        <div className="ng-storage-card" style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 20, marginBottom: 30, display: "flex", alignItems: "center", gap: 26 }}>
-        <div style={{ flexShrink: 0 }}>
-          <div style={{ fontWeight: 500, fontSize: 14 }}>Хранилище</div>
-          <div style={{ fontSize: 12.5, color: C.muted }}>247 gb / 512 gb</div>
-        </div>
-        {/* Собираем диаграмму из массива segs — чтобы поменять пропорции
-            или добавить категорию, меняй/добавляй объект в массиве выше */}
-        <div className="ng-storage-segments" style={{ display: "flex", flex: 1, height: 74 }}>
-          {segs.map((s, i) => <StorageSegment key={s.label} {...s} first={i === 0} />)}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 18, fontWeight: 500 }}>Категории</div>
-        <div style={{ fontSize: 12.5, color: C.mutedSoft }}>Все файлы →</div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 30 }} className="ng-cat-grid">
-        {categories.map((cat, i) => (
-          <div key={cat} style={{ border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-            <div style={{
-              height: 90,
-              clipPath: "polygon(0 100%, 30% 0, 100% 0, 100% 100%)",
-              background: `linear-gradient(135deg, ${C.blueLight}, ${i > 1 ? C.mint : C.blue})`,
-            }} />
-            <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 14 }}>{cat}</div>
-                <div style={{ fontSize: 11.5, color: C.mutedSoft }}>файлов</div>
-              </div>
-              {Icon.chevron({})}
+      <div style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", marginBottom: 34 }}>
+        <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+          <div style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 150 }}>
+            {Icon.drive({ c: C.text, s: 24 })}
+            <div>
+              <div style={{ fontSize: 14 }}>Хранилище</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{used} ГБ / {STORAGE_TOTAL} ГБ</div>
             </div>
           </div>
-        ))}
+          {/* Собираем диаграмму из массива MEDIA_CATS — чтобы поменять пропорции
+              или форму складки, меняй объект в этом массиве */}
+          <div className="ng-storage-segments" style={{ display: "flex", flex: 1, height: 132, minWidth: 0 }}>
+            {MEDIA_CATS.map((c, i) => (
+              <StorageSegment
+                key={c.id} cat={c} first={i === 0}
+                active={selected === c.id}
+                dimmed={selected !== null && selected !== c.id}
+                // Повторное нажатие снимает выделение
+                onClick={() => setSelected(selected === c.id ? null : c.id)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Подробности по выбранной складке. key={sel.id} нужен,
+            чтобы при смене категории блок появлялся заново с анимацией */}
+        {sel ? (
+          <div key={sel.id} className="nx-pop nx-storage-detail" style={{
+            borderTop: `1px solid ${C.border}`, marginTop: 16, paddingTop: 16,
+            display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start",
+          }}>
+            <div style={{ minWidth: 140 }}>
+              <div className="ng-display" style={{ fontSize: 26, fontWeight: 400 }}>{sel.gb} ГБ</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{sel.label} · {sel.pct}% хранилища</div>
+              <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>
+                {countOf(sel.id)} {plural(countOf(sel.id), ["файл", "файла", "файлов"])} в списке
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Где хранится</div>
+              {sel.devices.map(([name, gb]) => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, fontSize: 12.5 }}>
+                  <div style={{ width: 76, flexShrink: 0 }}>{name}</div>
+                  <div style={{ flex: 1, height: 6, background: C.chip, overflow: "hidden" }}>
+                    {/* Полоска "вырастает" слева направо — показывает долю устройства */}
+                    <div className="nx-bar" style={{
+                      width: `${(gb / sel.gb) * 100}%`, height: "100%",
+                      background: `linear-gradient(90deg, ${sel.from}, ${sel.to})`,
+                    }} />
+                  </div>
+                  <div style={{ width: 48, textAlign: "right", color: C.muted }}>{gb} ГБ</div>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="nx-ghost-btn" onClick={() => onOpenCategory(sel.id)} style={{
+              ...btnReset, fontSize: 12.5, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+              padding: "8px 14px", alignSelf: "flex-end", whiteSpace: "nowrap",
+            }}>
+              Открыть в файлах →
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>
+            Нажмите на складку, чтобы увидеть, где лежат файлы
+          </div>
+        )}
       </div>
 
-      <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 14 }}>Недавние файлы</div>
-      <div style={{ position: "relative", paddingLeft: 20 }}>
-        <div style={{ position: "absolute", left: 4, top: 20, bottom: 20, width: 1, background: C.border }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
+        <div className="ng-display" style={{ fontSize: 24, fontWeight: 400 }}>Категории</div>
+        <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{
+          ...btnReset, fontSize: 12, color: C.mutedSoft, borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 2,
+        }}>
+          Все файлы →
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 34 }} className="ng-cat-grid">
+        {MEDIA_CATS.slice(0, 4).map((cat) => {
+          const n = countOf(cat.id);
+          return (
+            <button type="button" key={cat.id} className="nx-cat-card" onClick={() => onOpenCategory(cat.id)} style={{
+              ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+              background: `linear-gradient(160deg, ${C.panel2}, ${C.bg})`,
+              padding: "12px 14px", height: 122, boxSizing: "border-box",
+              display: "flex", flexDirection: "column", justifyContent: "space-between",
+              transition: "border-color 160ms ease",
+            }}>
+              {/* Маленькая складка той же формы и цвета, что и на диаграмме */}
+              <div className="nx-cat-fold" style={{
+                width: "62%", height: 52,
+                clipPath: cat.clip, background: foldFill(cat),
+              }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", width: "100%" }}>
+                <div>
+                  <div style={{ fontSize: 13.5 }}>{cat.label}</div>
+                  <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>{n} {plural(n, ["файл", "файла", "файлов"])}</div>
+                </div>
+                {Icon.chevron({ s: 14 })}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="ng-display" style={{ fontSize: 24, fontWeight: 400, marginBottom: 16 }}>Недавние файлы</div>
+      {/* Лента: вертикальная линия слева и кружок у каждого файла */}
+      <div style={{ position: "relative", paddingLeft: 26 }}>
+        <div style={{ position: "absolute", left: 6, top: 24, bottom: 24, width: 1, background: C.borderStrong }} />
         {recent.map((f) => (
-          <div key={f.name} style={{ position: "relative", marginBottom: 10 }}>
-            <span style={{ position: "absolute", left: -20, top: "50%", marginTop: -4, width: 8, height: 8, borderRadius: "50%", border: `2px solid ${C.text}`, background: C.bg }} />
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 40, height: 32, borderRadius: 3, background: "#2A2C34" }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14 }}>{f.name}</div>
-                <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 2 }}>{f.meta}</div>
+          <div key={f.id} style={{ position: "relative", marginBottom: 10 }}>
+            <span style={{ position: "absolute", left: -26, top: "50%", marginTop: -7, width: 14, height: 14, boxSizing: "border-box", borderRadius: "50%", border: `1.5px solid ${C.text}`, background: C.bg }} />
+            <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{
+              ...btnReset, width: "100%", boxSizing: "border-box",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "7px 14px 7px 8px",
+              display: "flex", alignItems: "center", gap: 14,
+            }}>
+              <FileThumb file={f} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>{fileMeta(f)}</div>
               </div>
-              {Icon.chevron({})}
-            </div>
+              {Icon.chevron({ s: 18 })}
+            </button>
           </div>
         ))}
       </div>
-    </div>
+    </MediaLayout>
   );
 }
 
-// ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки) + список файлов
-function ScreenFiles() {
-  const crumbs = ["Назад", "Пользователи", "Диск (C:)", "Документы", "Видео"];
-  const items = Array.from({ length: 6 }).map((_, i) => ({
-    name: `IMG_42${87 + i}.jpg`, meta: `Фото · Сегодня 08:4${i} · 4.${i} МБ`,
-  }));
+// Один чипс в строке пути (хлебных крошек) — скошенная цветная плашка.
+// active — текущая папка: она ярче остальных и не нажимается.
+function Crumb({ children, active, onClick }) {
   return (
-    <div className="ng-screen" style={{ padding: "8px 40px 40px", textAlign: "left"}}>
-      <div className="ng-display" style={{ fontSize: 30, fontWeight: 600 }}>Файлы</div>
-      <div style={{ fontSize: 13.5, color: C.muted, margin: "6px 0 24px" }}>
-        Ваши файлы, документы и медиа — всегда под рукой
-      </div>
-      {/* Путь навигации — просто ряд кнопок-чипсов, последняя (текущая
-          папка) подсвечена градиентом */}
-      <div className="ng-crumbs" style={{ display: "flex", gap: 8, marginBottom: 22, overflowX: "auto" }}>
-        {crumbs.map((c, i) => (
-          <div key={c} style={{
-            padding: "9px 16px", fontSize: 13, whiteSpace: "nowrap",
-            background: i === crumbs.length - 1 ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
-            color: i === crumbs.length - 1 ? "#07080C" : C.text,
-            border: `1px solid ${i === crumbs.length - 1 ? "transparent" : C.border}`,
-            clipPath: "polygon(6% 0, 100% 0, 94% 100%, 0% 100%)",
-          }}>
-            {c}
+    <button type="button" disabled={active} onClick={onClick} className={active ? undefined : "nx-crumb"} style={{
+      ...btnReset,
+      cursor: active ? "default" : "pointer",
+      height: 30, padding: "0 20px 0 18px", fontSize: 12.5, whiteSpace: "nowrap", flexShrink: 0,
+      // Скос задаём в пикселях, чтобы угол был одинаковым у коротких и длинных чипсов
+      clipPath: "polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)",
+      background: active
+        ? `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`
+        : `linear-gradient(90deg, ${C.foldDeep}, color-mix(in srgb, ${C.foldBlue} 70%, ${C.foldDeep}))`,
+      color: C.onFold,
+      display: "flex", alignItems: "center", gap: 7,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+// ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
+// filter — id категории, если пришли сюда из "Медиа" (тогда показываем
+// плоский список файлов этой категории из всех папок).
+function ScreenFiles({ files, filter, onClearFilter, onOpenFile }) {
+  // Текущая папка (null — корень хранилища)
+  const [folder, setFolder] = useState(null);
+  // Строка поиска: ищет только в текущей папке (или категории)
+  const [query, setQuery] = useState("");
+  // Положение прокрутки строки пути: для полоски под чипсами и затухания справа
+  const [scroll, setScroll] = useState({ left: 0, ratio: 1, more: false });
+  const crumbsRef = useRef(null);
+
+  const cat = MEDIA_CATS.find((c) => c.id === filter);
+  const folderById = (id) => FOLDERS.find((f) => f.id === id);
+
+  const measure = () => {
+    const el = crumbsRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setScroll({
+      left: max > 0 ? el.scrollLeft / el.scrollWidth : 0,
+      ratio: el.clientWidth / el.scrollWidth,
+      more: el.scrollLeft < max - 2,
+    });
+  };
+
+  // При смене папки: прокручиваем путь к текущей папке и чистим поиск
+  useEffect(() => {
+    const el = crumbsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+    measure();
+    setQuery("");
+  }, [folder, filter]);
+
+  // Ширина окна поменялась — пересчитываем полоску прокрутки
+  useEffect(() => {
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  // Путь от корня до текущей папки: идём от папки вверх по parent
+  const path = [];
+  for (let id = folder; id; id = folderById(id).parent) path.unshift(folderById(id));
+
+  const q = query.trim().toLowerCase();
+  const match = (name) => !q || name.toLowerCase().includes(q);
+  const subfolders = cat ? [] : FOLDERS.filter((f) => f.parent === folder && match(f.name));
+  const list = sortByRecent((cat ? files.filter((f) => f.cat === cat.id) : files.filter((f) => f.folder === folder)).filter((f) => match(f.name)));
+  // Сколько всего лежит внутри папки (подпапки + файлы)
+  const countIn = (id) => FOLDERS.filter((f) => f.parent === id).length + files.filter((f) => f.folder === id).length;
+
+  const heading = cat ? `${cat.label} · все папки` : folder ? folderById(folder).name : "Хранилище";
+
+  const rowStyle = {
+    ...btnReset, width: "100%", boxSizing: "border-box",
+    borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)`, padding: "12px 4px",
+    display: "flex", alignItems: "center", gap: 14,
+  };
+
+  return (
+    <MediaLayout>
+      <MediaTitle title="Файлы" subtitle="Ваши файлы, документы и медиа — всегда под рукой" />
+
+      <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-start", gap: 28, marginBottom: 26 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Путь навигации. Если включён фильтр — вместо пути
+              показываем фильтр и кнопку, чтобы его сбросить.
+              Справа путь плавно затухает, если дальше есть ещё чипсы */}
+          <div
+            ref={crumbsRef} onScroll={measure} className="ng-crumbs nx-no-scrollbar"
+            style={{
+              display: "flex", gap: 6, overflowX: "auto",
+              maskImage: scroll.more ? "linear-gradient(90deg, black 82%, transparent)" : "none",
+              WebkitMaskImage: scroll.more ? "linear-gradient(90deg, black 82%, transparent)" : "none",
+            }}
+          >
+            {cat ? (
+              <>
+                <Crumb onClick={onClearFilter}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Все папки</Crumb>
+                <Crumb active>{cat.icon({ c: C.onFold, s: 15 })} {cat.label} · {list.length} {plural(list.length, ["файл", "файла", "файлов"])}</Crumb>
+              </>
+            ) : (
+              <>
+                {folder && (
+                  <Crumb onClick={() => setFolder(folderById(folder).parent)}>
+                    {Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад
+                  </Crumb>
+                )}
+                <Crumb active={!folder} onClick={() => setFolder(null)}>{Icon.drive({ c: C.onFold, s: 15 })} Хранилище</Crumb>
+                {path.map((p, i) => (
+                  <Crumb key={p.id} active={i === path.length - 1} onClick={() => setFolder(p.id)}>
+                    {Icon.folder({ c: C.onFold, s: 15 })} {p.name}
+                  </Crumb>
+                ))}
+              </>
+            )}
           </div>
-        ))}
+          {/* Полоска под путём: показывает, какая часть пути сейчас видна */}
+          <div style={{ position: "relative", height: 2, background: C.border, marginTop: 14 }}>
+            <div style={{
+              position: "absolute", top: 0, bottom: 0,
+              left: `${scroll.left * 100}%`, width: `${scroll.ratio * 100}%`,
+              background: C.muted,
+            }} />
+          </div>
+        </div>
+
+        <label className="nx-files-search" style={{
+          width: 200, flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
+          borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 6, marginTop: 4,
+        }}>
+          {Icon.search({ c: C.muted, s: 16 })}
+          <input
+            value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder={cat ? "Поиск в категории…" : "Поиск в этой папке…"}
+            style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 12.5, padding: 0 }}
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" style={{ ...btnReset, display: "flex" }}>
+              {Icon.close({ c: C.muted, s: 14 })}
+            </button>
+          )}
+        </label>
       </div>
-      <div>
-        {items.map((f) => (
-          <div key={f.name} style={{ borderBottom: `1px solid ${C.border}`, padding: "12px 4px", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 32, borderRadius: 3, background: "#2A2C34" }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14 }}>{f.name}</div>
-              <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 2 }}>{f.meta}</div>
+
+      <div style={{
+        fontFamily: fontDisplay, fontSize: 18, fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.04em",
+        paddingBottom: 10, borderBottom: `1px solid ${C.borderStrong}`,
+      }}>
+        {heading}
+      </div>
+
+      {/* Список прокручивается внутри себя, как в макете.
+          key меняется при смене папки — список появляется заново с анимацией */}
+      <div key={cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-pop nx-scroll nx-files-list" style={{
+        maxHeight: "calc(100vh - 400px)", minHeight: 260, overflowY: "auto", paddingRight: 14,
+      }}>
+        {subfolders.map((sf) => {
+          const n = countIn(sf.id);
+          return (
+            <button type="button" key={sf.id} className="nx-row-btn" onClick={() => setFolder(sf.id)} style={rowStyle}>
+              <FolderThumb />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5 }}>{sf.name}</div>
+                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
+                  Папка · {n} {plural(n, ["объект", "объекта", "объектов"])}
+                </div>
+              </div>
+              {Icon.chevron({ s: 18 })}
+            </button>
+          );
+        })}
+        {list.map((f) => (
+          <button type="button" key={f.id} className="nx-row-btn" onClick={() => onOpenFile(f)} style={rowStyle}>
+            <FileThumb file={f} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+              <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
+                {fileMeta(f)}{cat ? ` · ${folderById(f.folder).name}` : ""}
+              </div>
             </div>
-            {Icon.chevron({})}
-          </div>
+            {Icon.chevron({ s: 18 })}
+          </button>
         ))}
+        {subfolders.length === 0 && list.length === 0 && (
+          <div style={{ padding: "48px 4px", fontSize: 13.5, color: C.mutedSoft, textAlign: "center" }}>
+            {q ? `Ничего не нашлось по запросу «${query.trim()}»` : "Здесь пока пусто"}
+          </div>
+        )}
+      </div>
+    </MediaLayout>
+  );
+}
+
+/* ОКНО ПРОСМОТРА ФАЙЛА — открывается поверх любого экрана.
+   Всё работает в демо-режиме: "отправка" и "ссылка" только показывают
+   сообщение, а удаление убирает файл из списка до перезагрузки страницы.
+   Закрывается крестиком, клавишей Esc или кликом по затемнению. */
+function FileViewer({ file, onClose, onDelete }) {
+  const [sendOpen, setSendOpen] = useState(false);   // открыт ли выбор устройства
+  const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
+  const [notice, setNotice] = useState("");           // сообщение после действия
+  const cat = catOf(file);
+  const folder = FOLDERS.find((f) => f.id === file.folder);
+
+  // Esc закрывает окно; пока окно открыто, страница под ним не скроллится
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  const share = () => {
+    const link = `nexa://file/${file.id}`;
+    try { navigator.clipboard?.writeText(link); } catch {}
+    setNotice("Ссылка скопирована");
+    setSendOpen(false);
+  };
+
+  const info = [
+    ["Тип", cat.label],
+    ["Размер", formatSize(file.mb)],
+    ["Изменён", formatWhen(file)],
+    ["Устройство", file.device],
+    ["Папка", folder ? folder.name : "—"],
+  ];
+
+  const ghostBtn = {
+    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+    padding: "10px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 8,
+  };
+
+  return (
+    <div className="nx-viewer" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      {/* stopPropagation — клик внутри окна не должен его закрывать */}
+      <div
+        role="dialog" aria-modal="true" aria-label={file.name}
+        className="nx-viewer-panel nx-pop nx-scroll"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+          boxSizing: "border-box", textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+            <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{fileMeta(file)}</div>
+          </div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
+            ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.close({ c: C.muted, s: 18 })}
+          </button>
+        </div>
+
+        {/* Превью: та же миниатюра, только крупно */}
+        <div style={{ padding: "0 18px" }}>
+          <div className="nx-viewer-preview" style={{ display: "flex" }}>
+            <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 18px", padding: "18px 18px 4px", fontSize: 13 }}>
+          {info.map(([k, v]) => (
+            <div key={k} style={{ display: "contents" }}>
+              <div style={{ color: C.mutedSoft }}>{k}</div>
+              <div>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "16px 18px 18px" }}>
+          {confirmDel ? (
+            // Подтверждение удаления заменяет ряд кнопок
+            <div className="nx-pop" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 4, padding: 14 }}>
+              <div style={{ fontSize: 13.5, marginBottom: 4 }}>Удалить файл?</div>
+              <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
+                Это демо: файл пропадёт из списков, но вернётся после перезагрузки страницы.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => onDelete(file)} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
+                  {Icon.trash({ c: C.red, s: 16 })} Удалить
+                </button>
+                <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="nx-viewer-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => { setSendOpen(!sendOpen); setNotice(""); }} aria-expanded={sendOpen} style={{
+                  ...ghostBtn, border: "1px solid transparent", color: C.onFold, fontWeight: 500,
+                  background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+                }}>
+                  {Icon.send({ c: C.onFold, s: 16 })} Отправить на устройство
+                </button>
+                <button type="button" className="nx-ghost-btn" onClick={share} style={ghostBtn}>
+                  {Icon.share({ c: C.text, s: 16 })} Поделиться
+                </button>
+                <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(true)} style={{ ...ghostBtn, color: C.red }}>
+                  {Icon.trash({ c: C.red, s: 16 })} Удалить
+                </button>
+              </div>
+
+              {/* Выбор устройства: само устройство, где лежит файл, не предлагаем */}
+              {sendOpen && (
+                <div className="nx-pop" style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Куда отправить?</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {SEND_TARGETS.filter((d) => d !== file.device).map((d) => (
+                      <button type="button" key={d} className="nx-ghost-btn" style={{ ...ghostBtn, padding: "8px 14px" }}
+                        onClick={() => { setNotice(`Отправлено: ${d}`); setSendOpen(false); }}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {notice && (
+                <div key={notice} className="nx-pop" role="status" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.green }}>
+                  {Icon.check({ c: C.green, s: 16 })} {notice}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1300,7 +1994,7 @@ const [chats, setChats] = useState(() => {
       <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
         ИИ - Ассистент
       </div>
-       <div className="nx-assistant-subtitle" style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: "left" }}>
+       <div className="nx-assistant-subtitle" style={{ fontSize: 13, color: C.muted, marginTop: 6, textAlign: "left" }}>
         Интеллектуальный центр системы NEXA · v{VERSION}
       </div>
     </div>
@@ -1325,7 +2019,7 @@ const menuBlock = isHistoryOpen ? (
         color: C.text,
         cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 22, lineHeight: 1,
+        fontSize: 20, lineHeight: 1,
       }}
     >
       ×
@@ -1390,7 +2084,7 @@ const menuBlock = isHistoryOpen ? (
     backgroundSize: "200% 100%",
     // Пока ассистент отвечает, граница плавно перетекает
     animation: isLoading ? "nx-border-flow 2.4s linear infinite" : "none",
-    boxShadow: `0 0 60px ${C.blue}80`,
+    boxShadow: "var(--input-glow)",
   }}>
             <div
         onClick={() => document.querySelector('.ng-input-field')?.focus()}
@@ -1431,7 +2125,7 @@ const menuBlock = isHistoryOpen ? (
             width: 32,
             height: 32,
             borderRadius: "50%",
-            background: (isLoading || !input.trim()) ? "#2A2C34" : C.mint,
+            background: (isLoading || !input.trim()) ? C.chip : C.mint,
             border: "none",
             display: "flex",
             alignItems: "center",
@@ -1441,7 +2135,7 @@ const menuBlock = isHistoryOpen ? (
             flexShrink: 0,
           }}
         >
-          {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : "#07080C", s: 15 })}
+          {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : C.onAccent, s: 15 })}
         </button>
       </div>
     </div>
@@ -1490,7 +2184,7 @@ const menuBlock = isHistoryOpen ? (
           </div>
           <button
             onClick={() => setIsHistoryOpen(false)}
-            style={{ background: "transparent", border: "none", cursor: "pointer", color: C.text, fontSize: 26, lineHeight: 1, padding: 0 }}
+            style={{ background: "transparent", border: "none", cursor: "pointer", color: C.text, fontSize: 24, lineHeight: 1, padding: 0 }}
             aria-label="Закрыть"
           >
             ×
@@ -1537,7 +2231,7 @@ const menuBlock = isHistoryOpen ? (
               style={{
                 background: "transparent", border: "none",
                 color: C.mutedSoft, cursor: "pointer", padding: 0,
-                fontSize: 16, lineHeight: 1,
+                fontSize: 14, lineHeight: 1,
               }}
               title="Очистить"
             >
@@ -1573,7 +2267,7 @@ const menuBlock = isHistoryOpen ? (
                   }}
                 >
                   <div style={{
-                    flex: 1, minWidth: 0, fontSize: 13.5, color: C.text,
+                    flex: 1, minWidth: 0, fontSize: 13, color: C.text,
                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                   }}>
                     {chat.title}
@@ -1584,7 +2278,7 @@ const menuBlock = isHistoryOpen ? (
                     style={{
                       background: "transparent", border: "none",
                       color: C.mutedSoft, cursor: "pointer",
-                      fontSize: 16, padding: 2, lineHeight: 1,
+                      fontSize: 14, padding: 2, lineHeight: 1,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                   >
@@ -1682,7 +2376,7 @@ const menuBlock = isHistoryOpen ? (
                     onEdit={(newText) => editMessage(i, newText)}
                   />
                 ))}
-                {isLoading && messages[messages.length - 1]?.role !== 'ai' && <TypingIndicator />}
+                {isLoading && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
                 <div ref={bottomRef} />
               </div>
             </div>
@@ -1726,13 +2420,13 @@ function renderRich(text) {
     const token = match[0];
 
     if (token.startsWith('**')) {
-      parts.push(<strong key={key++} style={{ fontWeight: 700, color: "#FFFFFF" }}>{token.slice(2, -2)}</strong>);
+      parts.push(<strong key={key++} style={{ fontWeight: 700, color: C.textStrong }}>{token.slice(2, -2)}</strong>);
     } else if (token.startsWith('`')) {
       parts.push(
         <code key={key++} style={{
           fontFamily: "'Space Grotesk', monospace",
-          background: "rgba(0, 255, 223, 0.1)",
-          border: "1px solid rgba(0, 255, 223, 0.25)",
+          background: "color-mix(in srgb, var(--mint) 10%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--mint) 25%, transparent)",
           borderRadius: 6,
           padding: "1px 6px",
           fontSize: "0.92em",
@@ -1742,7 +2436,7 @@ function renderRich(text) {
         </code>
       );
     } else if (token.startsWith('*')) {
-      parts.push(<em key={key++} style={{ fontStyle: "italic", color: "#D9E4EC" }}>{token.slice(1, -1)}</em>);
+      parts.push(<em key={key++} style={{ fontStyle: "italic", color: C.textSoft }}>{token.slice(1, -1)}</em>);
     }
 
     lastIndex = match.index + token.length;
@@ -1851,7 +2545,7 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
               style={{
                 width: "100%", resize: "none", boxSizing: "border-box",
                 background: "transparent", border: "none", outline: "none",
-                color: C.text, fontSize: 14.5, lineHeight: 1.55, fontFamily: "inherit",
+                color: C.text, fontSize: 16, lineHeight: 1.55, fontFamily: "inherit",
               }}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -1861,7 +2555,7 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
               }}>Отмена</button>
               <button onClick={saveEdit} disabled={!draft.trim()} style={{
                 padding: "6px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer",
-                background: C.mint, border: "none", color: "#07080C", fontWeight: 500,
+                background: C.mint, border: "none", color: C.onAccent, fontWeight: 500,
                 opacity: draft.trim() ? 1 : 0.4,
               }}>Отправить</button>
             </div>
@@ -1869,7 +2563,7 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
         ) : (
           <div className="nx-bubble-text nx-user-bubble" style={{
             maxWidth: "72%", padding: "12px 18px", borderRadius: 16, borderTopRightRadius: 4,
-            background: C.blue, color: "#FFFFFF", fontSize: 14.5, lineHeight: 1.55,
+            background: C.blue, color: "#FFFFFF", fontSize: 16, lineHeight: 1.55,
             whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left",
           }}>
             <RichText>{text}</RichText>
@@ -1898,7 +2592,7 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
       <div style={{
         flexShrink: 0, width: 36, height: 36, borderRadius: "50%",
         background: `linear-gradient(135deg, ${C.blueDark}, ${C.mintDark})`,
-        border: `1px solid ${C.mint}44`,
+        border: `1px solid color-mix(in srgb, ${C.mint} 27%, transparent)`,
         display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4,
       }}>
         {Icon.sparkle({ c: C.mint, s: 18 })}
@@ -1906,7 +2600,7 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
 
             <div className="nx-ai-col" style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "72%" }}>
         <div style={{
-          fontSize: 11.5, letterSpacing: "0.12em", color: C.mint, opacity: 0.85,
+          fontSize: 12, letterSpacing: "0.12em", color: C.mint, opacity: 0.85,
           paddingLeft: 4, textTransform: "uppercase", fontWeight: 500,
           textAlign: "left", alignSelf: "flex-start",
         }}>
@@ -1915,8 +2609,8 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
 
         <div className="nx-bubble-text" style={{
           padding: "14px 18px", borderRadius: 16, borderTopLeftRadius: 4,
-          background: `linear-gradient(135deg, ${C.panel} 0%, #12141B 100%)`,
-          border: `1px solid ${C.border}`, color: "#EAF2F7", fontSize: 14.5, lineHeight: 1.6,
+          background: `linear-gradient(135deg, ${C.panel} 0%, ${C.panel2} 100%)`,
+          border: `1px solid ${C.border}`, color: C.textSoft, fontSize: 16, lineHeight: 1.6,
           whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left",
           position: "relative", overflow: "hidden",
         }}>
@@ -1944,30 +2638,66 @@ function MessageBubble({ role, text, isLastAi, disabled, onRegenerate, onEdit })
   );
 }
 
-// ─── ИНДИКАТОР «ПЕЧАТАЕТ…» ──────────────────────────────────
-function TypingIndicator() {
+// ─── СКЕЛЕТОН ОТВЕТА АССИСТЕНТА ─────────────────────────────
+// Показывается, пока не пришёл первый символ ответа.
+// Повторяет структуру настоящего ответа (аватарка, подпись, пузырь),
+// поэтому при появлении текста ничего не «прыгает» на экране.
+function AssistantSkeleton() {
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start", width: "100%" }}>
+    <div className="nx-msg" style={{ display: "flex", justifyContent: "flex-start", width: "100%", gap: 12 }}>
+      {/* Аватарка — та же, что у настоящего ответа, чтобы переход был незаметным */}
       <div style={{
-        padding: "12px 16px", borderRadius: 16, borderTopLeftRadius: 4,
-        background: C.panel, border: `1px solid ${C.border}`,
-        display: "flex", gap: 6, alignItems: "center",
+        flexShrink: 0, width: 36, height: 36, borderRadius: "50%",
+        background: `linear-gradient(135deg, ${C.blueDark}, ${C.mintDark})`,
+        border: `1px solid color-mix(in srgb, ${C.mint} 27%, transparent)`,
+        display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4,
       }}>
-        <span style={{ fontSize: 13, color: C.muted, marginRight: 4 }}>Печатает</span>
-<DotPulse delay="0s" />
-<DotPulse delay="0.2s" />
-<DotPulse delay="0.4s" />
+        {Icon.sparkle({ c: C.mint, s: 18 })}
+      </div>
+
+      <div className="nx-ai-col" style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "72%" }}>
+        <div style={{
+          fontSize: 12, letterSpacing: "0.12em", color: C.mint, opacity: 0.85,
+          paddingLeft: 4, textTransform: "uppercase", fontWeight: 500,
+          textAlign: "left", alignSelf: "flex-start",
+        }}>
+          NEXA Assistant
+        </div>
+
+        {/* Пузырь по форме как настоящий, только вместо текста — серые полоски */}
+        <div className="nx-bubble-text" style={{
+          padding: "14px 18px", borderRadius: 16, borderTopLeftRadius: 4,
+          background: `linear-gradient(135deg, ${C.panel} 0%, ${C.panel2} 100%)`,
+          border: `1px solid ${C.border}`,
+          position: "relative", overflow: "hidden",
+          minWidth: 220, boxSizing: "border-box",
+        }}>
+          {/* Тонкая цветная полоска слева — как в настоящем пузыре */}
+          <div style={{
+            position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
+            background: `linear-gradient(180deg, ${C.blue}, ${C.mint})`, opacity: 0.85,
+          }} />
+          <div style={{ paddingLeft: 8, display: "flex", flexDirection: "column", gap: 10 }}>
+            <SkeletonLine width="100%" />
+            <SkeletonLine width="88%" />
+            <SkeletonLine width="58%" />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function DotPulse({ delay }) {
+// Одна серая полоска внутри скелетона.
+// Пульсирует только прозрачностью — минимум движения.
+function SkeletonLine({ width }) {
   return (
-    <span style={{
-      width: 6, height: 6, borderRadius: "50%", background: C.muted,
-      display: "inline-block",
-      animation: `nx-pulse 1.2s ${delay} infinite ease-in-out`,
+    <div style={{
+      height: 12,
+      width,
+      borderRadius: 4,
+      background: C.chip,
+      animation: "nx-skeleton-pulse 1.4s ease-in-out infinite",
     }} />
   );
 }
@@ -1978,26 +2708,30 @@ function Toggle({ on, onClick }) {
   return (
     <div
       onClick={onClick}          // при клике вызываем переданную функцию
+      role="switch" aria-checked={on}
       style={{
         width: 42, height: 24, borderRadius: 999, padding: 3, boxSizing: "border-box",
-        // включён — градиент, выключен — серый фон
-        background: on ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "#2A2C34",
-        // кружок уезжает вправо, если включён, и влево, если выключен
-        display: "flex", justifyContent: on ? "flex-end" : "flex-start",
-        cursor: "pointer",       // курсор-рука при наведении
-        transition: "background 160ms ease",
+        // включён: градиент, выключен: нейтральный фон
+        background: on ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : C.chip,
+        cursor: "pointer", flexShrink: 0,
+        transition: "background 200ms ease",
       }}
     >
-      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff" }} />
+      {/* Кружок сдвигается на 18px вправо, когда переключатель включён */}
+      <div style={{
+        width: 18, height: 18, borderRadius: "50%", background: "#fff",
+        transform: on ? "translateX(18px)" : "translateX(0)",
+        transition: "transform 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+      }} />
     </div>
   );
 }
 function SectionTitle({ children }) {
   return (
     <div
-      className="ng-display"
+      className="ng-display nx-section-title"
       style={{
-        fontSize: 26,
+        fontSize: 22,
         fontWeight: 600,
         color: C.text,
         marginBottom: 14,
@@ -2009,31 +2743,90 @@ function SectionTitle({ children }) {
     </div>
   );
 }
-// ЭКРАН "НАСТРОЙКИ" — профиль, тема, уведомления, аккаунт
-function ScreenSettings() {
-  // Список уведомлений теперь хранится в состоянии (useState),
-// а не в обычной константе, потому что он должен меняться при кликах.
-const [notifs, setNotifs] = useState([
-  { icon: Icon.bell, label: "Уведомления о событиях", on: true },
-  { icon: Icon.chat, label: "Сообщения и комментарии", on: true },
-  { icon: Icon.megaphone, label: "Рекомендации и новости", on: false },
-]);
-
-// Функция переключения: принимает номер строки (index)
-// и меняет у неё on на противоположное (true → false, false → true).
-const toggleNotif = (index) => {
-  setNotifs(notifs.map((n, i) =>
-    i === index ? { ...n, on: !n.on } : n   // нужную строку меняем, остальные оставляем как есть
-  ));
-};
-  // useState хранит, какая тема выбрана сейчас — "light" или "dark".
-  // setTheme меняет это значение при клике на одну из кнопок ниже.
-  const [theme, setTheme] = useState("dark");
+// Одна строка настроек. Все строки экрана собраны из неё, поэтому у них
+// одинаковые отступы, размер иконки и шрифты.
+// icon: иконка слева (в квадрате 40x40), title и subtitle: текст,
+// right: что стоит справа (переключатель, стрелка), wrap: на телефоне
+// правая часть переносится под текст на всю ширину.
+function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
   return (
-      <div className="ng-screen" style={{ padding: "8px 40px 40px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26 }}>
+    <div
+      className={wrap ? "nx-set-row nx-set-row-wrap" : "nx-set-row"}
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+        borderBottom: last ? "none" : `1px solid ${C.border}`,
+        cursor: onClick ? "pointer" : "default",
+      }}
+    >
+      <div className="nx-set-main" style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
+        <div className="nx-set-icon" style={{
+          width: 40, height: 40, borderRadius: 4, border: `1px solid ${C.border}`, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {icon}
+        </div>
+        <div style={{ minWidth: 0, textAlign: "left" }}>
+          <div className="nx-set-title" style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.25 }}>{title}</div>
+          {subtitle && (
+            <div className="nx-set-sub" style={{ fontSize: 13, color: C.muted, marginTop: 3, lineHeight: 1.3 }}>{subtitle}</div>
+          )}
+        </div>
+      </div>
+      {right && <div className="nx-set-right" style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>{right}</div>}
+    </div>
+  );
+}
+
+// Рамка вокруг группы строк
+function SettingsGroup({ children }) {
+  return (
+    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 28 }}>
+      {children}
+    </div>
+  );
+}
+
+// ЭКРАН "НАСТРОЙКИ": профиль, тема, уведомления, аккаунт
+function ScreenSettings() {
+  // Список уведомлений хранится в состоянии (useState),
+  // потому что он меняется при кликах
+  const [notifs, setNotifs] = useState([
+    { icon: Icon.bell, label: "Уведомления о событиях", sub: "Календарь, встречи, напоминания", on: true },
+    { icon: Icon.chat, label: "Сообщения и комментарии", sub: "Упоминания, ответы, новые сообщения", on: true },
+    { icon: Icon.megaphone, label: "Рекомендации и новости", sub: "Полезные советы и обновления", on: false },
+  ]);
+
+  // Переключаем у строки с номером index значение on на противоположное
+  const toggleNotif = (index) => {
+    setNotifs(notifs.map((n, i) => (i === index ? { ...n, on: !n.on } : n)));
+  };
+
+  // theme: какая тема выбрана сейчас, "light" или "dark".
+  // setTheme меняет её плавно (см. switchTheme наверху файла).
+  const [theme, setThemeState] = useState(readTheme);
+  const setTheme = (t) => {
+    if (t === theme) return;
+    switchTheme(t, () => setThemeState(t));
+  };
+
+  // Кнопка сегментированного переключателя темы
+  const segBtn = (value, label) => (
+    <button onClick={() => setTheme(value)} style={{
+      flex: 1, padding: "8px 18px", fontSize: 13, border: "none", cursor: "pointer", whiteSpace: "nowrap",
+      fontFamily: "inherit",
+      background: theme === value ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
+      color: theme === value ? C.onAccent : C.muted,
+      fontWeight: theme === value ? 500 : 400,
+    }}>{label}</button>
+  );
+
+  return (
+    <div className="ng-screen" style={{ padding: "8px 40px 40px" }}>
+      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
         <div className="ng-display" style={{ fontSize: 40, fontWeight: 600 }}>Настройки</div>
-        <div style={{
+        {/* Поиск по настройкам. На телефоне скрыт: там уже есть иконка поиска сверху */}
+        <div className="nx-settings-search" style={{
           display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.border}`, borderRadius: 999,
           padding: "8px 16px", width: 220,
         }}>
@@ -2043,71 +2836,63 @@ const toggleNotif = (index) => {
       </div>
 
       <SectionTitle>Профиль</SectionTitle>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 26 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px" }}>
-          <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#2A2C34", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {Icon.user({ c: C.muted, s: 20 })}
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", fontSize: 19.33 }}>Пользователь</div>
-            <div style={{ display: "flex", fontSize: 12.65, color: C.mutedSoft }}>user@example.com</div>
-            <div style={{ fontSize: 12.65, color: C.green, display: "flex", alignItems: "center", gap: 5 }}>
-              <Dot color={C.green} /> Активный аккаунт
-            </div>
-          </div>
-          {Icon.chevron({})}
-        </div>
-      </div>
+      <SettingsGroup>
+        <SettingsRow
+          last
+          icon={Icon.user({ c: C.muted, s: 20 })}
+          title="Пользователь"
+          subtitle={
+            <>
+              <div>user@example.com</div>
+              <div style={{ color: C.green, display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                <Dot color={C.green} /> Активный аккаунт
+              </div>
+            </>
+          }
+          right={Icon.chevron({})}
+        />
+      </SettingsGroup>
 
       <SectionTitle>Внешний вид</SectionTitle>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 26, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {/* Иконка слева от "Тема оформления" — маленькая складка,
-              которая меняет цвет вместе с выбранной темой (theme) */}
-          <div style={{ width: 36, height: 36, borderRadius: 4, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <SettingsGroup>
+        <SettingsRow
+          last wrap
+          icon={
+            // Мини-складка: меняет цвет вместе с темой
             <svg viewBox="0 0 24 24" width="18" height="18">
               <polygon points="4,14 12,4 12,20 7,22" fill={theme === "dark" ? C.blue : C.mint} />
             </svg>
-          </div>
-          <span style={{display: "flex", alignItems: "left", fontSize: 21.66 }}>Тема оформления</span>
-        </div>
-        {/* Сегментированный переключатель: клик по кнопке меняет theme
-            через setTheme, а активная кнопка подсвечивается градиентом */}
-        <div style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden" }}>
-          <button onClick={() => setTheme("light")} style={{
-            padding: "8px 18px", fontSize: 13, border: "none", cursor: "pointer",
-            background: theme === "light" ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
-            color: theme === "light" ? "#07080C" : C.muted,
-          }}>Светлая</button>
-          <button onClick={() => setTheme("dark")} style={{
-            padding: "8px 18px", fontSize: 13, border: "none", cursor: "pointer",
-            background: theme === "dark" ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
-            color: theme === "dark" ? "#07080C" : C.muted,
-          }}>Тёмная</button>
-        </div>
-      </div>
+          }
+          title="Тема оформления"
+          subtitle={theme === "dark" ? "Тёмная" : "Светлая"}
+          right={
+            <div className="nx-seg" style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden" }}>
+              {segBtn("light", "Светлая")}
+              {segBtn("dark", "Тёмная")}
+            </div>
+          }
+        />
+      </SettingsGroup>
 
       <SectionTitle>Уведомления</SectionTitle>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 26 }}>
+      <SettingsGroup>
         {notifs.map((n, i) => (
-          <div key={n.label} style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px",
-            borderBottom: i < notifs.length - 1 ? `1px solid ${C.border}` : "none",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              {n.icon({ c: C.muted, s: 18 })}
-              <span style={{ fontSize: 14 }}>{n.label}</span>
-            </div>
-            <Toggle on={n.on} onClick={() => toggleNotif(i)} />
-          </div>
+          <SettingsRow
+            key={n.label}
+            last={i === notifs.length - 1}
+            icon={n.icon({ c: C.muted, s: 18 })}
+            title={n.label}
+            subtitle={n.sub}
+            right={<Toggle on={n.on} onClick={() => toggleNotif(i)} />}
+          />
         ))}
-      </div>
+      </SettingsGroup>
 
-     <SectionTitle>Об аккаунте</SectionTitle>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 4 }}>
-        <Row leftIcon={Icon.logout({ c: C.text, s: 18 })} title="Выйти из аккаунта" />
-        <Row leftIcon={Icon.info({ c: C.text, s: 18 })} title="О системе" />
-      </div>
+      <SectionTitle>Об аккаунте</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow icon={Icon.logout({ c: C.text, s: 18 })} title="Выйти из аккаунта" subtitle="Завершить сессию на всех устройствах" right={Icon.chevron({})} />
+        <SettingsRow last icon={Icon.info({ c: C.text, s: 18 })} title="О системе" subtitle={`NEXA ${VERSION}`} right={Icon.chevron({})} />
+      </SettingsGroup>
     </div>
   );
 }
@@ -2132,6 +2917,23 @@ export default function NexaApp() {
   try { localStorage.setItem('nexa-tab', tab); } catch {}
 }
   }, [tab]);
+
+  // Общие данные для "Медиа" и "Файлов": список файлов (удаление в демо
+  // убирает файл отсюда до перезагрузки), фильтр по категории
+  // и файл, открытый в окне просмотра.
+  const [files, setFiles] = useState(DEMO_FILES);
+  const [filesFilter, setFilesFilter] = useState(null);
+  const [openFile, setOpenFile] = useState(null);
+
+  // Переход по меню всегда открывает "Файлы" без фильтра
+  const goTab = (t) => { setFilesFilter(null); setTab(t); };
+  // Из "Медиа" в "Файлы" с фильтром по категории (null — без фильтра)
+  const openCategory = (cat) => { setFilesFilter(cat); setTab("files"); };
+  const deleteFile = (f) => {
+    setFiles((list) => list.filter((x) => x.id !== f.id));
+    setOpenFile(null);
+  };
+  const closeViewer = () => setOpenFile(null);
 
   // Отдельный эффект для скрытия скролла на ассистенте
   useEffect(() => {
@@ -2196,10 +2998,58 @@ export default function NexaApp() {
 }
         input::placeholder { color: ${C.mutedSoft}; }
 
+        /* ─── Переменные тем ────────────────────────────────────
+           Тёмная тема по умолчанию. Светлая включается атрибутом
+           data-theme="light" на <html>. Меняешь цвет здесь, и он
+           меняется во всём приложении. */
+        :root, :root[data-theme="dark"] {
+          --bg: #01090F;  --panel: #0E1016;  --panel-2: #12141B;
+          --border: #1C1E26;  --border-soft: #22242C;
+          --text: #FFFFFF;  --text-strong: #FFFFFF;  --text-soft: #EAF2F7;
+          --muted: #92A2AF;  --muted-soft: #6B6B72;
+          --blue: #4A6FFF;  --blue-dark: #1A2454;  --blue-light: #7C97FF;
+          --mint: #00FFDF;  --mint-dark: #0F3D38;  --mint-light: #7EF0E0;
+          --green: #47DE8E;  --red: #DE4747;
+          --on-accent: #07080C;  --chip: #2A2C34;
+          --glass: rgba(20, 22, 28, 0.92);
+          --glass-border: rgba(255, 255, 255, 0.08);
+          --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          --hover: rgba(255, 255, 255, 0.05);
+          --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
+          --border-strong: rgba(255, 255, 255, 0.28);
+          --on-fold: #FFFFFF;
+          --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
+          --fold-mint: #19E3C8;  --fold-green: #0E8F62;
+          color-scheme: dark;
+        }
+        :root[data-theme="light"] {
+          /* Фон мягкий серо-голубой, а не чисто белый: меньше режет глаза.
+             Панели чуть светлее фона, поэтому карточки читаются без теней. */
+          --bg: #EDF1F5;  --panel: #F8FAFC;  --panel-2: #F1F4F8;
+          --border: #D6DDE6;  --border-soft: #E2E7EE;
+          --text: #18203A;  --text-strong: #0E1428;  --text-soft: #232B47;
+          --muted: #5A6478;  --muted-soft: #8891A3;
+          --blue: #4A6FFF;  --blue-dark: #DCE4FF;  --blue-light: #7C97FF;
+          --mint: #10BFA8;  --mint-dark: #D3F2EC;  --mint-light: #7EE6D8;
+          --green: #1C9E5E;  --red: #D23C3C;
+          --on-accent: #07080C;  --chip: #CBD3DE;
+          --glass: rgba(248, 250, 252, 0.9);
+          --glass-border: rgba(24, 32, 58, 0.10);
+          --glass-shadow: 0 6px 20px rgba(24, 32, 58, 0.10);
+          --hover: rgba(24, 32, 58, 0.06);
+          --input-glow: none;
+          --border-strong: rgba(24, 32, 58, 0.24);
+          --on-fold: #FFFFFF;
+          --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
+          --fold-mint: #19E3C8;  --fold-green: #0E8F62;
+          color-scheme: light;
+        }
+        body { transition: background-color 200ms ease, color 200ms ease; }
+
         html, body, #root {
         margin: 0; padding: 0; width: 100%; min-height: 100vh;
-        background: #01090F;
-        color-scheme: dark;
+        background: var(--bg);
+        color: var(--text);
 }
         body { display: block !important; place-items: unset !important; }
         .ng-home-desktop { display: block; }
@@ -2243,7 +3093,7 @@ export default function NexaApp() {
           100% { background-position: 200% 50%; }
         }
         .nx-greeting-anim {
-          background: linear-gradient(90deg, #FFFFFF 0%, #7C97FF 30%, #00FFDF 50%, #7C97FF 70%, #FFFFFF 100%);
+          background: linear-gradient(90deg, var(--text-strong) 0%, var(--blue-light) 30%, var(--mint) 50%, var(--blue-light) 70%, var(--text-strong) 100%);
           background-size: 200% 100%;
           -webkit-background-clip: text;
           background-clip: text;
@@ -2265,27 +3115,88 @@ export default function NexaApp() {
           0%   { background-position: 0% 50%; }
           100% { background-position: 200% 50%; }
         }
-
+        /* Скелетон ответа: серые полоски мягко пульсируют прозрачностью.
+           Одна анимация, без свечения и градиентов. */
+        @keyframes nx-skeleton-pulse {
+          0%, 100% { opacity: 1; }
+          50%      { opacity: 0.45; }
+        }
         /* Для тех, у кого в системе отключена анимация */
+        /* ─── Плавная смена темы ──────────────────────────────
+           Основной способ: View Transitions. Браузер делает снимок
+           старого экрана и плавно растворяет его в новом. */
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+          animation-duration: 380ms;
+          animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* Запасной способ для браузеров без View Transitions:
+           на время смены у всех элементов плавно меняются цвета */
+        .nx-theme-anim, .nx-theme-anim *, .nx-theme-anim *::before, .nx-theme-anim *::after {
+          transition: background-color 380ms ease, color 380ms ease,
+                      border-color 380ms ease, fill 380ms ease, stroke 380ms ease !important;
+        }
+
+        /* В светлой теме карточки настроек чуть светлее фона страницы */
+        :root[data-theme="light"] .nx-set-group { background: var(--panel); }
+
+        /* ─── Медиа и Файлы ─────────────────────────────────── */
+        /* Блок мягко появляется: подробности хранилища, окно файла, список папки */
+        @keyframes nx-pop-in {
+          0%   { opacity: 0; transform: translateY(6px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .nx-pop { animation: nx-pop-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+        /* Полоски "где хранится" вырастают слева направо */
+        @keyframes nx-bar-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        .nx-bar { transform-origin: left; animation: nx-bar-in 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+        /* Подсветка при наведении */
+        .nx-row-btn, .nx-ghost-btn, .nx-icon-btn, .nx-crumb { transition: background-color 160ms ease, border-color 160ms ease; }
+        .nx-row-btn:hover, .nx-ghost-btn:hover, .nx-icon-btn:hover { background-color: var(--hover) !important; }
+        .nx-cat-card:hover { border-color: var(--muted-soft) !important; }
+        .nx-link-btn:hover { color: var(--text) !important; }
+        /* Рамка фокуса для управления с клавиатуры */
+        .nx-row-btn:focus-visible, .nx-ghost-btn:focus-visible, .nx-icon-btn:focus-visible,
+        .nx-cat-card:focus-visible, .nx-link-btn:focus-visible {
+          outline: 1px solid var(--mint); outline-offset: 2px;
+        }
+        /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
+        .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }
+        .nx-crumb:hover { filter: brightness(1.15); }
+        /* Строка пути прокручивается, но свой скроллбар не рисует:
+           вместо него тонкая полоска под чипсами */
+        .nx-no-scrollbar { scrollbar-width: none; }
+        .nx-no-scrollbar::-webkit-scrollbar { display: none; }
+        /* Складка справа на "Медиа" и "Файлах" — только на широком экране */
+        /* На средних экранах складки уже — подписи на них чуть мельче */
+        @media (max-width: 1360px) {
+          .nx-seg-label span { font-size: 10.5px !important; }
+        }
+        @media (max-width: 1100px) {
+          .nx-media-grid { grid-template-columns: minmax(0, 1fr) !important; }
+          .nx-media-art { display: none !important; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .nx-greeting-anim, .nx-msg { animation: none !important; }
+          .nx-pop, .nx-bar { animation: none !important; }
         }
 
         /* ─── Фирменный скроллбар NEXA ──────────────────────── */
         .nx-scroll {
           scrollbar-width: thin;
-          scrollbar-color: rgba(0, 255, 223, 0.35) transparent;
+          scrollbar-color: color-mix(in srgb, var(--mint) 35%, transparent) transparent;
         }
         .nx-scroll::-webkit-scrollbar { width: 8px; }
         .nx-scroll::-webkit-scrollbar-track { background: transparent; }
         .nx-scroll::-webkit-scrollbar-thumb {
-          background: linear-gradient(180deg, rgba(74, 111, 255, 0.5), rgba(0, 255, 223, 0.5));
+          background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 50%, transparent), color-mix(in srgb, var(--mint) 50%, transparent));
           border-radius: 999px;
           border: 2px solid transparent;
           background-clip: padding-box;
         }
         .nx-scroll::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(180deg, rgba(74, 111, 255, 0.85), rgba(0, 255, 223, 0.85));
+          background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 85%, transparent), color-mix(in srgb, var(--mint) 85%, transparent));
           background-clip: padding-box;
         }
 
@@ -2315,6 +3226,24 @@ export default function NexaApp() {
           /* Все заголовки-дисплеи меньше */
           .ng-display { font-size: 24px !important; }
 
+          /* Экран настроек на телефоне */
+          .ng-display.nx-section-title { font-size: 18px !important; margin-bottom: 10px !important; }
+          .nx-settings-search { display: none !important; }
+          /* Строка с переключателем темы: переключатель уходит под текст
+             и растягивается на всю ширину, чтобы ничего не обрезалось */
+          .nx-set-row { padding: 12px 14px !important; gap: 12px !important; }
+          .nx-set-icon { width: 36px !important; height: 36px !important; }
+          .nx-set-title { font-size: 15px !important; }
+          .nx-set-sub { font-size: 12.5px !important; }
+          /* Переключатель темы уходит на отдельную строку под текстом
+             и растягивается на всю ширину карточки */
+          .nx-set-row-wrap { flex-wrap: wrap; row-gap: 12px !important; }
+          .nx-set-row-wrap .nx-set-right { flex-basis: 100%; }
+          .nx-set-row-wrap .nx-seg { width: 100%; }
+          .nx-seg button { padding: 10px 0 !important; font-size: 14px !important; }
+          .nx-settings-head { margin-bottom: 20px !important; }
+          .nx-set-group { margin-bottom: 22px !important; }
+
           /* Единый padding для всех экранов */
           .ng-screen {
             max-width: 100% !important;
@@ -2327,12 +3256,6 @@ export default function NexaApp() {
           .ng-fold-wrapper img {
             width: 140px !important;
             height: 140px !important;
-          }
-
-          /* Hero-заголовок компактнее */
-          .ng-home-title {
-            font-size: 20px !important;
-            line-height: 1.2 !important;
           }
           .ng-home-hero {
             display: flex !important;
@@ -2376,7 +3299,7 @@ export default function NexaApp() {
             height: auto !important;
             gap: 6px !important;
           }
-          .ng-storage-segments > div {
+          .ng-storage-segments > * {
             margin-left: 0 !important;
             clip-path: none !important;
             border-radius: 8px !important;
@@ -2386,11 +3309,34 @@ export default function NexaApp() {
             height: auto !important;
             box-sizing: border-box !important;
           }
-          .ng-storage-segments > div > div {
+          .ng-storage-segments > * { top: 0 !important; }
+          .ng-storage-segments .nx-seg-label { padding-left: 0 !important; }
+          .ng-storage-segments .nx-seg-label > span {
             display: inline-block !important;
             margin-right: 12px !important;
             vertical-align: middle !important;
           }
+          /* Файлы: поиск под путём на всю ширину, список без своей прокрутки */
+          .nx-files-top { flex-direction: column !important; align-items: stretch !important; gap: 18px !important; }
+          .nx-files-search { width: 100% !important; margin-top: 0 !important; }
+          .nx-files-search input { font-size: 16px !important; }
+          .nx-files-list { max-height: none !important; min-height: 0 !important; overflow: visible !important; padding-right: 0 !important; }
+          /* Подробности хранилища: кнопка "Открыть в файлах" на всю ширину */
+          .nx-storage-detail { gap: 16px !important; }
+          .nx-storage-detail > button { width: 100%; text-align: center !important; padding: 12px 14px !important; }
+
+          /* Окно просмотра файла на телефоне — шторка снизу */
+          .nx-viewer { align-items: flex-end !important; padding: 0 !important; }
+          .nx-viewer-panel {
+            width: 100% !important;
+            max-height: 90vh !important;
+            border-left: none !important;
+            border-right: none !important;
+            border-bottom: none !important;
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+          }
+          .nx-viewer-preview > div { height: 180px !important; }
+          .nx-viewer-actions > button { flex: 1 1 auto; justify-content: center; }
 
           /* Крошки в файлах */
           .ng-crumbs {
@@ -2417,7 +3363,7 @@ export default function NexaApp() {
             bottom: 60px !important;
             width: 100% !important;
             margin-left: 0 !important;
-            background: #01090F !important;
+            background: var(--bg) !important;
             z-index: 150 !important;
             padding: 24px 16px !important;
             border-left: none !important;
@@ -2452,20 +3398,20 @@ export default function NexaApp() {
     align-items: center;
     justify-content: space-between;
     padding: 8px 4px 16px;
-    border-bottom: 1px solid #1C1E26;
+    border-bottom: 1px solid var(--border);
     margin-bottom: 16px;
   }
   .ng-history-header > div {
     font-size: 13px !important;
     letter-spacing: 0.2em !important;
-    color: #92A2AF !important;
+    color: var(--muted) !important;
     font-weight: 500 !important;
   }
   .ng-history-header button {
     width: 36px !important;
     height: 36px !important;
     border-radius: 50% !important;
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: var(--hover) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -2482,7 +3428,7 @@ export default function NexaApp() {
     border-radius: 12px !important;
     font-size: 14px !important;
     font-weight: 500 !important;
-    background: #0E1016 !important;
+    background: var(--panel) !important;
   }
           .ng-history-title-desktop { display: none !important; }
 
@@ -2512,7 +3458,7 @@ export default function NexaApp() {
      body {
     padding-top: env(safe-area-inset-top, 0);
     padding-bottom: env(safe-area-inset-bottom, 0);
-    background: #01090F;
+    background: var(--bg);
   }
 
   .ng-mobile-tabbar {
@@ -2537,7 +3483,7 @@ export default function NexaApp() {
   }
       /* Приветствие, подзаголовок и сообщения в чате на телефоне */
           .ng-assistant-inner .ng-greeting { font-size: 24px !important; }
-          .nx-assistant-subtitle { font-size: 12.5px !important; margin-top: 4px !important; }
+          .nx-assistant-subtitle { font-size: 13px !important; margin-top: 4px !important; }
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
           .nx-user-bubble { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }
@@ -2552,8 +3498,8 @@ export default function NexaApp() {
 }
         
       `}</style>
-      <Sidebar active={tab} onChange={setTab} />
-          <MobileTabBar active={tab} onChange={setTab} />
+      <Sidebar active={tab} onChange={goTab} />
+          <MobileTabBar active={tab} onChange={goTab} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* На экране "Ассистент" своя правая панель вместо обычной
@@ -2562,7 +3508,9 @@ export default function NexaApp() {
           <TopBar>
             {tab === "settings" ? null : <TimeDate />}
             <IconBtn icon={Icon.search} />
-            <IconBtn icon={Icon.user} />
+            {/* Профиль открывает настройки: на телефоне это единственный путь к ним,
+                в таб-баре для настроек места нет */}
+            <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
           </TopBar>
         )}
 
@@ -2574,10 +3522,12 @@ export default function NexaApp() {
     <ScreenAssistant />
   ) : (
     <div key={tab} className="ng-screen-anim">
-      {tab === "home" && <ScreenHome onNavigate={setTab} />}
+      {tab === "home" && <ScreenHome onNavigate={goTab} />}
       {tab === "today" && <ScreenToday />}
-      {tab === "media" && <ScreenMedia />}
-      {tab === "files" && <ScreenFiles />}
+      {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} />}
+      {tab === "files" && (
+        <ScreenFiles files={files} filter={filesFilter} onClearFilter={() => setFilesFilter(null)} onOpenFile={setOpenFile} />
+      )}
       {tab === "settings" && <ScreenSettings />}
     </div>
   )}
@@ -2597,13 +3547,16 @@ export default function NexaApp() {
           Подробнее о системе →
         </div>
       )}
-      <div style={{ fontSize: 12, color: C.mutedSoft, opacity: 0.6, fontFamily: "monospace" }}>
+      <div style={{ fontSize: 11, color: C.mutedSoft, opacity: 0.6, fontFamily: "monospace" }}>
         v{VERSION}
       </div>
     </div>
   </div>
 )}
 </div>
+      {/* Окно просмотра файла поверх всего. key — чтобы для нового файла
+          окно открывалось "с нуля", без сообщений от прошлого */}
+      {openFile && <FileViewer key={openFile.id} file={openFile} onClose={closeViewer} onDelete={deleteFile} />}
      </div>
   );
 }
