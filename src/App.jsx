@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, startTransition } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "react";
 // flushSync нужен для плавной смены темы: React обновляет экран сразу,
 // пока браузер делает снимок для анимации
 import { flushSync } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.3.2";
+const VERSION = "0.3.3";
 
 
 /* =========================================================================
@@ -336,6 +336,22 @@ const Icon = {
       <path d="M4 11.5 20 4l-6 16-2.5-6.5L4 11.5ZM11.5 13.5 20 4" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   ),
+  // Плеер: воспроизвести, пауза, следующий / предыдущий трек
+  play: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M8 5.5v13l10-6.5-10-6.5Z" strokeLinejoin="round" />
+    </svg>
+  ),
+  pause: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M8.5 5.5v13M15.5 5.5v13" strokeLinecap="round" />
+    </svg>
+  ),
+  next: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6" style={p.flip ? { transform: "scaleX(-1)" } : undefined}>
+      <path d="M6 6.5v11l8-5.5-8-5.5ZM18 6v12" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   // Питание: разомкнутое кольцо с чертой сверху (подключить / отключить)
   power: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
@@ -378,6 +394,128 @@ function FoldHero({ size = 340 }) {
       alt="NEXA"
       style={{ width: size, height: size, display: "block" }}
     />
+  );
+}
+
+/* ---------- ФОН ЭКРАНОВ ----------
+   Тонкая геометрия за содержимым, низкий контраст в обеих темах.
+   BackdropFolds — грани складки в углах (все экраны),
+   BackdropGrid — техническая сетка с метками (экран «Настройки»).
+   Двигается только в ответ на курсор и прокрутку: курсор задаёт
+   CSS-переменные --px/--py (от -1 до 1), прокрутка — --sy (от 0 до 1).
+   React при этом не перерисовывается, меняется только transform.
+   На телефоне и при «уменьшении движения» фон неподвижный. */
+function useBackdropMotion(ref) {
+  useEffect(() => {
+    const el = ref.current;
+    const mq = window.matchMedia;
+    const can = mq && mq("(min-width: 769px) and (pointer: fine)").matches && !mq("(prefers-reduced-motion: reduce)").matches;
+    if (!el || !can) return;
+    let frame = 0, px = 0, py = 0;
+    // Не чаще одного раза за кадр, даже если мышь шлёт события чаще
+    const apply = () => {
+      frame = 0;
+      el.style.setProperty("--px", px.toFixed(3));
+      el.style.setProperty("--py", py.toFixed(3));
+      el.style.setProperty("--sy", Math.min(1, window.scrollY / 800).toFixed(3));
+    };
+    const queue = () => { if (!frame) frame = requestAnimationFrame(apply); };
+    const move = (e) => {
+      px = (e.clientX / window.innerWidth) * 2 - 1;
+      py = (e.clientY / window.innerHeight) * 2 - 1;
+      queue();
+    };
+    window.addEventListener("pointermove", move, { passive: true });
+    window.addEventListener("scroll", queue, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("scroll", queue);
+      cancelAnimationFrame(frame);
+    };
+  }, [ref]);
+}
+
+// Слой фона: от боковой панели до правого края (на телефоне — весь экран)
+const backdropLayer = {
+  position: "fixed", top: 0, right: 0, bottom: 0, left: 78,
+  zIndex: 0, pointerEvents: "none", overflow: "hidden",
+};
+// Мягко догоняет курсор, без рывков
+const BACKDROP_EASE = "transform 700ms cubic-bezier(0.16, 1, 0.3, 1)";
+
+// Линии граней: продолжают наклоны фирменной складки.
+// mint — линия сгиба, остальные — края граней
+function FoldCornerLines() {
+  // Бледные линии: видны как геометрия, но не спорят с текстом поверх
+  const edge = { stroke: `color-mix(in srgb, ${C.blue} 20%, transparent)` };
+  const crease = { stroke: `color-mix(in srgb, ${C.mint} 18%, transparent)` };
+  return (
+    <svg viewBox="0 0 380 340" width={300} height={268} fill="none" strokeWidth="1" style={{ display: "block", overflow: "visible" }}>
+      <path d="M0 236 L238 0" style={edge} vectorEffect="non-scaling-stroke" />
+      <path d="M0 340 L98 170 L380 0" style={edge} vectorEffect="non-scaling-stroke" />
+      <path d="M98 170 L238 0" style={crease} vectorEffect="non-scaling-stroke" />
+      <path d="M0 124 L124 0" style={edge} vectorEffect="non-scaling-stroke" />
+      <path d="M0 236 L98 170" style={crease} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function BackdropFolds() {
+  const ref = useRef(null);
+  useBackdropMotion(ref);
+  return (
+    <div ref={ref} className="nx-backdrop" aria-hidden="true" style={backdropLayer}>
+      {/* Левый верхний угол: поворачивается вокруг своего угла */}
+      <div className="nx-bd-tl" style={{
+        position: "absolute", top: 0, left: 0, transformOrigin: "0 0", transition: BACKDROP_EASE,
+        transform: "rotate(calc(var(--px, 0) * 1.4deg + var(--sy, 0) * 2deg)) translate(calc(var(--px, 0) * 5px), calc(var(--py, 0) * 5px))",
+      }}>
+        <FoldCornerLines />
+      </div>
+      {/* Правый нижний угол: те же грани, развёрнутые на 180°, двигаются навстречу */}
+      <div className="nx-bd-br" style={{
+        position: "absolute", bottom: 0, right: 0, transformOrigin: "100% 100%", transition: BACKDROP_EASE,
+        transform: "rotate(calc(var(--px, 0) * -1.4deg - var(--sy, 0) * 2deg)) translate(calc(var(--px, 0) * -5px), calc(var(--py, 0) * -5px))",
+      }}>
+        <div style={{ transform: "rotate(180deg)" }}><FoldCornerLines /></div>
+      </div>
+    </div>
+  );
+}
+
+// Сетка как на чертеже: мелкий шаг 32px, крупный 128px, по краям метки
+const GRID_STEP = 32, GRID_MAJOR = 128;
+function BackdropGrid() {
+  const ref = useRef(null);
+  useBackdropMotion(ref);
+  const minor = `color-mix(in srgb, ${C.text} 3.5%, transparent)`;
+  const major = `color-mix(in srgb, ${C.text} 7%, transparent)`;
+  const label = { position: "absolute", fontSize: 9, fontFamily: "monospace", color: C.mutedSoft, opacity: 0.7, letterSpacing: "0.08em" };
+  // Сетка на 24px шире экрана со всех сторон — при сдвиге за курсором края не оголяются
+  const PAD = 24;
+  return (
+    <div ref={ref} className="nx-backdrop" aria-hidden="true" style={backdropLayer}>
+      <div style={{
+        position: "absolute", inset: -PAD, transition: BACKDROP_EASE,
+        transform: "translate(calc(var(--px, 0) * -6px), calc(var(--py, 0) * -6px))",
+        backgroundImage:
+          `linear-gradient(${major} 1px, transparent 1px), linear-gradient(90deg, ${major} 1px, transparent 1px),` +
+          `linear-gradient(${minor} 1px, transparent 1px), linear-gradient(90deg, ${minor} 1px, transparent 1px)`,
+        backgroundSize: `${GRID_MAJOR}px ${GRID_MAJOR}px, ${GRID_MAJOR}px ${GRID_MAJOR}px, ${GRID_STEP}px ${GRID_STEP}px, ${GRID_STEP}px ${GRID_STEP}px`,
+      }}>
+        {/* Метки-координаты: буквы сверху, номера слева — у каждой крупной линии */}
+        {Array.from({ length: 20 }, (_, i) => (
+          <span key={`c${i}`} className="nx-bd-label" style={{ ...label, top: PAD + 6, left: i * GRID_MAJOR + 5 }}>
+            {String.fromCharCode(65 + i)}
+          </span>
+        ))}
+        {Array.from({ length: 12 }, (_, i) => i > 0 && (
+          <span key={`r${i}`} className="nx-bd-label" style={{ ...label, left: PAD + 6, top: i * GRID_MAJOR + 4 }}>
+            {String(i).padStart(2, "0")}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -808,7 +946,164 @@ const deviceUsed = (d) =>
 // onOpenDevice открывает окно устройства
 // onAddDevice — открыть окно добавления,
 // onRestoreDevices — вернуть исходные (canRestore — есть ли что возвращать)
-function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
+/* ═══ ЖИВЫЕ СВЯЗИ НА ГЛАВНОЙ ═══════════════════════════════
+   Тонкие линии от каждого устройства в списке к складке-«хабу».
+   В сети — сплошная мятная линия, не в сети — серый пунктир.
+   По линии пробегает точка только по событию: при открытии Главной,
+   когда устройство подключилось/добавилось и когда на него отправили
+   файл (тогда точка бежит от хаба к устройству). Постоянного движения нет.
+   Где строки и хаб, ищем по меткам data-link-id / data-link-hub внутри
+   родительского блока (он должен быть position: relative). */
+const PULSE_MS = 900;
+function DeviceLinks({ devices, received }) {
+  const selfRef = useRef(null);
+  const [geo, setGeo] = useState(null); // { w, h, lines: [{ id, online, x1, y1, x2, y2 }] }
+  const [pulses, setPulses] = useState([]);
+  const deviceKey = devices.map((d) => `${d.id}:${d.online}`).join("|");
+
+  // Пересчёт координат: при смене размера блока и при изменении списка.
+  // Родителя берём через свой элемент — он точно уже на странице
+  useLayoutEffect(() => {
+    const wrap = selfRef.current?.parentElement;
+    if (!wrap) return;
+    const measure = () => {
+      const box = wrap.getBoundingClientRect();
+      const hubEl = wrap.querySelector("[data-link-hub]");
+      if (!box.width || !hubEl) return setGeo(null); // блок скрыт (например, на телефоне)
+      const hub = hubEl.getBoundingClientRect();
+      const x2 = hub.left + hub.width * 0.42 - box.left; // чуть левее центра — в грань складки
+      const y2 = hub.top + hub.height / 2 - box.top;
+      const lines = [...wrap.querySelectorAll("[data-link-id]")].map((el) => {
+        const r = el.getBoundingClientRect();
+        const d = devices.find((x) => x.id === el.dataset.linkId);
+        return { id: el.dataset.linkId, online: !!d?.online, x1: r.right - box.left, y1: r.top + r.height / 2 - box.top, x2, y2 };
+      });
+      setGeo({ w: box.width, h: box.height, lines });
+    };
+    measure();
+    if (!window.ResizeObserver) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [deviceKey]);
+
+  // Когда пускать точку: сравниваем с тем, что было в прошлый раз
+  const prevOnline = useRef(null);
+  const prevReceived = useRef(new Set());
+  useEffect(() => {
+    if (!geo || !geo.lines.length) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const first = prevOnline.current === null;
+    const out = [];
+    geo.lines.forEach((l, i) => {
+      const wasOnline = first ? false : prevOnline.current[l.id];
+      const gotFile = received[l.id] && !prevReceived.current.has(l.id);
+      if (gotFile) out.push({ ...l, back: true, delay: i * 120 });          // файл: от хаба к устройству
+      else if (l.online && !wasOnline) out.push({ ...l, delay: first ? i * 140 : 0 }); // подключилось / первое открытие
+    });
+    prevOnline.current = Object.fromEntries(geo.lines.map((l) => [l.id, l.online]));
+    prevReceived.current = new Set(Object.keys(received));
+    if (!reduce && out.length) {
+      const stamp = Date.now();
+      setPulses((p) => [...p, ...out.map((o, k) => ({ ...o, key: `${stamp}-${k}` }))]);
+    }
+  }, [geo, received]);
+
+  return (
+    <div ref={selfRef} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      {geo && <svg width={geo.w} height={geo.h} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+        {geo.lines.map((l) => (
+          <g key={l.id}>
+            <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} strokeWidth="1"
+              strokeDasharray={l.online ? undefined : "3 5"}
+              style={{
+                stroke: l.online
+                  ? `color-mix(in srgb, ${C.mint} ${received[l.id] ? 70 : 32}%, transparent)`
+                  : C.borderStrong,
+                transition: "stroke 400ms ease",
+              }} />
+            {/* Узелок у края списка — точка «подключения» */}
+            <rect x={l.x1 - 2} y={l.y1 - 2} width="4" height="4" transform={`rotate(45 ${l.x1} ${l.y1})`}
+              style={{ fill: l.online ? C.mint : C.borderStrong }} />
+          </g>
+        ))}
+      </svg>}
+      {pulses.map((p) => (
+        <LinkPulse key={p.key} p={p} onDone={() => setPulses((list) => list.filter((x) => x.key !== p.key))} />
+      ))}
+    </div>
+  );
+}
+
+// Одна точка, которая один раз пробегает по линии и исчезает
+function LinkPulse({ p, onDone }) {
+  const ref = useRef(null);
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+  useLayoutEffect(() => {
+    const [sx, sy, ex, ey] = p.back ? [p.x2, p.y2, p.x1, p.y1] : [p.x1, p.y1, p.x2, p.y2];
+    const a = ref.current.animate([
+      { transform: `translate(${sx}px, ${sy}px)`, opacity: 0 },
+      { opacity: 1, offset: 0.15 },
+      { opacity: 1, offset: 0.85 },
+      { transform: `translate(${ex}px, ${ey}px)`, opacity: 0 },
+    ], { duration: PULSE_MS, delay: p.delay, easing: "cubic-bezier(0.45, 0, 0.25, 1)", fill: "both" });
+    a.onfinish = () => doneRef.current();
+    return () => a.cancel();
+  }, []);
+  return (
+    <span ref={ref} style={{
+      position: "absolute", left: -3, top: -3, width: 6, height: 6, borderRadius: "50%",
+      background: C.mint, opacity: 0, willChange: "transform, opacity",
+    }} />
+  );
+}
+
+/* Телефон: связи без движения — короткие перемычки в зазорах между
+   соседними карточками (по горизонтали и вертикали) с узелком посередине */
+function GridLinks({ count }) {
+  const selfRef = useRef(null);
+  const [geo, setGeo] = useState(null);
+  useLayoutEffect(() => {
+    const wrap = selfRef.current?.parentElement;
+    if (!wrap) return;
+    const measure = () => {
+      const box = wrap.getBoundingClientRect();
+      if (!box.width) return setGeo(null);
+      const cards = [...wrap.querySelectorAll("[data-link-id]")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { l: r.left - box.left, r: r.right - box.left, t: r.top - box.top, b: r.bottom - box.top };
+      });
+      const segs = [];
+      cards.forEach((c, i) => {
+        const right = cards[i + 1], below = cards[i + 2];
+        if (i % 2 === 0 && right) segs.push({ x1: c.r, y1: (c.t + c.b) / 2, x2: right.l, y2: (c.t + c.b) / 2 });
+        if (below) segs.push({ x1: (c.l + c.r) / 2, y1: c.b, x2: (c.l + c.r) / 2, y2: below.t });
+      });
+      setGeo({ w: box.width, h: box.height, segs });
+    };
+    measure();
+    if (!window.ResizeObserver) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [count]);
+  return (
+    <div ref={selfRef} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+    {geo && <svg width={geo.w} height={geo.h} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+      {geo.segs.map((s, i) => (
+        <g key={i}>
+          <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} strokeWidth="1" style={{ stroke: `color-mix(in srgb, ${C.mint} 45%, transparent)` }} />
+          <rect x={(s.x1 + s.x2) / 2 - 1.5} y={(s.y1 + s.y2) / 2 - 1.5} width="3" height="3" style={{ fill: C.mint }} />
+        </g>
+      ))}
+    </svg>}
+    </div>
+  );
+}
+
+// received — у каких устройств отметка «Получен файл» { id: { name } }
+function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
 
@@ -836,7 +1131,9 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreD
       {/* Высота — почти на всё окно (минус футер и отступы), а содержимое
           стоит по центру по вертикали, чтобы снизу не было пустоты */}
       <div className="ng-home-desktop">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40, position: "relative" }}>
+          {/* Связи рисуются первыми — складка и карточки лежат поверх линий */}
+          <DeviceLinks devices={devices} received={received} />
           {/* Левая колонка: заголовок + список */}
           <div>
             <div style={{
@@ -869,13 +1166,16 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreD
               {empty}
               {/* Каждая строка — кнопка: открывает окно устройства */}
               {devices.map((d) => (
-                <button key={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
+                <button key={d.id} data-link-id={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
                   style={{ ...btnReset, display: "block", width: "100%" }}>
                   <Row
                     leftIcon={d.icon({ c: C.text, s: 19 })}
                     title={d.name}
                     subtitle={deviceStatus(d)}
-                    right={<Dot color={d.online ? C.green : C.red} />}
+                    right={<>
+                      {received[d.id] && <ReceivedTag name={received[d.id].name} />}
+                      <Dot color={d.online ? C.green : C.red} />
+                    </>}
                   />
                 </button>
               ))}
@@ -901,7 +1201,7 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreD
                 прежним (340px), поэтому остальные блоки не сдвигаются.
                 Края картинки прозрачные, так что на соседей она не «наезжает» */}
             <div style={{ display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ transform: "scale(1.4)", transformOrigin: "center" }}>
+              <div data-link-hub style={{ transform: "scale(1.4)", transformOrigin: "center" }}>
                 <FoldHero size={340} />
               </div>
             </div>
@@ -988,13 +1288,16 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreD
             display: "grid",
             // minmax(0, 1fr) — длинное название не раздвигает колонку
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: 10,
+            gap: 10, position: "relative",
           }}>
+            {/* Перемычки между карточками — неподвижные связи */}
+            <GridLinks count={devices.length} />
             {/* Карточка — кнопка: открывает окно устройства */}
             {devices.map((d) => (
               <button
                 type="button"
                 key={d.id}
+                data-link-id={d.id}
                 className="nx-row-btn"
                 onClick={() => onOpenDevice(d.id)}
                 style={{
@@ -1013,7 +1316,10 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreD
                 </div>
                 <div style={{ marginTop: "auto", minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
-                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{deviceStatus(d)}</div>
+                  {/* Только что получен файл — отметка вместо статуса */}
+                  {received[d.id]
+                    ? <div style={{ marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></div>
+                    : <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{deviceStatus(d)}</div>}
                 </div>
               </button>
             ))}
@@ -1936,8 +2242,6 @@ const uploadDevice = () =>
 // Название папки для подписей; null — корень "Хранилище"
 const folderName = (folders, id) => (id ? folders.find((f) => f.id === id)?.name || "Хранилище" : "Хранилище");
 
-// Устройства, на которые можно "отправить" файл из окна просмотра
-const SEND_TARGETS = ["Смартфон", "Ноутбук", "Часы", "ТВ"];
 const SETTINGS_INDEX = [
   { title: "Пользователь", subtitle: "user@example.com", keywords: ["профиль", "аккаунт", "почта"] },
   { title: "Тема оформления", subtitle: "Светлая или тёмная", keywords: ["тема", "оформление", "светлая", "тёмная"] },
@@ -2108,7 +2412,8 @@ function StorageSegment({ cat, first, dimmed, active, onClick }) {
 // files — общий список файлов из App, onOpenFile открывает окно просмотра,
 // onOpenCategory переводит на экран "Файлы" с фильтром по категории
 // (null — без фильтра).
-function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
+// onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
+function ScreenMedia({ files, onOpenFile, onOpenCategory, onTransfer }) {
   // Какой сегмент хранилища выбран (id категории или null)
   const [selected, setSelected] = useState(null);
   // Добавленные пользователем файлы прибавляем к объёму своей категории
@@ -2250,18 +2555,23 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
         {recent.map((f) => (
           <div key={f.id} style={{ position: "relative", marginBottom: 10 }}>
             <span style={{ position: "absolute", left: -26, top: "50%", marginTop: -7, width: 14, height: 14, boxSizing: "border-box", borderRadius: "50%", border: `1.5px solid ${C.text}`, background: C.bg }} />
-            <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{
-              ...btnReset, width: "100%", boxSizing: "border-box",
-              border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "7px 14px 7px 8px",
-              display: "flex", alignItems: "center", gap: 14,
+            {/* Карточка файла: нажатие открывает файл, справа — «Передать на…» */}
+            <div data-transfer-card style={{
+              display: "flex", alignItems: "center", gap: 8, paddingRight: 10,
+              border: `1px solid ${C.borderStrong}`, borderRadius: 8,
             }}>
-              <FileThumb file={f} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>{fileMeta(f)}</div>
-              </div>
-              {Icon.chevron({ s: 18 })}
-            </button>
+              <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{
+                ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 8, padding: "7px 8px",
+                display: "flex", alignItems: "center", gap: 14,
+              }}>
+                <FileThumb file={f} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
+                </div>
+              </button>
+              {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
+            </div>
           </div>
         ))}
       </div>
@@ -2297,7 +2607,8 @@ function Crumb({ children, active, onClick }) {
 // плоский список файлов с этого устройства).
 // folders — все папки (демо + созданные), uploads — идущие загрузки,
 // onAddFiles(список, папка) — добавить файлы, onCreateFolder(имя, родитель) — новая папка
-function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder }) {
+// onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
+function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
   const fileInput = useRef(null);
@@ -2613,17 +2924,21 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
             </button>
           );
         })}
+        {/* Строка файла: сама строка открывает файл, справа — «Передать на…».
+            data-transfer-card — отсюда полетит карточка при передаче */}
         {list.map((f) => (
-          <button type="button" key={f.id} className="nx-row-btn" onClick={() => onOpenFile(f)} style={rowStyle}>
-            <FileThumb file={f} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-              <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
-                {fileMeta(f)}{flat ? ` · ${folderById(f.folder).name}` : ""}
+          <div key={f.id} data-transfer-card style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
+            <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
+              <FileThumb file={f} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {fileMeta(f)}{flat ? ` · ${folderName(folders, f.folder)}` : ""}
+                </div>
               </div>
-            </div>
-            {Icon.chevron({ s: 18 })}
-          </button>
+            </button>
+            {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
+          </div>
         ))}
         {subfolders.length === 0 && list.length === 0 && (
           q ? (
@@ -2747,8 +3062,9 @@ function EmptyState({ title, text, action, compact }) {
    сообщение, а удаление убирает файл из списка до перезагрузки страницы.
    Закрывается крестиком, клавишей Esc или кликом по затемнению. */
 // devices — устройства с текущим статусом: отправить можно только на те, что в сети
-// folders — все папки (вместе с созданными), onRename(name) — новое имя
-function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDelete, onRename, onToast }) {
+// folders — все папки (вместе с созданными), onRename(name) — новое имя,
+// onSent(устройство) — файл отправлен
+function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDelete, onRename, onSent, onToast }) {
   // Переименование: editing — открыто ли поле, draft — что сейчас введено
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(file.name);
@@ -2779,7 +3095,9 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
         return;
       }
       setSend({ to: target, state: "success" });
-      onToast?.({ title: "Файл отправлен", text: `${file.name} → ${target}` });
+      // onSent — общее «дошло»: уведомление и отметка у устройства на Главной
+      if (onSent && dev) onSent(dev);
+      else onToast?.({ title: "Файл отправлен", text: `${file.name} → ${target}` });
     }, 900);
   };
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
@@ -2942,7 +3260,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
                 <div className="nx-pop" style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Куда отправить?</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {SEND_TARGETS.filter((d) => d !== file.device).map((d) => {
+                    {devices.filter((x) => x.name !== file.device && x.alias !== file.device).map((x) => x.name).map((d) => {
                       const dev = deviceByName(d);
                       return (
                         <StateButton
@@ -2978,10 +3296,524 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
   );
 }
 
-/* ОКНО УСТРОЙСТВА — открывается по нажатию на устройство на «Главной»
-   или из поиска. Всё в демо-режиме: состояние (в сети ли, переключатели)
-   живёт в App и запоминается в браузере.
-   Закрывается крестиком, клавишей Esc или кликом по затемнению. */
+/* ═══ ПЕРЕДАЧА ФАЙЛА НА УСТРОЙСТВО ═══════════════════════════
+   1) У файла кнопка «Передать на…» → 2) меню с устройствами →
+   3) карточка файла сгибается по диагонали (как складка) и улетает
+   к иконке выбранного устройства → 4) уведомление и отметка
+   «Получен файл» у устройства на Главной. */
+const FLIGHT_MS = 600;          // длительность полёта карточки
+const RECEIVED_MS = 20000;      // сколько держится отметка «Получен файл»
+
+// Отметка «Получен файл» у устройства: мятная рамка, появляется мягко
+function ReceivedTag({ name, compact }) {
+  return (
+    <span className="nx-pop" title={name ? `Получен файл: ${name}` : undefined} style={{
+      display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
+      fontSize: compact ? 10.5 : 11, color: C.mint, lineHeight: 1.2,
+      border: `1px solid color-mix(in srgb, ${C.mint} 55%, transparent)`, borderRadius: 4,
+      padding: compact ? "1px 5px" : "2px 6px",
+    }}>
+      {Icon.check({ c: C.mint, s: 11 })} Получен файл
+    </span>
+  );
+}
+
+// Кнопка «Передать на…» в строке файла. На телефоне — только значок
+function TransferBtn({ onClick }) {
+  return (
+    <button type="button" className="nx-ghost-btn nx-transfer-btn" onClick={onClick} aria-label="Передать на…" title="Передать на…" style={{
+      ...btnReset, display: "flex", alignItems: "center", gap: 6, flexShrink: 0, whiteSpace: "nowrap",
+      border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "6px 12px", fontSize: 12,
+    }}>
+      {Icon.send({ c: C.text, s: 14 })}
+      <span className="nx-transfer-label">Передать на…</span>
+    </button>
+  );
+}
+
+/* Меню выбора устройства. anchor — где кнопка (координаты на экране),
+   sendingId — на какое устройство сейчас летит файл (меню ждёт конца полёта).
+   onPick(устройство, элемент-иконка) — куда лететь карточке */
+function TransferMenu({ anchor, file, devices, sendingId, onPick, onClose }) {
+  const ref = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const busy = sendingId != null;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  // Закрываем по клику мимо, Esc, прокрутке и смене размера окна
+  // (пока карточка летит — не закрываем, чтобы не потерять цель)
+  useEffect(() => {
+    const close = () => { if (!busyRef.current) closeRef.current(); };
+    const down = (e) => { if (ref.current && !ref.current.contains(e.target)) close(); };
+    const key = (e) => { if (e.key === "Escape") close(); };
+    window.addEventListener("mousedown", down);
+    window.addEventListener("touchstart", down);
+    window.addEventListener("keydown", key);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    // Фокус в меню — дальше Tab ведёт по устройствам (рамку не рисуем, пока не нажмут Tab)
+    ref.current?.focus({ preventScroll: true });
+    return () => {
+      window.removeEventListener("mousedown", down);
+      window.removeEventListener("touchstart", down);
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, []);
+
+  // Своё устройство (где файл уже лежит) не предлагаем
+  const list = devices.filter((d) => d.name !== file.device && d.alias !== file.device);
+  // Позиция: под кнопкой, по правому краю; не помещается снизу — над кнопкой
+  const W = 256;
+  const H = 58 + list.length * 50;
+  const left = Math.min(Math.max(12, anchor.right - W), window.innerWidth - W - 12);
+  const below = anchor.bottom + 6;
+  const top = below + H > window.innerHeight - 12 ? Math.max(12, anchor.top - 6 - H) : below;
+
+  return (
+    <div ref={ref} role="menu" aria-label="Передать на устройство" tabIndex={-1} className="nx-pop" style={{
+      position: "fixed", left, top, width: W, zIndex: 320, boxSizing: "border-box", textAlign: "left", outline: "none",
+      background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: 6,
+    }}>
+      <div style={{ padding: "6px 8px 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
+        <div style={{ fontSize: 12, color: C.muted }}>Передать на…</div>
+        <div style={{ fontSize: 12.5, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+      </div>
+      {list.length === 0 && (
+        <div style={{ fontSize: 12.5, color: C.mutedSoft, padding: "10px 8px" }}>Других устройств пока нет</div>
+      )}
+      {list.map((d) => {
+        const sending = sendingId === d.id;
+        return (
+          <button key={d.id} type="button" role="menuitem" className="nx-row-btn"
+            disabled={!d.online || (busy && !sending)}
+            onClick={(e) => !busy && onPick(d, e.currentTarget.querySelector("[data-target]"))}
+            style={{ ...btnReset, width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "7px 8px", borderRadius: 4, boxSizing: "border-box" }}>
+            {/* Сюда прилетит карточка файла */}
+            <span data-target style={{
+              width: 34, height: 34, flexShrink: 0, borderRadius: 4, boxSizing: "border-box",
+              border: `1px solid ${sending ? C.mint : C.border}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "border-color 200ms ease",
+            }}>
+              {d.icon({ c: C.text, s: 17 })}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+              <span style={{ display: "block", fontSize: 11, color: sending ? C.mint : C.mutedSoft, marginTop: 1 }}>
+                {sending ? "Отправка…" : d.online ? "В сети" : "Не в сети"}
+              </span>
+            </span>
+            {sending ? <Spinner /> : <Dot color={d.online ? C.green : C.red} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Полёт карточки: копия карточки файла поверх всего.
+   0–35% — карточка сгибается по диагонали: нижний левый угол (flap,
+   цветная обратная сторона) перелистывается к правому верхнему,
+   и остаётся треугольник-складка. 35–100% — складка уменьшается
+   и летит к иконке устройства. Двигаем только transform/opacity/clip-path */
+const RECT4 = "polygon(0 0, 100% 0, 100% 100%, 0 100%)";
+const TRI4 = "polygon(0 0, 100% 0, 100% 100%, 0 0)";
+function FoldFlight({ file, from: row, to, onDone }) {
+  const box = useRef(null), base = useRef(null), flap = useRef(null);
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+  // Летит компактная карточка (миниатюра + имя) с левого края строки:
+  // у широкой строки сгиб по диагонали выглядел бы тонкой полосой
+  const from = { left: row.left, top: row.top, height: row.height, width: Math.min(row.width, 260) };
+  useLayoutEffect(() => {
+    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    // Во сколько раз уменьшить: до размера иконки устройства
+    const k = Math.max(0.06, Math.min(0.5, to.width / from.width));
+    const opts = { duration: FLIGHT_MS, easing: "cubic-bezier(0.55, 0, 0.25, 1)", fill: "forwards" };
+    const flight = box.current.animate([
+      { transform: "translate(0, 0) scale(1)", opacity: 1 },
+      { transform: "translate(0, 0) scale(0.92)", opacity: 1, offset: 0.35 },
+      { transform: `translate(${dx}px, ${dy}px) scale(${k}) rotate(-10deg)`, opacity: 0.35 },
+    ], opts);
+    base.current.animate([{ clipPath: RECT4 }, { clipPath: TRI4, offset: 0.35 }, { clipPath: TRI4 }], opts);
+    flap.current.animate([
+      { clipPath: "polygon(0 0, 0 100%, 100% 100%)", opacity: 0 },
+      { opacity: 1, offset: 0.08 },
+      { clipPath: "polygon(0 0, 100% 0, 100% 100%)", opacity: 1, offset: 0.35 },
+      { clipPath: "polygon(0 0, 100% 0, 100% 100%)", opacity: 1 },
+    ], opts);
+    flight.onfinish = () => doneRef.current();
+    return () => flight.cancel();
+  }, []);
+  return (
+    <div ref={box} aria-hidden="true" style={{
+      position: "fixed", left: from.left, top: from.top, width: from.width, height: from.height,
+      zIndex: 400, pointerEvents: "none", willChange: "transform, opacity",
+    }}>
+      {/* Лицевая сторона: та же карточка файла */}
+      <div ref={base} style={{
+        position: "absolute", inset: 0, boxSizing: "border-box", background: C.panel,
+        border: `1px solid ${C.borderStrong}`, borderRadius: 4,
+        display: "flex", alignItems: "center", gap: 14, padding: "0 12px", overflow: "hidden",
+      }}>
+        <FileThumb file={file} />
+        <span style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
+      </div>
+      {/* Загнутый угол: обратная сторона в цветах бренда и тёмная грань сгиба */}
+      <div ref={flap} style={{
+        position: "absolute", inset: 0, opacity: 0,
+        background: `linear-gradient(225deg, color-mix(in srgb, ${C.foldDeep} 55%, transparent), transparent 60%), linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})`,
+      }} />
+    </div>
+  );
+}
+
+/* ═══ ПРЕВЬЮ ИНТЕРФЕЙСА NEXA НА УСТРОЙСТВЕ ═══════════════════
+   Корпус рисуем схематично: тонкая линия, без бликов. Экран внутри —
+   уменьшенный интерфейс NEXA, собранный обычной разметкой.
+   Каждое превью нарисовано в своём "родном" размере (PREVIEW_SIZE),
+   а на сцене масштабируется, чтобы влезть и на телефоне. */
+const PREVIEW_SIZE = {
+  phone:  { w: 190, h: 370 },
+  laptop: { w: 470, h: 290 },
+  tablet: { w: 420, h: 290 },
+  watch:  { w: 210, h: 340 },
+  tv:     { w: 490, h: 310 },
+  buds:   { w: 520, h: 250 },
+};
+// Какой тип у устройства: у добавленных он записан, у исходных — это id
+const typeOf = (d) => d.type || d.id;
+
+// Текущее время для превью — обновляем раз в 15 секунд (это не анимация)
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 15000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+const hhmm = (d) => d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+// Ближайшее дело из расписания (или null, если на сегодня всё)
+function nextEvent(now) {
+  const m = now.getHours() * 60 + now.getMinutes();
+  return SCHEDULE.find((it) => {
+    const [h, mm] = it.time.split(":").map(Number);
+    return h * 60 + mm >= m;
+  }) || null;
+}
+
+// Мини-строка устройства для уменьшенной главной
+function MiniDeviceRow({ d, size = 8 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 7px", borderBottom: `1px solid ${C.border}` }}>
+      <span style={{ display: "flex", width: 14, height: 14, border: `1px solid ${C.border}`, borderRadius: 2, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {d.icon({ c: C.text, s: 9 })}
+      </span>
+      <span style={{ fontSize: size, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+      <span style={{ width: 4, height: 4, borderRadius: "50%", background: d.online ? C.green : C.red, flexShrink: 0 }} />
+    </div>
+  );
+}
+
+// Маленькая складка-акцент (та же форма, что у героя на главной)
+function MiniFold({ w = 70, h = 54 }) {
+  return (
+    <div aria-hidden="true" style={{ position: "relative", width: w, height: h }}>
+      <div style={{ position: "absolute", inset: 0, clipPath: "polygon(18% 8%, 100% 0, 78% 100%, 0 82%)", background: `linear-gradient(135deg, ${C.foldDeep}, ${C.foldBlue})` }} />
+      <div style={{ position: "absolute", inset: 0, clipPath: "polygon(100% 0, 78% 100%, 46% 46%)", background: `linear-gradient(135deg, ${C.foldCyan}, ${C.foldMint})`, opacity: 0.9 }} />
+    </div>
+  );
+}
+
+// Уменьшенная главная NEXA — для смартфона и ноутбука
+function MiniHome({ devices, wide, now }) {
+  return (
+    <div style={{ height: "100%", boxSizing: "border-box", padding: wide ? "14px 16px" : "10px 10px", display: "flex", flexDirection: "column", gap: 8, textAlign: "left" }}>
+      {/* Строка состояния: время и логотип-буквы */}
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7, color: C.muted }}>
+        <span style={{ letterSpacing: "0.3em" }}>NEXA</span><span>{hhmm(now)}</span>
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 6, letterSpacing: "0.18em", color: C.muted }}>ВАША ЭКОСИСТЕМА</div>
+          <div style={{ fontFamily: fontDisplay, fontSize: wide ? 14 : 12, fontWeight: 600, lineHeight: 1.15, marginTop: 4 }}>
+            Все устройства в одной системе
+          </div>
+        </div>
+        {!wide && <MiniFold w={44} h={34} />}
+      </div>
+      <div style={{ display: "flex", gap: 10, flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ fontSize: 7.5, padding: "5px 7px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between" }}>
+            <span>Устройства</span>
+            <span style={{ color: C.muted }}>{devices.filter((d) => d.online).length} в сети</span>
+          </div>
+          {devices.slice(0, wide ? 5 : 7).map((d) => <MiniDeviceRow key={d.id} d={d} size={wide ? 8 : 7.5} />)}
+        </div>
+        {wide && (
+          <div style={{ width: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between" }}>
+            <MiniFold w={96} h={76} />
+            <div style={{
+              width: "100%", boxSizing: "border-box", border: `1px solid ${C.border}`, borderRadius: 3, padding: "6px 7px", fontSize: 7.5,
+              background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 30%, transparent), color-mix(in srgb, ${C.mintDark} 30%, transparent))`,
+            }}>
+              AI-ассистент
+              <div style={{ color: C.muted, fontSize: 6.5, marginTop: 2 }}>Чем могу помочь?</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Уменьшенный менеджер файлов — для планшета
+function MiniFiles({ files, folders }) {
+  const roots = folders.filter((f) => f.parent === null).slice(0, 3);
+  const recent = sortByRecent(files).slice(0, 4);
+  const chip = (active) => ({
+    fontSize: 7.5, padding: "3px 10px 3px 9px", color: C.onFold,
+    clipPath: "polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%)",
+    background: active ? `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` : C.foldDeep,
+  });
+  return (
+    <div style={{ height: "100%", boxSizing: "border-box", padding: "12px 14px", textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontFamily: fontDisplay, fontSize: 15 }}>Файлы</div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <span style={chip(false)}>Хранилище</span>
+        <span style={chip(true)}>Недавние</span>
+      </div>
+      <div style={{ borderTop: `1px solid ${C.borderStrong}` }}>
+        {roots.map((f) => (
+          <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ width: 24, height: 16, borderRadius: 2, background: C.chip, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {Icon.folder({ c: C.muted, s: 10 })}
+            </span>
+            <span style={{ fontSize: 8.5 }}>{f.name}</span>
+          </div>
+        ))}
+        {recent.map((f) => (
+          <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", borderBottom: `1px solid ${C.border}` }}>
+            <FileThumb file={f} w={24} h={16} iconSize={9} radius={2} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+              <div style={{ fontSize: 6.5, color: C.mutedSoft }}>{fileMeta(f)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Часы: круглый циферблат — время, ближайшее дело, статус связи
+function WatchFace({ online, now }) {
+  const ev = nextEvent(now);
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 8, color: online ? C.green : C.red }}>
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: online ? C.green : C.red }} />
+        {online ? "На связи" : "Нет связи"}
+      </div>
+      <div style={{ fontFamily: fontDisplay, fontSize: 38, lineHeight: 1, fontWeight: 500, letterSpacing: "-0.02em" }}>{hhmm(now)}</div>
+      <div style={{ fontSize: 8, color: C.muted }}>{now.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}</div>
+      {/* Тонкая черта-грань, как сгиб складки */}
+      <div style={{ width: 70, height: 1, background: `linear-gradient(90deg, transparent, ${C.mint}, transparent)`, margin: "4px 0" }} />
+      <div style={{ fontSize: 8.5, maxWidth: 120, lineHeight: 1.3 }}>
+        {ev ? <><span style={{ color: C.mint }}>{ev.time}</span> · {ev.title}</> : "На сегодня дел нет"}
+      </div>
+    </div>
+  );
+}
+
+// ТВ: «Продолжить просмотр» и полка медиа
+function TvScreen({ files }) {
+  const videos = files.filter((f) => f.cat === "video");
+  const main = videos[0] || DEMO_FILES.find((f) => f.cat === "video");
+  const shelf = files.filter((f) => f.cat === "video" || f.cat === "photo").filter((f) => f.id !== main.id).slice(0, 4);
+  return (
+    <div style={{ height: "100%", boxSizing: "border-box", padding: "16px 18px", textAlign: "left", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 8, letterSpacing: "0.18em", color: C.muted }}>ПРОДОЛЖИТЬ ПРОСМОТР</div>
+      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <div style={{ position: "relative", width: 230, flexShrink: 0 }}>
+          <FileThumb file={main} w={230} h={124} iconSize={22} radius={4} />
+          {/* Прогресс просмотра — тонкая полоска внизу кадра */}
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 3, background: `color-mix(in srgb, ${C.onFold} 25%, transparent)` }}>
+            <div style={{ width: "42%", height: "100%", background: C.mint }} />
+          </div>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{main.name.replace(/\.[^.]+$/, "")}</div>
+          <div style={{ fontSize: 8.5, color: C.muted, marginTop: 3 }}>Осталось 12 мин</div>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 5, marginTop: 10, padding: "5px 12px", borderRadius: 999,
+            fontSize: 8.5, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          }}>
+            {Icon.play({ c: C.onFold, s: 10 })} Продолжить
+          </div>
+        </div>
+      </div>
+      <div style={{ fontSize: 8, letterSpacing: "0.18em", color: C.muted, marginTop: 2 }}>МЕДИА</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        {shelf.map((f) => <FileThumb key={f.id} file={f} w="100%" h={50} iconSize={13} radius={3} />)}
+      </div>
+    </div>
+  );
+}
+
+// Наушники: схема наушников + мини-плеер, заряд и режим (переключается)
+const BUDS_MODES = [["anc", "Шумоподавление"], ["clear", "Прозрачность"], ["off", "Выкл."]];
+function BudsPanel({ files, battery, online }) {
+  const [playing, setPlaying] = useState(false);
+  const [mode, setMode] = useState("anc");
+  const tracks = files.filter((f) => f.cat === "music");
+  const [ti, setTi] = useState(0);
+  const track = tracks.length ? tracks[ti % tracks.length] : null;
+  const b = battery ?? 80;
+  const charge = [["Л", b], ["П", Math.max(5, b - 4)], ["Кейс", 54]];
+  const iconBtn = { ...btnReset, width: 28, height: 28, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center" };
+  return (
+    <div style={{ height: "100%", display: "flex", alignItems: "center", gap: 28, textAlign: "left" }}>
+      {/* Схема: два наушника тонкой линией */}
+      <svg viewBox="0 0 160 200" width={160} height={200} fill="none" stroke={C.muted} strokeWidth="1.2" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <circle cx="48" cy="62" r="26" />
+        <circle cx="48" cy="62" r="11" stroke={online ? C.mint : C.muted} />
+        <path d="M60 85 64 160a8 8 0 0 1-16 1l-2-72" />
+        <circle cx="112" cy="102" r="26" />
+        <circle cx="112" cy="102" r="11" stroke={online ? C.mint : C.muted} />
+        <path d="M100 125 96 186a8 8 0 0 0 16 1l2-62" />
+      </svg>
+      <div style={{ width: 300, border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "14px 16px", background: C.panel, boxSizing: "border-box" }}>
+        {/* Мини-плеер */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {track ? <FileThumb file={track} w={38} h={38} iconSize={15} radius={4} /> : <div style={{ width: 38, height: 38, background: C.chip, borderRadius: 4 }} />}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track ? track.name.replace(/\.[^.]+$/, "") : "Нет треков"}</div>
+            <div style={{ fontSize: 9.5, color: C.muted, marginTop: 2 }}>{playing ? "Играет" : "На паузе"} · Музыка</div>
+          </div>
+          <button type="button" className="nx-icon-btn" aria-label="Предыдущий трек" onClick={() => setTi((i) => i + tracks.length - 1)} style={iconBtn}>
+            {Icon.next({ c: C.text, s: 14, flip: true })}
+          </button>
+          <button type="button" className="nx-icon-btn" aria-label={playing ? "Пауза" : "Играть"} onClick={() => setPlaying(!playing)} style={{ ...iconBtn, border: `1px solid ${C.borderStrong}` }}>
+            {(playing ? Icon.pause : Icon.play)({ c: C.text, s: 14 })}
+          </button>
+          <button type="button" className="nx-icon-btn" aria-label="Следующий трек" onClick={() => setTi((i) => i + 1)} style={iconBtn}>
+            {Icon.next({ c: C.text, s: 14 })}
+          </button>
+        </div>
+        <div style={{ height: 2, background: C.border, marginTop: 10 }}>
+          <div style={{ width: playing ? "38%" : "37%", height: "100%", background: `linear-gradient(90deg, ${C.blue}, ${C.mint})` }} />
+        </div>
+
+        {/* Заряд: левый, правый, кейс */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 14 }}>
+          {charge.map(([label, v]) => (
+            <div key={label}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: C.muted }}><span>{label}</span><span>{v}%</span></div>
+              <div style={{ height: 3, background: C.border, marginTop: 4 }}>
+                <div style={{ width: `${v}%`, height: "100%", background: v < 20 ? C.red : C.green }} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Режим: три кнопки-сегмента */}
+        <div role="radiogroup" aria-label="Режим наушников" style={{ display: "flex", marginTop: 14, border: `1px solid ${C.borderStrong}`, borderRadius: 4, overflow: "hidden" }}>
+          {BUDS_MODES.map(([id, label], i) => (
+            <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} style={{
+              ...btnReset, flex: 1, textAlign: "center", fontSize: 9.5, padding: "6px 4px",
+              borderLeft: i ? `1px solid ${C.borderStrong}` : "none",
+              background: mode === id ? C.blue : "transparent", color: mode === id ? C.onFold : C.text,
+              transition: "background-color 160ms ease, color 160ms ease",
+            }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Корпус + экран для нужного типа. online=false — экран тускнеет, сверху «Нет связи»
+function DevicePreview({ device, devices, files, folders }) {
+  const now = useClock();
+  const type = typeOf(device);
+  const line = `1px solid ${C.muted}`;
+  const screen = { background: C.bg, border: `1px solid ${C.border}`, overflow: "hidden", position: "relative" };
+  // Экран выключенного устройства: тусклый, с подписью поверх
+  const content = (node) => (
+    <>
+      <div style={{ height: "100%", opacity: device.online ? 1 : 0.3, filter: device.online ? "none" : "grayscale(1)", transition: "opacity 300ms ease" }}>{node}</div>
+      {!device.online && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 10, padding: "4px 10px", border: `1px solid ${C.red}`, color: C.red, borderRadius: 4, background: C.bg }}>Нет связи</span>
+        </div>
+      )}
+    </>
+  );
+
+  if (type === "phone") return (
+    <div style={{ width: 190, height: 370, border: line, borderRadius: 26, padding: 7, boxSizing: "border-box", background: C.panel }}>
+      <div style={{ ...screen, height: "100%", borderRadius: 20 }}>{content(<MiniHome devices={devices} now={now} />)}</div>
+    </div>
+  );
+  if (type === "laptop") return (
+    <div style={{ width: 470, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ width: 400, height: 262, border: line, borderRadius: "8px 8px 2px 2px", padding: 8, boxSizing: "border-box", background: C.panel }}>
+        <div style={{ ...screen, height: "100%", borderRadius: 3 }}>{content(<MiniHome devices={devices} now={now} wide />)}</div>
+      </div>
+      {/* Основание: тонкая планка с выемкой под открытие */}
+      <div style={{ width: 470, height: 12, border: line, borderRadius: "2px 2px 10px 10px", boxSizing: "border-box", background: C.panel, display: "flex", justifyContent: "center" }}>
+        <div style={{ width: 60, height: 4, borderBottom: line, borderLeft: line, borderRight: line, borderRadius: "0 0 4px 4px" }} />
+      </div>
+    </div>
+  );
+  if (type === "tablet") return (
+    <div style={{ width: 420, height: 290, border: line, borderRadius: 18, padding: 11, boxSizing: "border-box", background: C.panel }}>
+      <div style={{ ...screen, height: "100%", borderRadius: 8 }}>{content(<MiniFiles files={files} folders={folders} />)}</div>
+    </div>
+  );
+  if (type === "watch") return (
+    <div style={{ width: 210, height: 340, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+      {/* Ремешок сверху и снизу — прямоугольники тонкой линией */}
+      <div style={{ width: 100, height: 70, border: line, borderBottom: "none", borderRadius: "6px 6px 0 0", boxSizing: "border-box" }} />
+      <div style={{ width: 200, height: 200, border: line, borderRadius: "50%", padding: 8, boxSizing: "border-box", background: C.panel, position: "relative" }}>
+        <div style={{ ...screen, height: "100%", borderRadius: "50%" }}>{content(<WatchFace online={device.online} now={now} />)}</div>
+        {/* Колёсико сбоку */}
+        <div style={{ position: "absolute", right: -7, top: 82, width: 7, height: 26, border: line, borderLeft: "none", borderRadius: "0 3px 3px 0", boxSizing: "border-box" }} />
+      </div>
+      <div style={{ width: 100, height: 70, border: line, borderTop: "none", borderRadius: "0 0 6px 6px", boxSizing: "border-box" }} />
+    </div>
+  );
+  if (type === "tv") return (
+    <div style={{ width: 490, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ width: 490, height: 280, border: line, borderRadius: 4, padding: 6, boxSizing: "border-box", background: C.panel }}>
+        <div style={{ ...screen, height: "100%", borderRadius: 2 }}>{content(<TvScreen files={files} />)}</div>
+      </div>
+      {/* Подставка: ножка и основание */}
+      <div style={{ width: 1, height: 16, background: C.muted }} />
+      <div style={{ width: 150, height: 1, background: C.muted }} />
+    </div>
+  );
+  // Наушники: экрана нет — показываем панель управления рядом со схемой
+  return (
+    <div style={{ width: 520, height: 250, position: "relative" }}>
+      {content(<BudsPanel files={files} battery={device.battery} online={device.online} />)}
+    </div>
+  );
+}
+
+/* ЭКРАН УСТРОЙСТВА — открывается по нажатию на устройство на «Главной»
+   или из поиска. Сверху «Назад», в центре превью интерфейса NEXA на этом
+   устройстве (на складке-конверте), ниже статус, заряд и действия.
+   Всё в демо-режиме: состояние (в сети ли, переключатели) живёт в App
+   и запоминается в браузере. */
 const DEVICE_SETTINGS = [
   { key: "sync",  icon: Icon.refresh, title: "Синхронизация",    sub: "Файлы и уведомления на всех устройствах" },
   { key: "dnd",   icon: Icon.dnd,     title: "Не беспокоить",    sub: "Без звуков и всплывающих уведомлений" },
@@ -3020,8 +3852,9 @@ const CONNECT_MS = 1400;    // сколько длится подключени�
 const DISCONNECT_MS = 600;  // отключение быстрее
 const RESULT_MS = 1600;     // сколько кнопка показывает «Подключено» / «Отключено»
 
-// onRemove — удалить устройство из списка (окно при этом закроется)
-function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, onOpenFiles, onRemove, onToast }) {
+// onBack — вернуться назад, onRemove — удалить устройство из списка,
+// devices / files / folders — данные для превью, received — только что получен файл
+function DeviceScreen({ device: d, fileCount, devices, files, folders, received, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const delRef = useRef(null);
@@ -3061,20 +3894,23 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  // Esc закрывает окно; пока окно открыто, страница под ним не скроллится.
-  // onClose храним в ref, чтобы эффект не перезапускался на каждой перерисовке
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  // Экран открылся — начинаем сверху страницы
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  // Превью масштабируем под ширину сцены: меряем сцену при изменении размера
+  // (ResizeObserver срабатывает только когда размер правда поменялся)
+  const stageRef = useRef(null);
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
+    const el = stageRef.current;
+    if (!el || !window.ResizeObserver) return;
+    const ro = new ResizeObserver(([e]) => setStageSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
+  const size = PREVIEW_SIZE[typeOf(d)] || PREVIEW_SIZE.buds;
+  // На большом экране превью можно увеличить (до 1.5), на телефоне — уменьшаем
+  const scale = stageSize.w ? Math.min(1.5, (stageSize.w - 40) / size.w, (stageSize.h - 48) / size.h) : 1;
 
   // Сигнал звучит FIND_MS, потом кнопка "Найти" снова доступна
   useEffect(() => {
@@ -3132,48 +3968,30 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
   };
 
   return (
-    <div className="nx-viewer" onClick={onClose} style={{
-      position: "fixed", inset: 0, zIndex: 300,
-      // Фон под окном слегка размыт — внимание на устройстве
-      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
-      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-    }}>
-      {/* stopPropagation — клик внутри окна не должен его закрывать */}
-      <div
-        role="dialog" aria-modal="true" aria-label={d.name}
-        className="nx-viewer-panel nx-pop nx-scroll"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
-          boxSizing: "border-box", textAlign: "left",
-        }}
-      >
-        {/* Шапка: крупное название и статус */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "22px 22px 16px" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: fontDisplay, fontSize: 30, fontWeight: 400, lineHeight: 1.1 }}>{d.name}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.mutedSoft, marginTop: 6 }}>
-              <Dot color={d.online ? C.green : C.red} />
-              {d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
-            </div>
-          </div>
-          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
-            ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            {Icon.close({ c: C.muted, s: 18 })}
-          </button>
-        </div>
+    <div className="ng-screen nx-device-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080 }}>
+      {/* «Назад» — такой же скошенный чипс, как путь в «Файлах» */}
+      <div style={{ display: "flex" }}>
+        <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+      </div>
 
-        {/* Сцена: крупное устройство на стеклянной складке. Складка
-            цветная, пока устройство в сети, и серая, когда отключено.
-            Во время поиска от устройства расходятся волны сигнала */}
-        <div style={{ padding: "0 18px" }}>
-          <div className="nx-device-stage" style={{
-            position: "relative", height: 210, borderRadius: 20, overflow: "hidden",
-            background: `color-mix(in srgb, ${C.text} 6%, ${C.panel})`,
+      {/* Шапка: крупное название и статус */}
+      <div style={{ display: "flex", alignItems: "flex-end", flexWrap: "wrap", gap: "8px 16px", margin: "22px 0 22px" }}>
+        <div className="ng-display nx-device-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{d.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted, paddingBottom: 6 }}>
+          <Dot color={d.online ? C.green : C.red} />
+          {d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
+          {received && <ReceivedTag name={received.name} />}
+        </div>
+      </div>
+
+      {/* Сцена: превью интерфейса на фоне складки-«конверта». Складка
+          цветная, пока устройство в сети, и «разорвана», когда отключено.
+          Во время поиска от устройства расходятся волны сигнала */}
+      <div>
+          <div ref={stageRef} className="nx-device-stage" style={{
+            position: "relative", height: 440, borderRadius: 10, overflow: "hidden",
+            border: `1px solid ${C.borderStrong}`,
+            background: `color-mix(in srgb, ${C.text} 4%, ${C.bg})`,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             {/* Складка-«конверт»: четыре треугольника сходятся к центру.
@@ -3183,7 +4001,8 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
                 «раскрытие» при подключении запускается эффектом через foldRef */}
             <div
               ref={foldRef}
-              style={{ position: "absolute", width: 236, height: 166 }}
+              // Складка — акцент: стоит правее центра и выглядывает из-за устройства
+              style={{ position: "absolute", width: "min(460px, 54%)", height: "68%", left: "46%", top: "16%" }}
             >
               {DEVICE_FOLD_FACETS.map((f) => (
                 <div key={f.id} className="nx-facet" style={{
@@ -3210,18 +4029,24 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
             {ringing && [0, 1, 2].map((i) => (
               <span key={i} className="nx-ping" style={{ animationDelay: `${i * 400}ms` }} />
             ))}
+            {/* Превью в «родном» размере, уменьшенное под сцену.
+                При подключении один раз проявляется (nx-icon-on) */}
             <div
-              key={flip && flip.on ? `icon-${flip.n}` : "icon"}
+              key={flip && flip.on ? `pv-${flip.n}` : "pv"}
               className={flip && flip.on ? "nx-icon-on" : undefined}
-              style={{ position: "relative", display: "flex" }}
+              style={{ position: "relative", display: "flex", width: size.w, height: size.h, alignItems: "center", justifyContent: "center", flexShrink: 0, transform: `scale(${scale})` }}
             >
-              {d.icon({ c: d.online ? C.onFold : C.muted, s: 64 })}
+              <DevicePreview device={d} devices={devices} files={files} folders={folders} />
             </div>
           </div>
-        </div>
+      </div>
 
+      {/* Под превью: слева статус, заряд и главные кнопки, справа настройки.
+          На телефоне — одной колонкой */}
+      <div className="nx-device-info" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
+      <div>
         {/* Заряд и память */}
-        <div style={{ padding: "20px 22px 4px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ padding: "20px 0 4px", display: "flex", flexDirection: "column", gap: 16 }}>
           {bars.map((b) => (
             <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
               <div style={{ width: 62, flexShrink: 0, color: C.mutedSoft }}>{b.label}</div>
@@ -3241,8 +4066,18 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
             На узком экране третья переносится на новую строку */}
         <div className="nx-device-actions" style={{
           display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(136px, 1fr))",
-          gap: 10, padding: "20px 22px 4px",
+          gap: 10, padding: "20px 0 4px",
         }}>
+          {/* Главная кнопка экрана — подключить / отключить, на всю ширину */}
+          <StateButton
+            state={power}
+            labels={powerLabels}
+            icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
+            onClick={toggleOnline}
+            style={{ ...pillBtn, gridColumn: "1 / -1" }}
+          >
+            {d.online ? "Отключить устройство" : "Подключить устройство"}
+          </StateButton>
           {/* Пока устройство звонит, кнопка в состоянии «загрузка» */}
           <StateButton
             variant="primary"
@@ -3258,24 +4093,17 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
           <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn }}>
             {Icon.folder({ c: C.text, s: 16 })} Файлы · {fileCount}
           </button>
-          <StateButton
-            state={power}
-            labels={powerLabels}
-            icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
-            onClick={toggleOnline}
-            style={pillBtn}
-          >
-            {d.online ? "Отключить" : "Подключить"}
-          </StateButton>
         </div>
         {!d.online && power === "idle" && (
-          <div style={{ padding: "10px 22px 0", fontSize: 12, color: C.mutedSoft }}>
+          <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
             Найти можно только устройство в сети
           </div>
         )}
+      </div>
 
+      <div>
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
-        <div style={{ margin: "20px 22px 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
+        <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
             <div key={s.key} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
@@ -3292,7 +4120,7 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
         </div>
 
         {/* Удаление устройства. Сначала спрашиваем прямо здесь: "Удалить?" */}
-        <div ref={delRef} style={{ padding: "14px 22px 22px" }}>
+        <div ref={delRef} style={{ padding: "14px 0 0" }}>
           {confirmDel ? (
             <div role="alert" className="nx-pop" style={{
               display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12,
@@ -3324,6 +4152,7 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
@@ -4985,7 +5814,8 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
 // Рамка вокруг группы строк
 function SettingsGroup({ children }) {
   return (
-    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 28 }}>
+    // Фон страницы — карточка лежит на сетке-чертеже как плашка, линии не идут сквозь текст
+    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 28, background: C.bg }}>
       {children}
     </div>
   );
@@ -5212,13 +6042,60 @@ export default function NexaApp() {
   // Вернуть исходные устройства, если их удалили
   const restoreDevices = () => setDeviceStore((s) => ({ ...s, removed: [] }));
   const [addOpen, setAddOpen] = useState(false);            // открыто ли окно добавления
-  const [openDeviceId, setOpenDeviceId] = useState(null);   // чьё окно открыто
+  const [openDeviceId, setOpenDeviceId] = useState(null);   // чей экран устройства открыт
+
+  /* Передача файла на устройство.
+     transfer — открытое меню { file, card, anchor, sendingId }:
+       card — где карточка файла (откуда полетит), anchor — где кнопка;
+     flight — идущий полёт карточки { file, from, to, device };
+     received — у каких устройств отметка «Получен файл» { id: { name } } */
+  const [transfer, setTransfer] = useState(null);
+  const [flight, setFlight] = useState(null);
+  const [received, setReceived] = useState({});
+  const receivedTimers = useRef({});
+  useEffect(() => () => Object.values(receivedTimers.current).forEach(clearTimeout), []);
+  const openTransfer = (file, cardEl, btnEl) => {
+    setTransfer({ file, card: cardEl.getBoundingClientRect(), anchor: btnEl.getBoundingClientRect(), sendingId: null });
+  };
+  // Файл «дошёл»: уведомление и отметка у устройства, которая сама пропадает
+  const finishTransfer = (file, device) => {
+    showToast({ title: `Отправлено на ${device.name}`, text: file.name });
+    setReceived((r) => ({ ...r, [device.id]: { name: file.name } }));
+    clearTimeout(receivedTimers.current[device.id]);
+    receivedTimers.current[device.id] = setTimeout(() => {
+      setReceived(({ [device.id]: _, ...rest }) => rest);
+    }, RECEIVED_MS);
+  };
+  const pickTransfer = (device, targetEl) => {
+    const t = transfer;
+    if (!t) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Без анимации (так настроено в системе) — сразу уведомление
+    if (reduce || !targetEl) {
+      setTransfer(null);
+      finishTransfer(t.file, device);
+      return;
+    }
+    setTransfer({ ...t, sendingId: device.id });
+    setFlight({ file: t.file, from: t.card, to: targetEl.getBoundingClientRect(), device });
+  };
+  const endFlight = () => {
+    if (flight) finishTransfer(flight.file, flight.device);
+    setFlight(null);
+    setTransfer(null);
+  };
   const openDevice = devices.find((d) => d.id === openDeviceId);
   const [filesDevice, setFilesDevice] = useState(null);     // отбор файлов по устройству
   const onDeviceFile = (d) => (f) => f.device === d.name || f.device === d.alias;
 
   // Переход по меню всегда открывает "Файлы" без фильтра
-  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setTab(t); };
+  // Переход по меню закрывает и экран устройства
+  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
+  // Открыть экран устройства. С «Ассистента» (там своя раскладка) — через Главную
+  const showDevice = (id) => {
+    if (tab === "assistant") setTab("home");
+    setOpenDeviceId(id);
+  };
   // Из "Медиа" в "Файлы" с фильтром по категории (null — без фильтра)
   const openCategory = (cat) => { setFilesFilter(cat); setFilesDevice(null); setTab("files"); };
   // Из окна устройства в "Файлы" с отбором по этому устройству
@@ -5891,6 +6768,20 @@ export default function NexaApp() {
           /* Кнопки "Новая папка" / "Добавить файл" — под заголовком, поровну */
           .nx-files-head { flex-direction: column; align-items: stretch !important; }
           .nx-files-actions > button { flex: 1 1 0; padding: 11px 12px !important; }
+          /* «Передать на…»: на телефоне только значок, кнопка покрупнее для пальца */
+          .nx-transfer-label { display: none; }
+          .nx-transfer-btn { padding: 9px !important; }
+          /* Экран устройства: сцена ниже, статус и настройки одной колонкой */
+          .nx-device-stage { height: 360px !important; }
+          .nx-device-info { grid-template-columns: minmax(0, 1fr) !important; }
+          .nx-device-title { font-size: 30px !important; }
+          /* Фон на телефоне: на весь экран, без движения. Грани — только
+             в правом нижнем углу над нижним меню, поменьше; у сетки нет меток */
+          .nx-backdrop { left: 0 !important; }
+          .nx-bd-tl { display: none; }
+          .nx-bd-br { bottom: 0 !important; opacity: 0.7; }
+          .nx-bd-br svg { width: 210px; height: 188px; }
+          .nx-bd-label { display: none; }
           .nx-files-list { max-height: none !important; min-height: 0 !important; overflow: visible !important; padding-right: 0 !important; }
           /* Подробности хранилища: кнопка "Открыть в файлах" на всю ширину */
           .nx-storage-detail { gap: 16px !important; }
@@ -6059,6 +6950,8 @@ export default function NexaApp() {
 }
         
       `}</style>
+      {/* Фон за содержимым: на «Настройках» — сетка-чертёж, на остальных — грани складки */}
+      {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       <Sidebar active={tab} onChange={goTab} />
           <MobileTabBar active={tab} onChange={goTab} />
 
@@ -6077,22 +6970,42 @@ export default function NexaApp() {
             очень широких мониторах, но при этом свободно заполняет
             обычное окно браузера */}
         <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
-    {tab === "assistant" ? (
+    {/* Открыт экран устройства — показываем его вместо текущего раздела */}
+    {openDevice ? (
+    <div key={`dev-${openDevice.id}`} className="ng-screen-anim">
+      <DeviceScreen
+        key={openDevice.id}
+        device={openDevice}
+        devices={devices}
+        files={files}
+        folders={folders}
+        received={received[openDevice.id]}
+        fileCount={files.filter(onDeviceFile(openDevice)).length}
+        onBack={() => setOpenDeviceId(null)}
+        onSetOnline={(online) => patchDevice(openDevice.id, { online })}
+        onSetting={(key) => patchDevice(openDevice.id, { [key]: !openDevice[key] })}
+        onOpenFiles={() => openDeviceFiles(openDevice.id)}
+        onRemove={() => removeDevices([openDevice.id])}
+        onToast={showToast}
+      />
+    </div>
+  ) : tab === "assistant" ? (
     <ScreenAssistant initialChatId={searchChatId} onToast={showToast} />
   ) : (
     <div key={tab} className="ng-screen-anim">
       {tab === "home" && (
         <ScreenHome
           devices={devices}
+          received={received}
           onNavigate={goTab}
-          onOpenDevice={setOpenDeviceId}
+          onOpenDevice={showDevice}
           onAddDevice={() => setAddOpen(true)}
           onRestoreDevices={restoreDevices}
           canRestore={deviceStore.removed.length > 0}
         />
       )}
       {tab === "today" && <ScreenToday />}
-      {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} />}
+      {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
       {tab === "files" && (
         <ScreenFiles
           key={`files-${searchFolder || "root"}`}
@@ -6106,6 +7019,7 @@ export default function NexaApp() {
           uploads={uploads}
           onAddFiles={addFiles}
           onCreateFolder={createFolder}
+          onTransfer={openTransfer}
         />
       )}
       {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} />}
@@ -6146,6 +7060,7 @@ export default function NexaApp() {
           onClose={closeViewer}
           onDelete={deleteFile}
           onRename={(name) => renameFile(openFile.id, name)}
+          onSent={(device) => finishTransfer(files.find((f) => f.id === openFile.id), device)}
           onToast={showToast}
         />
       )}
@@ -6159,25 +7074,24 @@ export default function NexaApp() {
           onClose={() => setAddOpen(false)}
         />
       )}
-      {openDevice && (
-        <DeviceViewer
-          key={openDevice.id}
-          device={openDevice}
-          fileCount={files.filter(onDeviceFile(openDevice)).length}
-          onClose={() => setOpenDeviceId(null)}
-          onSetOnline={(online) => patchDevice(openDevice.id, { online })}
-          onSetting={(key) => patchDevice(openDevice.id, { [key]: !openDevice[key] })}
-          onOpenFiles={() => openDeviceFiles(openDevice.id)}
-          onRemove={() => removeDevices([openDevice.id])}
-          onToast={showToast}
+      {/* Меню «Передать на…» и полёт карточки к устройству */}
+      {transfer && (
+        <TransferMenu
+          anchor={transfer.anchor}
+          file={transfer.file}
+          devices={devices}
+          sendingId={transfer.sendingId}
+          onPick={pickTransfer}
+          onClose={() => setTransfer(null)}
         />
       )}
+      {flight && <FoldFlight file={flight.file} from={flight.from} to={flight.to} onDone={endFlight} />}
       {searchOpen && (
         <GlobalSearch
           files={files}
           folders={folders}
           devices={devices}
-          onOpenDevice={setOpenDeviceId}
+          onOpenDevice={showDevice}
           onClose={() => setSearchOpen(false)}
           onOpenFile={(f) => setOpenFile(f)}
           onOpenFolder={openFolderFromSearch}
