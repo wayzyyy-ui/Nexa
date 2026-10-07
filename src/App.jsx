@@ -173,6 +173,13 @@ const Icon = {
       <path d="M11 18h2" strokeLinecap="round" />
     </svg>
   ),
+  // Планшет: шире смартфона, со срезанным углом-«складкой» сверху справа
+  tablet: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M5.5 3.5h10l3 3v14h-13v-17Z" strokeLinejoin="round" />
+      <path d="M15.5 3.5v3h3M10.5 17.5h3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   laptop: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <rect x="4" y="5" width="16" height="10.5" rx="1.5" />
@@ -647,8 +654,8 @@ function Logo({ small }) {
 
 // Универсальная строка списка (используется в карточке устройств,
 // настройках, и т.д.): иконка слева, заголовок+подпись, что-то справа
-// (например статус) и стрелка-шеврон.
-function Row({ leftIcon, title, subtitle, right, accent }) {
+// (например статус) и стрелка-шеврон. lead — что-то перед иконкой (галочка выбора).
+function Row({ lead, leftIcon, title, subtitle, right, accent }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -656,6 +663,7 @@ function Row({ leftIcon, title, subtitle, right, accent }) {
     }}>
       {/* Левая часть: иконка + текст — занимает всё свободное место */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
+        {lead}
         {leftIcon && (
           <div style={{
             width: 42, height: 42, borderRadius: 4, border: `1px solid ${C.border}`,
@@ -747,9 +755,44 @@ const DEVICES = [
   { id: "tv",     icon: Icon.tv,     name: "Телевизор", battery: null, memory: 64,  online: true,  lastSeen: "только что", alias: "ТВ" },
 ];
 
+// Какие устройства можно добавить. battery и memory — стартовые данные
+// нового устройства (battery: null — работает от сети)
+const DEVICE_TYPES = [
+  { type: "phone",  icon: Icon.phone,  name: "Смартфон",  battery: 100,  memory: 128 },
+  { type: "laptop", icon: Icon.laptop, name: "Ноутбук",   battery: 78,   memory: 512 },
+  { type: "tablet", icon: Icon.tablet, name: "Планшет",   battery: 86,   memory: 256 },
+  { type: "watch",  icon: Icon.watch,  name: "Часы",      battery: 100,  memory: 32 },
+  { type: "buds",   icon: Icon.buds,   name: "Наушники",  battery: 90,   memory: 1 },
+  { type: "tv",     icon: Icon.tv,     name: "Телевизор", battery: null, memory: 64 },
+];
+const deviceType = (type) => DEVICE_TYPES.find((t) => t.type === type) || DEVICE_TYPES[0];
+
+// Название без повторов: "Планшет" → если занято, "Планшет 2", "Планшет 3"…
+function uniqueDeviceName(base, names) {
+  if (!names.includes(base)) return base;
+  let i = 2;
+  while (names.includes(`${base} ${i}`)) i++;
+  return `${base} ${i}`;
+}
+
 // Настройки устройства по умолчанию (переключатели в окне устройства)
 const DEVICE_DEFAULTS = { sync: true, dnd: false, saver: false };
 const DEVICES_KEY = "nexa-devices"; // ключ в localStorage
+
+/* Что лежит в localStorage под DEVICES_KEY:
+   { v: 2, state, added, removed }
+   state   — настройки и статус каждого устройства по id;
+   added   — устройства, которые пользователь добавил сам;
+   removed — id удалённых исходных устройств.
+   Раньше там лежал только state — такой старый формат тоже читаем. */
+function loadDeviceStore() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(DEVICES_KEY)); } catch {}
+  if (raw && raw.v === 2) {
+    return { v: 2, state: raw.state || {}, added: raw.added || [], removed: raw.removed || [] };
+  }
+  return { v: 2, state: raw || {}, added: [], removed: [] };
+}
 
 // Подпись статуса: "Онлайн • 92%", "Онлайн" или "Не в сети"
 const deviceStatus = (d) =>
@@ -761,12 +804,128 @@ const deviceUsed = (d) =>
     .filter(([n]) => n === d.name || n === d.alias)
     .reduce((s, [, gb]) => s + gb, 0), 0);
 
+// Галочка выбора: квадрат с тонкой рамкой. on — выбрано,
+// partial — выбрана часть (для "Выбрать все"): вместо галочки черта
+function SelectBox({ on, partial }) {
+  const filled = on || partial;
+  return (
+    <span aria-hidden="true" style={{
+      width: 18, height: 18, borderRadius: 4, flexShrink: 0, boxSizing: "border-box",
+      border: `1px solid ${filled ? C.blue : C.borderStrong}`,
+      background: filled ? C.blue : "transparent",
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      transition: "background-color 140ms ease, border-color 140ms ease",
+    }}>
+      {on ? Icon.check({ c: C.onFold, s: 13 })
+        : partial ? <span style={{ width: 8, height: 1.6, background: C.onFold }} /> : null}
+    </span>
+  );
+}
+
+// Нижняя панель режима выбора: "Выбрано N" и "Удалить".
+// Перед удалением спрашивает подтверждение прямо здесь, без отдельного окна
+function DeviceDeleteBar({ count, onDelete }) {
+  const [confirm, setConfirm] = useState(false);
+  // Сняли все галочки — вопрос больше не нужен
+  useEffect(() => { if (count === 0) setConfirm(false); }, [count]);
+  // На телефоне панель может оказаться под нижним меню — прокручиваем к вопросу
+  const barRef = useRef(null);
+  useEffect(() => {
+    // offsetParent пустой у скрытой копии (десктопной на телефоне и наоборот)
+    if (!confirm || !barRef.current?.offsetParent) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    barRef.current.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+  }, [confirm]);
+  const word = plural(count, ["устройство", "устройства", "устройств"]);
+  const smallBtn = {
+    ...btnReset, borderRadius: 4, padding: "8px 12px", fontSize: 13,
+    display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+  };
+  return (
+    <div ref={barRef} className="nx-pop" style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      flexWrap: "wrap", gap: 10, padding: "12px 18px",
+    }}>
+      {confirm ? (
+        <>
+          <span role="alert" style={{ fontSize: 13 }}>Удалить {count} {word}?</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="nx-ghost-btn" onClick={() => setConfirm(false)}
+              style={{ ...smallBtn, border: `1px solid ${C.borderStrong}` }}>
+              Отмена
+            </button>
+            <button type="button" className="nx-primary" onClick={onDelete}
+              style={{ ...smallBtn, border: `1px solid ${C.red}`, background: C.red, color: C.onFold, fontWeight: 500 }}>
+              {Icon.trash({ c: C.onFold, s: 15 })} Удалить
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span style={{ fontSize: 13, color: C.muted }}>
+            {count ? `Выбрано: ${count}` : "Отметьте устройства"}
+          </span>
+          <button type="button" className="nx-ghost-btn" disabled={!count} onClick={() => setConfirm(true)}
+            style={{ ...smallBtn, border: `1px solid color-mix(in srgb, ${C.red} 55%, transparent)`, color: C.red }}>
+            {Icon.trash({ c: C.red, s: 15 })} Удалить
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ЭКРАН "ГЛАВНАЯ" — список устройств + складка + карточка ассистента
 // devices — устройства с текущим состоянием (в сети или нет) из App,
 // onOpenDevice открывает окно устройства
-function ScreenHome({ devices, onNavigate, onOpenDevice }) {
+// onAddDevice — открыть окно добавления, onRemoveDevices(ids) — удалить,
+// onRestoreDevices — вернуть исходные (canRestore — есть ли что возвращать)
+function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDevices, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
+
+  // Режим выбора: у устройств появляются галочки, внизу — "Удалить"
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState([]);
+  const sel = picked.filter((id) => devices.some((d) => d.id === id)); // только существующие
+  const allOn = devices.length > 0 && sel.length === devices.length;
+  const togglePick = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const toggleAll = () => setPicked(allOn ? [] : devices.map((d) => d.id));
+  const stopSelect = () => { setSelecting(false); setPicked([]); };
+  const deletePicked = () => { onRemoveDevices(sel); stopSelect(); };
+  // Нажатие на устройство: в режиме выбора ставит галочку, иначе открывает окно
+  const pressDevice = (id) => (selecting ? togglePick(id) : onOpenDevice(id));
+
+  // Кнопка "Выбрать" / "Отмена" в шапке списка
+  const selectBtn = devices.length > 0 && (
+    <button type="button" className="nx-link-btn" onClick={selecting ? stopSelect : () => setSelecting(true)}
+      style={{ ...btnReset, fontSize: 13, color: C.muted }}>
+      {selecting ? "Отмена" : "Выбрать"}
+    </button>
+  );
+  // "Выбрать все" вместо заголовка, пока идёт выбор
+  const selectAllBtn = (
+    <button type="button" onClick={toggleAll} aria-pressed={allOn}
+      style={{ ...btnReset, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+      <SelectBox on={allOn} partial={!allOn && sel.length > 0} /> Выбрать все
+    </button>
+  );
+  // Пустой список: добавить новое или вернуть исходные
+  const empty = devices.length === 0 && (
+    <EmptyState
+      compact
+      title="Устройств пока нет"
+      text="Подключите новое устройство, и оно появится здесь"
+      action={
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+          <StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>
+            Добавить устройство
+          </StateButton>
+          {canRestore && <StateButton onClick={onRestoreDevices}>Вернуть исходные</StateButton>}
+        </div>
+      }
+    />
+  );
 
   return (
     <div className="ng-screen ng-home" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
@@ -797,26 +956,50 @@ function ScreenHome({ devices, onNavigate, onOpenDevice }) {
                 alignItems: "center", padding: "16px 18px",
                 borderBottom: `1px solid ${C.border}`,
               }}>
-                <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>
-                <span title="В сети" style={{
-                  display: "flex", alignItems: "center",
-                  gap: 6, fontSize: 13, color: C.muted,
-                }}>
-                  {onlineCount} <Dot color={C.green} />
-                </span>
+                {selecting ? selectAllBtn : <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>}
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  {!selecting && (
+                    <span title="В сети" style={{
+                      display: "flex", alignItems: "center",
+                      gap: 6, fontSize: 13, color: C.muted,
+                    }}>
+                      {onlineCount} <Dot color={C.green} />
+                    </span>
+                  )}
+                  {selectBtn}
+                </div>
               </div>
-              {/* Каждая строка — кнопка: открывает окно устройства */}
+              {empty}
+              {/* Каждая строка — кнопка: открывает окно устройства
+                  (в режиме выбора — ставит галочку) */}
               {devices.map((d) => (
-                <button key={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
+                <button key={d.id} type="button" className="nx-row-btn" onClick={() => pressDevice(d.id)}
+                  aria-pressed={selecting ? sel.includes(d.id) : undefined}
                   style={{ ...btnReset, display: "block", width: "100%" }}>
                   <Row
+                    lead={selecting && <SelectBox on={sel.includes(d.id)} />}
                     leftIcon={d.icon({ c: C.text, s: 19 })}
                     title={d.name}
                     subtitle={deviceStatus(d)}
                     right={<Dot color={d.online ? C.green : C.red} />}
+                    accent={!selecting}
                   />
                 </button>
               ))}
+              {/* Внизу списка: "Удалить" в режиме выбора, иначе — "Добавить устройство" */}
+              {selecting ? (
+                <DeviceDeleteBar count={sel.length} onDelete={deletePicked} />
+              ) : devices.length > 0 && (
+                <button type="button" className="nx-row-btn" onClick={onAddDevice}
+                  style={{ ...btnReset, display: "block", width: "100%", borderRadius: "0 0 16px 16px" }}>
+                  <Row
+                    leftIcon={Icon.plus({ c: C.mint, s: 18 })}
+                    title="Добавить устройство"
+                    subtitle="Смартфон, планшет, часы и другие"
+                    accent={false}
+                  />
+                </button>
+              )}
             </div>
           </div>
 
@@ -904,44 +1087,76 @@ function ScreenHome({ devices, onNavigate, onOpenDevice }) {
             <div className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>
               Мои устройства
             </div>
-            <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
-              <span>{onlineCount}</span>
-              <Dot color={C.green} />
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
+                <span>{onlineCount}</span>
+                <Dot color={C.green} />
+              </div>
+              {selectBtn}
             </div>
           </div>
+          {selecting && <div style={{ marginBottom: 12 }}>{selectAllBtn}</div>}
+          {empty && <div style={{ border: `1px solid ${C.border}`, borderRadius: 14 }}>{empty}</div>}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
+            // minmax(0, 1fr) — длинное название не раздвигает колонку
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: 10,
           }}>
-            {/* Карточка — кнопка: открывает окно устройства */}
+            {/* Карточка — кнопка: открывает окно устройства
+                (в режиме выбора — ставит галочку, выбранная обведена синим) */}
             {devices.map((d) => (
               <button
                 type="button"
                 key={d.id}
                 className="nx-row-btn"
-                onClick={() => onOpenDevice(d.id)}
+                onClick={() => pressDevice(d.id)}
+                aria-pressed={selecting ? sel.includes(d.id) : undefined}
                 style={{
                   ...btnReset,
-                  border: `1px solid ${C.border}`, borderRadius: 14,
+                  border: `1px solid ${selecting && sel.includes(d.id) ? C.blue : C.border}`, borderRadius: 14,
                   padding: 14, cursor: "pointer", position: "relative",
                   display: "flex", flexDirection: "column", gap: 10,
-                  minHeight: 96,
+                  minHeight: 96, minWidth: 0,
                 }}
               >
-                <div style={{ position: "absolute", top: 12, right: 12 }}>
-                  <Dot color={d.online ? C.green : C.red} />
+                <div style={{ position: "absolute", top: 12, right: 12, display: "flex" }}>
+                  {selecting ? <SelectBox on={sel.includes(d.id)} /> : <Dot color={d.online ? C.green : C.red} />}
                 </div>
                 <div style={{ width: 26, height: 26 }}>
                   {d.icon({ c: C.text, s: 24 })}
                 </div>
-                <div style={{ marginTop: "auto" }}>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{d.name}</div>
+                <div style={{ marginTop: "auto", minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
                   <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{deviceStatus(d)}</div>
                 </div>
               </button>
             ))}
+            {/* Последняя карточка — "Добавить": пунктирная рамка, мятный плюс */}
+            {!selecting && devices.length > 0 && (
+              <button
+                type="button"
+                className="nx-row-btn"
+                onClick={onAddDevice}
+                style={{
+                  ...btnReset,
+                  border: `1px dashed ${C.borderStrong}`, borderRadius: 14,
+                  padding: 14, display: "flex", flexDirection: "column", gap: 10,
+                  minHeight: 96, minWidth: 0,
+                }}
+              >
+                <div style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {Icon.plus({ c: C.mint, s: 22 })}
+                </div>
+                <div style={{ marginTop: "auto", fontSize: 14, fontWeight: 500 }}>Добавить устройство</div>
+              </button>
+            )}
           </div>
+          {selecting && (
+            <div style={{ marginTop: 10, border: `1px solid ${C.border}`, borderRadius: 14 }}>
+              <DeviceDeleteBar count={sel.length} onDelete={deletePicked} />
+            </div>
+          )}
         </div>
 
         {/* AI-карточка */}
@@ -2880,6 +3095,280 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
   );
 }
 
+/* ОКНО "ДОБАВИТЬ УСТРОЙСТВО" — три шага и финал:
+   1) тип устройства → 2) поиск (≈2 с) и найденное → 3) название → "Готово".
+   Всё понарошку: поиск и подключение только изображаются таймерами.
+   Закрывается крестиком, Esc или кликом по затемнению.
+   names — названия, которые уже есть (чтобы не было двух одинаковых),
+   onAdd(type, name) — добавить устройство в список */
+const SEARCH_MS = 1800; // сколько идёт "поиск устройства"
+const PAIR_MS = 900;    // сколько идёт "подключение" после ввода названия
+const ADD_STEPS = ["Тип", "Поиск", "Название"];
+const NAME_MAX = 24;    // самое длинное название, чтобы влезало в карточку
+
+function AddDeviceModal({ names, onAdd, onClose }) {
+  // step: "type" | "search" | "found" | "name" | "done"
+  const [step, setStep] = useState("type");
+  const [type, setType] = useState(null);
+  const [name, setName] = useState("");
+  const [pairing, setPairing] = useState(false); // идёт ли подключение
+  const inputRef = useRef(null);
+  const t = type && deviceType(type);
+
+  // Таймеры поиска и подключения: отменяем при "Назад" и при закрытии окна
+  const timers = useRef([]);
+  const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
+  const stopTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
+  useEffect(() => stopTimers, []);
+
+  // Esc закрывает окно; страница под окном не скроллится (как в окне устройства)
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // На шаге названия сразу ставим курсор в поле
+  useEffect(() => { if (step === "name") inputRef.current?.focus(); }, [step]);
+
+  const pickType = (tp) => {
+    setType(tp);
+    setStep("search");
+    later(() => setStep("found"), SEARCH_MS);
+  };
+  const toName = () => { setName(uniqueDeviceName(t.name, names)); setStep("name"); };
+  const back = () => {
+    stopTimers();
+    setPairing(false);
+    setStep(step === "name" ? "found" : "type");
+  };
+  const again = () => { setType(null); setName(""); setStep("type"); };
+
+  // Проверка названия: не пустое и не повторяет уже существующее
+  const trimmed = name.trim();
+  const nameError = !trimmed ? "Введите название" : names.includes(trimmed) ? "Такое название уже есть" : null;
+  const connect = () => {
+    if (nameError || pairing) return;
+    setPairing(true);
+    later(() => { onAdd(type, trimmed); setPairing(false); setStep("done"); }, PAIR_MS);
+  };
+
+  // Номер шага для полоски сверху: поиск и "найдено" — это один шаг
+  const stepIndex = { type: 0, search: 1, found: 1, name: 2, done: 3 }[step];
+  const titles = {
+    type: "Что подключаем?",
+    search: "Поиск устройства…",
+    found: "Устройство найдено",
+    name: "Как назвать?",
+    done: "Готово",
+  };
+
+  // Сцена с устройством — для поиска, найденного и финала
+  const stage = (
+    <div style={{
+      position: "relative", height: 170, borderRadius: 4, overflow: "hidden",
+      // Подключено — сцена окрашивается в цвета бренда: это и есть "связь есть"
+      background: step === "done"
+        ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})`
+        : `color-mix(in srgb, ${C.text} 6%, ${C.panel})`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      {/* Пока ищем — от устройства расходятся квадратные волны */}
+      {step === "search" && [0, 1, 2].map((i) => (
+        <span key={i} className="nx-ping" style={{ animationDelay: `${i * 300}ms` }} />
+      ))}
+      <div
+        key={step}
+        className={step === "search" ? undefined : "nx-icon-on"}
+        style={{ position: "relative", display: "flex" }}
+      >
+        {t && t.icon({ c: step === "done" ? C.onFold : step === "search" ? C.muted : C.text, s: 56 })}
+      </div>
+    </div>
+  );
+
+  const ghostBtn = {
+    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+    padding: "10px 16px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+  };
+  const footer = { display: "flex", gap: 10, marginTop: 20 };
+
+  return (
+    <div className="nx-viewer" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      {/* stopPropagation — клик внутри окна не должен его закрывать */}
+      <div
+        role="dialog" aria-modal="true" aria-labelledby="nx-add-title"
+        className="nx-viewer-panel nx-pop nx-scroll"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(460px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+          boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
+        }}
+      >
+        {/* Шапка: номер шага, заголовок и крестик */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: C.mutedSoft, letterSpacing: "0.04em" }}>
+              {step === "done" ? "Новое устройство" : `Шаг ${stepIndex + 1} из 3`}
+            </div>
+            <div id="nx-add-title" style={{ fontFamily: fontDisplay, fontSize: 24, lineHeight: 1.15, marginTop: 4 }}>
+              {titles[step]}
+            </div>
+          </div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
+            ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.close({ c: C.muted, s: 18 })}
+          </button>
+        </div>
+
+        {/* Полоска шагов: пройденные и текущий — синие, впереди — серые */}
+        <div style={{ display: "flex", gap: 6, margin: "16px 0 20px" }} aria-hidden="true">
+          {ADD_STEPS.map((label, i) => (
+            <div key={label} style={{ flex: 1 }}>
+              <div style={{
+                height: 2, background: i <= stepIndex ? C.blue : C.border,
+                transition: "background-color 240ms ease",
+              }} />
+              <div style={{ fontSize: 11, marginTop: 6, color: i === stepIndex ? C.text : C.mutedSoft }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Содержимое шага. key — чтобы каждый шаг мягко появлялся заново */}
+        <div key={step === "found" ? "search" : step} className="nx-pop">
+          {step === "type" && (
+            <div className="nx-add-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+              {DEVICE_TYPES.map((dt) => (
+                <button key={dt.type} type="button" className="nx-cat-card" onClick={() => pickType(dt.type)} style={{
+                  ...btnReset, border: `1px solid ${C.border}`, borderRadius: 4,
+                  padding: "18px 8px 14px", display: "flex", flexDirection: "column",
+                  alignItems: "center", gap: 10, textAlign: "center",
+                }}>
+                  {dt.icon({ c: C.text, s: 28 })}
+                  <span style={{ fontSize: 13 }}>{dt.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {(step === "search" || step === "found") && (
+            <>
+              {stage}
+              <div role="status" style={{ marginTop: 14, minHeight: 42 }}>
+                {step === "search" ? (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+                      <Spinner /> Ищем {t.name.toLowerCase()} рядом с вами
+                    </div>
+                    <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 4 }}>
+                      Устройство должно быть включено и лежать рядом
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+                      <Dot color={C.green} /> {t.name} · рядом с вами
+                    </div>
+                    <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 4 }}>
+                      Сигнал хороший, можно подключать
+                    </div>
+                  </>
+                )}
+              </div>
+              <div style={footer}>
+                <button type="button" className="nx-ghost-btn" onClick={back} style={ghostBtn}>
+                  {Icon.arrowLeft({ c: C.text, s: 16 })} Назад
+                </button>
+                <StateButton variant="primary" disabled={step !== "found"} onClick={toName} style={{ flex: 1, padding: "10px 16px" }}>
+                  Дальше
+                </StateButton>
+              </div>
+            </>
+          )}
+
+          {step === "name" && (
+            // form — чтобы "Подключить" срабатывало и по Enter
+            <form onSubmit={(e) => { e.preventDefault(); connect(); }}>
+              <label htmlFor="nx-add-name" style={{ fontSize: 13, color: C.muted }}>Название</label>
+              <input
+                id="nx-add-name"
+                ref={inputRef}
+                className="nx-input"
+                value={name}
+                maxLength={NAME_MAX}
+                disabled={pairing}
+                onChange={(e) => setName(e.target.value)}
+                aria-invalid={!!nameError}
+                aria-describedby="nx-add-hint"
+                style={{
+                  display: "block", width: "100%", boxSizing: "border-box", marginTop: 8,
+                  background: "transparent", color: C.text, fontSize: 16, fontFamily: "inherit",
+                  border: `1px solid ${nameError ? C.red : C.borderStrong}`, borderRadius: 4,
+                  padding: "12px 14px", outline: "none",
+                }}
+              />
+              <div id="nx-add-hint" style={{ fontSize: 12.5, marginTop: 8, color: nameError ? C.red : C.mutedSoft }}>
+                {nameError || "Под этим названием устройство появится в списке"}
+              </div>
+              <div style={footer}>
+                <button type="button" className="nx-ghost-btn" onClick={back} disabled={pairing} style={ghostBtn}>
+                  {Icon.arrowLeft({ c: C.text, s: 16 })} Назад
+                </button>
+                <StateButton
+                  variant="primary"
+                  state={pairing ? "loading" : "idle"}
+                  labels={{ loading: "Подключение…" }}
+                  disabled={!!nameError}
+                  onClick={connect}
+                  style={{ flex: 1, padding: "10px 16px" }}
+                >
+                  Подключить
+                </StateButton>
+              </div>
+            </form>
+          )}
+
+          {step === "done" && (
+            <>
+              {stage}
+              <div role="status" style={{ marginTop: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+                  <Dot color={C.green} /> {trimmed} · Онлайн
+                </div>
+                <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 4 }}>
+                  Устройство подключено и уже есть в списке
+                </div>
+              </div>
+              <div style={footer}>
+                <button type="button" className="nx-ghost-btn" onClick={again} style={ghostBtn}>
+                  {Icon.plus({ c: C.text, s: 15 })} Ещё одно
+                </button>
+                <StateButton variant="primary" onClick={onClose} style={{ flex: 1, padding: "10px 16px" }}>
+                  Готово
+                </StateButton>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── СИСТЕМНЫЕ УВЕДОМЛЕНИЯ (ТОСТЫ) ────────────────────────
    Короткая обратная связь поверх приложения: файл отправлен,
    ссылка скопирована, диалог удалён и т.п. Показываются стеком
@@ -4430,15 +4919,51 @@ export default function NexaApp() {
 
   // Устройства: в сети ли и положение переключателей. Запоминаем в браузере,
   // чтобы после перезагрузки всё осталось как было
-  const [deviceState, setDeviceState] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(DEVICES_KEY)) || {}; } catch { return {}; }
-  });
+  // Здесь же — добавленные и удалённые устройства (см. loadDeviceStore)
+  const [deviceStore, setDeviceStore] = useState(loadDeviceStore);
   useEffect(() => {
-    try { localStorage.setItem(DEVICES_KEY, JSON.stringify(deviceState)); } catch {}
-  }, [deviceState]);
-  // Итоговый список: данные устройства + настройки по умолчанию + сохранённое
-  const devices = DEVICES.map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceState[d.id] }));
-  const patchDevice = (id, patch) => setDeviceState((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
+    try { localStorage.setItem(DEVICES_KEY, JSON.stringify(deviceStore)); } catch {}
+  }, [deviceStore]);
+  // Итоговый список: исходные (кроме удалённых) + добавленные,
+  // поверх — настройки по умолчанию и сохранённое состояние
+  const devices = [
+    ...DEVICES.filter((d) => !deviceStore.removed.includes(d.id)),
+    ...deviceStore.added.map((d) => ({ ...d, icon: deviceType(d.type).icon })),
+  ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }));
+  const patchDevice = (id, patch) => setDeviceStore((s) => ({
+    ...s, state: { ...s.state, [id]: { ...s.state[id], ...patch } },
+  }));
+  // Новое устройство: сразу в сети
+  const addDevice = (type, name) => {
+    const t = deviceType(type);
+    const d = {
+      id: `dev-${Date.now()}`, type, name,
+      battery: t.battery, memory: t.memory, online: true, lastSeen: "только что",
+    };
+    setDeviceStore((s) => ({ ...s, added: [...s.added, d] }));
+  };
+  // Удаление нескольких устройств сразу. Исходные запоминаем в removed,
+  // добавленные просто убираем; их настройки тоже стираем
+  const removeDevices = (ids) => {
+    setDeviceStore((s) => {
+      const state = { ...s.state };
+      ids.forEach((id) => delete state[id]);
+      return {
+        ...s, state,
+        added: s.added.filter((d) => !ids.includes(d.id)),
+        removed: [...new Set([...s.removed, ...ids.filter((id) => DEVICES.some((d) => d.id === id))])],
+      };
+    });
+    if (ids.includes(openDeviceId)) setOpenDeviceId(null);
+    if (ids.includes(filesDevice)) setFilesDevice(null);
+    showToast({
+      title: ids.length === 1 ? "Устройство удалено" : `Удалено ${ids.length} ${plural(ids.length, ["устройство", "устройства", "устройств"])}`,
+      text: `${ids.length === 1 ? "Его" : "Их"} можно подключить заново через «Добавить устройство»`,
+    });
+  };
+  // Вернуть исходные устройства, если их удалили
+  const restoreDevices = () => setDeviceStore((s) => ({ ...s, removed: [] }));
+  const [addOpen, setAddOpen] = useState(false);            // открыто ли окно добавления
   const [openDeviceId, setOpenDeviceId] = useState(null);   // чьё окно открыто
   const openDevice = devices.find((d) => d.id === openDeviceId);
   const [filesDevice, setFilesDevice] = useState(null);     // отбор файлов по устройству
@@ -4825,6 +5350,9 @@ export default function NexaApp() {
         .nx-primary:focus-visible, .nx-cat-card:focus-visible, .nx-link-btn:focus-visible {
           outline: 1px solid var(--mint); outline-offset: 2px;
         }
+        /* Поле ввода (название устройства): в фокусе рамка мятная, при ошибке остаётся красной */
+        .nx-input { transition: border-color 160ms ease; }
+        .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }
         /* disabled — нельзя нажать */
@@ -5251,7 +5779,17 @@ export default function NexaApp() {
     <ScreenAssistant initialChatId={searchChatId} onToast={showToast} />
   ) : (
     <div key={tab} className="ng-screen-anim">
-      {tab === "home" && <ScreenHome devices={devices} onNavigate={goTab} onOpenDevice={setOpenDeviceId} />}
+      {tab === "home" && (
+        <ScreenHome
+          devices={devices}
+          onNavigate={goTab}
+          onOpenDevice={setOpenDeviceId}
+          onAddDevice={() => setAddOpen(true)}
+          onRemoveDevices={removeDevices}
+          onRestoreDevices={restoreDevices}
+          canRestore={deviceStore.removed.length > 0}
+        />
+      )}
       {tab === "today" && <ScreenToday />}
       {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} />}
       {tab === "files" && (
@@ -5296,6 +5834,14 @@ export default function NexaApp() {
       {openFile && <FileViewer key={openFile.id} file={openFile} devices={devices} onClose={closeViewer} onDelete={deleteFile} onToast={showToast} />}
       {/* Окно устройства поверх всего. key — чтобы для другого устройства
           окно открывалось "с нуля" (без идущего поиска от прошлого) */}
+      {/* Окно добавления устройства: тип → поиск → название → готово */}
+      {addOpen && (
+        <AddDeviceModal
+          names={devices.map((d) => d.name)}
+          onAdd={addDevice}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
       {openDevice && (
         <DeviceViewer
           key={openDevice.id}
