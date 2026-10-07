@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, startTransition } from "react";
 import { flushSync } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 
 /* =========================================================================
@@ -173,11 +173,11 @@ const Icon = {
       <path d="M11 18h2" strokeLinecap="round" />
     </svg>
   ),
-  // Планшет: шире смартфона, со срезанным углом-«складкой» сверху справа
+  // Планшет: лежит горизонтально, сверху по центру — камера-черточка
   tablet: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
-      <path d="M5.5 3.5h10l3 3v14h-13v-17Z" strokeLinejoin="round" />
-      <path d="M15.5 3.5v3h3M10.5 17.5h3" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M11 8h2" strokeLinecap="round" />
     </svg>
   ),
   laptop: (p) => (
@@ -654,8 +654,8 @@ function Logo({ small }) {
 
 // Универсальная строка списка (используется в карточке устройств,
 // настройках, и т.д.): иконка слева, заголовок+подпись, что-то справа
-// (например статус) и стрелка-шеврон. lead — что-то перед иконкой (галочка выбора).
-function Row({ lead, leftIcon, title, subtitle, right, accent }) {
+// (например статус) и стрелка-шеврон.
+function Row({ leftIcon, title, subtitle, right, accent }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -663,7 +663,6 @@ function Row({ lead, leftIcon, title, subtitle, right, accent }) {
     }}>
       {/* Левая часть: иконка + текст — занимает всё свободное место */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
-        {lead}
         {leftIcon && (
           <div style={{
             width: 42, height: 42, borderRadius: 4, border: `1px solid ${C.border}`,
@@ -804,112 +803,15 @@ const deviceUsed = (d) =>
     .filter(([n]) => n === d.name || n === d.alias)
     .reduce((s, [, gb]) => s + gb, 0), 0);
 
-// Галочка выбора: квадрат с тонкой рамкой. on — выбрано,
-// partial — выбрана часть (для "Выбрать все"): вместо галочки черта
-function SelectBox({ on, partial }) {
-  const filled = on || partial;
-  return (
-    <span aria-hidden="true" style={{
-      width: 18, height: 18, borderRadius: 4, flexShrink: 0, boxSizing: "border-box",
-      border: `1px solid ${filled ? C.blue : C.borderStrong}`,
-      background: filled ? C.blue : "transparent",
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      transition: "background-color 140ms ease, border-color 140ms ease",
-    }}>
-      {on ? Icon.check({ c: C.onFold, s: 13 })
-        : partial ? <span style={{ width: 8, height: 1.6, background: C.onFold }} /> : null}
-    </span>
-  );
-}
-
-// Нижняя панель режима выбора: "Выбрано N" и "Удалить".
-// Перед удалением спрашивает подтверждение прямо здесь, без отдельного окна
-function DeviceDeleteBar({ count, onDelete }) {
-  const [confirm, setConfirm] = useState(false);
-  // Сняли все галочки — вопрос больше не нужен
-  useEffect(() => { if (count === 0) setConfirm(false); }, [count]);
-  // На телефоне панель может оказаться под нижним меню — прокручиваем к вопросу
-  const barRef = useRef(null);
-  useEffect(() => {
-    // offsetParent пустой у скрытой копии (десктопной на телефоне и наоборот)
-    if (!confirm || !barRef.current?.offsetParent) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    barRef.current.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
-  }, [confirm]);
-  const word = plural(count, ["устройство", "устройства", "устройств"]);
-  const smallBtn = {
-    ...btnReset, borderRadius: 4, padding: "8px 12px", fontSize: 13,
-    display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-  };
-  return (
-    <div ref={barRef} className="nx-pop" style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      flexWrap: "wrap", gap: 10, padding: "12px 18px",
-    }}>
-      {confirm ? (
-        <>
-          <span role="alert" style={{ fontSize: 13 }}>Удалить {count} {word}?</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="nx-ghost-btn" onClick={() => setConfirm(false)}
-              style={{ ...smallBtn, border: `1px solid ${C.borderStrong}` }}>
-              Отмена
-            </button>
-            <button type="button" className="nx-primary" onClick={onDelete}
-              style={{ ...smallBtn, border: `1px solid ${C.red}`, background: C.red, color: C.onFold, fontWeight: 500 }}>
-              {Icon.trash({ c: C.onFold, s: 15 })} Удалить
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <span style={{ fontSize: 13, color: C.muted }}>
-            {count ? `Выбрано: ${count}` : "Отметьте устройства"}
-          </span>
-          <button type="button" className="nx-ghost-btn" disabled={!count} onClick={() => setConfirm(true)}
-            style={{ ...smallBtn, border: `1px solid color-mix(in srgb, ${C.red} 55%, transparent)`, color: C.red }}>
-            {Icon.trash({ c: C.red, s: 15 })} Удалить
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ЭКРАН "ГЛАВНАЯ" — список устройств + складка + карточка ассистента
 // devices — устройства с текущим состоянием (в сети или нет) из App,
 // onOpenDevice открывает окно устройства
-// onAddDevice — открыть окно добавления, onRemoveDevices(ids) — удалить,
+// onAddDevice — открыть окно добавления,
 // onRestoreDevices — вернуть исходные (canRestore — есть ли что возвращать)
-function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDevices, onRestoreDevices, canRestore }) {
+function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
 
-  // Режим выбора: у устройств появляются галочки, внизу — "Удалить"
-  const [selecting, setSelecting] = useState(false);
-  const [picked, setPicked] = useState([]);
-  const sel = picked.filter((id) => devices.some((d) => d.id === id)); // только существующие
-  const allOn = devices.length > 0 && sel.length === devices.length;
-  const togglePick = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const toggleAll = () => setPicked(allOn ? [] : devices.map((d) => d.id));
-  const stopSelect = () => { setSelecting(false); setPicked([]); };
-  const deletePicked = () => { onRemoveDevices(sel); stopSelect(); };
-  // Нажатие на устройство: в режиме выбора ставит галочку, иначе открывает окно
-  const pressDevice = (id) => (selecting ? togglePick(id) : onOpenDevice(id));
-
-  // Кнопка "Выбрать" / "Отмена" в шапке списка
-  const selectBtn = devices.length > 0 && (
-    <button type="button" className="nx-link-btn" onClick={selecting ? stopSelect : () => setSelecting(true)}
-      style={{ ...btnReset, fontSize: 13, color: C.muted }}>
-      {selecting ? "Отмена" : "Выбрать"}
-    </button>
-  );
-  // "Выбрать все" вместо заголовка, пока идёт выбор
-  const selectAllBtn = (
-    <button type="button" onClick={toggleAll} aria-pressed={allOn}
-      style={{ ...btnReset, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-      <SelectBox on={allOn} partial={!allOn && sel.length > 0} /> Выбрать все
-    </button>
-  );
   // Пустой список: добавить новое или вернуть исходные
   const empty = devices.length === 0 && (
     <EmptyState
@@ -956,40 +858,29 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDe
                 alignItems: "center", padding: "16px 18px",
                 borderBottom: `1px solid ${C.border}`,
               }}>
-                {selecting ? selectAllBtn : <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>}
-                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                  {!selecting && (
-                    <span title="В сети" style={{
-                      display: "flex", alignItems: "center",
-                      gap: 6, fontSize: 13, color: C.muted,
-                    }}>
-                      {onlineCount} <Dot color={C.green} />
-                    </span>
-                  )}
-                  {selectBtn}
-                </div>
+                <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>
+                <span title="В сети" style={{
+                  display: "flex", alignItems: "center",
+                  gap: 6, fontSize: 13, color: C.muted,
+                }}>
+                  {onlineCount} <Dot color={C.green} />
+                </span>
               </div>
               {empty}
-              {/* Каждая строка — кнопка: открывает окно устройства
-                  (в режиме выбора — ставит галочку) */}
+              {/* Каждая строка — кнопка: открывает окно устройства */}
               {devices.map((d) => (
-                <button key={d.id} type="button" className="nx-row-btn" onClick={() => pressDevice(d.id)}
-                  aria-pressed={selecting ? sel.includes(d.id) : undefined}
+                <button key={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
                   style={{ ...btnReset, display: "block", width: "100%" }}>
                   <Row
-                    lead={selecting && <SelectBox on={sel.includes(d.id)} />}
                     leftIcon={d.icon({ c: C.text, s: 19 })}
                     title={d.name}
                     subtitle={deviceStatus(d)}
                     right={<Dot color={d.online ? C.green : C.red} />}
-                    accent={!selecting}
                   />
                 </button>
               ))}
-              {/* Внизу списка: "Удалить" в режиме выбора, иначе — "Добавить устройство" */}
-              {selecting ? (
-                <DeviceDeleteBar count={sel.length} onDelete={deletePicked} />
-              ) : devices.length > 0 && (
+              {/* Последняя строка — "Добавить устройство" */}
+              {devices.length > 0 && (
                 <button type="button" className="nx-row-btn" onClick={onAddDevice}
                   style={{ ...btnReset, display: "block", width: "100%", borderRadius: "0 0 16px 16px" }}>
                   <Row
@@ -1087,15 +978,11 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDe
             <div className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>
               Мои устройства
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
-                <span>{onlineCount}</span>
-                <Dot color={C.green} />
-              </div>
-              {selectBtn}
+            <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
+              <span>{onlineCount}</span>
+              <Dot color={C.green} />
             </div>
           </div>
-          {selecting && <div style={{ marginBottom: 12 }}>{selectAllBtn}</div>}
           {empty && <div style={{ border: `1px solid ${C.border}`, borderRadius: 14 }}>{empty}</div>}
           <div style={{
             display: "grid",
@@ -1103,25 +990,23 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDe
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: 10,
           }}>
-            {/* Карточка — кнопка: открывает окно устройства
-                (в режиме выбора — ставит галочку, выбранная обведена синим) */}
+            {/* Карточка — кнопка: открывает окно устройства */}
             {devices.map((d) => (
               <button
                 type="button"
                 key={d.id}
                 className="nx-row-btn"
-                onClick={() => pressDevice(d.id)}
-                aria-pressed={selecting ? sel.includes(d.id) : undefined}
+                onClick={() => onOpenDevice(d.id)}
                 style={{
                   ...btnReset,
-                  border: `1px solid ${selecting && sel.includes(d.id) ? C.blue : C.border}`, borderRadius: 14,
+                  border: `1px solid ${C.border}`, borderRadius: 14,
                   padding: 14, cursor: "pointer", position: "relative",
                   display: "flex", flexDirection: "column", gap: 10,
                   minHeight: 96, minWidth: 0,
                 }}
               >
                 <div style={{ position: "absolute", top: 12, right: 12, display: "flex" }}>
-                  {selecting ? <SelectBox on={sel.includes(d.id)} /> : <Dot color={d.online ? C.green : C.red} />}
+                  <Dot color={d.online ? C.green : C.red} />
                 </div>
                 <div style={{ width: 26, height: 26 }}>
                   {d.icon({ c: C.text, s: 24 })}
@@ -1133,7 +1018,7 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDe
               </button>
             ))}
             {/* Последняя карточка — "Добавить": пунктирная рамка, мятный плюс */}
-            {!selecting && devices.length > 0 && (
+            {devices.length > 0 && (
               <button
                 type="button"
                 className="nx-row-btn"
@@ -1152,11 +1037,6 @@ function ScreenHome({ devices, onNavigate, onOpenDevice, onAddDevice, onRemoveDe
               </button>
             )}
           </div>
-          {selecting && (
-            <div style={{ marginTop: 10, border: `1px solid ${C.border}`, borderRadius: 14 }}>
-              <DeviceDeleteBar count={sel.length} onDelete={deletePicked} />
-            </div>
-          )}
         </div>
 
         {/* AI-карточка */}
@@ -2831,8 +2711,17 @@ const CONNECT_MS = 1400;    // сколько длится подключени�
 const DISCONNECT_MS = 600;  // отключение быстрее
 const RESULT_MS = 1600;     // сколько кнопка показывает «Подключено» / «Отключено»
 
-function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, onOpenFiles, onToast }) {
+// onRemove — удалить устройство из списка (окно при этом закроется)
+function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, onOpenFiles, onRemove, onToast }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
+  const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
+  const delRef = useRef(null);
+  // Вопрос "Удалить?" внизу окна — прокручиваем к нему, чтобы он был виден
+  useEffect(() => {
+    if (!confirmDel || !delRef.current) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    delRef.current.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [confirmDel]);
   // Кнопка питания: "idle" → "loading" (подключаем/отключаем) → "success" → "idle"
   const [power, setPower] = useState("idle");
   const turningOn = useRef(false); // что сейчас делаем: подключаем или отключаем
@@ -2936,7 +2825,9 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
   return (
     <div className="nx-viewer" onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 300,
-      background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+      // Фон под окном слегка размыт — внимание на устройстве
+      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
+      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
     }}>
       {/* stopPropagation — клик внутри окна не должен его закрывать */}
@@ -3075,7 +2966,7 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
         )}
 
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
-        <div style={{ margin: "20px 22px 22px", border: `1px solid ${C.border}`, borderRadius: 12 }}>
+        <div style={{ margin: "20px 22px 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
             <div key={s.key} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
@@ -3089,6 +2980,40 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
               <Toggle on={d[s.key]} onClick={() => onSetting(s.key)} />
             </div>
           ))}
+        </div>
+
+        {/* Удаление устройства. Сначала спрашиваем прямо здесь: "Удалить?" */}
+        <div ref={delRef} style={{ padding: "14px 22px 22px" }}>
+          {confirmDel ? (
+            <div role="alert" className="nx-pop" style={{
+              display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12,
+              padding: "12px 14px", borderRadius: 12,
+              border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`,
+              background: `color-mix(in srgb, ${C.red} 8%, transparent)`,
+            }}>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+                <div style={{ fontSize: 13.5 }}>Удалить «{d.name}»?</div>
+                <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>Его можно будет подключить заново</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>
+                  Отмена
+                </button>
+                <button type="button" className="nx-primary" onClick={onRemove} style={{
+                  ...ghostBtn, border: `1px solid ${C.red}`, background: C.red, color: C.onFold, fontWeight: 500,
+                }}>
+                  {Icon.trash({ c: C.onFold, s: 15 })} Удалить
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(true)} style={{
+              ...ghostBtn, width: "100%", justifyContent: "center", borderRadius: 999, minHeight: 46,
+              border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, color: C.red,
+            }}>
+              {Icon.trash({ c: C.red, s: 16 })} Удалить устройство
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -3203,7 +3128,9 @@ function AddDeviceModal({ names, onAdd, onClose }) {
   return (
     <div className="nx-viewer" onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 300,
-      background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+      // Фон под окном слегка размыт — внимание на устройстве
+      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
+      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
     }}>
       {/* stopPropagation — клик внутри окна не должен его закрывать */}
@@ -5785,7 +5712,6 @@ export default function NexaApp() {
           onNavigate={goTab}
           onOpenDevice={setOpenDeviceId}
           onAddDevice={() => setAddOpen(true)}
-          onRemoveDevices={removeDevices}
           onRestoreDevices={restoreDevices}
           canRestore={deviceStore.removed.length > 0}
         />
@@ -5851,6 +5777,7 @@ export default function NexaApp() {
           onSetOnline={(online) => patchDevice(openDevice.id, { online })}
           onSetting={(key) => patchDevice(openDevice.id, { [key]: !openDevice[key] })}
           onOpenFiles={() => openDeviceFiles(openDevice.id)}
+          onRemove={() => removeDevices([openDevice.id])}
           onToast={showToast}
         />
       )}
