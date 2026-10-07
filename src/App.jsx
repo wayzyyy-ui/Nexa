@@ -1,10 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "react";
 // flushSync нужен для плавной смены темы: React обновляет экран сразу,
 // пока браузер делает снимок для анимации
-import { flushSync } from "react-dom";
+import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.3.3";
+const VERSION = "0.4.1";
 
 
 /* =========================================================================
@@ -78,14 +78,39 @@ function applyTheme(theme) {
 // Если браузер умеет View Transitions (Chrome, Edge, свежий Safari), старый
 // и новый вид экрана плавно перетекают друг в друга целиком.
 // Если не умеет, включаем на 400 мс CSS-переходы цветов у всех элементов.
-function switchTheme(theme, update) {
+/* ---------- СИНХРОНИЗАЦИЯ ВКЛАДОК ----------
+   Несколько вкладок NEXA живут как одно приложение: изменения
+   (устройства, файлы, расписание, уведомления, чаты, тема) рассылаются
+   через BroadcastChannel, и остальные вкладки сразу их подхватывают.
+   TAB_ID — метка своей вкладки, чтобы не принимать собственные сообщения. */
+const syncChannel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("nexa-sync") : null;
+const TAB_ID = Math.random().toString(36).slice(2);
+
+// Записать событие в центр уведомлений (без всплывающего тоста).
+// Слушает NexaApp (событие "nexa-log"), так можно писать из любого места
+function logEvent(note) {
+  window.dispatchEvent(new CustomEvent("nexa-log", { detail: note }));
+}
+
+// fromOtherTab — тему сменили в другой вкладке: просто повторяем,
+// не рассылая обратно и не записывая событие второй раз
+function switchTheme(theme, update, fromOtherTab) {
   const run = () => { applyTheme(theme); if (update) flushSync(update); };
+  if (!fromOtherTab) {
+    syncChannel?.postMessage({ key: THEME_KEY, value: theme, from: TAB_ID });
+    logEvent({ title: "Тема переключена", text: theme === "dark" ? "Тёмная" : "Светлая", kind: "theme" });
+  }
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  if (reduce) { run(); return; }
+  // Без анимации: так настроено в системе, вкладка в фоне или тему сменили
+  // в другой вкладке (переход в скрытой вкладке браузер всё равно обрывает)
+  if (reduce || document.hidden || fromOtherTab) { run(); return; }
 
   if (document.startViewTransition) {
-    document.startViewTransition(run);
+    const t = document.startViewTransition(run);
+    // Если переход оборвался (например, вкладку свернули) — тема уже сменилась, это не ошибка
+    t.ready?.catch(() => {});
+    t.finished?.catch(() => {});
     return;
   }
 
@@ -95,6 +120,38 @@ function switchTheme(theme, update) {
   setTimeout(() => root.classList.remove("nx-theme-anim"), 400);
 }
 applyTheme(readTheme());
+// Тему сменили в другой вкладке — меняем и здесь (Настройки узнают по "nexa-theme-change")
+syncChannel?.addEventListener("message", (e) => {
+  if (e.data?.key !== THEME_KEY || e.data.from === TAB_ID) return;
+  switchTheme(e.data.value, null, true);
+  window.dispatchEvent(new Event("nexa-theme-change"));
+});
+
+/* useState, который сам сохраняется в localStorage под key и делится
+   с другими вкладками. load — как прочитать начальное значение.
+   Пришедшее из другой вкладки сохраняем, но обратно не рассылаем */
+function useSharedState(key, load) {
+  const [value, setValue] = useState(load);
+  const fromRemote = useRef(false);
+  const first = useRef(true);
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+    if (first.current) { first.current = false; return; } // начальное значение не рассылаем
+    if (fromRemote.current) { fromRemote.current = false; return; }
+    syncChannel?.postMessage({ key, value, from: TAB_ID });
+  }, [value]);
+  useEffect(() => {
+    if (!syncChannel) return;
+    const onMessage = (e) => {
+      if (e.data?.key !== key || e.data.from === TAB_ID) return;
+      fromRemote.current = true;
+      setValue(e.data.value);
+    };
+    syncChannel.addEventListener("message", onMessage);
+    return () => syncChannel.removeEventListener("message", onMessage);
+  }, [key]);
+  return [value, setValue];
+}
 
 
 // Два шрифта: Space Grotesk для заголовков (класс ng-display),
@@ -744,6 +801,147 @@ function TopBar({ children }) {
       display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
     }}>
       {children}
+    </div>
+  );
+}
+
+/* ═══ ЦЕНТР УВЕДОМЛЕНИЙ ═════════════════════════════════════
+   Колокольчик в верхней строке: число непрочитанных, по нажатию —
+   панель с последними 20 событиями и кнопкой «Очистить».
+   notes = { items: [{ id, at, title, text, kind }], seenAt } — seenAt:
+   когда панель открывали в последний раз (всё, что позже, — новое) */
+const NOTES_KEY = "nexa-notifications";
+const NOTES_MAX = 20;
+const loadNotes = () => {
+  try { const v = JSON.parse(localStorage.getItem(NOTES_KEY)); if (v && Array.isArray(v.items)) return v; } catch {}
+  return { items: [], seenAt: 0 };
+};
+
+// «только что», «5 мин назад», «2 ч назад», «вчера в 14:05», «3 окт.»
+function noteTime(at) {
+  const diff = Math.max(0, Date.now() - at);
+  const min = Math.round(diff / 60000);
+  if (min < 1) return "только что";
+  if (min < 60) return `${min} мин назад`;
+  const d = new Date(at);
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return `${Math.round(min / 60)} ч назад`;
+  const y = new Date(Date.now() - 86400000);
+  if (d.toDateString() === y.toDateString()) return `вчера в ${hm}`;
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
+
+// Значок события: по виду (kind) или по словам в заголовке
+function noteIcon(n) {
+  const t = `${n.kind || ""} ${n.title || ""}`.toLowerCase();
+  if (/theme|тем/.test(t)) return Icon.sparkle;
+  if (/файл|папк|ссылк/.test(t)) return Icon.folder;
+  if (/дел|расписан|schedule/.test(t)) return Icon.calendar;
+  if (/device|устройств|подключ|отключ|сигнал|отправлено/.test(t)) return Icon.phone;
+  return Icon.bell;
+}
+
+function NotificationBell({ notes, onSeen, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [seenBefore, setSeenBefore] = useState(0); // что было новым в момент открытия
+  const ref = useRef(null);
+  const panelRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, right: 0 }); // где показать панель (под колокольчиком)
+  const unread = notes.items.filter((n) => n.at > notes.seenAt).length;
+
+  // Закрываем по клику мимо и по Esc
+  useEffect(() => {
+    if (!open) return;
+    const down = (e) => {
+      const inside = ref.current?.contains(e.target) || panelRef.current?.contains(e.target);
+      if (!inside) setOpen(false);
+    };
+    const key = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("mousedown", down);
+    window.addEventListener("touchstart", down);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("mousedown", down);
+      window.removeEventListener("touchstart", down);
+      window.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open) {
+      setSeenBefore(notes.seenAt);
+      onSeen(); // открыли — всё прочитано
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    }
+    setOpen(!open);
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button type="button" className="nx-icon-btn" onClick={toggle} aria-label={unread ? `Уведомления: новых ${unread}` : "Уведомления"}
+        aria-expanded={open} style={{
+          ...btnReset, width: 34, height: 34, borderRadius: 4, position: "relative",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+        {Icon.bell({ c: C.text, s: 18 })}
+        {/* Счётчик новых: при каждом новом событии мягко «выпрыгивает» */}
+        {unread > 0 && (
+          <span key={unread} className="nx-pop" style={{
+            position: "absolute", top: 2, right: 1, minWidth: 15, height: 15, padding: "0 4px", boxSizing: "border-box",
+            borderRadius: 8, background: C.mint, color: C.onAccent, fontSize: 9.5, fontWeight: 600,
+            display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1,
+          }}>
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {/* Панель выносим в корень страницы (portal): так она точно поверх
+          всплывающих тостов, а не внутри слоя верхней строки */}
+      {open && createPortal(
+        <div ref={panelRef} role="dialog" aria-label="Уведомления" className="nx-pop nx-notes" style={{
+          position: "fixed", top: pos.top, right: pos.right, width: 340, zIndex: 600, textAlign: "left",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 8, overflow: "hidden",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: 14 }}>Уведомления</span>
+            <button type="button" className="nx-link-btn" onClick={onClear} disabled={!notes.items.length}
+              style={{ ...btnReset, fontSize: 12, color: C.muted }}>
+              Очистить
+            </button>
+          </div>
+          {notes.items.length === 0 ? (
+            <div style={{ padding: "26px 16px", textAlign: "center", fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
+              Пока тихо. Здесь появятся события:<br />файлы, устройства, тема, расписание.
+            </div>
+          ) : (
+            <div className="nx-scroll nx-stagger" style={{ maxHeight: 380, overflowY: "auto" }}>
+              {notes.items.map((n) => (
+                <div key={n.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{
+                    width: 28, height: 28, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.border}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {noteIcon(n)({ c: C.mint, s: 14 })}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                      {/* Мятная точка — событие появилось после прошлого открытия */}
+                      {n.at > seenBefore && <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.mint, flexShrink: 0 }} />}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title}</span>
+                    </div>
+                    {n.text && <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.text}</div>}
+                  </div>
+                  <span style={{ fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap", marginTop: 1 }}>{noteTime(n.at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1569,6 +1767,16 @@ const SCHEDULE = [
   { time: "17:00", title: "Тренировка", place: "Фитнес-клуб" },
 ];
 
+// Своё расписание хранится в браузере; пока его нет — показываем пример выше
+const SCHEDULE_KEY = "nexa-schedule";
+const sortSchedule = (list) => [...list].sort((a, b) => a.time.localeCompare(b.time));
+const loadSchedule = () => {
+  try { const v = JSON.parse(localStorage.getItem(SCHEDULE_KEY)); if (Array.isArray(v)) return sortSchedule(v); } catch {}
+  return SCHEDULE;
+};
+// Минуты от начала дня: "14:30" → 870
+const toMinutes = (hm) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
+
 /* ---------- РЕАЛЬНАЯ ПОГОДА (Open-Meteo) ----------
    Бесплатный сервис без ключа, браузер ходит в него напрямую.
    Город — Казань. Обновляем раз в 15 минут. */
@@ -1686,6 +1894,35 @@ function forecastDayLabel(date, index) {
    Приоритет у геолокации: ответ по IP ставим не раньше чем через 1,5 секунды,
    чтобы геолокация успела «победить». Пока ничего не пришло — Казань. */
 const DEFAULT_LOCATION = { city: "Казань", lat: 55.79, lon: 49.11, source: "default" };
+
+/* Общие данные экрана «Сегодня»: расписание, город и последняя
+   загруженная погода. Ими пользуются и экран «Сегодня», и ассистент
+   (сводка «что у меня сегодня»). Экран обновляет город и погоду,
+   когда они загружаются. */
+const TODAY = {
+  schedule: SCHEDULE,
+  city: DEFAULT_LOCATION.city, lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon,
+  weather: null, weatherAt: 0,
+};
+
+// Погода для сводки: свежая из TODAY, а если её нет — загружаем сами
+// (ждём не дольше 5 секунд). Не вышло — null, сводка обойдётся без погоды
+async function getTodayWeather() {
+  if (TODAY.weather && Date.now() - TODAY.weatherAt < WEATHER_REFRESH_MS * 2) return TODAY.weather;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(weatherUrl(TODAY.lat, TODAY.lon), { signal: ctrl.signal, cache: "no-store" });
+    if (!res.ok) throw new Error(`ответ сервера ${res.status}`);
+    TODAY.weather = parseWeather(await res.json());
+    TODAY.weatherAt = Date.now();
+    return TODAY.weather;
+  } catch {
+    return TODAY.weather;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const GEO_TIMEOUT_MS = 6000;        // дольше 6 секунд геолокацию не ждём
 const GEO_CACHE_MS = 10 * 60 * 1000; // браузер может отдать координаты из кэша за 10 минут
 const IP_GRACE_MS = 1500;           // столько ждём геолокацию, прежде чем поставить город по IP
@@ -1852,9 +2089,13 @@ function useWeather(lat, lon) {
         if (!res.ok) throw new Error(`ответ сервера ${res.status}`);
         return res.json();
       })
-      .then((data) => setState({
-        loading: false, error: null, updatedAt: Date.now(), ...parseWeather(data),
-      }))
+      .then((data) => {
+        const w = parseWeather(data);
+        // Заодно кладём в общие данные — их читает ассистент
+        TODAY.weather = w;
+        TODAY.weatherAt = Date.now();
+        setState({ loading: false, error: null, updatedAt: Date.now(), ...w });
+      })
       .catch((err) => {
         // Запрос отменили сами (новый запрос или ушли с экрана) — это не ошибка
         if (err.name === "AbortError" && !timedOut) return;
@@ -1980,11 +2221,85 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
 // ЭКРАН "СЕГОДНЯ" — расписание (таймлайн) + погода на сегодня и завтра.
 // На компьютере: расписание слева, погода справа, ещё правее складка.
 // На телефоне сначала погода, под ней расписание (порядок меняет CSS).
-function ScreenToday() {
+// «Через 20 минут», «Через 1 ч 15 мин», «Сейчас»
+function untilText(diff) {
+  if (diff <= 0) return "Сейчас";
+  if (diff < 60) return `Через ${diff} ${plural(diff, ["минуту", "минуты", "минут"])}`;
+  const h = Math.floor(diff / 60), m = diff % 60;
+  return `Через ${h} ч${m ? ` ${m} мин` : ""}`;
+}
+// Время по умолчанию для нового дела — следующий целый час
+const nextHour = () => `${String((new Date().getHours() + 1) % 24).padStart(2, "0")}:00`;
+
+/* Форма нового дела: время, название и место (необязательно).
+   Enter — добавить, Esc — отмена */
+function ScheduleForm({ existing, onSave, onCancel }) {
+  const [time, setTime] = useState(nextHour);
+  const [title, setTitle] = useState("");
+  const [place, setPlace] = useState("");
+  const t = title.trim();
+  const dup = existing.some((x) => x.time === time && x.title.toLowerCase() === t.toLowerCase());
+  const error = !t ? null : !/^\d{2}:\d{2}$/.test(time) ? "Укажите время" : dup ? "Такое дело уже есть" : null;
+  const save = () => { if (t && !error) onSave({ time, title: t, place: place.trim() }); };
+  const field = {
+    background: "transparent", color: C.text, fontFamily: "inherit", fontSize: 14,
+    border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "8px 10px", outline: "none", minWidth: 0, boxSizing: "border-box",
+  };
+  return (
+    <form className="nx-pop nx-sched-form" onSubmit={(e) => { e.preventDefault(); save(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
+      style={{ border: `1px solid color-mix(in srgb, ${C.mint} 45%, transparent)`, borderRadius: 6, padding: 12, marginBottom: 20, display: "grid", gap: 8 }}>
+      <div className="nx-sched-form-row" style={{ display: "grid", gridTemplateColumns: "96px minmax(0, 1fr)", gap: 8 }}>
+        <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="nx-input" aria-label="Время" style={field} />
+        <input autoFocus value={title} maxLength={60} onChange={(e) => setTitle(e.target.value)} className="nx-input"
+          placeholder="Что за дело?" aria-label="Название" aria-invalid={!!error} style={field} />
+      </div>
+      <input value={place} maxLength={40} onChange={(e) => setPlace(e.target.value)} className="nx-input"
+        placeholder="Где (необязательно)" aria-label="Место" style={field} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className={error ? undefined : "nx-sched-hint"} style={{ flex: 1, fontSize: 12, color: error ? C.red : C.mutedSoft }}>{error || "Enter — добавить, Esc — отмена"}</span>
+        <button type="button" className="nx-ghost-btn" onClick={onCancel} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", borderRadius: 999, border: `1px solid ${C.borderStrong}` }}>
+          Отмена
+        </button>
+        <button type="submit" className="nx-primary" disabled={!t || !!error} style={{
+          ...btnReset, fontSize: 13, padding: "7px 14px", borderRadius: 999, border: "1px solid transparent",
+          color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+        }}>
+          Добавить
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// schedule — дела на сегодня (общие с ассистентом), onAddItem / onRemoveItem — добавить и удалить
+function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
+  // Живое расписание: «сейчас» обновляется сам (раз в 15 секунд)
+  const clock = useClock();
+  const nowMin = clock.getHours() * 60 + clock.getMinutes();
+  const nextIdx = schedule.findIndex((it) => toMinutes(it.time) >= nowMin); // -1 — всё прошло
+  const next = nextIdx >= 0 ? schedule[nextIdx] : null;
+  const cursorAt = nextIdx >= 0 ? nextIdx : schedule.length; // курсор «сейчас» — перед ближайшим делом
+  const [adding, setAdding] = useState(false);
+
+  // Курсор «сейчас»: ромб на линии таймлайна, мятная черта и время справа
+  const nowMarker = (
+    <div key="now" className="nx-sched-now" aria-label={`Сейчас ${hhmm(clock)}`} style={{ position: "relative", height: 0, top: -7 }}>
+      <span style={{ position: "absolute", left: "var(--dot-x)", top: 0, width: 9, height: 9, margin: "-4.5px 0 0 -4.5px", background: C.mint, transform: "rotate(45deg)" }} />
+      <span style={{ position: "absolute", left: "calc(var(--dot-x) + 10px)", right: 58, top: 0, height: 1, background: `linear-gradient(90deg, ${C.mint}, color-mix(in srgb, ${C.mint} 0%, transparent))` }} />
+      <span style={{ position: "absolute", right: 0, top: -8, fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>{hhmm(clock)}</span>
+    </div>
+  );
   // Сначала определяем город, потом по нему грузим погоду
   const location = useLocation();
   // Реальная погода; пока её нет (грузится или ошибка) — заглушки
   const weather = useWeather(location.lat, location.lon);
+  // Город и координаты — в общие данные (для сводки ассистента)
+  useEffect(() => {
+    TODAY.city = location.city;
+    TODAY.lat = location.lat;
+    TODAY.lon = location.lon;
+  }, [location.city, location.lat, location.lon]);
   const [forecastOpen, setForecastOpen] = useState(false); // раскрыт ли прогноз на 2 недели
   const now = weather.now || WEATHER_FALLBACK.now;
   const tomorrow = weather.tomorrow || WEATHER_FALLBACK.tomorrow;
@@ -2016,38 +2331,84 @@ function ScreenToday() {
       }}>
         {/* alignSelf: stretch — рамка расписания всегда по высоте правой колонки */}
         <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "26px 28px 30px" }}>
-          <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 22 }}>
+          <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 10 }}>
             {Icon.calendar({ c: C.text, s: 24 })} Расписание
+            {/* Своё дело: открывает форму над таймлайном */}
+            {!adding && (
+              <button type="button" className="nx-ghost-btn" onClick={() => setAdding(true)} style={{
+                ...btnReset, marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontFamily: fontBody,
+                fontSize: 13, padding: "6px 12px", borderRadius: 999, border: `1px solid ${C.borderStrong}`,
+              }}>
+                {Icon.plus({ c: C.mint, s: 14 })} Добавить
+              </button>
+            )}
+          </div>
+          {/* Живая строка: сколько осталось до ближайшего дела */}
+          <div role="status" className="nx-sched-until" style={{ fontSize: 13, color: C.muted, marginBottom: 20, minHeight: 18 }}>
+            {next
+              ? <>{untilText(toMinutes(next.time) - nowMin)} — <span style={{ color: C.text }}>{next.title.toLowerCase()}</span></>
+              : schedule.length ? "На сегодня всё — дел больше нет" : null}
           </div>
 
+          {adding && (
+            <ScheduleForm existing={schedule} onCancel={() => setAdding(false)}
+              onSave={(it) => { onAddItem?.(it); setAdding(false); }} />
+          )}
+
+          {schedule.length === 0 && !adding && (
+            <EmptyState compact title="Дел на сегодня нет" text="Добавьте первое — оно появится на таймлайне"
+              action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={() => setAdding(true)}>Добавить дело</StateButton>} />
+          )}
+
           {/* Вертикальная линия таймлайна — один div. --dot-x — где центр
-              кружков; на телефоне время стоит слева, и линия сдвигается */}
+              кружков; на телефоне время стоит слева, и линия сдвигается.
+              Прошедшие дела бледнее, ближайшее выделено мятным,
+              между ними — курсор «сейчас» */}
+          {schedule.length > 0 && (
           <div className="nx-sched-list nx-stagger" style={{ position: "relative", "--dot-x": "12px" }}>
             <div className="nx-sched-line" style={{ position: "absolute", left: "var(--dot-x)", top: 8, bottom: -10, width: 1, background: C.muted }} />
-            {SCHEDULE.map((it) => (
-              <div key={it.time} className="nx-sched-item" style={{
+            {schedule.flatMap((it, i) => {
+              const past = i < cursorAt;
+              const isNext = i === nextIdx;
+              const row = (
+              <div key={`${it.time}-${it.title}`} className="nx-sched-item" style={{
                 display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)",
                 gridTemplateAreas: `"dot time" ". box"`, columnGap: 20, marginBottom: 14,
+                opacity: past ? 0.45 : 1, transition: "opacity 400ms ease",
               }}>
                 <span className="nx-sched-dot" style={{
                   gridArea: "dot", justifySelf: "center", alignSelf: "center", position: "relative",
                   width: 12, height: 12, boxSizing: "border-box", borderRadius: "50%",
-                  border: `1.5px solid ${C.text}`, background: C.bg,
+                  border: `1.5px solid ${isNext ? C.mint : C.text}`,
+                  background: isNext ? C.mint : past ? C.muted : C.bg,
                 }} />
-                <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6 }}>{it.time}</div>
+                <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6, color: isNext ? C.mint : C.text }}>{it.time}</div>
                 <div className="nx-sched-box" style={{
-                  gridArea: "box", border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "9px 14px",
+                  gridArea: "box", borderRadius: 6, padding: "9px 10px 9px 14px",
+                  border: `1px solid ${isNext ? `color-mix(in srgb, ${C.mint} 70%, transparent)` : C.borderStrong}`,
+                  background: isNext ? `color-mix(in srgb, ${C.mint} 6%, transparent)` : "transparent",
                   display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+                  transition: "border-color 400ms ease, background-color 400ms ease",
                 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div className="nx-sched-title" style={{ fontSize: 18 }}>{it.title}</div>
-                    <div className="nx-sched-place" style={{ display: "none", fontSize: 12, color: C.muted, marginTop: 2 }}>{it.place}</div>
+                    <div className="nx-sched-title" style={{ fontSize: 18, overflow: "hidden", textOverflow: "ellipsis" }}>{it.title}</div>
+                    {it.place && <div className="nx-sched-place" style={{ display: "none", fontSize: 12, color: C.muted, marginTop: 2 }}>{it.place}</div>}
                   </div>
-                  {Icon.chevron({ c: C.text })}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {isNext && <span style={{ fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>далее</span>}
+                    <button type="button" className="nx-icon-btn nx-sched-del" onClick={() => onRemoveItem?.(it)} aria-label={`Удалить «${it.title}»`} title="Удалить" style={{
+                      ...btnReset, width: 30, height: 30, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {Icon.trash({ c: C.muted, s: 15 })}
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+              return i === cursorAt ? [nowMarker, row] : [row];
+            }).concat(cursorAt === schedule.length ? [nowMarker] : [])}
           </div>
+          )}
         </section>
 
         <div style={{ gridArea: "now" }}>
@@ -3159,8 +3520,8 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
   ];
 
   const ghostBtn = {
-    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
-    padding: "10px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 8,
+    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 999,
+    padding: "10px 16px", fontSize: 13, display: "flex", alignItems: "center", gap: 8,
   };
 
   return (
@@ -3529,7 +3890,7 @@ const hhmm = (d) => d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-
 // Ближайшее дело из расписания (или null, если на сегодня всё)
 function nextEvent(now) {
   const m = now.getHours() * 60 + now.getMinutes();
-  return SCHEDULE.find((it) => {
+  return TODAY.schedule.find((it) => {
     const [h, mm] = it.time.split(":").map(Number);
     return h * 60 + mm >= m;
   }) || null;
@@ -3965,6 +4326,29 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   // Экран открылся — начинаем сверху страницы
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
+  // Esc — назад (если не открыто никакое окно поверх и не печатаем в поле)
+  const backRef = useRef(onBack);
+  backRef.current = onBack;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+      backRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Нажатие на пустое место (фон, свободная часть сцены, промежутки) — назад.
+  // Кнопки, поля и всё, что помечено data-keep (превью, полоски, настройки), не уводят.
+  // Если в этот момент выделяли текст — тоже не уводим
+  const onEmptyClick = (e) => {
+    if (e.target.closest('button, a, input, textarea, select, label, [role="switch"], [role="radio"], [data-keep]')) return;
+    if (window.getSelection?.().toString()) return;
+    onBack();
+  };
+
   // Превью масштабируем под ширину сцены: меряем сцену при изменении размера
   // (ResizeObserver срабатывает только когда размер правда поменялся)
   const stageRef = useRef(null);
@@ -4036,7 +4420,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   };
 
   return (
-    <div className="ng-screen nx-device-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080 }}>
+    <div className="ng-screen nx-device-screen" onClick={onEmptyClick} style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080 }}>
       {/* «Назад» — такой же скошенный чипс, как путь в «Файлах» */}
       <div style={{ display: "flex" }}>
         <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
@@ -4100,6 +4484,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             {/* Превью в «родном» размере, уменьшенное под сцену.
                 При подключении один раз проявляется (nx-icon-on) */}
             <div
+              data-keep
               key={flip && flip.on ? `pv-${flip.n}` : "pv"}
               className={flip && flip.on ? "nx-icon-on" : undefined}
               style={{ position: "relative", display: "flex", width: size.w, height: size.h, alignItems: "center", justifyContent: "center", flexShrink: 0, transform: `scale(${scale})` }}
@@ -4112,7 +4497,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       {/* Под превью: слева статус, заряд и главные кнопки, справа настройки.
           На телефоне — одной колонкой */}
       <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
-      <div>
+      <div data-keep>
         {/* Заряд и память */}
         <div style={{ padding: "20px 0 4px", display: "flex", flexDirection: "column", gap: 16 }}>
           {bars.map((b) => (
@@ -4169,7 +4554,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         )}
       </div>
 
-      <div>
+      <div data-keep>
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
         <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
@@ -4787,7 +5172,211 @@ function SearchRow({ icon, thumb, title, subtitle, onClick }) {
   );
 }
 // ЭКРАН "АССИСТЕНТ" — поле ввода по центру + правая панель (новый диалог/поиск/...)
-function ScreenAssistant({ initialChatId, onToast }) {
+/* ═══ КОМАНДЫ АССИСТЕНТА ══════════════════════════════════════
+   Ассистент — часть NEXA: если сообщение похоже на команду, выполняем
+   её сразу (без сервера) и отвечаем от имени ассистента. Иначе вопрос
+   уходит в /api/chat как обычно.
+
+   Как распознаём: текст в нижний регистр, ё → е, без знаков препинания.
+   Дальше ищем по началам слов (основам), а не по точной фразе:
+   «включи светлую тему», «сделай светлую», «светлый режим» — одно и то же.
+
+   Чтобы обычный вопрос («расскажи про светлую тему в дизайне») не стал
+   командой, у большинства команд правило when: "verb" — сработает, только
+   если есть глагол действия (включи, открой, покажи…) или фраза короткая
+   (до 3 слов). when: "free" — достаточно самих слов (сводка, справка).
+   Новую команду добавить просто: ещё одна строка в ASSISTANT_COMMANDS
+   и её обработка в runCommand внутри ScreenAssistant. */
+const normalizeCommand = (text) => text
+  .toLowerCase()
+  .replace(/ё/g, "е")
+  .replace(/[^\p{L}\p{N}\s]/gu, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+// Глаголы действия (начала слов)
+const ACTION_VERBS = [
+  "включ", "сдела", "постав", "переключ", "смен", "помен", "откр", "покаж", "показ",
+  "перейд", "перейти", "переход", "зайд", "верн", "давай", "добав", "загруз", "закач",
+  "подключи", "вывед", "отобраз", "иди", "запуст", "выбер", "хочу", "нужн",
+];
+// С таких слов начинаются вопросы «про что-то» — это не команды
+const EXPLAIN_START = /^(расскаж|объясн|почему|зачем|что такое|что значит|в чем разница|чем отлича|напиши|придумай|переведи|сравни)/;
+// Если в «сводке на сегодня» речь про это — это вопрос в чат, а не сводка
+const NOT_SUMMARY = ["новост", "мир", "праздн", "курс", "матч", "футбол", "фильм", "кино", "гороскоп"];
+const DEVICE_WORDS = ["устройств", "девайс", "гаджет"];
+
+// Список команд. Порядок важен: сверху — более узкие
+// (например, «загрузи файл» раньше, чем «открой файлы»)
+const ASSISTANT_COMMANDS = [
+  { action: "help", when: "free",
+    test: ({ n, has, words }) => has("умеешь") || (has("команд") && words.length <= 4)
+      || /^(что|чем|как) ты (можешь|умеешь|поможешь)/.test(n) || /^(помощь|помоги|справка|help)$/.test(n) },
+  { action: "summary", when: "free",
+    test: ({ has }) => !has(...NOT_SUMMARY) && (has("сводк")
+      || (has("сегодня", "сегодняшн") && has("что", "план", "дел", "повестк", "как", "какие", "какой"))) },
+  { action: "summary", when: "verb",
+    test: ({ has }) => has("погод") && !has("завтра", "недел", ...NOT_SUMMARY) },
+  { action: "upload", when: "verb",
+    test: ({ has }) => has("загруз", "закач", "залей", "добав") && has("файл", "фото", "документ", "картин", "изображ") },
+  { action: "addDevice", when: "verb",
+    test: ({ words, has }) => words.some((w) => /^(добав|подключи$|подключить$|привяж|присоедин)/.test(w))
+      && has(...DEVICE_WORDS, "смартфон", "телефон", "ноутбук", "планшет", "часы", "наушник", "телевизор") },
+  { action: "devices", when: "free",
+    test: ({ has, hasVerb, short }) => has(...DEVICE_WORDS)
+      && !has("купить", "куп", "лучше", "выбра", "посовет") // «какие устройства лучше купить» — вопрос в чат
+      && (hasVerb || short || has("онлайн", "сети", "подключ", "сколько", "мои", "меня", "список", "статус", "все")) },
+  { action: "theme", params: { mode: "light" }, when: "verb", test: ({ has }) => has("светл", "дневн") },
+  { action: "theme", params: { mode: "dark" }, when: "verb", test: ({ has }) => has("темн", "ночн") },
+  { action: "theme", params: { mode: "toggle" }, when: "verb",
+    test: ({ has }) => has("тем", "оформлен", "режим") && has("переключ", "смен", "помен", "друг", "обрат") },
+  { action: "navigate", params: { tab: "files" }, when: "verb", test: ({ has }) => has("файл") },
+  { action: "navigate", params: { tab: "media" }, when: "verb", test: ({ has }) => has("медиа", "галере", "фото", "видео", "музык") },
+  // «сегодня» ведёт на экран только с глаголом («покажи сегодня»): «какой сегодня праздник» — вопрос
+  { action: "navigate", params: { tab: "today" }, when: "verb",
+    test: ({ has, hasVerb }) => has("расписан", "календар") || (has("сегодня") && hasVerb) },
+  { action: "navigate", params: { tab: "settings" }, when: "verb", test: ({ has }) => has("настройк", "параметр") },
+  { action: "navigate", params: { tab: "home" }, when: "verb", test: ({ has }) => has("главн", "домой") },
+];
+
+// Текст → { action, params } или null (тогда это обычный вопрос)
+function parseCommand(text) {
+  const n = normalizeCommand(text || "");
+  if (!n) return null;
+  const words = n.split(" ");
+  if (words.length > 12) return null; // длинное сообщение — точно разговор, не команда
+  const has = (...stems) => words.some((w) => stems.some((st) => w.startsWith(st)));
+  const ctx = {
+    n, words, has,
+    hasVerb: words.some((w) => ACTION_VERBS.some((v) => w.startsWith(v))),
+    short: words.length <= 3,
+  };
+  const explain = EXPLAIN_START.test(n);
+  for (const c of ASSISTANT_COMMANDS) {
+    if (!c.test(ctx)) continue;
+    if (c.when === "free") return { action: c.action, params: c.params || {} };
+    if (!explain && (ctx.hasVerb || ctx.short)) return { action: c.action, params: c.params || {} };
+  }
+  return null;
+}
+
+// Подписи разделов для ответов и плашек
+const TAB_TITLES = { home: "Главная", today: "Сегодня", media: "Медиа", files: "Файлы", settings: "Настройки" };
+const TAB_REPLIES = {
+  home: "Перехожу на главную", today: "Открываю «Сегодня» с расписанием", media: "Открываю медиа",
+  files: "Открываю файлы", settings: "Открываю настройки",
+};
+const NAV_DELAY = 700; // переход — через 0,7 с, чтобы успеть прочитать ответ
+
+const ASSISTANT_HELP = [
+  "Я не только отвечаю на вопросы, но и управляю NEXA. Например:",
+  "• **Тема** — «включи светлую тему», «тёмный режим», «переключи тему»",
+  "• **Переходы** — «открой файлы», «покажи медиа», «открой расписание», «настройки», «на главную»",
+  "• **Сводка** — «что у меня сегодня?», «какая погода?»",
+  "• **Устройства** — «какие устройства онлайн?», «добавь устройство»",
+  "• **Файлы** — «загрузи файл»",
+  "Всё остальное — просто спросите.",
+].join("\n");
+
+// Сводка «что у меня сегодня»: дата, погода, ближайшее дело и сколько дел
+async function buildTodaySummary() {
+  const w = await getTodayWeather();
+  const now = new Date();
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const items = TODAY.schedule;
+  const left = items.filter((it) => {
+    const [h, m] = it.time.split(":").map(Number);
+    return h * 60 + m >= minutes;
+  });
+  const date = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  const lines = [`**${date.charAt(0).toUpperCase() + date.slice(1)}.**`];
+  lines.push(w
+    ? `${TODAY.city}: ${signed(w.now.temp)}°, ${weatherCodeToText(w.now.code).text.toLowerCase()}, ощущается как ${signed(w.now.feels)}°.`
+    : "Погоду сейчас загрузить не получилось.");
+  const total = `${items.length} ${plural(items.length, ["дело", "дела", "дел"])}`;
+  lines.push(left.length
+    ? `В расписании ${total}, впереди ${left.length}. Ближайшее — **${left[0].time} · ${left[0].title}** (${left[0].place}).`
+    : `Все ${total} на сегодня позади — можно отдыхать.`);
+  return lines.join("\n");
+}
+
+// Сводка по устройствам: сколько подключено и кто в сети (с зарядом)
+function buildDevicesSummary(devices) {
+  if (!devices.length) return "Устройств пока нет. Скажите «добавь устройство», и я открою окно подключения.";
+  const on = devices.filter((d) => d.online);
+  const off = devices.filter((d) => !d.online);
+  const lines = [`Подключено ${devices.length} ${plural(devices.length, ["устройство", "устройства", "устройств"])}, в сети — ${on.length}.`];
+  if (on.length) lines.push(`**В сети:** ${on.map((d) => (d.battery != null ? `${d.name} (${d.battery}%)` : d.name)).join(", ")}.`);
+  if (off.length) lines.push(`**Не в сети:** ${off.map((d) => d.name).join(", ")}.`);
+  return lines.join("\n");
+}
+
+/* «Аура» нового диалога — крупная полупрозрачная складка за приветствием
+   и полем ввода (наш ответ «цветному полю» у других ассистентов, но из граней,
+   без свечения и размытия: края растворяются маской).
+   Движение только по событию:
+   • при открытии грани по очереди разворачиваются из центра складки;
+   • грани на разной «глубине» чуть следуют за курсором / наклоном телефона;
+   • active (поле в фокусе или в нём есть текст) — складка приближается и ярче.
+   Точки граней — в % от размера ауры; центр складки — 47% 56% */
+const AURA_C = "47% 56%";
+const AURA_FACETS = [
+  { clip: `polygon(6% 32%, 44% 6%, ${AURA_C})`,  from: C.foldBlue, to: C.foldDeep, depth: 1.2, delay: 0 },
+  { clip: `polygon(44% 6%, 95% 30%, ${AURA_C})`, from: C.foldDeep, to: C.foldBlue, depth: 0.7, delay: 90 },
+  { clip: `polygon(95% 30%, 76% 92%, ${AURA_C})`, from: C.foldCyan, to: C.foldBlue, depth: 1.0, delay: 180 },
+  { clip: `polygon(76% 92%, 28% 96%, ${AURA_C})`, from: C.foldMint, to: C.foldCyan, depth: 1.4, delay: 270 },
+  { clip: `polygon(28% 96%, 6% 32%, ${AURA_C})`,  from: C.foldDeep, to: C.foldMint, depth: 0.9, delay: 360 },
+];
+// Вершины для тонких линий-сгибов (те же точки, в координатах 0..100)
+const AURA_PTS = [[6, 32], [44, 6], [95, 30], [76, 92], [28, 96]];
+
+function AssistantAura({ active }) {
+  const ref = useRef(null);
+  useBackdropMotion(ref); // --px / --py от курсора (на телефоне — от наклона)
+  return (
+    <div ref={ref} aria-hidden="true" className={`nx-aura${active ? " is-active" : ""}`}>
+      {AURA_FACETS.map((f, i) => (
+        // Внешний слой — сдвиг за курсором (у каждой грани своя глубина),
+        // внутренний — разворачивание при появлении
+        <div key={i} style={{
+          position: "absolute", inset: 0, transition: BACKDROP_EASE,
+          transform: `translate(calc(var(--px, 0) * ${f.depth * 16}px), calc(var(--py, 0) * ${f.depth * 11}px))`,
+        }}>
+          <div className="nx-aura-facet" style={{
+            position: "absolute", inset: 0, clipPath: f.clip, transformOrigin: AURA_C,
+            background: `linear-gradient(135deg, color-mix(in srgb, ${f.from} 70%, transparent), color-mix(in srgb, ${f.to} 22%, transparent))`,
+            animationDelay: `${f.delay}ms`,
+          }} />
+        </div>
+      ))}
+      {/* Сгибы: тонкие линии от центра к вершинам и по краю складки */}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="nx-aura-lines" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+        {AURA_PTS.map(([x, y], i) => {
+          const [nx, ny] = AURA_PTS[(i + 1) % AURA_PTS.length];
+          return (
+            <g key={i} fill="none" strokeWidth="1" vectorEffect="non-scaling-stroke">
+              <line x1="47" y1="56" x2={x} y2={y} vectorEffect="non-scaling-stroke" style={{ stroke: `color-mix(in srgb, ${C.mint} 45%, transparent)` }} />
+              <line x1={x} y1={y} x2={nx} y2={ny} vectorEffect="non-scaling-stroke" style={{ stroke: `color-mix(in srgb, ${C.blue} 35%, transparent)` }} />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// Подсказки на пустом экране: нажатие отправляет текст как сообщение
+const assistantSuggestions = () => [
+  { text: readTheme() === "light" ? "Включи тёмную тему" : "Включи светлую тему", icon: Icon.sparkle },
+  { text: "Что у меня сегодня?", icon: Icon.calendar },
+  { text: "Какие устройства онлайн?", icon: Icon.phone },
+  { text: "Открой файлы", icon: Icon.folder },
+];
+
+// tab / setTab — текущий раздел и переход (из NexaApp), devices — устройства,
+// onAddDevice — открыть окно добавления устройства, onUploadFiles — выбор файлов
+// bell — колокольчик уведомлений (у ассистента своя верхняя строка)
+function ScreenAssistant({ initialChatId, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -4804,7 +5393,8 @@ const [greeting, setGreeting] = useState('');
 useEffect(() => {
   setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
 }, []);
-const [chats, setChats] = useState(() => {
+// Диалоги: сохраняются в браузере и общие для всех вкладок
+const [chats, setChats] = useSharedState('nexa-chats', () => {
   try {
     const saved = localStorage.getItem('nexa-chats');
     return saved ? JSON.parse(saved) : [];
@@ -4823,9 +5413,23 @@ const [chats, setChats] = useState(() => {
   };
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    try { localStorage.setItem('nexa-chats', JSON.stringify(chats)); } catch {}
-  }, [chats]);
+  // Переход по команде ждёт NAV_DELAY: пока ждёт, его можно отменить
+  const [pendingNavId, setPendingNavId] = useState(null);
+  const navTimer = useRef(null);
+  useEffect(() => () => clearTimeout(navTimer.current), []);
+
+  // Поле ввода: в новом диалоге — по центру, после первого сообщения
+  // плавно уезжает вниз (и обратно при «Новом диалоге»).
+  // Запоминаем, где поле было, и после перерисовки анимируем разницу
+  const inputDockRef = useRef(null);
+  const [inputFocused, setInputFocused] = useState(false); // поле в фокусе — аура «оживает»
+  const flipFrom = useRef(null);
+  const taRef = useRef(null);
+  const rememberInputPos = () => {
+    const el = inputDockRef.current;
+    if (el) flipFrom.current = { top: el.getBoundingClientRect().top, focused: document.activeElement === taRef.current };
+  };
+
     // Определяем клавиатуру через visualViewport — работает надёжнее, чем focus/blur,
   // особенно на iOS. Если высота видимой области уменьшилась больше чем на 150px —
   // значит открылась клавиатура.
@@ -4860,6 +5464,32 @@ const [chats, setChats] = useState(() => {
 
   const currentChat = chats.find(c => c.id === currentChatId);
   const messages = currentChat?.messages || [];
+  const isEmpty = messages.length === 0 && !isLoading;
+
+  // Поле ввода переехало (центр ↔ низ): плавно ведём его из старого места.
+  // Без движения — если так настроено в системе
+  useLayoutEffect(() => {
+    const from = flipFrom.current;
+    flipFrom.current = null;
+    const el = inputDockRef.current;
+    if (!from || !el) return;
+    if (from.focused) taRef.current?.focus({ preventScroll: true });
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const dy = from.top - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 2) return;
+    el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }],
+      { duration: 560, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
+  }, [isEmpty]);
+
+  // Поле ввода растёт по высоте вместе с текстом (до ~6 строк, дальше прокрутка)
+  useLayoutEffect(() => {
+    const t = taRef.current;
+    if (!t) return;
+    t.style.height = "auto";
+    const h = Math.min(t.scrollHeight, 168);
+    t.style.height = `${h}px`;
+    t.style.overflowY = t.scrollHeight > 168 ? "auto" : "hidden";
+  }, [input, isEmpty]);
 
   useEffect(() => {
     scrollToBottom();
@@ -4892,7 +5522,7 @@ const [chats, setChats] = useState(() => {
     };
   }, []);
 
-  const newChat = () => { setCurrentChatId(null); setInput(''); };
+  const newChat = () => { if (currentChatId) rememberInputPos(); setCurrentChatId(null); setInput(''); };
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
   const deleteChat = (id, e) => {
     e.stopPropagation();
@@ -4925,7 +5555,7 @@ const [chats, setChats] = useState(() => {
     try {
       // История для модели: сообщения с ошибками в неё не берём
       const history = previousMessages
-        .filter(m => !m.error)
+        .filter(m => !m.error && !m.action) // команды и ошибки модели не нужны
         .map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
           parts: [{ text: m.text }],
@@ -4969,12 +5599,69 @@ const [chats, setChats] = useState(() => {
     }
   };
 
-  // Обычная отправка сообщения из поля ввода
-  const sendMessage = async () => {
-    const text = input.trim();
+  // Добавить сообщение в конец чата / поменять сообщение по id
+  const pushMsg = (chatId, msg) => setChats(prev => prev.map(c =>
+    c.id === chatId ? { ...c, messages: [...c.messages, msg] } : c));
+  const patchMsg = (chatId, id, patch) => setChats(prev => prev.map(c =>
+    c.id === chatId ? { ...c, messages: c.messages.map(m => (m.id === id ? { ...m, ...patch } : m)) } : c));
+
+  /* Выполнить команду и ответить от имени ассистента.
+     Ответ — обычное сообщение ИИ с пометкой action: true (такие не уходят
+     на сервер), actionLabel — подпись на плашке, undo — как отменить.
+     ВАЖНО: всё до первого await выполняется сразу по нажатию — поэтому
+     окно выбора файлов браузер откроет без вопросов */
+  const runCommand = async (chatId, { action, params }) => {
+    const id = `a${Date.now()}`;
+    const say = (text, extra) => pushMsg(chatId, { role: 'ai', text, action: true, id, ...extra });
+    if (action === "theme") {
+      const prev = readTheme();
+      const next = params.mode === "toggle" ? (prev === "dark" ? "light" : "dark") : params.mode;
+      const label = next === "dark" ? "Тёмная тема" : "Светлая тема";
+      if (next === prev) return say(`Тема уже ${next === "dark" ? "тёмная" : "светлая"} — оставляю как есть`, { actionLabel: label });
+      switchTheme(next);
+      return say(`Готово, включил ${next === "dark" ? "тёмную" : "светлую"} тему`, { actionLabel: label, undo: { kind: "theme", prev } });
+    }
+    if (action === "navigate") {
+      say(TAB_REPLIES[params.tab], { actionLabel: `Переход: ${TAB_TITLES[params.tab]}`, undo: { kind: "nav" } });
+      setPendingNavId(id);
+      clearTimeout(navTimer.current);
+      navTimer.current = setTimeout(() => { navTimer.current = null; setPendingNavId(null); setTab?.(params.tab); }, NAV_DELAY);
+      return;
+    }
+    if (action === "summary") {
+      setIsLoading(true); // пока собираем погоду — «печатает»
+      const text = await buildTodaySummary();
+      setIsLoading(false);
+      return say(text, { actionLabel: "Сводка на сегодня" });
+    }
+    if (action === "devices") return say(buildDevicesSummary(devices), { actionLabel: "Устройства" });
+    if (action === "addDevice") {
+      onAddDevice?.();
+      return say("Открываю добавление устройства — выберите тип, и я найду его рядом", { actionLabel: "Добавление устройства" });
+    }
+    if (action === "upload") {
+      onUploadFiles?.();
+      return say("Выберите файлы — они попадут в «Хранилище», и я открою раздел «Файлы»", { actionLabel: "Загрузка файлов" });
+    }
+    if (action === "help") return say(ASSISTANT_HELP, { actionLabel: "Команды NEXA" });
+  };
+
+  // «Отменить» на плашке: тема — вернуть прежнюю, переход — не переходить
+  const undoAction = (chatId, msg) => {
+    if (msg.undo?.kind === "theme") switchTheme(msg.undo.prev);
+    if (msg.undo?.kind === "nav") { clearTimeout(navTimer.current); navTimer.current = null; setPendingNavId(null); }
+    patchMsg(chatId, msg.id, { undone: true });
+  };
+
+  // Отправка сообщения: из поля ввода или по нажатию на подсказку
+  const sendMessage = async (preset) => {
+    const text = (typeof preset === "string" ? preset : input).trim();
     if (!text || isLoading) return;
 
-    const userMsg = { role: 'user', text };
+    // Сначала проверяем, не команда ли это
+    const cmd = parseCommand(text);
+    if (isEmpty) rememberInputPos();
+    const userMsg = { role: 'user', text, ...(cmd ? { action: true } : {}) };
     const before = currentChat?.messages || [];
     let chatId = currentChatId;
 
@@ -4994,7 +5681,8 @@ const [chats, setChats] = useState(() => {
     }
 
     setInput('');
-    await streamAnswer(chatId, before, text);
+    if (cmd) await runCommand(chatId, cmd);
+    else await streamAnswer(chatId, before, text);
   };
 
   // ПОВТОРИТЬ: удаляет последний ответ и запрашивает новый на тот же вопрос
@@ -5024,6 +5712,7 @@ const [chats, setChats] = useState(() => {
     if (isLoading || !currentChatId) return;
 
     const previous = messages.slice(0, index);
+    const cmd = parseCommand(newText);
     setChats(prev => prev.map(c => {
       if (c.id !== currentChatId) return c;
       return {
@@ -5032,10 +5721,11 @@ const [chats, setChats] = useState(() => {
         title: index === 0
           ? (newText.length > 40 ? newText.slice(0, 40) + '…' : newText)
           : c.title,
-        messages: [...previous, { role: 'user', text: newText }],
+        messages: [...previous, { role: 'user', text: newText, ...(cmd ? { action: true } : {}) }],
       };
     }));
-    streamAnswer(currentChatId, previous, newText);
+    if (cmd) runCommand(currentChatId, cmd);
+    else streamAnswer(currentChatId, previous, newText);
   };
   
   const onKeyDown = (e) => {
@@ -5062,7 +5752,6 @@ const [chats, setChats] = useState(() => {
     },
   ];
 
-  const isEmpty = messages.length === 0 && !isLoading;
 
  const titleOnly = (
   <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
@@ -5136,6 +5825,7 @@ const menuBlock = isHistoryOpen ? (
       marginBottom: 8,
     }}>
       <TimeDate />
+      {bell}
       <IconBtn icon={Icon.user} />
     </div>
 
@@ -5152,7 +5842,7 @@ const menuBlock = isHistoryOpen ? (
       >
         {it.label}
         <div style={{
-          width: 30, height: 30, borderRadius: 4,
+          width: 30, height: 30, borderRadius: "50%",
           border: `1px solid ${it.active ? C.mint : C.border}`,
           background: it.active ? C.mintDark : "transparent",
           display: "flex", alignItems: "center", justifyContent: "center",
@@ -5169,7 +5859,9 @@ const menuBlock = isHistoryOpen ? (
   <div style={{
     width: "100%", maxWidth: 820,
     padding: 1,
-    borderRadius: 999,
+    // 25 = половина высоты однострочного поля: одна строка — «таблетка»,
+    // несколько строк — прямоугольник со скруглёнными углами
+    borderRadius: 25,
     // Градиент симметричный (синий, мятный, синий), чтобы при движении не было шва
     background: `linear-gradient(90deg, ${C.blue}, ${C.mint}, ${C.blue})`,
     backgroundSize: "200% 100%",
@@ -5180,24 +5872,30 @@ const menuBlock = isHistoryOpen ? (
             <div
         onClick={() => document.querySelector('.ng-input-field')?.focus()}
         style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 8px 8px 18px", borderRadius: 999,
+          // flex-end: кнопка отправки остаётся внизу, когда текст в несколько строк
+          width: "100%", display: "flex", alignItems: "flex-end", gap: 10,
+          padding: "8px 8px 8px 18px", borderRadius: 24,
           background: C.bg, boxSizing: "border-box",
           cursor: "text",
         }}
       >
-        <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder="Написать сообщение..."
-        className="ng-input-field"
-        type="search"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck="false"
-        name="nexa-message-nofill"
+        {/* Многострочное поле: длинный текст переносится, Enter — отправить,
+            Shift+Enter — новая строка */}
+        <textarea
+          ref={taRef}
+          rows={1}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          onFocus={() => setInputFocused(true)}
+          onBlur={() => setInputFocused(false)}
+          placeholder="Написать сообщение..."
+          className="ng-input-field"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
+          name="nexa-message-nofill"
           style={{
             flex: 1,
             background: "transparent",
@@ -5205,11 +5903,21 @@ const menuBlock = isHistoryOpen ? (
             outline: "none",
             color: C.text,
             fontSize: 14,
+            lineHeight: 1.5,
+            fontFamily: "inherit",
+            resize: "none",
+            // border-box: высота поля = высота текста вместе с отступами (как scrollHeight)
+            boxSizing: "border-box",
+            padding: "6px 0",
+            margin: 0,
             minWidth: 0,
+            maxHeight: 168,
+            overflowY: "hidden",
+            overflowWrap: "anywhere",
           }}
         />
         <button
-          onClick={sendMessage}
+          onClick={() => sendMessage()}
           disabled={isLoading || !input.trim()}
           className="ng-input-send"
           style={{
@@ -5286,7 +5994,7 @@ const menuBlock = isHistoryOpen ? (
         <div className="ng-history-actions">
           <button
             onClick={() => { newChat(); setIsHistoryOpen(false); }}
-            style={{ flex: 1, padding: "12px 16px", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 14, cursor: "pointer" }}
+            style={{ flex: 1, padding: "12px 16px", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 999, color: C.text, fontSize: 14, cursor: "pointer" }}
           >
             + Новый диалог
           </button>
@@ -5411,43 +6119,44 @@ const menuBlock = isHistoryOpen ? (
         {titleOnly}
 
          {isEmpty ? (
-          <>
-            {/* Приветствие — по центру свободного места */}
-            <div style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: 0,
-            padding: "0 16px",
-            marginTop: 0,
-}}>
-          <div
-            className="ng-greeting nx-greeting-anim"
-            style={{ textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}
+          // Новый диалог: приветствие, поле ввода и подсказки — по центру
+          <div style={{
+            flex: 1, minHeight: 0, padding: "0 16px", position: "relative",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22,
+          }}>
+            {/* Аура: складка из граней позади; при наборе текста приближается */}
+            <AssistantAura active={inputFocused || !!input.trim()} />
+            <div
+              className="ng-greeting nx-greeting-anim"
+              style={{ position: "relative", textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}
             >
-            {greeting}
-          </div>
-        </div>
-
-            {/* Поле ввода — прижато к низу, без дисклеймера */}
-            <div style={{
-              flexShrink: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 10,
-              paddingBottom: 8,
-            }}>
+              {greeting}
+            </div>
+            <div ref={inputDockRef} style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
               {inputRow}
             </div>
-          </>
+            {/* Подсказки-команды: нажатие отправляет текст как сообщение.
+                На телефоне листаются вбок */}
+            <div className="nx-chips nx-no-scrollbar nx-stagger" style={{
+              position: "relative", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 820,
+            }}>
+              {assistantSuggestions().map((sg) => (
+                <button key={sg.text} type="button" className="nx-ghost-btn" onClick={() => sendMessage(sg.text)} style={{
+                  ...btnReset, display: "flex", alignItems: "center", gap: 7, flexShrink: 0, whiteSpace: "nowrap",
+                  border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 14px", fontSize: 13, color: C.text,
+                  background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
+                }}>
+                  {sg.icon({ c: C.mint, s: 14 })} {sg.text}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           <>
             {/* Сообщения сверху */}
             <div
               ref={listRef}
-              className="nx-scroll"
+              className="nx-scroll nx-msg-list"
               style={{
                 flex: 1,
                 overflowY: "auto",
@@ -5466,7 +6175,12 @@ const menuBlock = isHistoryOpen ? (
                     role={m.role}
                     text={m.text}
                     error={m.error}
-                    isLastAi={m.role === 'ai' && i === messages.length - 1}
+                    actionLabel={m.action && m.role === 'ai' ? m.actionLabel : null}
+                    undone={m.undone}
+                    // «Отменить»: тему можно вернуть всегда, переход — пока он ещё не случился
+                    undoable={!!m.undo && !m.undone && (m.undo.kind === "theme" || pendingNavId === m.id)}
+                    onUndo={() => undoAction(currentChatId, m)}
+                    isLastAi={m.role === 'ai' && i === messages.length - 1 && !m.action}
                     disabled={isLoading}
                     onRegenerate={regenerate}
                     onEdit={(newText) => editMessage(i, newText)}
@@ -5478,7 +6192,7 @@ const menuBlock = isHistoryOpen ? (
             </div>
 
             {/* Поле ввода + дисклеймер (дисклеймер только в чате) */}
-            <div style={{
+            <div ref={inputDockRef} style={{
               flexShrink: 0,
               display: "flex",
               flexDirection: "column",
@@ -5575,7 +6289,9 @@ function ActionBtn({ title, onClick, disabled, children }) {
 // isLastAi: это последний ответ ИИ (под ним есть кнопка "повторить")
 // disabled: пока идёт генерация, кнопки редактирования и повтора неактивны
 // error — ответ не получен (нет сети, ошибка сервера): пузырь в цветах ошибки
-function MessageBubble({ role, text, error, isLastAi, disabled, onRegenerate, onEdit }) {
+// actionLabel — ответ на команду: под пузырём плашка с галочкой и названием действия;
+// undoable / undone / onUndo — кнопка «Отменить» на плашке и её состояние
+function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUndo, isLastAi, disabled, onRegenerate, onEdit }) {
   const isUser = role === 'user';
   const [copied, setCopied] = useState(false);       // показываем галочку после копирования
   const [isEditing, setIsEditing] = useState(false); // включён ли режим редактирования
@@ -5724,6 +6440,27 @@ function MessageBubble({ role, text, error, isLastAi, disabled, onRegenerate, on
             <RichText>{text}</RichText>
           </div>
         </div>
+
+        {/* Плашка-подтверждение команды: тонкая обводка, галочка, действие */}
+        {actionLabel && (
+          <div className="nx-pop" style={{
+            alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8,
+            border: `1px solid ${undone ? C.border : `color-mix(in srgb, ${C.mint} 45%, transparent)`}`,
+            borderRadius: 4, padding: "5px 10px", fontSize: 12, color: undone ? C.mutedSoft : C.text,
+          }}>
+            {undone ? Icon.refresh({ c: C.mutedSoft, s: 13 }) : Icon.check({ c: C.mint, s: 13 })}
+            <span style={{ textDecoration: undone ? "line-through" : "none" }}>{actionLabel}</span>
+            {undone && <span>· отменено</span>}
+            {undoable && (
+              <button type="button" className="nx-link-btn" onClick={onUndo} style={{
+                ...btnReset, fontSize: 12, color: C.muted, marginLeft: 4,
+                borderLeft: `1px solid ${C.border}`, paddingLeft: 8,
+              }}>
+                Отменить
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Кнопки под ответом: копировать, а у последнего ответа ещё и повторить */}
         <div className="nx-actions" style={{ display: "flex", gap: 4, paddingLeft: 2 }}>
@@ -5908,6 +6645,12 @@ function ScreenSettings({ onOpenSearch }) {
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
   const [theme, setThemeState] = useState(readTheme);
+  // Тему переключили в другой вкладке (или ассистент) — обновляем кнопки
+  useEffect(() => {
+    const sync = () => setThemeState(readTheme());
+    window.addEventListener("nexa-theme-change", sync);
+    return () => window.removeEventListener("nexa-theme-change", sync);
+  }, []);
   const setTheme = (t) => {
     if (t === theme) return;
     switchTheme(t, () => setThemeState(t));
@@ -6046,10 +6789,8 @@ export default function NexaApp() {
   // Общие данные для "Медиа" и "Файлов": список файлов, фильтр по категории
   // и файл, открытый в окне просмотра.
   // Добавленные файлы, удаления, новые имена и папки запоминаем в браузере
-  const [fileStore, setFileStore] = useState(loadFileStore);
-  useEffect(() => {
-    try { localStorage.setItem(FILES_KEY, JSON.stringify(fileStore)); } catch {}
-  }, [fileStore]);
+  // useSharedState: сохраняется в браузере и делится с другими вкладками
+  const [fileStore, setFileStore] = useSharedState(FILES_KEY, loadFileStore);
   // Превью картинок живут только пока открыта вкладка: { id: адрес картинки }
   const [previews, setPreviews] = useState({});
   // Идущие загрузки: [{ id, names, folder }] — для полоски прогресса
@@ -6068,7 +6809,23 @@ export default function NexaApp() {
   // может показать сообщение через onToast = showToast.
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
+
+  // Центр уведомлений: последние 20 событий (общие для всех вкладок)
+  const [notes, setNotes] = useSharedState(NOTES_KEY, loadNotes);
+  const addNote = (n) => setNotes((s) => ({
+    ...s,
+    items: [{ id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), title: n.title, text: n.text || "", kind: n.kind }, ...s.items].slice(0, NOTES_MAX),
+  }));
+  // Записи из любого места приложения (logEvent → событие "nexa-log")
+  useEffect(() => {
+    const onLog = (e) => addNote(e.detail || {});
+    window.addEventListener("nexa-log", onLog);
+    return () => window.removeEventListener("nexa-log", onLog);
+  }, []);
+
+  // Тост — и сразу запись в центр уведомлений, чтобы не исчезал бесследно
   const showToast = (t) => {
+    addNote(t);
     const id = ++toastIdRef.current;
     setToasts((list) => [...list, { id, ...t }]);
     setTimeout(
@@ -6081,10 +6838,7 @@ export default function NexaApp() {
   // Устройства: в сети ли и положение переключателей. Запоминаем в браузере,
   // чтобы после перезагрузки всё осталось как было
   // Здесь же — добавленные и удалённые устройства (см. loadDeviceStore)
-  const [deviceStore, setDeviceStore] = useState(loadDeviceStore);
-  useEffect(() => {
-    try { localStorage.setItem(DEVICES_KEY, JSON.stringify(deviceStore)); } catch {}
-  }, [deviceStore]);
+  const [deviceStore, setDeviceStore] = useSharedState(DEVICES_KEY, loadDeviceStore);
   // Итоговый список: исходные (кроме удалённых) + добавленные,
   // поверх — настройки по умолчанию и сохранённое состояние
   const devices = [
@@ -6102,6 +6856,21 @@ export default function NexaApp() {
       battery: t.battery, memory: t.memory, online: true, lastSeen: "только что",
     };
     setDeviceStore((s) => ({ ...s, added: [...s.added, d] }));
+    logEvent({ title: "Устройство подключено", text: name, kind: "device" });
+  };
+
+  /* Расписание на сегодня: можно добавлять свои дела и удалять.
+     Хранится в браузере (общее для вкладок), по умолчанию — пример.
+     TODAY.schedule — то же самое для ассистента и превью часов */
+  const [schedule, setSchedule] = useSharedState(SCHEDULE_KEY, loadSchedule);
+  TODAY.schedule = schedule;
+  const addScheduleItem = (it) => {
+    setSchedule((list) => sortSchedule([...list, { id: `s${Date.now()}`, ...it }]));
+    showToast({ title: "Дело добавлено", text: `${it.time} · ${it.title}`, kind: "schedule" });
+  };
+  const removeScheduleItem = (it) => {
+    setSchedule((list) => list.filter((x) => !(x.time === it.time && x.title === it.title)));
+    showToast({ title: "Дело удалено", text: `${it.time} · ${it.title}`, kind: "schedule" });
   };
   // Удаление нескольких устройств сразу. Исходные запоминаем в removed,
   // добавленные просто убираем; их настройки тоже стираем
@@ -6125,6 +6894,7 @@ export default function NexaApp() {
   // Вернуть исходные устройства, если их удалили
   const restoreDevices = () => setDeviceStore((s) => ({ ...s, removed: [] }));
   const [addOpen, setAddOpen] = useState(false);            // открыто ли окно добавления
+  const uploadInputRef = useRef(null);                      // выбор файлов по команде ассистента
   const [openDeviceId, setOpenDeviceId] = useState(null);   // чей экран устройства открыт
 
   /* Передача файла на устройство.
@@ -6542,6 +7312,9 @@ export default function NexaApp() {
           100% { opacity: 1; transform: translateY(0); }
         }
         .nx-pop { animation: nx-pop-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+        /* Ассистент на компьютере: справа закреплено меню (Новый диалог / Поиск /
+           История) — сообщения пользователя не должны заезжать под него */
+        @media (min-width: 769px) { .nx-msg-list { padding-right: 170px !important; } }
         /* «Раскрытие складкой»: элементы списка появляются по очереди —
            каждый чуть повёрнут от верхнего края и разворачивается к нам.
            Работает один раз при появлении (не повторяется).
@@ -6553,6 +7326,42 @@ export default function NexaApp() {
         }
         .nx-stagger > * { animation: nx-unfold 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards; transform-origin: 50% 0; }
         ${Array.from({ length: 14 }, (_, i) => `.nx-stagger > *:nth-child(${i + 2}) { animation-delay: ${(i + 1) * 45}ms; }`).join("\n        ")}
+        /* Расписание: корзина видна при наведении на дело (на телефоне — всегда) */
+        .nx-sched-del { opacity: 0; transition: opacity 160ms ease, background-color 160ms ease; }
+        .nx-sched-item:hover .nx-sched-del, .nx-sched-del:focus-visible { opacity: 1; }
+        @media (hover: none) { .nx-sched-del { opacity: 1; } }
+        /* Значок часов у поля времени — под цвет темы */
+        :root[data-theme="dark"] input[type="time"] { color-scheme: dark; }
+        :root[data-theme="light"] input[type="time"] { color-scheme: light; }
+        /* Аура нового диалога: по центру за приветствием и полем ввода.
+           Края растворяются маской (не размытие). Приближение — по фокусу/тексту */
+        .nx-aura {
+          position: absolute; left: 50%; top: 50%; width: min(1120px, 150vw); height: 660px;
+          pointer-events: none; z-index: 0;
+          -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, black 30%, transparent 72%);
+          mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, black 30%, transparent 72%);
+          opacity: 0.8; transform: translate(-50%, -50%) scale(1);
+          transition: opacity 700ms ease, transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .nx-aura.is-active { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+        :root[data-theme="light"] .nx-aura { opacity: 0.38; }
+        :root[data-theme="light"] .nx-aura.is-active { opacity: 0.55; }
+        /* Появление: каждая грань разворачивается из центра складки, по очереди */
+        @keyframes nx-aura-in {
+          from { opacity: 0; transform: scale(0.35) rotate(-14deg); }
+          to   { opacity: 1; transform: none; }
+        }
+        .nx-aura-facet { animation: nx-aura-in 1100ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        @keyframes nx-aura-lines-in { from { opacity: 0; } to { opacity: 1; } }
+        .nx-aura-lines { animation: nx-aura-lines-in 900ms ease 600ms backwards; }
+        @media (max-width: 768px) { .nx-aura { width: 780px; height: 560px; } }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-aura-facet, .nx-aura-lines { animation: none !important; }
+          .nx-aura { transition: none !important; }
+        }
+        /* Все кнопки — скруглённые: кнопки с текстом — «таблетки», кнопки-значки — круги.
+           Скошенные чипсы пути (складка), строки списков и карточки не трогаем */
+        .nx-ghost-btn, .nx-primary, .nx-icon-btn, .nx-action { border-radius: 999px !important; }
         /* Стрелка в строке чуть шагает вправо при наведении — «можно перейти» */
         .nx-chev { display: flex; transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1); }
         .nx-row-btn:hover .nx-chev { transform: translateX(3px); }
@@ -6805,8 +7614,10 @@ export default function NexaApp() {
           .ng-display.nx-page-title {
             font-size: 30px !important;
             margin: 12px 0 24px !important;
-            padding-right: 96px;
+            padding-right: 128px; /* место под колокольчик, поиск и профиль */
           }
+          /* Панель уведомлений на телефоне — по ширине экрана */
+          .nx-notes { position: fixed !important; top: 70px !important; left: 12px !important; right: 12px !important; width: auto !important; }
           .nx-page-sub { display: none !important; }
 
           /* Хранилище: те же складки в один ряд, только меньше.
@@ -6837,7 +7648,7 @@ export default function NexaApp() {
           /* Расписание без рамки, время слева от линии */
           .nx-sched { border: none !important; padding: 0 !important; }
           .nx-sched-head { font-size: 22px !important; margin-bottom: 18px !important; }
-          .nx-sched-head svg { display: none; }
+          .nx-sched-head > svg { display: none; } /* только значок календаря, плюс в кнопке остаётся */
           .nx-sched-list { --dot-x: 62px !important; } /* 46 время + 4 отступ + 12 половина кружка */
           .nx-sched-item {
             grid-template-columns: 46px 24px minmax(0, 1fr) !important;
@@ -6847,6 +7658,9 @@ export default function NexaApp() {
           .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 12.5px !important; }
           .nx-sched-title { font-size: 15px !important; }
           .nx-sched-place { display: block !important; }
+          .nx-sched-form input { font-size: 16px !important; } /* iPhone не приближает страницу */
+          .nx-sched-hint { visibility: hidden; } /* Enter/Esc на телефоне не нужны — место под кнопки остаётся */
+          .nx-sched-until { margin-bottom: 16px !important; }
           /* Файлы: поиск под путём на всю ширину, список без своей прокрутки */
           .nx-files-top { flex-direction: column !important; align-items: stretch !important; gap: 18px !important; }
           .nx-files-search { width: 100% !important; margin-top: 0 !important; }
@@ -6996,7 +7810,7 @@ export default function NexaApp() {
             right: 0 !important;
             padding: 28px 16px 0 0 !important;
             z-index: 50 !important;
-            gap: 14px !important;
+            gap: 6px !important;
           }
 
            /* Поле ввода: 16px, чтобы iPhone не приближал страницу при вводе */
@@ -7021,6 +7835,11 @@ export default function NexaApp() {
   }
       /* Приветствие, подзаголовок и сообщения в чате на телефоне */
           .ng-assistant-inner .ng-greeting { font-size: 24px !important; }
+          .nx-chips {
+            flex-wrap: nowrap !important; justify-content: flex-start !important; overflow-x: auto;
+            width: calc(100% + 32px); margin: 0 -16px; padding: 0 16px; box-sizing: border-box;
+          }
+          .ng-input-field { font-size: 16px !important; }
           .nx-assistant-subtitle { font-size: 13px !important; margin-top: 4px !important; }
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
           .nx-user-bubble { max-width: 88% !important; }
@@ -7047,6 +7866,7 @@ export default function NexaApp() {
         {tab !== "assistant" && (
           <TopBar>
             {tab === "settings" ? null : <TimeDate />}
+            <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />
             <IconBtn icon={Icon.search} onClick={() => setSearchOpen(true)} label="Поиск" />
             <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
           </TopBar>
@@ -7076,7 +7896,16 @@ export default function NexaApp() {
       />
     </div>
   ) : tab === "assistant" ? (
-    <ScreenAssistant initialChatId={searchChatId} onToast={showToast} />
+    <ScreenAssistant
+      initialChatId={searchChatId}
+      onToast={showToast}
+      tab={tab}
+      setTab={goTab}
+      devices={devices}
+      onAddDevice={() => setAddOpen(true)}
+      onUploadFiles={() => uploadInputRef.current?.click()}
+      bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />}
+    />
   ) : (
     <div key={tab} className="ng-screen-anim">
       {tab === "home" && (
@@ -7090,7 +7919,7 @@ export default function NexaApp() {
           canRestore={deviceStore.removed.length > 0}
         />
       )}
-      {tab === "today" && <ScreenToday />}
+      {tab === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} />}
       {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
       {tab === "files" && (
         <ScreenFiles
@@ -7185,6 +8014,14 @@ export default function NexaApp() {
           onNavigate={goTab}
         />
       )}
+      {/* Выбор файлов по команде ассистента «загрузи файл» */}
+      <input
+        ref={uploadInputRef} type="file" multiple hidden
+        onChange={(e) => {
+          if (e.target.files?.length) { addFiles(e.target.files, null); goTab("files"); }
+          e.target.value = "";
+        }}
+      />
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
      </div>
   );
