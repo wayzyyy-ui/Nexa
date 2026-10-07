@@ -1017,7 +1017,10 @@ function TempFold({ temp, tone }) {
 // city и details необязательные: у карточки "на завтра" их нет.
 // art — показать складку внутри карточки (только на телефоне, как в макете).
 // note — своя подпись под состоянием вместо «Ощущается как …» (для завтра)
-function WeatherCard({ title, date, city, temp, cond, feels, note, tone, details, art }) {
+// cityNote — мелкая подпись после города: откуда взялось местоположение
+// veil — «вуаль», когда настоящих данных нет: { kind: "loading" | "error", text, onRetry }.
+//   Значения размываются, поверх — сообщение и кнопка «Обновить»
+function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, details, art, veil }) {
   return (
     <div className="nx-weather" style={{
       position: "relative", overflow: "hidden",
@@ -1033,42 +1036,82 @@ function WeatherCard({ title, date, city, temp, cond, feels, note, tone, details
           на телефоне "Погода" прячется, город и дата встают в одну строку */}
       <div className="nx-weather-head" style={{
         display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto",
-        gridTemplateAreas: `"title date" "city ."`, alignItems: "center", columnGap: 12,
+        gridTemplateAreas: `"title date" "city city"`, alignItems: "center", columnGap: 12,
       }}>
         <div className="nx-weather-title" style={{ gridArea: "title", display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20 }}>
           {weatherMark()} {title}
         </div>
         <div style={{ gridArea: "date", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{date}</div>
         {city && (
-          <div className="nx-weather-city" style={{ gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8 }}>
-            <span className="nx-weather-pin" style={{ display: "flex", width: 24, justifyContent: "center" }}>{Icon.pin({ c: C.muted, s: 20 })}</span>
-            {city}
+          <div className="nx-weather-city" style={{ gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8, minWidth: 0 }}>
+            <span className="nx-weather-pin" style={{ display: "flex", width: 24, justifyContent: "center", flexShrink: 0 }}>{Icon.pin({ c: C.muted, s: 20 })}</span>
+            {/* Длинное название города обрезается многоточием, подпись не съезжает */}
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{city}</span>
+            {cityNote && (
+              <span style={{ flexShrink: 0, marginLeft: -6, fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap" }}>· {cityNote}</span>
+            )}
           </div>
         )}
       </div>
 
-      <div className="nx-weather-main" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 22 }}>
-        <TempFold temp={temp} tone={tone} />
-        <div>
-          <div style={{ fontSize: 20 }}>{cond}</div>
-          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
-        </div>
-      </div>
-
-      {details && (
-        <div className="nx-weather-details" style={{ position: "relative", display: "flex", marginTop: 26 }}>
-          {details.map((d, i) => (
-            <div key={d.label} className="nx-weather-detail" style={{
-              flex: 1, minWidth: 0,
-              paddingLeft: i ? 16 : 0,
-              borderLeft: i ? `1px solid ${C.borderStrong}` : "none",
-            }}>
-              <div style={{ fontSize: 12, color: C.muted }}>{d.label}</div>
-              <div className="nx-weather-value" style={{ fontSize: 19, fontWeight: 300, color: C.muted, marginTop: 2, whiteSpace: "nowrap" }}>{d.value}</div>
+      {/* Значения погоды. Если настоящих данных нет (veil), они размыты,
+          а поверх — сообщение: «загружаем» или «не удалось + Обновить» */}
+      <div style={{ position: "relative" }}>
+        <div aria-hidden={veil ? true : undefined} style={veil ? {
+          filter: "blur(8px)", opacity: 0.45, pointerEvents: "none", userSelect: "none",
+        } : { transition: "filter 300ms ease, opacity 300ms ease" }}>
+          <div className="nx-weather-main" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 22 }}>
+            <TempFold temp={temp} tone={tone} />
+            <div>
+              <div style={{ fontSize: 20 }}>{cond}</div>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
             </div>
-          ))}
+          </div>
+
+          {details && (
+            <div className="nx-weather-details" style={{ position: "relative", display: "flex", marginTop: 26 }}>
+              {details.map((d, i) => (
+                <div key={d.label} className="nx-weather-detail" style={{
+                  flex: 1, minWidth: 0,
+                  paddingLeft: i ? 16 : 0,
+                  borderLeft: i ? `1px solid ${C.borderStrong}` : "none",
+                }}>
+                  <div style={{ fontSize: 12, color: C.muted }}>{d.label}</div>
+                  <div className="nx-weather-value" style={{ fontSize: 19, fontWeight: 300, color: C.muted, marginTop: 2, whiteSpace: "nowrap" }}>{d.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {veil && (
+          <div role={veil.kind === "error" ? "alert" : "status"} className="nx-pop" style={{
+            position: "absolute", inset: 0, marginTop: 12,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            gap: 10, textAlign: "center",
+          }}>
+            {veil.kind === "loading" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.muted }}>
+                <Spinner /> Загружаем погоду…
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 13.5, lineHeight: 1.4 }}>
+                  Не удалось загрузить погоду
+                  {veil.text && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{veil.text}</div>}
+                </div>
+                <button type="button" className="nx-ghost-btn" onClick={veil.onRetry} style={{
+                  ...btnReset, display: "flex", alignItems: "center", gap: 8,
+                  border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "7px 14px", fontSize: 13,
+                  background: C.panel,
+                }}>
+                  {Icon.refresh({ c: C.text, s: 14 })} Обновить
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1085,12 +1128,13 @@ const SCHEDULE = [
 /* ---------- РЕАЛЬНАЯ ПОГОДА (Open-Meteo) ----------
    Бесплатный сервис без ключа, браузер ходит в него напрямую.
    Город — Казань. Обновляем раз в 15 минут. */
-const WEATHER_URL =
-  "https://api.open-meteo.com/v1/forecast?latitude=55.79&longitude=49.11" +
+// Адрес погоды собирается по координатам — так одни и те же данные
+// можно получать для любого города, а не только для Казани
+const weatherUrl = (lat, lon) =>
+  `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
   "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,surface_pressure,weather_code" +
-  "&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Europe/Moscow&forecast_days=2";
+  "&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=16"; // 16 дней — максимум бесплатного прогноза
 const WEATHER_REFRESH_MS = 15 * 60 * 1000;
-const WEATHER_TZ = "Europe/Moscow"; // даты показываем по времени Казани
 const WEATHER_TIMEOUT_MS = 10000;   // дольше 10 секунд ответа не ждём
 
 // Понятная причина, почему погода не загрузилась (для строки под карточкой)
@@ -1136,9 +1180,10 @@ function weatherCodeToText(code) {
 
 // Дата для карточки: «7 октября 2026», по времени Казани
 function formatWeatherDate(date) {
-  const dayMonth = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: WEATHER_TZ });
+  // Без timeZone — берётся часовой пояс устройства пользователя
+  const dayMonth = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
   // Год берём отдельной частью: иначе некоторые браузеры допишут «г.»
-  const year = new Intl.DateTimeFormat("ru-RU", { year: "numeric", timeZone: WEATHER_TZ })
+  const year = new Intl.DateTimeFormat("ru-RU", { year: "numeric" })
     .formatToParts(date).find((p) => p.type === "year").value;
   return `${dayMonth} ${year}`;
 }
@@ -1172,7 +1217,173 @@ function parseWeather(data) {
       code: d.weather_code[1],
       date: dayFromIso(d.time[1]),
     },
+    // Прогноз по дням (до 16): днём (max), ночью (min) и код погоды.
+    // Последний день сервис иногда присылает пустым (null) — такие дни
+    // пропускаем, иначе округление превратит пустоту в «0°»
+    days: d.time
+      .map((iso, i) => ({ iso, max: d.temperature_2m_max[i], min: d.temperature_2m_min[i], code: d.weather_code[i] }))
+      .filter((x) => x.max != null && x.min != null && x.code != null)
+      .map((x) => ({ date: dayFromIso(x.iso), max: Math.round(x.max), min: Math.round(x.min), code: x.code })),
   };
+}
+
+// Подпись дня в прогнозе: «Сегодня», «Завтра» или «Пт, 9 окт.»
+function forecastDayLabel(date, index) {
+  if (index === 0) return "Сегодня";
+  if (index === 1) return "Завтра";
+  const s = date.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* ---------- МЕСТОПОЛОЖЕНИЕ ----------
+   Определяем город двумя способами одновременно:
+   1) геолокация браузера — точные координаты, но браузер спросит разрешение;
+   2) ipapi.co — примерно по IP-адресу, без разрешений.
+   Приоритет у геолокации: ответ по IP ставим не раньше чем через 1,5 секунды,
+   чтобы геолокация успела «победить». Пока ничего не пришло — Казань. */
+const DEFAULT_LOCATION = { city: "Казань", lat: 55.79, lon: 49.11, source: "default" };
+const GEO_TIMEOUT_MS = 6000;        // дольше 6 секунд геолокацию не ждём
+const GEO_CACHE_MS = 10 * 60 * 1000; // браузер может отдать координаты из кэша за 10 минут
+const IP_GRACE_MS = 1500;           // столько ждём геолокацию, прежде чем поставить город по IP
+const CITY_LOOKUP_MS = 3000;        // дольше 3 секунд название города не ждём
+
+// Подпись под городом на карточке погоды: откуда взялось местоположение
+const LOCATION_SOURCE_TEXT = {
+  geo: "определено точно",
+  ip: "примерно по IP",
+  default: "по умолчанию",
+};
+
+// Геолокация браузера в виде промиса. Если браузер её не умеет
+// (старый браузер или сайт открыт не по HTTPS) — сразу «отказ»
+function getBrowserPosition() {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("геолокация недоступна"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      timeout: GEO_TIMEOUT_MS,
+      maximumAge: GEO_CACHE_MS,
+    });
+  });
+}
+
+// Название города по координатам, по-русски (BigDataCloud, без ключа).
+// Берём city, а если его нет — locality. Не дождались или ошибка — null
+// Запрос с ограничением по времени: не ответил за CITY_LOOKUP_MS — считаем, что не вышло
+function withTimeout(promise) {
+  const giveUp = new Promise((resolve) => setTimeout(() => resolve(null), CITY_LOOKUP_MS));
+  return Promise.race([promise.catch(() => null), giveUp]);
+}
+
+// Крупные города — запасной вариант, если ни один сервис не назвал город.
+// Работает даже без интернета: просто ищем ближайший по координатам
+const KNOWN_CITIES = [
+  ["Москва", 55.76, 37.62], ["Санкт-Петербург", 59.94, 30.31], ["Казань", 55.79, 49.11],
+  ["Нижний Новгород", 56.33, 44.0], ["Екатеринбург", 56.84, 60.61], ["Новосибирск", 55.03, 82.92],
+  ["Самара", 53.2, 50.15], ["Уфа", 54.74, 55.97], ["Челябинск", 55.16, 61.4],
+  ["Пермь", 58.01, 56.25], ["Ростов-на-Дону", 47.24, 39.71], ["Краснодар", 45.04, 38.98],
+  ["Воронеж", 51.66, 39.2], ["Волгоград", 48.71, 44.51], ["Омск", 54.99, 73.37],
+  ["Красноярск", 56.01, 92.85], ["Набережные Челны", 55.74, 52.4], ["Ижевск", 56.85, 53.2],
+  ["Ульяновск", 54.31, 48.4], ["Чебоксары", 56.14, 47.25], ["Йошкар-Ола", 56.63, 47.89],
+];
+function nearestKnownCity(lat, lon) {
+  // Расстояние в км по формуле для небольших расстояний — точности хватает
+  const km = ([, la, lo]) => {
+    const dx = (lo - lon) * 111 * Math.cos((lat * Math.PI) / 180);
+    const dy = (la - lat) * 111;
+    return Math.hypot(dx, dy);
+  };
+  const best = KNOWN_CITIES.reduce((a, b) => (km(b) < km(a) ? b : a));
+  // Ближе 60 км — это тот самый город; дальше — честно пишем «рядом с»
+  return km(best) < 60 ? best[0] : `Рядом с г. ${best[0]}`;
+}
+
+// Название города по координатам, по-русски. Пробуем по очереди:
+// 1) BigDataCloud (city или locality), 2) OpenStreetMap (Nominatim),
+// 3) ближайший крупный город из списка выше. Пустым не бывает никогда
+async function cityByCoords(lat, lon, signal) {
+  const bdc = await withTimeout(
+    fetch("https://api.bigdatacloud.net/data/reverse-geocode-client" +
+      `?latitude=${lat}&longitude=${lon}&localityLanguage=ru`, { signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => (data && (data.city || data.locality)) || null)
+  );
+  if (bdc) return bdc;
+
+  const osm = await withTimeout(
+    fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=ru" +
+      `&lat=${lat}&lon=${lon}`, { signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const a = data && data.address;
+        return (a && (a.city || a.town || a.village || a.municipality)) || null;
+      })
+  );
+  if (osm) return osm;
+
+  return nearestKnownCity(lat, lon);
+}
+
+// Координаты округляем до сотых (≈1 км): для погоды точнее не нужно
+const round2 = (n) => Math.round(n * 100) / 100;
+
+/* Хук местоположения. Возвращает { city, lat, lon, source },
+   source — "geo" (геолокация), "ip" (по IP) или "default" (Казань). */
+function useLocation() {
+  const [loc, setLoc] = useState(DEFAULT_LOCATION);
+
+  useEffect(() => {
+    let cancelled = false;   // экран закрыли — больше ничего не обновляем
+    let geoWon = false;      // геолокация сработала — ответ по IP больше не нужен
+    let graceOver = false;   // прошли ли 1,5 секунды ожидания геолокации
+    let ipLoc = null;        // готовый ответ по IP, если уже пришёл
+    const ctrl = new AbortController(); // чтобы оборвать запросы при закрытии
+
+    // Ставим город по IP, только если: он уже пришёл, 1,5 секунды прошли
+    // и геолокация не успела победить
+    const applyIp = () => {
+      if (!cancelled && !geoWon && graceOver && ipLoc) setLoc(ipLoc);
+    };
+    const graceTimer = setTimeout(() => { graceOver = true; applyIp(); }, IP_GRACE_MS);
+
+    // Способ 1: по IP. ipapi присылает город латиницей, поэтому
+    // название переспрашиваем по координатам — уже по-русски
+    fetch("https://ipapi.co/json/", { signal: ctrl.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(async (data) => {
+        // При превышении лимита ipapi отвечает { error: true } — это тоже «не вышло»
+        if (!data || data.error || data.latitude == null || data.longitude == null) return;
+        const lat = round2(data.latitude);
+        const lon = round2(data.longitude);
+        const city = await cityByCoords(lat, lon, ctrl.signal);
+        ipLoc = { city, lat, lon, source: "ip" };
+        applyIp();
+      })
+      .catch(() => { /* тихо: остаётся следующий по приоритету вариант */ });
+
+    // Способ 2: геолокация браузера. Если пользователь отказал или
+    // браузер не ответил за 6 секунд — тихо, остаётся IP или Казань
+    getBrowserPosition()
+      .then(async (pos) => {
+        if (cancelled) return;
+        geoWon = true; // с этого момента ответ по IP игнорируем
+        const lat = round2(pos.coords.latitude);
+        const lon = round2(pos.coords.longitude);
+        const city = await cityByCoords(lat, lon, ctrl.signal);
+        if (!cancelled) setLoc({ city, lat, lon, source: "geo" });
+      })
+      .catch(() => { /* отказ или нет геолокации — без ошибок и всплывашек */ });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(graceTimer);
+      ctrl.abort();
+    };
+  }, []);
+
+  return loc;
 }
 
 /* Хук погоды. Возвращает { loading, error, now, tomorrow, refetch }.
@@ -1180,9 +1391,9 @@ function parseWeather(data) {
    заглушки). Если очередное обновление упало, остаются последние
    удачные данные. Незаконченный запрос отменяется (AbortController),
    когда начинается новый или экран закрывается. */
-function useWeather() {
-  const [state, setState] = useState({ loading: true, error: null, now: null, tomorrow: null, updatedAt: null });
-  const ctrlRef = useRef(null);
+function useWeather(lat, lon) {
+  const [state, setState] = useState({ loading: true, error: null, now: null, tomorrow: null, days: null, updatedAt: null });
+  const ctrlRef = useRef(null); // текущий запрос — чтобы отменить его при новом
 
   const load = () => {
     ctrlRef.current?.abort();
@@ -1192,7 +1403,7 @@ function useWeather() {
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, WEATHER_TIMEOUT_MS);
     setState((s) => ({ ...s, loading: true, error: null }));
-    fetch(WEATHER_URL, { signal: ctrl.signal, cache: "no-store" })
+      fetch(weatherUrl(lat, lon), { signal: ctrl.signal, cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`ответ сервера ${res.status}`);
         return res.json();
@@ -1210,7 +1421,8 @@ function useWeather() {
       .finally(() => clearTimeout(timer));
   };
 
-  // Загружаем при открытии экрана и потом раз в 15 минут
+  // Загружаем при открытии экрана и потом раз в 15 минут.
+  // loadRef всегда держит свежую load — с актуальными координатами
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => {
@@ -1220,17 +1432,116 @@ function useWeather() {
       clearInterval(id);
       ctrlRef.current?.abort();
     };
-  }, []);
+    // Перезагружаем погоду, когда меняется город (то есть координаты)
+  }, [lat, lon]);
 
   return { ...state, refetch: load };
+}
+
+/* Прогноз на 2 недели. Только настоящие данные: пока их нет,
+   показываем загрузку или ошибку, а не выдуманные дни.
+   variant:
+     "inline" — список раскрывается под кнопкой (узкий экран и телефон);
+     "aside"  — панель справа от погоды на всю высоту колонки (широкий экран),
+                с заголовком, кнопкой «закрыть» и своей прокруткой. */
+function ForecastList({ id, days, loading, error, onRetry, variant = "inline", onClose }) {
+  const aside = variant === "aside";
+
+  // Что внутри: загрузка, ошибка или список дней
+  let body;
+  if (!days && loading) {
+    body = (
+      <div role="status" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "26px 16px", fontSize: 13, color: C.muted }}>
+        <Spinner /> Загружаем прогноз…
+      </div>
+    );
+  } else if (!days) {
+    body = (
+      <EmptyState
+        compact
+        title="Прогноз пока недоступен"
+        text={error ? `Не удалось загрузить: ${error}.` : "Данных о погоде ещё нет."}
+        action={
+          <button type="button" className="nx-ghost-btn" onClick={onRetry} style={{
+            ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "8px 14px", fontSize: 13,
+          }}>
+            Повторить
+          </button>
+        }
+      />
+    );
+  } else {
+    body = (
+      <>
+        {days.map((day, i) => {
+          const sky = weatherCodeToText(day.code);
+          return (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", fontSize: 13,
+              borderTop: i ? `1px solid ${C.border}` : "none",
+            }}>
+              <div style={{ width: 86, flexShrink: 0, color: i < 2 ? C.text : C.muted }}>{forecastDayLabel(day.date, i)}</div>
+              {/* Маленькая складка в цвет погоды: мятная — ясно, серая — облачно */}
+              <span aria-hidden="true" style={{
+                width: 16, height: 11, flexShrink: 0,
+                clipPath: "polygon(18% 0, 100% 0, 82% 100%, 0 100%)",
+                background: `linear-gradient(135deg, ${sky.tone}, color-mix(in srgb, ${sky.tone} 25%, transparent))`,
+              }} />
+              <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sky.text}</div>
+              {/* Днём и ночью */}
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                {signed(day.max)}°<span style={{ color: C.mutedSoft }}> / {signed(day.min)}°</span>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ padding: "8px 14px 10px", fontSize: 11.5, color: C.mutedSoft, borderTop: `1px solid ${C.border}` }}>
+          Днём / ночью. Дальше 16 дней точного прогноза нет ни у одного сервиса.
+        </div>
+      </>
+    );
+  }
+
+  if (!aside) {
+    return (
+      <div id={id} className="nx-pop" style={{ marginTop: 10, border: `1px solid ${C.borderStrong}`, borderRadius: 8 }}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div id={id} role="region" aria-label="Прогноз на 2 недели" className="nx-fc-slide" style={{
+      height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column",
+      background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 10, overflow: "hidden",
+    }}>
+      {/* Шапка панели: заголовок и «закрыть» */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 12px 16px", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ flex: 1, fontFamily: fontDisplay, fontSize: 17 }}>Прогноз на 2 недели</div>
+        <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть прогноз" style={{
+          ...btnReset, width: 30, height: 30, borderRadius: 4,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {Icon.close({ c: C.muted, s: 16 })}
+        </button>
+      </div>
+      {/* Список прокручивается внутри панели, сама панель высотой с колонку погоды */}
+      <div className="nx-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {body}
+      </div>
+    </div>
+  );
 }
 
 // ЭКРАН "СЕГОДНЯ" — расписание (таймлайн) + погода на сегодня и завтра.
 // На компьютере: расписание слева, погода справа, ещё правее складка.
 // На телефоне сначала погода, под ней расписание (порядок меняет CSS).
 function ScreenToday() {
+  // Сначала определяем город, потом по нему грузим погоду
+  const location = useLocation();
   // Реальная погода; пока её нет (грузится или ошибка) — заглушки
-  const weather = useWeather();
+  const weather = useWeather(location.lat, location.lon);
+  const [forecastOpen, setForecastOpen] = useState(false); // раскрыт ли прогноз на 2 недели
   const now = weather.now || WEATHER_FALLBACK.now;
   const tomorrow = weather.tomorrow || WEATHER_FALLBACK.tomorrow;
   const nowSky = weatherCodeToText(now.code);
@@ -1239,15 +1550,22 @@ function ScreenToday() {
   // Тихая строка под карточкой: идёт обновление или не вышло обновить
   const statusLine = { fontSize: 11.5, color: C.mutedSoft };
 
+  // Настоящих данных ещё нет — вместо выдуманных цифр размываем значения
+  // и пишем, что происходит: грузим или не вышло (тогда кнопка «Обновить»)
+  const veil = weather.now ? null
+    : weather.loading ? { kind: "loading" }
+    : { kind: "error", text: weather.error, onRetry: weather.refetch };
+
   return (
-    <MediaLayout>
+    <MediaLayout hideArt={forecastOpen}>
       <MediaTitle title="Сегодня" subtitle="Ваши дела, расписание и погода — всё в одном месте." />
 
       <div className="nx-today-grid" style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) minmax(0, 356px)",
-        gridTemplateAreas: `"sched now" "sched next" "sched month" "sched ."`,
-        gridTemplateRows: "auto auto auto 1fr",
+        // Кнопка прогноза — в последней строке, вровень с низом расписания
+        gridTemplateAreas: `"sched now" "sched next" "sched ." "sched month"`,
+        gridTemplateRows: "auto auto 1fr auto",
         gap: "18px 44px", alignItems: "start",
       }}>
         <section className="nx-sched" style={{ gridArea: "sched", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "26px 28px 30px" }}>
@@ -1286,16 +1604,20 @@ function ScreenToday() {
         </section>
 
         <div style={{ gridArea: "now" }}>
-          <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city="Казань" art
+            <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]} art
             temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone}
             details={[
               { label: "Ветер", value: `${now.wind} м/с` },
               { label: "Влажность", value: `${now.humidity} %` },
               { label: "Давление", value: `${now.pressure} мм` },
-            ]} />
+            ]}
+            veil={veil} />
                     <div style={{
             display: "flex", alignItems: "center", gap: 8,
             marginTop: 8, paddingLeft: 2, minHeight: 22,
+            // Пока данных нет, о загрузке и ошибке говорит сама карточка (вуаль).
+            // Строку прячем, но место оставляем — чтобы ничего не прыгало
+            visibility: weather.now ? "visible" : "hidden",
           }}>
             {/* Кнопка обновления доступна всегда — можно потянуть погоду заново */}
             <button
@@ -1329,17 +1651,50 @@ function ScreenToday() {
         </div>
         <div style={{ gridArea: "next" }}>
           <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow.date)}
-            temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone} />
+            temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone}
+            veil={veil} />
         </div>
-        <button type="button" className="nx-ghost-btn" style={{
-          ...btnReset, gridArea: "month", width: "100%", boxSizing: "border-box",
-          border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "6px 14px",
-          display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
-        }}>
-          <span />
-          <span>Прогноз на месяц</span>
-          <span style={{ justifySelf: "end", display: "flex" }}>{Icon.chevron({ c: C.text })}</span>
-        </button>
+        <div style={{ gridArea: "month", alignSelf: "end" }}>
+          <button type="button" className="nx-ghost-btn"
+            onClick={() => setForecastOpen(!forecastOpen)}
+            aria-expanded={forecastOpen} aria-controls="nx-forecast nx-forecast-side"
+            style={{
+              ...btnReset, width: "100%", boxSizing: "border-box",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "6px 14px",
+              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
+            }}>
+            <span />
+            <span>Прогноз на 2 недели</span>
+            {/* Стрелка: на широком экране при открытии смотрит влево («закрыть»),
+                на узком — вниз (список под кнопкой). См. .nx-fc-chev в стилях */}
+            <span className={`nx-fc-chev${forecastOpen ? " is-open" : ""}`} style={{ justifySelf: "end", display: "flex" }}>
+              {Icon.chevron({ c: C.text })}
+            </span>
+          </button>
+          {/* Узкий экран и телефон: список под кнопкой */}
+          {forecastOpen && (
+            <div className="nx-fc-inline">
+              <ForecastList id="nx-forecast" days={weather.days} loading={weather.loading}
+                error={weather.error} onRetry={weather.refetch} />
+            </div>
+          )}
+        </div>
+
+        {/* Широкий экран: панель справа от погоды, поверх края складки.
+            Стоит в той же колонке, что и погода (все строки — вровень с расписанием), и сдвинута
+            вправо за её край. Внутренняя обёртка absolute — поэтому панель
+            берёт высоту колонки погоды, но сама её не растягивает */}
+        {forecastOpen && (
+          <div className="nx-fc-aside" style={{
+            gridColumn: 2, gridRow: "1 / -1", alignSelf: "stretch", justifySelf: "start",
+            width: 330, marginLeft: "calc(100% + 32px)", position: "relative", zIndex: 3,
+          }}>
+            <div style={{ position: "absolute", inset: 0 }}>
+              <ForecastList id="nx-forecast-side" variant="aside" days={weather.days} loading={weather.loading}
+                error={weather.error} onRetry={weather.refetch} onClose={() => setForecastOpen(false)} />
+            </div>
+          </div>
+        )}
       </div>
     </MediaLayout>
   );
@@ -1514,12 +1869,16 @@ function FolderThumb() {
 
 /* Общая раскладка "Медиа" и "Файлов": слева контент, справа фирменная
    складка, как в макете. На узком экране складка прячется (см. .nx-media-art). */
-function MediaLayout({ children }) {
+// hideArt — плавно спрятать складку (например, когда справа открыт прогноз)
+function MediaLayout({ children, hideArt }) {
   return (
     <div className="ng-screen" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
       <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>{children}</div>
-        <div className="nx-media-art" style={{ position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 60, marginRight: -40 }}>
+        <div className="nx-media-art" aria-hidden={hideArt || undefined} style={{
+          position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 60, marginRight: -40,
+          opacity: hideArt ? 0 : 1, transition: "opacity 240ms ease",
+        }}>
           <FoldHero size={440} />
         </div>
       </div>
@@ -2226,6 +2585,33 @@ const DEVICE_SETTINGS = [
 ];
 const FIND_MS = 3600; // сколько "звонит" устройство при поиске
 
+/* Складка-«конверт» в окне устройства (как в макете): скошенный
+   четырёхугольник, разрезанный на 4 треугольника от центра.
+   Точки — в % от размера складки. Чтобы поменять форму, меняй точки тут. */
+const FOLD_TL = "17% 5%", FOLD_TR = "100% 0", FOLD_BR = "84% 93%", FOLD_BL = "0 100%", FOLD_C = "52% 49%";
+const DEVICE_FOLD_SHAPE = `polygon(${FOLD_TL}, ${FOLD_TR}, ${FOLD_BR}, ${FOLD_BL})`;
+// on — цвет грани, когда устройство в сети; off — серый, когда отключено.
+// delay — задержка: грани меняются по очереди, получается «волна».
+// tear — куда грань отлетает при отключении («разрыв» связи, как в макете):
+//   x, y — сдвиг в пикселях от центра, r — небольшой поворот в градусах
+const DEVICE_FOLD_FACETS = [
+  { id: "top",    clip: `polygon(${FOLD_TL}, ${FOLD_TR}, ${FOLD_C})`, delay: 0,
+    on: `color-mix(in srgb, ${C.foldDeep} 55%, ${C.foldBlue})`, off: `color-mix(in srgb, ${C.muted} 35%, ${C.chip})`,
+    tear: { x: -2, y: -12, r: -4 } },
+  { id: "right",  clip: `polygon(${FOLD_TR}, ${FOLD_BR}, ${FOLD_C})`, delay: 70,
+    on: `color-mix(in srgb, ${C.foldBlue} 80%, ${C.foldDeep})`, off: `color-mix(in srgb, ${C.muted} 70%, ${C.chip})`,
+    tear: { x: 14, y: -6, r: 5 } },
+  { id: "bottom", clip: `polygon(${FOLD_BR}, ${FOLD_BL}, ${FOLD_C})`, delay: 140,
+    on: `color-mix(in srgb, ${C.foldBlue} 45%, ${C.foldCyan})`, off: `color-mix(in srgb, ${C.muted} 85%, ${C.chip})`,
+    tear: { x: 2, y: 12, r: -3 } },
+  { id: "left",   clip: `polygon(${FOLD_BL}, ${FOLD_TL}, ${FOLD_C})`, delay: 210,
+    on: C.foldBlue, off: `color-mix(in srgb, ${C.muted} 50%, ${C.chip})`,
+    tear: { x: -14, y: 4, r: 4 } },
+];
+// Пружинистая кривая: грани чуть «перелетают» и встают на место —
+// разрыв выглядит как щелчок, а не плавное расползание
+const TEAR_EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+
 const CONNECT_MS = 1400;    // сколько длится подключение (столько же идёт полоса по складке)
 const DISCONNECT_MS = 600;  // отключение быстрее
 const RESULT_MS = 1600;     // сколько кнопка показывает «Подключено» / «Отключено»
@@ -2237,6 +2623,24 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
   const turningOn = useRef(false); // что сейчас делаем: подключаем или отключаем
   // Номер последнего переключения: меняется — анимация складки запускается заново
   const [flip, setFlip] = useState(null);
+  const foldRef = useRef(null);
+
+  // Подключилось — складка «раскрывается» (лёгкий поворот и масштаб).
+  // Запускаем анимацию прямо на элементе, не пересоздавая его, чтобы
+  // не сбить плавное схождение граней. Без движения — если так в системе
+  useEffect(() => {
+    const el = foldRef.current;
+    if (!flip || !flip.on || !el || !el.animate) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate(
+      [
+        { transform: "scale(0.9) rotate(-4deg)" },
+        { transform: "scale(1.04) rotate(1deg)", offset: 0.6 },
+        { transform: "none" },
+      ],
+      { duration: 520, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }
+    );
+  }, [flip]);
   const used = deviceUsed(d);
 
   // Таймеры подключения: при закрытии окна их нужно отменить
@@ -2306,6 +2710,8 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
     },
     { label: "Память", value: `${used} из ${d.memory} ГБ`, pct: Math.min(100, (used / d.memory) * 100) },
   ];
+  // Кнопки окна устройства — «таблетки», как в макете
+  const pillBtn = { borderRadius: 999, minHeight: 46, padding: "10px 16px", justifyContent: "center", whiteSpace: "nowrap" };
 
   const ghostBtn = {
     ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
@@ -2325,15 +2731,15 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
           boxSizing: "border-box", textAlign: "left",
         }}
       >
-        {/* Шапка: название и статус */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px" }}>
+        {/* Шапка: крупное название и статус */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "22px 22px 16px" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.mutedSoft, marginTop: 3 }}>
+            <div style={{ fontFamily: fontDisplay, fontSize: 30, fontWeight: 400, lineHeight: 1.1 }}>{d.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.mutedSoft, marginTop: 6 }}>
               <Dot color={d.online ? C.green : C.red} />
               {d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
             </div>
@@ -2350,39 +2756,40 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
             цветная, пока устройство в сети, и серая, когда отключено.
             Во время поиска от устройства расходятся волны сигнала */}
         <div style={{ padding: "0 18px" }}>
-          <div style={{
-            position: "relative", height: 190, borderRadius: 8, overflow: "hidden",
-            border: `1px solid ${C.border}`, background: C.panel2,
+          <div className="nx-device-stage" style={{
+            position: "relative", height: 210, borderRadius: 20, overflow: "hidden",
+            background: `color-mix(in srgb, ${C.text} 6%, ${C.panel})`,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            {/* Складка. key меняется при каждом переключении — так анимация
-                «раскрылась» (nx-fold-on) или «сжалась» (nx-fold-off) играет заново */}
+            {/* Складка-«конверт»: четыре треугольника сходятся к центру.
+                ВАЖНО: складка не пересоздаётся при переключении (нет key),
+                иначе грани появились бы сразу в новом положении без перехода.
+                Разрыв при отключении делают сами грани (см. tear),
+                «раскрытие» при подключении запускается эффектом через foldRef */}
             <div
-              key={flip ? flip.n : "fold"}
-              className={flip ? (flip.on ? "nx-fold-on" : "nx-fold-off") : undefined}
-              style={{ position: "absolute", width: 210, height: 148, overflow: "hidden",
-                clipPath: "polygon(16% 6%, 100% 0, 84% 94%, 0 100%)" }}
+              ref={foldRef}
+              style={{ position: "absolute", width: 236, height: 166 }}
             >
-              {/* Светлая грань: цветная в сети, серая без сети */}
-              <div style={{
-                position: "absolute", inset: 0,
-                background: d.online
-                  ? `linear-gradient(135deg, ${C.foldDeep}, ${C.foldBlue} 55%, ${C.foldCyan})`
-                  : C.chip,
-                transition: "background 420ms ease",
-              }} />
-              {/* Тёмный треугольник сгиба */}
-              <div style={{
-                position: "absolute", inset: 0,
-                clipPath: "polygon(100% 0, 84% 94%, 52% 50%)",
-                background: `color-mix(in srgb, ${C.foldDeep} 40%, transparent)`,
-              }} />
+              {DEVICE_FOLD_FACETS.map((f) => (
+                <div key={f.id} className="nx-facet" style={{
+                  position: "absolute", inset: 0, clipPath: f.clip,
+                  background: d.online ? f.on : f.off,
+                  // В сети грани сомкнуты; без сети — разлетаются от центра («разрыв»).
+                  // При подключении съезжаются обратно в целую складку
+                  transform: d.online ? "none" : `translate(${f.tear.x}px, ${f.tear.y}px) rotate(${f.tear.r}deg)`,
+                  transformOrigin: FOLD_C, // грани отлетают от центра складки
+                  // Цвет и положение меняются по очереди — получается «волна»
+                  transition: `background 420ms ease ${f.delay}ms, transform 560ms ${TEAR_EASE} ${f.delay}ms`,
+                }} />
+              ))}
               {/* Пока идёт подключение, по складке один раз проходит мятная полоса */}
               {connecting && (
-                <div className="nx-scan" style={{
-                  position: "absolute", top: -10, bottom: -10, left: "50%", width: 46, marginLeft: -23,
-                  background: `linear-gradient(90deg, transparent, color-mix(in srgb, ${C.mint} 55%, transparent), transparent)`,
-                }} />
+                <div style={{ position: "absolute", inset: 0, overflow: "hidden", clipPath: DEVICE_FOLD_SHAPE }}>
+                  <div className="nx-scan" style={{
+                    position: "absolute", top: -10, bottom: -10, left: "50%", width: 46, marginLeft: -23,
+                    background: `linear-gradient(90deg, transparent, color-mix(in srgb, ${C.mint} 55%, transparent), transparent)`,
+                  }} />
+                </div>
               )}
             </div>
             {ringing && [0, 1, 2].map((i) => (
@@ -2393,29 +2800,34 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
               className={flip && flip.on ? "nx-icon-on" : undefined}
               style={{ position: "relative", display: "flex" }}
             >
-              {d.icon({ c: d.online ? C.onFold : C.muted, s: 72 })}
+              {d.icon({ c: d.online ? C.onFold : C.muted, s: 64 })}
             </div>
           </div>
         </div>
 
         {/* Заряд и память */}
-        <div style={{ padding: "18px 18px 4px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: "20px 22px 4px", display: "flex", flexDirection: "column", gap: 16 }}>
           {bars.map((b) => (
-            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
+            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
               <div style={{ width: 62, flexShrink: 0, color: C.mutedSoft }}>{b.label}</div>
-              <div style={{ flex: 1, height: 6, background: C.chip, overflow: "hidden" }}>
+              {/* Полоска-«таблетка»: толстая, со скруглёнными краями */}
+              <div style={{ flex: 1, height: 8, borderRadius: 999, background: `color-mix(in srgb, ${C.text} 10%, transparent)`, overflow: "hidden" }}>
                 <div className="nx-bar" style={{
-                  width: `${b.pct}%`, height: "100%",
+                  width: `${b.pct}%`, height: "100%", borderRadius: 999,
                   background: !d.online ? C.muted : b.low ? C.red : `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
                 }} />
               </div>
-              <div style={{ width: 96, flexShrink: 0, textAlign: "right" }}>{b.value}</div>
+              <div style={{ width: 96, flexShrink: 0, textAlign: "right", color: C.muted }}>{b.value}</div>
             </div>
           ))}
         </div>
 
-        {/* Действия */}
-        <div className="nx-viewer-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "16px 18px 4px" }}>
+        {/* Действия: три кнопки-«таблетки» равной ширины.
+            На узком экране третья переносится на новую строку */}
+        <div className="nx-device-actions" style={{
+          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(136px, 1fr))",
+          gap: 10, padding: "20px 22px 4px",
+        }}>
           {/* Пока устройство звонит, кнопка в состоянии «загрузка» */}
           <StateButton
             variant="primary"
@@ -2424,10 +2836,11 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
             icon={Icon.search({ c: C.onFold, s: 16 })}
             disabled={!d.online || power === "loading"}
             onClick={find}
+            style={pillBtn}
           >
             Найти
           </StateButton>
-          <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={ghostBtn}>
+          <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn }}>
             {Icon.folder({ c: C.text, s: 16 })} Файлы · {fileCount}
           </button>
           <StateButton
@@ -2435,18 +2848,19 @@ function DeviceViewer({ device: d, fileCount, onClose, onSetOnline, onSetting, o
             labels={powerLabels}
             icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
             onClick={toggleOnline}
+            style={pillBtn}
           >
             {d.online ? "Отключить" : "Подключить"}
           </StateButton>
         </div>
         {!d.online && power === "idle" && (
-          <div style={{ padding: "8px 18px 0", fontSize: 12, color: C.mutedSoft }}>
+          <div style={{ padding: "10px 22px 0", fontSize: 12, color: C.mutedSoft }}>
             Найти можно только устройство в сети
           </div>
         )}
 
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
-        <div style={{ margin: "16px 18px 18px", border: `1px solid ${C.border}`, borderRadius: 6 }}>
+        <div style={{ margin: "20px 22px 22px", border: `1px solid ${C.border}`, borderRadius: 12 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
             <div key={s.key} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
@@ -4361,20 +4775,6 @@ export default function NexaApp() {
           to   { transform: translateX(140px) skewX(-18deg); opacity: 0; }
         }
         .nx-scan { animation: nx-scan 1400ms cubic-bezier(0.4, 0, 0.2, 1) 1 both; }
-        /* Подключилось: складка «раскрывается» и наливается цветом */
-        @keyframes nx-fold-on {
-          0%   { transform: scale(0.9) rotate(-4deg); }
-          60%  { transform: scale(1.04) rotate(1deg); }
-          100% { transform: none; }
-        }
-        .nx-fold-on { animation: nx-fold-on 520ms cubic-bezier(0.16, 1, 0.3, 1) 1; }
-        /* Отключилось: складка коротко «сжимается» и сереет */
-        @keyframes nx-fold-off {
-          0%   { transform: none; }
-          45%  { transform: scale(0.92) rotate(2deg); }
-          100% { transform: none; }
-        }
-        .nx-fold-off { animation: nx-fold-off 420ms cubic-bezier(0.4, 0, 0.2, 1) 1; }
         /* Иконка устройства проявляется при подключении */
         @keyframes nx-icon-on {
           from { opacity: 0.3; transform: translateY(6px); }
@@ -4446,7 +4846,24 @@ export default function NexaApp() {
         @media (max-width: 1360px) {
           .nx-seg-label span { font-size: 10.5px !important; }
         }
+        /* Прогноз на 2 недели: на широком экране — панель справа (.nx-fc-aside),
+           на узком — список под кнопкой (.nx-fc-inline). Стрелка кнопки:
+           на узком при открытии смотрит вниз, на широком — влево («закрыть») */
+        .nx-fc-chev { transition: transform 200ms ease; }
+        .nx-fc-chev.is-open { transform: rotate(90deg); }
+        @media (min-width: 1101px) {
+          .nx-fc-inline { display: none; }
+          .nx-fc-chev.is-open { transform: rotate(180deg); }
+        }
+        /* Панель выезжает слева направо — из-под колонки погоды */
+        @keyframes nx-fc-in {
+          from { opacity: 0; transform: translateX(-14px); }
+          to   { opacity: 1; transform: none; }
+        }
+        .nx-fc-slide { animation: nx-fc-in 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+        @media (prefers-reduced-motion: reduce) { .nx-fc-slide { animation: none; } }
         @media (max-width: 1100px) {
+          .nx-fc-aside { display: none !important; }
           .nx-media-grid { grid-template-columns: minmax(0, 1fr) !important; }
           .nx-media-art { display: none !important; }
         }
@@ -4456,7 +4873,9 @@ export default function NexaApp() {
           .nx-pop, .nx-bar { animation: none !important; }
           .nx-tab-move { transition: none !important; }
           .nx-ping, .nx-scan { display: none; }
-          .nx-fold-on, .nx-fold-off, .nx-icon-on, .nx-shake { animation: none !important; }
+          .nx-icon-on, .nx-shake { animation: none !important; }
+          /* Разрыв без движения: грани сразу встают на место, меняется только цвет */
+          .nx-facet { transition: background 200ms ease !important; }
           .nx-spin { animation-duration: 2400ms; }
           .nx-row-btn:active, .nx-ghost-btn:active, .nx-icon-btn:active,
           .nx-primary:active, .nx-cat-card:active { transform: none; }
