@@ -401,18 +401,53 @@ function FoldHero({ size = 340 }) {
    Тонкая геометрия за содержимым, низкий контраст в обеих темах.
    BackdropFolds — грани складки в углах (все экраны),
    BackdropGrid — техническая сетка с метками (экран «Настройки»).
-   Двигается только в ответ на курсор и прокрутку: курсор задаёт
-   CSS-переменные --px/--py (от -1 до 1), прокрутка — --sy (от 0 до 1).
-   React при этом не перерисовывается, меняется только transform.
-   На телефоне и при «уменьшении движения» фон неподвижный. */
+   Двигается только в ответ на курсор (компьютер), наклон телефона
+   и прокрутку: курсор или наклон задают CSS-переменные --px/--py
+   (от -1 до 1), прокрутка — --sy (от 0 до 1). React при этом не
+   перерисовывается, меняется только transform.
+   При «уменьшении движения» фон неподвижный. */
+/* Наклон телефона (гироскоп). На iPhone датчик доступен только после
+   разрешения, которое можно спросить лишь по нажатию — поэтому там
+   по умолчанию выключено и включается в «Настройках». На Android — сразу. */
+const TILT_KEY = "nexa-tilt"; // "on" | "off" в localStorage
+// Разрешение нужно только на iPhone/iPad. Свежий Chrome тоже знает
+// requestPermission, но сам ничего не спрашивает — поэтому проверяем именно iOS
+// (iPad в режиме «как компьютер» выдаёт себя за Mac с сенсорным экраном)
+const isIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const tiltNeedsPermission = () =>
+  isIOS() && typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
+function readTilt() {
+  try { const v = localStorage.getItem(TILT_KEY); if (v) return v === "on"; } catch {}
+  return !tiltNeedsPermission();
+}
+// Включить/выключить. На iPhone при включении спрашиваем разрешение.
+// Возвращает, что в итоге получилось
+async function saveTilt(on) {
+  if (on && tiltNeedsPermission()) {
+    try { on = (await DeviceOrientationEvent.requestPermission()) === "granted"; } catch { on = false; }
+  }
+  try { localStorage.setItem(TILT_KEY, on ? "on" : "off"); } catch {}
+  window.dispatchEvent(new Event("nexa-tilt")); // фон подхватит новое значение
+  return on;
+}
+
 function useBackdropMotion(ref) {
+  // Меняется, когда в «Настройках» переключили наклон — тогда переподключаемся
+  const [tiltTick, setTiltTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTiltTick((t) => t + 1);
+    window.addEventListener("nexa-tilt", bump);
+    return () => window.removeEventListener("nexa-tilt", bump);
+  }, []);
   useEffect(() => {
     const el = ref.current;
     const mq = window.matchMedia;
-    const can = mq && mq("(min-width: 769px) and (pointer: fine)").matches && !mq("(prefers-reduced-motion: reduce)").matches;
-    if (!el || !can) return;
+    if (!el || !mq || mq("(prefers-reduced-motion: reduce)").matches) return;
+    const fine = mq("(min-width: 769px) and (pointer: fine)").matches;
     let frame = 0, px = 0, py = 0;
-    // Не чаще одного раза за кадр, даже если мышь шлёт события чаще
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    // Не чаще одного раза за кадр, даже если события приходят чаще
     const apply = () => {
       frame = 0;
       el.style.setProperty("--px", px.toFixed(3));
@@ -420,19 +455,39 @@ function useBackdropMotion(ref) {
       el.style.setProperty("--sy", Math.min(1, window.scrollY / 800).toFixed(3));
     };
     const queue = () => { if (!frame) frame = requestAnimationFrame(apply); };
+    // Компьютер: за курсором
     const move = (e) => {
       px = (e.clientX / window.innerWidth) * 2 - 1;
       py = (e.clientY / window.innerHeight) * 2 - 1;
       queue();
     };
-    window.addEventListener("pointermove", move, { passive: true });
+    // Телефон: наклон влево-вправо (gamma) и от себя-к себе (beta).
+    // Наклон считаем от положения, в котором держали телефон в начале
+    let base = null;
+    const tilt = (e) => {
+      if (e.gamma == null || e.beta == null) return;
+      if (base === null) base = e.beta;
+      px = clamp(e.gamma / 25);
+      py = clamp((e.beta - base) / 25);
+      queue();
+    };
+    const tiltOn = !fine && readTilt();
+    if (fine) window.addEventListener("pointermove", move, { passive: true });
+    if (tiltOn) window.addEventListener("deviceorientation", tilt);
+    // iPhone: если наклон уже включали, разрешение после перезагрузки
+    // спрашиваем по первому нажатию на экран
+    const ask = () => DeviceOrientationEvent.requestPermission().catch(() => {});
+    const askNeeded = tiltOn && tiltNeedsPermission();
+    if (askNeeded) window.addEventListener("click", ask, { once: true });
     window.addEventListener("scroll", queue, { passive: true });
     return () => {
       window.removeEventListener("pointermove", move);
+      window.removeEventListener("deviceorientation", tilt);
+      if (askNeeded) window.removeEventListener("click", ask);
       window.removeEventListener("scroll", queue);
       cancelAnimationFrame(frame);
     };
-  }, [ref]);
+  }, [ref, tiltTick]);
 }
 
 // Слой фона: от боковой панели до правого края (на телефоне — весь экран)
@@ -510,7 +565,7 @@ function BackdropGrid() {
           </span>
         ))}
         {Array.from({ length: 12 }, (_, i) => i > 0 && (
-          <span key={`r${i}`} className="nx-bd-label" style={{ ...label, left: PAD + 6, top: i * GRID_MAJOR + 4 }}>
+          <span key={`r${i}`} className="nx-bd-label nx-bd-row" style={{ ...label, left: PAD + 6, top: i * GRID_MAJOR + 4 }}>
             {String(i).padStart(2, "0")}
           </span>
         ))}
@@ -824,7 +879,7 @@ function Row({ leftIcon, title, subtitle, right, accent }) {
       {/* Правая часть: индикатор + стрелка — фиксированной ширины */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         {right}
-        {accent !== false && Icon.chevron({})}
+        {accent !== false && <span className="nx-chev">{Icon.chevron({})}</span>}
       </div>
     </div>
   );
@@ -971,12 +1026,21 @@ function DeviceLinks({ devices, received }) {
       const hubEl = wrap.querySelector("[data-link-hub]");
       if (!box.width || !hubEl) return setGeo(null); // блок скрыт (например, на телефоне)
       const hub = hubEl.getBoundingClientRect();
-      const x2 = hub.left + hub.width * 0.42 - box.left; // чуть левее центра — в грань складки
-      const y2 = hub.top + hub.height / 2 - box.top;
-      const lines = [...wrap.querySelectorAll("[data-link-id]")].map((el) => {
+      const rows = [...wrap.querySelectorAll("[data-link-id]")];
+      const n = rows.length;
+      const lines = rows.map((el, i) => {
         const r = el.getBoundingClientRect();
         const d = devices.find((x) => x.id === el.dataset.linkId);
-        return { id: el.dataset.linkId, online: !!d?.online, x1: r.right - box.left, y1: r.top + r.height / 2 - box.top, x2, y2 };
+        const x1 = r.right - box.left, y1 = r.top + r.height / 2 - box.top;
+        // Короткий горизонтальный отвод — у всех линий излом на одной вертикали
+        const xm = x1 + 26;
+        // Вход в складку: точки на её левой грани (на картинке грань идёт
+        // от 34.5%/44% до 45%/77% размера), сверху вниз по порядку строк,
+        // поэтому линии не пересекаются
+        const t = n === 1 ? 0.5 : 0.12 + (0.76 * i) / (n - 1);
+        const x2 = hub.left + hub.width * (0.345 + 0.105 * t) - box.left - 3;
+        const y2 = hub.top + hub.height * (0.44 + 0.327 * t) - box.top;
+        return { id: el.dataset.linkId, online: !!d?.online, pts: [[x1, y1], [xm, y1], [x2, y2]] };
       });
       setGeo({ w: box.width, h: box.height, lines });
     };
@@ -1014,7 +1078,7 @@ function DeviceLinks({ devices, received }) {
       {geo && <svg width={geo.w} height={geo.h} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
         {geo.lines.map((l) => (
           <g key={l.id}>
-            <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} strokeWidth="1"
+            <polyline points={l.pts.map((q) => q.join(",")).join(" ")} fill="none" strokeWidth="1" strokeLinejoin="miter"
               strokeDasharray={l.online ? undefined : "3 5"}
               style={{
                 stroke: l.online
@@ -1022,9 +1086,11 @@ function DeviceLinks({ devices, received }) {
                   : C.borderStrong,
                 transition: "stroke 400ms ease",
               }} />
-            {/* Узелок у края списка — точка «подключения» */}
-            <rect x={l.x1 - 2} y={l.y1 - 2} width="4" height="4" transform={`rotate(45 ${l.x1} ${l.y1})`}
-              style={{ fill: l.online ? C.mint : C.borderStrong }} />
+            {/* Узелки-ромбы: у края списка и там, где линия входит в грань складки */}
+            {[l.pts[0], l.pts[2]].map(([x, y], k) => (
+              <rect key={k} x={x - 2} y={y - 2} width="4" height="4" transform={`rotate(45 ${x} ${y})`}
+                style={{ fill: l.online ? C.mint : C.borderStrong }} />
+            ))}
           </g>
         ))}
       </svg>}
@@ -1041,13 +1107,20 @@ function LinkPulse({ p, onDone }) {
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
   useLayoutEffect(() => {
-    const [sx, sy, ex, ey] = p.back ? [p.x2, p.y2, p.x1, p.y1] : [p.x1, p.y1, p.x2, p.y2];
-    const a = ref.current.animate([
-      { transform: `translate(${sx}px, ${sy}px)`, opacity: 0 },
-      { opacity: 1, offset: 0.15 },
-      { opacity: 1, offset: 0.85 },
-      { transform: `translate(${ex}px, ${ey}px)`, opacity: 0 },
-    ], { duration: PULSE_MS, delay: p.delay, easing: "cubic-bezier(0.45, 0, 0.25, 1)", fill: "both" });
+    const pts = p.back ? [...p.pts].reverse() : p.pts;
+    // Длины участков — чтобы на каждом точка шла с одной скоростью
+    const seg = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+    const total = seg.reduce((a, b) => a + b, 0) || 1;
+    let run = 0;
+    const frames = pts.map((q, i) => {
+      if (i) run += seg[i - 1];
+      return { transform: `translate(${q[0]}px, ${q[1]}px)`, offset: run / total };
+    });
+    // Появляется в начале и гаснет в конце
+    frames[0].opacity = 0;
+    frames[frames.length - 1].opacity = 0;
+    for (let i = 1; i < frames.length - 1; i++) frames[i].opacity = 1;
+    const a = ref.current.animate(frames, { duration: PULSE_MS, delay: p.delay, easing: "cubic-bezier(0.45, 0, 0.25, 1)", fill: "both" });
     a.onfinish = () => doneRef.current();
     return () => a.cancel();
   }, []);
@@ -1056,49 +1129,6 @@ function LinkPulse({ p, onDone }) {
       position: "absolute", left: -3, top: -3, width: 6, height: 6, borderRadius: "50%",
       background: C.mint, opacity: 0, willChange: "transform, opacity",
     }} />
-  );
-}
-
-/* Телефон: связи без движения — короткие перемычки в зазорах между
-   соседними карточками (по горизонтали и вертикали) с узелком посередине */
-function GridLinks({ count }) {
-  const selfRef = useRef(null);
-  const [geo, setGeo] = useState(null);
-  useLayoutEffect(() => {
-    const wrap = selfRef.current?.parentElement;
-    if (!wrap) return;
-    const measure = () => {
-      const box = wrap.getBoundingClientRect();
-      if (!box.width) return setGeo(null);
-      const cards = [...wrap.querySelectorAll("[data-link-id]")].map((el) => {
-        const r = el.getBoundingClientRect();
-        return { l: r.left - box.left, r: r.right - box.left, t: r.top - box.top, b: r.bottom - box.top };
-      });
-      const segs = [];
-      cards.forEach((c, i) => {
-        const right = cards[i + 1], below = cards[i + 2];
-        if (i % 2 === 0 && right) segs.push({ x1: c.r, y1: (c.t + c.b) / 2, x2: right.l, y2: (c.t + c.b) / 2 });
-        if (below) segs.push({ x1: (c.l + c.r) / 2, y1: c.b, x2: (c.l + c.r) / 2, y2: below.t });
-      });
-      setGeo({ w: box.width, h: box.height, segs });
-    };
-    measure();
-    if (!window.ResizeObserver) return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [count]);
-  return (
-    <div ref={selfRef} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-    {geo && <svg width={geo.w} height={geo.h} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
-      {geo.segs.map((s, i) => (
-        <g key={i}>
-          <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} strokeWidth="1" style={{ stroke: `color-mix(in srgb, ${C.mint} 45%, transparent)` }} />
-          <rect x={(s.x1 + s.x2) / 2 - 1.5} y={(s.y1 + s.y2) / 2 - 1.5} width="3" height="3" style={{ fill: C.mint }} />
-        </g>
-      ))}
-    </svg>}
-    </div>
   );
 }
 
@@ -1149,7 +1179,7 @@ function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDev
               Синхронизировано. Работает. Рядом с вами
             </div>
 
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
+            <div className="nx-stagger" style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
               <div style={{
                 display: "flex", justifyContent: "space-between",
                 alignItems: "center", padding: "16px 18px",
@@ -1284,14 +1314,12 @@ function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDev
             </div>
           </div>
           {empty && <div style={{ border: `1px solid ${C.border}`, borderRadius: 14 }}>{empty}</div>}
-          <div style={{
+          <div className="nx-stagger" style={{
             display: "grid",
             // minmax(0, 1fr) — длинное название не раздвигает колонку
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: 10, position: "relative",
           }}>
-            {/* Перемычки между карточками — неподвижные связи */}
-            <GridLinks count={devices.length} />
             {/* Карточка — кнопка: открывает окно устройства */}
             {devices.map((d) => (
               <button
@@ -1976,7 +2004,7 @@ function ScreenToday() {
     <MediaLayout hideArt={forecastOpen}>
       <MediaTitle title="Сегодня" subtitle="Ваши дела, расписание и погода — всё в одном месте." />
 
-      <div className="nx-today-grid" style={{
+      <div className="nx-today-grid nx-stagger" style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) minmax(0, 356px)",
         // Справа три панели с одинаковыми отступами: погода, завтра, прогноз.
@@ -1994,7 +2022,7 @@ function ScreenToday() {
 
           {/* Вертикальная линия таймлайна — один div. --dot-x — где центр
               кружков; на телефоне время стоит слева, и линия сдвигается */}
-          <div className="nx-sched-list" style={{ position: "relative", "--dot-x": "12px" }}>
+          <div className="nx-sched-list nx-stagger" style={{ position: "relative", "--dot-x": "12px" }}>
             <div className="nx-sched-line" style={{ position: "absolute", left: "var(--dot-x)", top: 8, bottom: -10, width: 1, background: C.muted }} />
             {SCHEDULE.map((it) => (
               <div key={it.time} className="nx-sched-item" style={{
@@ -2023,7 +2051,7 @@ function ScreenToday() {
         </section>
 
         <div style={{ gridArea: "now" }}>
-            <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]} art
+            <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]}
             temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone}
             details={[
               { label: "Ветер", value: `${now.wind} м/с` },
@@ -2520,7 +2548,7 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory, onTransfer }) {
           Все файлы →
         </button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 34 }} className="ng-cat-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 34 }} className="ng-cat-grid nx-stagger">
         {MEDIA_CATS.slice(0, 4).map((cat) => {
           const n = countOf(cat.id);
           return (
@@ -2550,7 +2578,7 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory, onTransfer }) {
 
       <div className="ng-display" style={{ fontSize: 24, fontWeight: 400, marginBottom: 16 }}>Недавние файлы</div>
       {/* Лента: вертикальная линия слева и кружок у каждого файла */}
-      <div style={{ position: "relative", paddingLeft: 26 }}>
+      <div className="nx-stagger" style={{ position: "relative", paddingLeft: 26 }}>
         <div style={{ position: "absolute", left: 6, top: 24, bottom: 24, width: 1, background: C.borderStrong }} />
         {recent.map((f) => (
           <div key={f.id} style={{ position: "relative", marginBottom: 10 }}>
@@ -2869,7 +2897,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
 
       {/* Список прокручивается внутри себя, как в макете.
           key меняется при смене папки — список появляется заново с анимацией */}
-      <div key={device ? `dev-${device.id}` : cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-pop nx-scroll nx-files-list" style={{
+      <div key={device ? `dev-${device.id}` : cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-stagger nx-scroll nx-files-list" style={{
         maxHeight: "calc(100vh - 400px)", minHeight: 260, overflowY: "auto", paddingRight: 14,
       }}>
         {/* Новая папка: строка с полем имени. Enter — создать, Esc — отменить */}
@@ -3611,20 +3639,34 @@ function MiniFiles({ files, folders }) {
   );
 }
 
-// Часы: круглый циферблат — время, ближайшее дело, статус связи
-function WatchFace({ online, now }) {
+// Часы: круглый циферблат — время, ближайшее дело, статус связи.
+// По краю — кольцо заряда (синий → мятный)
+function WatchFace({ online, now, battery }) {
   const ev = nextEvent(now);
+  const pct = battery ?? 100;
+  const R = 46, LEN = 2 * Math.PI * R; // кольцо в координатах 0..100
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center" }}>
+    <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center" }}>
+      <svg viewBox="0 0 100 100" aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+        <defs>
+          <linearGradient id="nx-watch-ring" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" style={{ stopColor: C.blue }} />
+            <stop offset="1" style={{ stopColor: C.mint }} />
+          </linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r={R} fill="none" strokeWidth="1.6" style={{ stroke: C.border }} />
+        <circle cx="50" cy="50" r={R} fill="none" strokeWidth="1.6" strokeLinecap="round"
+          stroke="url(#nx-watch-ring)" strokeDasharray={`${(LEN * pct) / 100} ${LEN}`} transform="rotate(-90 50 50)" />
+      </svg>
       <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 8, color: online ? C.green : C.red }}>
         <span style={{ width: 5, height: 5, borderRadius: "50%", background: online ? C.green : C.red }} />
         {online ? "На связи" : "Нет связи"}
       </div>
-      <div style={{ fontFamily: fontDisplay, fontSize: 38, lineHeight: 1, fontWeight: 500, letterSpacing: "-0.02em" }}>{hhmm(now)}</div>
-      <div style={{ fontSize: 8, color: C.muted }}>{now.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}</div>
+      <div style={{ fontFamily: fontDisplay, fontSize: 42, lineHeight: 1, fontWeight: 500, letterSpacing: "-0.02em" }}>{hhmm(now)}</div>
+      <div style={{ fontSize: 8.5, color: C.muted }}>{now.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}</div>
       {/* Тонкая черта-грань, как сгиб складки */}
-      <div style={{ width: 70, height: 1, background: `linear-gradient(90deg, transparent, ${C.mint}, transparent)`, margin: "4px 0" }} />
-      <div style={{ fontSize: 8.5, maxWidth: 120, lineHeight: 1.3 }}>
+      <div style={{ width: 74, height: 1, background: `linear-gradient(90deg, transparent, ${C.mint}, transparent)`, margin: "3px 0" }} />
+      <div style={{ fontSize: 8.5, maxWidth: 118, lineHeight: 1.3 }}>
         {ev ? <><span style={{ color: C.mint }}>{ev.time}</span> · {ev.title}</> : "На сегодня дел нет"}
       </div>
     </div>
@@ -3744,7 +3786,9 @@ function BudsPanel({ files, battery, online }) {
 function DevicePreview({ device, devices, files, folders }) {
   const now = useClock();
   const type = typeOf(device);
-  const line = `1px solid ${C.muted}`;
+  // Контур корпуса: заметнее приглушённого цвета, но тоньше текста
+  const lineColor = `color-mix(in srgb, ${C.text} 48%, transparent)`;
+  const line = `1px solid ${lineColor}`;
   const screen = { background: C.bg, border: `1px solid ${C.border}`, overflow: "hidden", position: "relative" };
   // Экран выключенного устройства: тусклый, с подписью поверх
   const content = (node) => (
@@ -3780,15 +3824,39 @@ function DevicePreview({ device, devices, files, folders }) {
     </div>
   );
   if (type === "watch") return (
-    <div style={{ width: 210, height: 340, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
-      {/* Ремешок сверху и снизу — прямоугольники тонкой линией */}
-      <div style={{ width: 100, height: 70, border: line, borderBottom: "none", borderRadius: "6px 6px 0 0", boxSizing: "border-box" }} />
-      <div style={{ width: 200, height: 200, border: line, borderRadius: "50%", padding: 8, boxSizing: "border-box", background: C.panel, position: "relative" }}>
-        <div style={{ ...screen, height: "100%", borderRadius: "50%" }}>{content(<WatchFace online={device.online} now={now} />)}</div>
-        {/* Колёсико сбоку */}
-        <div style={{ position: "absolute", right: -7, top: 82, width: 7, height: 26, border: line, borderLeft: "none", borderRadius: "0 3px 3px 0", boxSizing: "border-box" }} />
+    <div style={{ width: 210, height: 340, position: "relative" }}>
+      {/* Ремешки: сужаются к концу, по краю строчка, на нижнем — дырочки.
+          Заливка цветом корпуса — складка остаётся позади часов */}
+      <svg viewBox="0 0 210 340" width={210} height={340} aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+        <g strokeWidth="1" style={{ fill: C.panel, stroke: lineColor }}>
+          <path d="M60 6 Q60 2 64 2 L146 2 Q150 2 150 6 L158 88 L52 88 Z" />
+          <path d="M52 252 L158 252 L150 334 Q150 338 146 338 L64 338 Q60 338 60 334 Z" />
+        </g>
+        <g fill="none" strokeWidth="0.8" strokeDasharray="2 3" style={{ stroke: `color-mix(in srgb, ${C.text} 22%, transparent)` }}>
+          <path d="M59 80 L66 8 L144 8 L151 80" />
+          <path d="M59 260 L66 332 L144 332 L151 260" />
+        </g>
+        {[284, 300, 316].map((y) => (
+          <rect key={y} x="101" y={y} width="8" height="4" rx="2" strokeWidth="0.8" style={{ fill: C.bg, stroke: lineColor }} />
+        ))}
+      </svg>
+      {/* Корпус: круг, на ободе метки минут (каждая пятая длиннее и ярче) */}
+      <div style={{ position: "absolute", left: 5, top: 70, width: 200, height: 200, borderRadius: "50%", border: line, padding: 9, boxSizing: "border-box", background: C.panel }}>
+        <svg viewBox="0 0 200 200" aria-hidden="true" style={{ position: "absolute", left: -1, top: -1, width: 200, height: 200 }}>
+          {Array.from({ length: 60 }, (_, i) => (
+            <line key={i} x1="100" y1={i % 5 ? 3.5 : 2.5} x2="100" y2={i % 5 ? 6.5 : 8.5} transform={`rotate(${i * 6} 100 100)`}
+              strokeWidth={i % 5 ? 0.6 : 1.1}
+              style={{ stroke: `color-mix(in srgb, ${C.text} ${i % 5 ? 25 : 60}%, transparent)` }} />
+          ))}
+        </svg>
+        <div style={{ ...screen, height: "100%", borderRadius: "50%" }}>{content(<WatchFace online={device.online} now={now} battery={device.battery} />)}</div>
+        {/* Заводная головка с насечками и кнопка под ней */}
+        <div style={{
+          position: "absolute", right: -9, top: 80, width: 9, height: 30, border: line, borderLeft: "none", borderRadius: "0 3px 3px 0", boxSizing: "border-box",
+          background: `repeating-linear-gradient(0deg, ${lineColor} 0 1px, ${C.panel} 1px 4px)`,
+        }} />
+        <div style={{ position: "absolute", right: -5, top: 124, width: 5, height: 16, border: line, borderLeft: "none", borderRadius: "0 2px 2px 0", boxSizing: "border-box", background: C.panel }} />
       </div>
-      <div style={{ width: 100, height: 70, border: line, borderTop: "none", borderRadius: "0 0 6px 6px", boxSizing: "border-box" }} />
     </div>
   );
   if (type === "tv") return (
@@ -4043,7 +4111,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
 
       {/* Под превью: слева статус, заряд и главные кнопки, справа настройки.
           На телефоне — одной колонкой */}
-      <div className="nx-device-info" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
+      <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
       <div>
         {/* Заряд и память */}
         <div style={{ padding: "20px 0 4px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -5752,9 +5820,10 @@ function Toggle({ on, onClick }) {
     >
       {/* Кружок сдвигается на 18px вправо, когда переключатель включён */}
       <div style={{
-        width: 18, height: 18, borderRadius: "50%", background: "#fff",
+        width: 18, height: 18, borderRadius: "50%", background: C.onFold,
         transform: on ? "translateX(18px)" : "translateX(0)",
-        transition: "transform 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+        // Пружинистая кривая: кружок чуть проскакивает и встаёт на место
+        transition: "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }} />
     </div>
   );
@@ -5844,6 +5913,11 @@ function ScreenSettings({ onOpenSearch }) {
     switchTheme(t, () => setThemeState(t));
   };
 
+  // Фон от наклона телефона: строку показываем только на сенсорных экранах
+  const touch = window.matchMedia?.("(pointer: coarse)").matches;
+  const [tilt, setTiltState] = useState(readTilt);
+  const toggleTilt = async () => setTiltState(await saveTilt(!tilt));
+
   // Кнопка сегментированного переключателя темы
   const segBtn = (value, label) => (
     <button onClick={() => setTheme(value)} style={{
@@ -5856,7 +5930,7 @@ function ScreenSettings({ onOpenSearch }) {
   );
 
   return (
-    <div className="ng-screen" style={{ padding: "28px 40px 40px" }}>
+    <div className="ng-screen nx-stagger" style={{ padding: "28px 40px 40px" }}>
       {/* Справа отступ под иконки поиска и профиля, которые лежат поверх экрана */}
       <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: 110 }}>
         <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>Настройки</div>
@@ -5898,7 +5972,7 @@ function ScreenSettings({ onOpenSearch }) {
       <SectionTitle>Внешний вид</SectionTitle>
       <SettingsGroup>
         <SettingsRow
-          last wrap
+          last={!touch} wrap
           icon={
             // Мини-складка: меняет цвет вместе с темой
             <svg viewBox="0 0 24 24" width="18" height="18">
@@ -5914,6 +5988,15 @@ function ScreenSettings({ onOpenSearch }) {
             </div>
           }
         />
+        {touch && (
+          <SettingsRow
+            last
+            icon={<span style={{ display: "flex", transform: "rotate(-14deg)" }}>{Icon.phone({ c: C.muted, s: 18 })}</span>}
+            title="Фон от наклона телефона"
+            subtitle={tiltNeedsPermission() && !tilt ? "Нужно разрешить доступ к движению" : "Фон чуть сдвигается, когда наклоняете телефон"}
+            right={<Toggle on={tilt} onClick={toggleTilt} />}
+          />
+        )}
       </SettingsGroup>
 
       <SectionTitle>Уведомления</SectionTitle>
@@ -6459,6 +6542,20 @@ export default function NexaApp() {
           100% { opacity: 1; transform: translateY(0); }
         }
         .nx-pop { animation: nx-pop-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+        /* «Раскрытие складкой»: элементы списка появляются по очереди —
+           каждый чуть повёрнут от верхнего края и разворачивается к нам.
+           Работает один раз при появлении (не повторяется).
+           backwards, а не both: после анимации transform свободен,
+           и нажатие/наведение на кнопки работают как обычно */
+        @keyframes nx-unfold {
+          from { opacity: 0; transform: perspective(700px) rotateX(-16deg) translateY(10px); }
+          to   { opacity: 1; transform: none; }
+        }
+        .nx-stagger > * { animation: nx-unfold 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards; transform-origin: 50% 0; }
+        ${Array.from({ length: 14 }, (_, i) => `.nx-stagger > *:nth-child(${i + 2}) { animation-delay: ${(i + 1) * 45}ms; }`).join("\n        ")}
+        /* Стрелка в строке чуть шагает вправо при наведении — «можно перейти» */
+        .nx-chev { display: flex; transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-row-btn:hover .nx-chev { transform: translateX(3px); }
         /* Полоски "где хранится" вырастают слева направо */
         @keyframes nx-bar-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
         .nx-bar { transform-origin: left; animation: nx-bar-in 420ms cubic-bezier(0.16, 1, 0.3, 1); }
@@ -6586,6 +6683,8 @@ export default function NexaApp() {
         @media (prefers-reduced-motion: reduce) {
           .nx-greeting-anim, .nx-msg { animation: none !important; }
           .nx-pop, .nx-bar { animation: none !important; }
+          .nx-stagger > * { animation: none !important; }
+          .nx-chev { transition: none !important; }
           .nx-tab-move { transition: none !important; }
           .nx-ping, .nx-scan { display: none; }
           .nx-icon-on, .nx-shake { animation: none !important; }
@@ -6731,23 +6830,10 @@ export default function NexaApp() {
             grid-template-rows: auto !important;
             gap: 28px !important;
           }
-          /* Карточка погоды: город и дата в одну строку, складка справа */
+          /* Карточка погоды на телефоне — как на компьютере (заголовок, дата,
+             город, температура и состояние в строку, детали с разделителями),
+             только отступы внутри чуть меньше */
           .nx-weather { padding: 18px !important; }
-          /* Шапка карточки на телефоне: город — своей строкой во всю ширину
-             (название целиком, без многоточия), дата — под ним мелко */
-          .nx-weather-head { grid-template-areas: "city city" "date date" !important; }
-          .nx-weather-city { flex-wrap: wrap; row-gap: 2px; }
-          .nx-weather-cityname { white-space: normal !important; overflow: visible !important; }
-          .nx-weather-note { margin-left: 0 !important; }
-          .nx-weather-date { margin: 4px 0 0 26px; } /* 26 = ширина значка + отступ: вровень с названием */
-          .nx-weather-title { display: none !important; }
-          .nx-weather-city { margin-top: 0 !important; gap: 6px !important; color: var(--text) !important; font-size: 15px !important; }
-          .nx-weather-pin { width: auto !important; }
-          .nx-weather-art { display: block !important; }
-          .nx-weather-main { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
-          /* Детали: крупное значение сверху, подпись под ним, без разделителей */
-          .nx-weather-detail { display: flex; flex-direction: column-reverse; border-left: none !important; padding-left: 0 !important; }
-          .nx-weather-value { color: var(--text) !important; font-size: 18px !important; margin-top: 0 !important; }
           /* Расписание без рамки, время слева от линии */
           .nx-sched { border: none !important; padding: 0 !important; }
           .nx-sched-head { font-size: 22px !important; margin-bottom: 18px !important; }
@@ -6775,13 +6861,13 @@ export default function NexaApp() {
           .nx-device-stage { height: 360px !important; }
           .nx-device-info { grid-template-columns: minmax(0, 1fr) !important; }
           .nx-device-title { font-size: 30px !important; }
-          /* Фон на телефоне: на весь экран, без движения. Грани — только
-             в правом нижнем углу над нижним меню, поменьше; у сетки нет меток */
+          /* Фон на телефоне: на весь экран, грани в обоих углах — поменьше
+             и бледнее, чтобы не спорить с текстом на узком экране */
           .nx-backdrop { left: 0 !important; }
-          .nx-bd-tl { display: none; }
-          .nx-bd-br { bottom: 0 !important; opacity: 0.7; }
-          .nx-bd-br svg { width: 210px; height: 188px; }
-          .nx-bd-label { display: none; }
+          .nx-bd-tl, .nx-bd-br { opacity: 0.75; }
+          .nx-backdrop svg { width: 210px; height: 188px; }
+          /* Номера строк сетки слева на узком экране налезают на заголовки */
+          .nx-bd-row { display: none; }
           .nx-files-list { max-height: none !important; min-height: 0 !important; overflow: visible !important; padding-right: 0 !important; }
           /* Подробности хранилища: кнопка "Открыть в файлах" на всю ширину */
           .nx-storage-detail { gap: 16px !important; }
