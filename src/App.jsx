@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, startTransition } from "react";
 import { flushSync } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 
 
 /* =========================================================================
@@ -1115,11 +1115,15 @@ function TempFold({ temp, tone }) {
 // cityNote — мелкая подпись после города: откуда взялось местоположение
 // veil — «вуаль», когда настоящих данных нет: { kind: "loading" | "error", text, onRetry }.
 //   Значения размываются, поверх — сообщение и кнопка «Обновить»
-function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, details, art, veil }) {
+// footer — строка внизу карточки (например «Обновлено в 14:32»),
+// grow — карточка растягивается на всю свободную высоту, значения встают по центру
+function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, details, art, veil, footer, grow }) {
   return (
     <div className="nx-weather" style={{
       position: "relative", overflow: "hidden",
       border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "22px 24px",
+      display: "flex", flexDirection: "column", boxSizing: "border-box",
+      ...(grow ? { flex: 1 } : {}),
     }}>
       {art && (
         <div className="nx-weather-art" aria-hidden="true" style={{ display: "none", position: "absolute", right: -8, top: 44 }}>
@@ -1137,8 +1141,12 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
           {weatherMark()} {title}
         </div>
         <div className="nx-weather-date" style={{ gridArea: "date", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{date}</div>
+        {/* Пока погоды нет (грузится или ошибка), город тоже размыт — как и значения под ним */}
         {city && (
-          <div className="nx-weather-city" style={{ gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8, minWidth: 0 }}>
+          <div className="nx-weather-city" aria-hidden={veil ? true : undefined} style={{
+            gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8, minWidth: 0,
+            ...(veil ? { filter: "blur(5px)", opacity: 0.45, userSelect: "none" } : {}),
+          }}>
             <span className="nx-weather-pin" style={{ display: "flex", width: 24, justifyContent: "center", flexShrink: 0 }}>{Icon.pin({ c: C.muted, s: 20 })}</span>
             {/* Длинное название города обрезается многоточием, подпись не съезжает */}
             <span className="nx-weather-cityname" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{city}</span>
@@ -1150,8 +1158,13 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
       </div>
 
       {/* Значения погоды. Если настоящих данных нет (veil), они размыты,
-          а поверх — сообщение: «загружаем» или «не удалось + Обновить» */}
-      <div style={{ position: "relative" }}>
+          а поверх — сообщение: «загружаем» или «не удалось + Обновить».
+          flex: 1 + центр — в растянутой карточке значения стоят посередине.
+          minHeight — чтобы сообщение с кнопкой не вылезало за край карточки */}
+      <div style={{
+        position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center",
+        minHeight: veil ? 150 : undefined,
+      }}>
         <div aria-hidden={veil ? true : undefined} style={veil ? {
           filter: "blur(8px)", opacity: 0.45, pointerEvents: "none", userSelect: "none",
         } : { transition: "filter 300ms ease, opacity 300ms ease" }}>
@@ -1197,7 +1210,8 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
                 </div>
                 <button type="button" className="nx-ghost-btn" onClick={veil.onRetry} style={{
                   ...btnReset, display: "flex", alignItems: "center", gap: 8,
-                  border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "7px 14px", fontSize: 13,
+                  // Кнопка-«таблетка», как кнопки в окне устройства
+                  border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 18px", fontSize: 13,
                   background: C.panel,
                 }}>
                   {Icon.refresh({ c: C.text, s: 14 })} Обновить
@@ -1207,6 +1221,7 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
           </div>
         )}
       </div>
+      {footer && <div style={{ marginTop: 16 }}>{footer}</div>}
     </div>
   );
 }
@@ -1658,12 +1673,15 @@ function ScreenToday() {
       <div className="nx-today-grid" style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) minmax(0, 356px)",
-        // Кнопка прогноза — в последней строке, вровень с низом расписания
-        gridTemplateAreas: `"sched now" "sched next" "sched ." "sched month"`,
-        gridTemplateRows: "auto auto 1fr auto",
+        // Справа три панели с одинаковыми отступами: погода, завтра, прогноз.
+        // "Завтра" растягивается (строка 1fr), поэтому верх правой колонки
+        // вровень с верхом расписания, а кнопка прогноза — с его низом
+        gridTemplateAreas: `"sched now" "sched next" "sched month"`,
+        gridTemplateRows: "auto 1fr auto",
         gap: "18px 44px", alignItems: "start",
       }}>
-        <section className="nx-sched" style={{ gridArea: "sched", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "26px 28px 30px" }}>
+        {/* alignSelf: stretch — рамка расписания всегда по высоте правой колонки */}
+        <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "26px 28px 30px" }}>
           <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 22 }}>
             {Icon.calendar({ c: C.text, s: 24 })} Расписание
           </div>
@@ -1706,14 +1724,11 @@ function ScreenToday() {
               { label: "Влажность", value: `${now.humidity} %` },
               { label: "Давление", value: `${now.pressure} мм` },
             ]}
-            veil={veil} />
-                    <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            marginTop: 8, paddingLeft: 2, minHeight: 22,
-            // Пока данных нет, о загрузке и ошибке говорит сама карточка (вуаль).
-            // Строку прячем, но место оставляем — чтобы ничего не прыгало
-            visibility: weather.now ? "visible" : "hidden",
-          }}>
+            veil={veil}
+            // Пока данных нет, о загрузке и ошибке говорит сама карточка (вуаль),
+            // поэтому строку статуса показываем только когда погода уже есть
+            footer={weather.now &&
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 22 }}>
             {/* Кнопка обновления доступна всегда — можно потянуть погоду заново */}
             <button
               type="button"
@@ -1743,11 +1758,12 @@ function ScreenToday() {
                     : null}
             </div>
           </div>
+            } />
         </div>
-        <div style={{ gridArea: "next" }}>
+        <div style={{ gridArea: "next", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
           <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow.date)}
             temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone}
-            veil={veil} />
+            veil={veil} grow />
         </div>
         <div style={{ gridArea: "month", alignSelf: "end" }}>
           <button type="button" className="nx-ghost-btn"
@@ -1866,6 +1882,60 @@ const DEMO_FILES = [
   { id: 22, name: "Резервная копия часов.bak", cat: "other", folder: "other", device: "Часы", days: 8, time: "03:00", mb: 22 },
 ];
 
+/* ---------- ЗАГРУЖЕННЫЕ ФАЙЛЫ (localStorage) ----------
+   Под FILES_KEY лежат только сведения, без содержимого файлов
+   (оно не влезет в браузерное хранилище):
+   added   — файлы, которые пользователь добавил сам
+             { id, name, cat, folder, device, mb, addedAt };
+   removed — id удалённых демо-файлов;
+   renamed — новые имена { id: "имя" };
+   folders — папки, созданные пользователем { id, name, parent }. */
+const FILES_KEY = "nexa-files";
+const UPLOAD_MS = 1100; // сколько идёт "загрузка" (показываем полоску прогресса)
+
+function loadFileStore() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(FILES_KEY)); } catch {}
+  return {
+    added: raw?.added || [], removed: raw?.removed || [],
+    renamed: raw?.renamed || {}, folders: raw?.folders || [],
+  };
+}
+
+// Категория по типу файла: картинка → "Фото", видео, звук, документы, остальное
+const DOC_EXT = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "odt", "ods", "odp", "csv", "md", "pages", "key", "numbers"];
+function catFromFile(file) {
+  const type = file.type || "";
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  if (type.startsWith("image/")) return "photo";
+  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "music";
+  if (DOC_EXT.includes(ext) || type === "application/pdf" || type.startsWith("text/")) return "doc";
+  return "other";
+}
+
+// Размер в МБ с разумной точностью: 0.004 (4 КБ), 5.5, 1240
+const toMb = (bytes) => (bytes >= 1e6 ? Math.round(bytes / 1e5) / 10 : Math.max(0.001, Math.round(bytes / 1000) / 1000));
+
+// У загруженного файла есть точное время (addedAt), а список
+// работает с "days" и "time", как у демо-файлов — пересчитываем
+function withWhen(f) {
+  const d = new Date(f.addedAt);
+  const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  return {
+    ...f,
+    days: Math.max(0, Math.round((start(new Date()) - start(d)) / 86400000)),
+    time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+  };
+}
+
+// С какого устройства добавлен файл: сенсорный экран — смартфон, иначе ноутбук
+const uploadDevice = () =>
+  (window.matchMedia?.("(pointer: coarse)").matches ? "Смартфон" : "Ноутбук");
+
+// Название папки для подписей; null — корень "Хранилище"
+const folderName = (folders, id) => (id ? folders.find((f) => f.id === id)?.name || "Хранилище" : "Хранилище");
+
 // Устройства, на которые можно "отправить" файл из окна просмотра
 const SEND_TARGETS = ["Смартфон", "Ноутбук", "Часы", "ТВ"];
 const SETTINGS_INDEX = [
@@ -1892,7 +1962,7 @@ function plural(n, forms) {
 // Размер: 0.4 → "400 КБ", 5.5 → "5.5 МБ", 1240 → "1.2 ГБ"
 function formatSize(mb) {
   if (mb < 1) return `${Math.round(mb * 1000)} КБ`;
-  if (mb < 1000) return `${mb} МБ`;
+  if (mb < 1000) return `${Math.round(mb * 10) / 10} МБ`;
   return `${(mb / 1000).toFixed(1)} ГБ`;
 }
 
@@ -1931,9 +2001,18 @@ const foldFill = (c) =>
 
 /* Миниатюра файла: цветная плашка по категории + иконка.
    У фото угол градиента зависит от id, поэтому карточки не одинаковые. */
-function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6 }) {
+// Если у файла есть preview (картинка, добавленная в этой вкладке) —
+// показываем саму картинку. После перезагрузки превью нет, остаётся иконка
+function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6, fit = "cover" }) {
   const cat = catOf(file);
   const plain = file.cat === "doc" || file.cat === "other";
+  if (file.preview) {
+    return (
+      <div style={{ width: w, height: h, borderRadius: radius, flexShrink: 0, overflow: "hidden", background: C.chip }}>
+        <img src={file.preview} alt="" style={{ width: "100%", height: "100%", objectFit: fit, display: "block" }} />
+      </div>
+    );
+  }
   return (
     <div style={{
       width: w, height: h, borderRadius: radius, flexShrink: 0, position: "relative", overflow: "hidden",
@@ -2032,8 +2111,20 @@ function StorageSegment({ cat, first, dimmed, active, onClick }) {
 function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
   // Какой сегмент хранилища выбран (id категории или null)
   const [selected, setSelected] = useState(null);
-  const sel = MEDIA_CATS.find((c) => c.id === selected);
-  const used = MEDIA_CATS.reduce((sum, c) => sum + c.gb, 0);
+  // Добавленные пользователем файлы прибавляем к объёму своей категории
+  const round1 = (n) => Math.round(n * 10) / 10;
+  const addedMb = (id) => files.filter((f) => f.uploaded && (!id || f.cat === id)).reduce((s, f) => s + f.mb, 0);
+  const cats = MEDIA_CATS.map((c) => ({ ...c, gb: round1(c.gb + addedMb(c.id) / 1000) }));
+  const sel = cats.find((c) => c.id === selected);
+  const ownMb = addedMb(null);
+  const used = round1(MEDIA_CATS.reduce((sum, c) => sum + c.gb, 0) + ownMb / 1000);
+  // Подпись под объёмом: сколько места заняли файлы, добавленные вами
+  const ownNote = ownMb > 0 && (
+    <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35, whiteSpace: "nowrap" }}>
+      <div style={{ color: C.mint }}>+ {formatSize(ownMb)}</div>
+      <div style={{ color: C.mutedSoft }}>ваши файлы</div>
+    </div>
+  );
   const countOf = (id) => files.filter((f) => f.cat === id).length;
   const recent = sortByRecent(files).slice(0, 4);
 
@@ -2044,7 +2135,7 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
       {/* Только на телефоне: заголовок хранилища над карточкой, как в макете */}
       <div className="nx-only-mobile nx-storage-head" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
         <div className="ng-display" style={{ fontSize: 22, fontWeight: 400 }}>Хранилище</div>
-        <div style={{ fontSize: 13, color: C.muted }}>{used} ГБ / {STORAGE_TOTAL} ГБ</div>
+        <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>{used} ГБ / {STORAGE_TOTAL} ГБ{ownNote}</div>
       </div>
 
       <div className="nx-storage-box" style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", marginBottom: 34 }}>
@@ -2054,12 +2145,13 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory }) {
             <div>
               <div style={{ fontSize: 14 }}>Хранилище</div>
               <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{used} ГБ / {STORAGE_TOTAL} ГБ</div>
+              {ownNote}
             </div>
           </div>
           {/* Собираем диаграмму из массива MEDIA_CATS — чтобы поменять пропорции
               или форму складки, меняй объект в этом массиве */}
           <div className="ng-storage-segments" style={{ display: "flex", flex: 1, height: 132, minWidth: 0 }}>
-            {MEDIA_CATS.map((c, i) => (
+            {cats.map((c, i) => (
               <StorageSegment
                 key={c.id} cat={c} first={i === 0}
                 active={selected === c.id}
@@ -2203,9 +2295,16 @@ function Crumb({ children, active, onClick }) {
 // плоский список файлов этой категории из всех папок).
 // device — устройство, если пришли из окна устройства (тогда показываем
 // плоский список файлов с этого устройства).
-function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder }) {
+// folders — все папки (демо + созданные), uploads — идущие загрузки,
+// onAddFiles(список, папка) — добавить файлы, onCreateFolder(имя, родитель) — новая папка
+function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
+  const fileInput = useRef(null);
+  // Новая папка: newFolder — введённое имя (null — поле закрыто)
+  const [newFolder, setNewFolder] = useState(null);
+  // Тащат ли сейчас файлы над окном (для подсветки зоны)
+  const [dragging, setDragging] = useState(false);
   // Строка поиска: ищет только в текущей папке (или категории)
   const [query, setQuery] = useState("");
   // Положение прокрутки строки пути: для полоски под чипсами и затухания справа
@@ -2213,7 +2312,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
   const crumbsRef = useRef(null);
 
   const cat = MEDIA_CATS.find((c) => c.id === filter);
-  const folderById = (id) => FOLDERS.find((f) => f.id === id);
+  const folderById = (id) => folders.find((f) => f.id === id);
 
   const measure = () => {
     const el = crumbsRef.current;
@@ -2250,12 +2349,61 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
   // все подходящие файлы из всех папок одним списком
   const flat = Boolean(cat || device);
   const onDevice = (f) => f.device === device.name || f.device === device.alias;
-  const subfolders = flat ? [] : FOLDERS.filter((f) => f.parent === folder && match(f.name));
+  const subfolders = flat ? [] : folders.filter((f) => f.parent === folder && match(f.name));
   const list = sortByRecent((flat
     ? files.filter((f) => (!cat || f.cat === cat.id) && (!device || onDevice(f)))
     : files.filter((f) => f.folder === folder)).filter((f) => match(f.name)));
   // Сколько всего лежит внутри папки (подпапки + файлы)
-  const countIn = (id) => FOLDERS.filter((f) => f.parent === id).length + files.filter((f) => f.folder === id).length;
+  const countIn = (id) => folders.filter((f) => f.parent === id).length + files.filter((f) => f.folder === id).length;
+
+  // Куда попадут новые файлы: в открытую папку. Если включён отбор
+  // по категории или устройству — в корень "Хранилище"
+  const target = flat ? null : folder;
+  const targetName = folderName(folders, target);
+  const upload = (list) => { if (list && list.length) onAddFiles?.(list, target); };
+
+  // Проверка имени новой папки: не пустое и не повторяет соседнюю папку
+  const nfName = (newFolder || "").trim();
+  const nfError = !nfName ? null
+    : folders.some((f) => f.parent === folder && f.name.toLowerCase() === nfName.toLowerCase()) ? "Такая папка уже есть" : null;
+  const saveFolder = () => {
+    if (!nfName || nfError) return;
+    onCreateFolder?.(nfName, folder);
+    setNewFolder(null);
+  };
+  // Сменили папку — поле новой папки закрываем
+  useEffect(() => { setNewFolder(null); }, [folder, filter, device]);
+
+  /* Перетаскивание файлов прямо в окно (на компьютере).
+     Слушаем всё окно: пока над ним держат файлы — показываем рамку,
+     отпустили — загружаем. depth нужен, потому что dragenter/dragleave
+     приходят от каждого вложенного элемента */
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+    const enter = (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; setDragging(true); };
+    const over = (e) => { if (hasFiles(e)) e.preventDefault(); }; // без этого браузер откроет файл сам
+    const leave = (e) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) setDragging(false); };
+    const drop = (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      uploadRef.current(e.dataTransfer.files);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
 
   const heading = device ? `${device.name} · все папки` : cat ? `${cat.label} · все папки` : folder ? folderById(folder).name : "Хранилище";
 
@@ -2333,18 +2481,123 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
         </label>
       </div>
 
-      <div style={{
-        fontFamily: fontDisplay, fontSize: 18, fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.04em",
+      {/* Заголовок папки, справа — "Новая папка" и "Добавить файл".
+          На телефоне кнопки встают под заголовок на всю ширину */}
+      <div className="nx-files-head" style={{
+        display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12,
         paddingBottom: 10, borderBottom: `1px solid ${C.borderStrong}`,
       }}>
-        {heading}
+        <div style={{
+          fontFamily: fontDisplay, fontSize: 18, fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.04em",
+          minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {heading}
+        </div>
+        <div className="nx-files-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          {!flat && (
+            <button type="button" className="nx-ghost-btn" onClick={() => setNewFolder("")} disabled={newFolder !== null} style={{
+              ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
+            }}>
+              {Icon.folder({ c: C.text, s: 15 })} Новая папка
+            </button>
+          )}
+          <button type="button" className="nx-primary" onClick={() => fileInput.current?.click()} style={{
+            ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
+            border: "1px solid transparent", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500,
+            color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          }}>
+            {Icon.plus({ c: C.onFold, s: 15 })} Добавить файл
+          </button>
+          {/* Обычный выбор файлов системы. value сбрасываем,
+              чтобы тот же файл можно было выбрать ещё раз */}
+          <input
+            ref={fileInput} type="file" multiple hidden
+            onChange={(e) => { upload(e.target.files); e.target.value = ""; }}
+          />
+        </div>
       </div>
+
+      {/* Идущие загрузки: имя и полоска, которая заполняется за UPLOAD_MS */}
+      {uploads.map((u) => (
+        <div key={u.id} role="status" className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+            <Spinner />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {u.names.length === 1 ? `Загружаем «${u.names[0]}»` : `Загружаем ${u.names.length} ${plural(u.names.length, ["файл", "файла", "файлов"])}`}
+            </span>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: C.mutedSoft, whiteSpace: "nowrap" }}>в «{folderName(folders, u.folder)}»</span>
+          </div>
+          <div style={{ height: 2, background: C.border, marginTop: 10, overflow: "hidden" }}>
+            <div className="nx-upload-bar" style={{
+              height: "100%", background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+              animationDuration: `${UPLOAD_MS}ms`,
+            }} />
+          </div>
+        </div>
+      ))}
+
+      {/* Рамка "отпустите файлы": видна, пока над окном держат файлы */}
+      {dragging && (
+        <div className="nx-drop-zone" aria-hidden="true" style={{
+          position: "fixed", inset: 12, zIndex: 250, pointerEvents: "none",
+          border: `1px dashed ${C.mint}`, borderRadius: 4,
+          background: `color-mix(in srgb, ${C.bg} 82%, transparent)`,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+        }}>
+          <div style={{
+            width: 56, height: 56, border: `1px solid ${C.mint}`, borderRadius: 4,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.up({ c: C.mint, s: 26 })}
+          </div>
+          <div className="ng-display" style={{ fontSize: 22 }}>Отпустите, чтобы добавить</div>
+          <div style={{ fontSize: 13, color: C.muted }}>Файлы попадут в папку «{targetName}»</div>
+        </div>
+      )}
 
       {/* Список прокручивается внутри себя, как в макете.
           key меняется при смене папки — список появляется заново с анимацией */}
       <div key={device ? `dev-${device.id}` : cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-pop nx-scroll nx-files-list" style={{
         maxHeight: "calc(100vh - 400px)", minHeight: 260, overflowY: "auto", paddingRight: 14,
       }}>
+        {/* Новая папка: строка с полем имени. Enter — создать, Esc — отменить */}
+        {newFolder !== null && (
+          <form className="nx-pop" onSubmit={(e) => { e.preventDefault(); saveFolder(); }} style={{ ...rowStyle, cursor: "default" }}>
+            <FolderThumb />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <input
+                autoFocus
+                className="nx-input"
+                value={newFolder}
+                maxLength={40}
+                placeholder="Название папки"
+                aria-label="Название новой папки"
+                aria-invalid={!!nfError}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setNewFolder(null); }}
+                style={{
+                  width: "100%", boxSizing: "border-box", background: "transparent", color: C.text,
+                  fontFamily: "inherit", fontSize: 16, padding: "6px 10px", borderRadius: 4, outline: "none",
+                  border: `1px solid ${nfError ? C.red : C.borderStrong}`,
+                }}
+              />
+              {nfError && <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>{nfError}</div>}
+            </div>
+            <button type="submit" className="nx-icon-btn" aria-label="Создать папку" disabled={!nfName || !!nfError} style={{
+              ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {Icon.check({ c: C.green, s: 18 })}
+            </button>
+            <button type="button" className="nx-icon-btn" aria-label="Отменить" onClick={() => setNewFolder(null)} style={{
+              ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {Icon.close({ c: C.muted, s: 16 })}
+            </button>
+          </form>
+        )}
         {subfolders.map((sf) => {
           const n = countIn(sf.id);
           return (
@@ -2388,7 +2641,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
           ) : (
             <EmptyState
               title={device ? `На устройстве «${device.name}» пока нет файлов` : "Здесь пока пусто"}
-              text={device ? "Файлы появятся, когда устройство что-нибудь сохранит." : "Добавьте файлы с любого устройства — они появятся тут."}
+              text={device ? "Файлы появятся, когда устройство что-нибудь сохранит." : "Нажмите «Добавить файл» или перетащите файлы в окно."}
             />
           )
         )}
@@ -2494,7 +2747,22 @@ function EmptyState({ title, text, action, compact }) {
    сообщение, а удаление убирает файл из списка до перезагрузки страницы.
    Закрывается крестиком, клавишей Esc или кликом по затемнению. */
 // devices — устройства с текущим статусом: отправить можно только на те, что в сети
-function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
+// folders — все папки (вместе с созданными), onRename(name) — новое имя
+function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDelete, onRename, onToast }) {
+  // Переименование: editing — открыто ли поле, draft — что сейчас введено
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(file.name);
+  const draftName = draft.trim();
+  const draftError = !draftName ? "Введите имя" : /[\\/]/.test(draftName) ? "Без символов / и \\" : null;
+  const startRename = () => { setDraft(file.name); setEditing(true); };
+  const saveRename = () => {
+    if (draftError) return;
+    if (draftName !== file.name) {
+      onRename(draftName);
+      onToast?.({ title: "Файл переименован", text: draftName });
+    }
+    setEditing(false);
+  };
   const [sendOpen, setSendOpen] = useState(false);   // открыт ли выбор устройства
   // Состояние отправки: на какое устройство и как идёт ("loading" / "success" / "error")
   const [send, setSend] = useState(null);
@@ -2516,7 +2784,6 @@ function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
   };
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const cat = catOf(file);
-  const folder = FOLDERS.find((f) => f.id === file.folder);
 
   // Esc закрывает окно; пока окно открыто, страница под ним не скроллится
   useEffect(() => {
@@ -2542,7 +2809,7 @@ function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
     ["Размер", formatSize(file.mb)],
     ["Изменён", formatWhen(file)],
     ["Устройство", file.device],
-    ["Папка", folder ? folder.name : "—"],
+    ["Папка", folderName(folders, file.folder)],
   ];
 
   const ghostBtn = {
@@ -2569,8 +2836,50 @@ function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
-            <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{fileMeta(file)}</div>
+            {editing ? (
+              // Поле с именем: Enter — сохранить, Esc — отменить (окно при этом не закрывается)
+              <form onSubmit={(e) => { e.preventDefault(); saveRename(); }} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  autoFocus
+                  className="nx-input"
+                  value={draft}
+                  maxLength={80}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setEditing(false); } }}
+                  onFocus={(e) => {
+                    // Выделяем имя без расширения — чтобы его было удобно заменить
+                    const dot = e.target.value.lastIndexOf(".");
+                    e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
+                  }}
+                  aria-label="Имя файла"
+                  aria-invalid={!!draftError}
+                  style={{
+                    flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit",
+                    fontSize: 16, padding: "6px 10px", borderRadius: 4, outline: "none",
+                    border: `1px solid ${draftError ? C.red : C.borderStrong}`,
+                  }}
+                />
+                <button type="submit" className="nx-icon-btn" aria-label="Сохранить имя" disabled={!!draftError} style={{
+                  ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {Icon.check({ c: C.green, s: 18 })}
+                </button>
+              </form>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+                <button type="button" className="nx-icon-btn" onClick={startRename} aria-label="Переименовать" title="Переименовать" style={{
+                  ...btnReset, width: 28, height: 28, borderRadius: 4, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {Icon.edit({ c: C.muted, s: 15 })}
+                </button>
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: draftError && editing ? C.red : C.mutedSoft, marginTop: 2 }}>
+              {editing ? draftError || "Enter — сохранить, Esc — отменить" : fileMeta(file)}
+            </div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
             ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
@@ -2583,7 +2892,7 @@ function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
         {/* Превью: та же миниатюра, только крупно */}
         <div style={{ padding: "0 18px" }}>
           <div className="nx-viewer-preview" style={{ display: "flex" }}>
-            <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} />
+            <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
           </div>
         </div>
 
@@ -2602,7 +2911,7 @@ function FileViewer({ file, devices = DEVICES, onClose, onDelete, onToast }) {
             <div className="nx-pop" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 4, padding: 14 }}>
               <div style={{ fontSize: 13.5, marginBottom: 4 }}>Удалить файл?</div>
               <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
-                Это демо: файл пропадёт из списков, но вернётся после перезагрузки страницы.
+                «{file.name}» пропадёт из всех папок и списков.
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" onClick={() => { onDelete(file); onToast?.({ title: "Файл удалён", text: file.name }); }} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
@@ -3334,7 +3643,7 @@ function ToastItem({ toast, onClose }) {
    файлам, папкам, диалогам ассистента и строкам настроек.
    Открывается по иконке поиска в верхней строке (или кнопке
    в настройках), закрывается по Esc или клику по затемнению. */
-function GlobalSearch({ files, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate }) {
+function GlobalSearch({ files, folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
   const q = query.trim().toLowerCase();
@@ -3354,7 +3663,7 @@ function GlobalSearch({ files, devices: allDevices = DEVICES, onOpenDevice, onCl
   // Результаты. Пока запрос пуст, ничего не ищем.
   const tabs = hasQuery ? NAV.filter((t) => match(t.label)) : [];
   const devices = hasQuery ? allDevices.filter((d) => match(d.name)) : [];
-  const folders = hasQuery ? FOLDERS.filter((f) => match(f.name)) : [];
+  const folders = hasQuery ? allFolders.filter((f) => match(f.name)) : [];
   const fileHits = hasQuery ? sortByRecent(files.filter((f) => match(f.name))) : [];
   const chatHits = (() => {
     if (!hasQuery) return [];
@@ -4821,10 +5130,22 @@ export default function NexaApp() {
 }
   }, [tab]);
 
-  // Общие данные для "Медиа" и "Файлов": список файлов (удаление в демо
-  // убирает файл отсюда до перезагрузки), фильтр по категории
+  // Общие данные для "Медиа" и "Файлов": список файлов, фильтр по категории
   // и файл, открытый в окне просмотра.
-  const [files, setFiles] = useState(DEMO_FILES);
+  // Добавленные файлы, удаления, новые имена и папки запоминаем в браузере
+  const [fileStore, setFileStore] = useState(loadFileStore);
+  useEffect(() => {
+    try { localStorage.setItem(FILES_KEY, JSON.stringify(fileStore)); } catch {}
+  }, [fileStore]);
+  // Превью картинок живут только пока открыта вкладка: { id: адрес картинки }
+  const [previews, setPreviews] = useState({});
+  // Идущие загрузки: [{ id, names, folder }] — для полоски прогресса
+  const [uploads, setUploads] = useState([]);
+  const folders = [...FOLDERS, ...fileStore.folders];
+  const files = [
+    ...DEMO_FILES.filter((f) => !fileStore.removed.includes(f.id)),
+    ...fileStore.added.map((f) => ({ ...withWhen(f), uploaded: true })),
+  ].map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name, preview: previews[f.id] }));
   const [filesFilter, setFilesFilter] = useState(null);
   const [openFile, setOpenFile] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -4918,9 +5239,57 @@ export default function NexaApp() {
     setSearchChatId(chatId);
     setTab("assistant");
   };
+  // Удаление: демо-файл запоминаем в removed, добавленный просто убираем
   const deleteFile = (f) => {
-    setFiles((list) => list.filter((x) => x.id !== f.id));
+    setFileStore((s) => {
+      const renamed = { ...s.renamed };
+      delete renamed[f.id];
+      return {
+        ...s, renamed,
+        added: s.added.filter((x) => x.id !== f.id),
+        removed: f.uploaded ? s.removed : [...s.removed, f.id],
+      };
+    });
+    if (previews[f.id]) {
+      URL.revokeObjectURL(previews[f.id]); // освобождаем память картинки
+      setPreviews(({ [f.id]: _, ...rest }) => rest);
+    }
     setOpenFile(null);
+  };
+  const renameFile = (id, name) =>
+    setFileStore((s) => ({ ...s, renamed: { ...s.renamed, [id]: name } }));
+  // Новая папка внутри parent (null — в корне). Возвращает её id
+  const createFolder = (name, parent) => {
+    const id = `u-${Date.now()}`;
+    setFileStore((s) => ({ ...s, folders: [...s.folders, { id, name, parent }] }));
+    return id;
+  };
+  /* Загрузка файлов с компьютера или телефона в папку folder.
+     Сохраняем только сведения о файле; картинкам делаем превью.
+     Сначала UPLOAD_MS идёт полоска прогресса, потом файлы
+     появляются в списке и всплывает уведомление */
+  const addFiles = (fileList, folder) => {
+    const picked = Array.from(fileList || []);
+    if (!picked.length) return;
+    const now = Date.now();
+    const device = uploadDevice();
+    const metas = picked.map((file, i) => ({
+      id: now + i, name: file.name, cat: catFromFile(file), folder,
+      device, mb: toMb(file.size), addedAt: now,
+    }));
+    const batch = { id: now, names: metas.map((m) => m.name), folder };
+    setUploads((u) => [...u, batch]);
+    setTimeout(() => {
+      const urls = {};
+      picked.forEach((file, i) => { if (file.type.startsWith("image/")) urls[metas[i].id] = URL.createObjectURL(file); });
+      setPreviews((p) => ({ ...p, ...urls }));
+      setFileStore((s) => ({ ...s, added: [...s.added, ...metas] }));
+      setUploads((u) => u.filter((b) => b.id !== batch.id));
+      const where = folderName(folders, folder);
+      showToast(metas.length === 1
+        ? { title: "Файл добавлен", text: `${metas[0].name} → ${where}` }
+        : { title: `Добавлено ${metas.length} ${plural(metas.length, ["файл", "файла", "файлов"])}`, text: `В папку «${where}»` });
+    }, UPLOAD_MS);
   };
   const closeViewer = () => setOpenFile(null);
 
@@ -5277,6 +5646,9 @@ export default function NexaApp() {
         .nx-primary:focus-visible, .nx-cat-card:focus-visible, .nx-link-btn:focus-visible {
           outline: 1px solid var(--mint); outline-offset: 2px;
         }
+        /* Загрузка файла: полоска один раз заполняется слева направо */
+        @keyframes nx-upload { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        .nx-upload-bar { transform-origin: left; animation: nx-upload linear 1 both; }
         /* Поле ввода (название устройства): в фокусе рамка мятная, при ошибке остаётся красной */
         .nx-input { transition: border-color 160ms ease; }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
@@ -5516,6 +5888,9 @@ export default function NexaApp() {
           .nx-files-top { flex-direction: column !important; align-items: stretch !important; gap: 18px !important; }
           .nx-files-search { width: 100% !important; margin-top: 0 !important; }
           .nx-files-search input { font-size: 16px !important; }
+          /* Кнопки "Новая папка" / "Добавить файл" — под заголовком, поровну */
+          .nx-files-head { flex-direction: column; align-items: stretch !important; }
+          .nx-files-actions > button { flex: 1 1 0; padding: 11px 12px !important; }
           .nx-files-list { max-height: none !important; min-height: 0 !important; overflow: visible !important; padding-right: 0 !important; }
           /* Подробности хранилища: кнопка "Открыть в файлах" на всю ширину */
           .nx-storage-detail { gap: 16px !important; }
@@ -5727,6 +6102,10 @@ export default function NexaApp() {
           initialFolder={searchFolder}
           onClearFilter={() => { setFilesFilter(null); setFilesDevice(null); }}
           onOpenFile={setOpenFile}
+          folders={folders}
+          uploads={uploads}
+          onAddFiles={addFiles}
+          onCreateFolder={createFolder}
         />
       )}
       {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} />}
@@ -5757,7 +6136,19 @@ export default function NexaApp() {
 </div>
       {/* Окно просмотра файла поверх всего. key — чтобы для нового файла
           окно открывалось "с нуля", без сообщений от прошлого */}
-      {openFile && <FileViewer key={openFile.id} file={openFile} devices={devices} onClose={closeViewer} onDelete={deleteFile} onToast={showToast} />}
+      {/* Берём файл из общего списка по id, чтобы новое имя сразу было видно в окне */}
+      {openFile && files.some((f) => f.id === openFile.id) && (
+        <FileViewer
+          key={openFile.id}
+          file={files.find((f) => f.id === openFile.id)}
+          folders={folders}
+          devices={devices}
+          onClose={closeViewer}
+          onDelete={deleteFile}
+          onRename={(name) => renameFile(openFile.id, name)}
+          onToast={showToast}
+        />
+      )}
       {/* Окно устройства поверх всего. key — чтобы для другого устройства
           окно открывалось "с нуля" (без идущего поиска от прошлого) */}
       {/* Окно добавления устройства: тип → поиск → название → готово */}
@@ -5784,6 +6175,7 @@ export default function NexaApp() {
       {searchOpen && (
         <GlobalSearch
           files={files}
+          folders={folders}
           devices={devices}
           onOpenDevice={setOpenDeviceId}
           onClose={() => setSearchOpen(false)}
