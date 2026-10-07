@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, startTransition } from "react";
 import { flushSync } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 
 
 /* =========================================================================
@@ -1041,14 +1041,14 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
         <div className="nx-weather-title" style={{ gridArea: "title", display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20 }}>
           {weatherMark()} {title}
         </div>
-        <div style={{ gridArea: "date", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{date}</div>
+        <div className="nx-weather-date" style={{ gridArea: "date", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{date}</div>
         {city && (
           <div className="nx-weather-city" style={{ gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8, minWidth: 0 }}>
             <span className="nx-weather-pin" style={{ display: "flex", width: 24, justifyContent: "center", flexShrink: 0 }}>{Icon.pin({ c: C.muted, s: 20 })}</span>
             {/* Длинное название города обрезается многоточием, подпись не съезжает */}
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{city}</span>
+            <span className="nx-weather-cityname" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{city}</span>
             {cityNote && (
-              <span style={{ flexShrink: 0, marginLeft: -6, fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap" }}>· {cityNote}</span>
+              <span className="nx-weather-note" style={{ flexShrink: 0, marginLeft: -6, fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap" }}>· {cityNote}</span>
             )}
           </div>
         )}
@@ -4571,8 +4571,9 @@ export default function NexaApp() {
              Панели чуть светлее фона, поэтому карточки читаются без теней. */
           --bg: #EDF1F5;  --panel: #F8FAFC;  --panel-2: #F1F4F8;
           --border: #D6DDE6;  --border-soft: #E2E7EE;
-          --text: #18203A;  --text-strong: #0E1428;  --text-soft: #232B47;
-          --muted: #5A6478;  --muted-soft: #8891A3;
+          /* Текст и подписи темнее, чем были: на светлом фоне серый «тает» */
+          --text: #111933;  --text-strong: #0A1024;  --text-soft: #1B2340;
+          --muted: #444E63;  --muted-soft: #667085;
           --blue: #4A6FFF;  --blue-dark: #DCE4FF;  --blue-light: #7C97FF;
           --mint: #10BFA8;  --mint-dark: #D3F2EC;  --mint-light: #7EE6D8;
           --green: #1C9E5E;  --red: #D23C3C;
@@ -4685,6 +4686,16 @@ export default function NexaApp() {
           transition: background-color 380ms ease, color 380ms ease,
                       border-color 380ms ease, fill 380ms ease, stroke 380ms ease !important;
         }
+
+        /* Светлая тема: тёмный текст на светлом фоне выглядит тоньше, чем
+           светлый на тёмном. Делаем весь текст чуть плотнее, отключаем
+           «утончающее» сглаживание, а самые тонкие цифры — потолще */
+        :root[data-theme="light"] body {
+          font-weight: 500;
+          -webkit-font-smoothing: auto;
+          -moz-osx-font-smoothing: auto;
+        }
+        :root[data-theme="light"] .nx-weather-value { font-weight: 400 !important; }
 
         /* В светлой теме карточки настроек чуть светлее фона страницы */
         :root[data-theme="light"] .nx-set-group { background: var(--panel); }
@@ -5018,7 +5029,13 @@ export default function NexaApp() {
           }
           /* Карточка погоды: город и дата в одну строку, складка справа */
           .nx-weather { padding: 18px !important; }
-          .nx-weather-head { grid-template-areas: "city date" !important; }
+          /* Шапка карточки на телефоне: город — своей строкой во всю ширину
+             (название целиком, без многоточия), дата — под ним мелко */
+          .nx-weather-head { grid-template-areas: "city city" "date date" !important; }
+          .nx-weather-city { flex-wrap: wrap; row-gap: 2px; }
+          .nx-weather-cityname { white-space: normal !important; overflow: visible !important; }
+          .nx-weather-note { margin-left: 0 !important; }
+          .nx-weather-date { margin: 4px 0 0 26px; } /* 26 = ширина значка + отступ: вровень с названием */
           .nx-weather-title { display: none !important; }
           .nx-weather-city { margin-top: 0 !important; gap: 6px !important; color: var(--text) !important; font-size: 15px !important; }
           .nx-weather-pin { width: auto !important; }
