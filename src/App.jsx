@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.4.5";
+const VERSION = "0.5.1";
 
 
 /* =========================================================================
@@ -6994,7 +6994,7 @@ function QrCode({ text, size = 120 }) {
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (d[y * n + x]) path += `M${x + pad} ${y + pad}h1v1h-1z`;
   return (
     <svg viewBox={`0 0 ${n + pad * 2} ${n + pad * 2}`} width={size} height={size} role="img" aria-label="QR-код: адрес сайта NEXA"
-      shapeRendering="crispEdges" style={{ display: "block", borderRadius: 4 }}>
+      shapeRendering="crispEdges" style={{ display: "block", borderRadius: 10 }}>
       <rect width="100%" height="100%" style={{ fill: C.onFold }} />
       <path d={path} style={{ fill: C.foldDeep }} />
     </svg>
@@ -7081,15 +7081,22 @@ function InstallBanner({ onHowTo }) {
   const [hidden, setHidden] = useState(() => {
     try { return localStorage.getItem(INSTALL_DISMISS_KEY) === "1"; } catch { return false; }
   });
+  // closing — идёт анимация закрытия: баннер «складывается» и схлопывается
+  const [closing, setClosing] = useState(false);
   if (hidden || (platform !== "android" && platform !== "ios")) return null;
   const close = () => {
     try { localStorage.setItem(INSTALL_DISMISS_KEY, "1"); } catch {}
-    setHidden(true);
+    // Без движения (так в системе) — убираем сразу
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) setHidden(true);
+    else setClosing(true);
   };
   return (
-    <div className="nx-pop" role="region" aria-label="Установка приложения" style={{
-      display: "flex", alignItems: "center", gap: 10, marginTop: 18, padding: "10px 8px 10px 12px",
-      border: `1px solid ${C.borderStrong}`, borderRadius: 4, background: C.bg,
+    // Обёртка схлопывается по высоте — содержимое ниже плавно подтягивается вверх
+    <div className={closing ? "nx-banner-wrap is-closing" : "nx-banner-wrap"}
+      onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) setHidden(true); }}>
+    <div className="nx-pop nx-banner" role="region" aria-label="Установка приложения" style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "10px 8px 10px 12px",
+      border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.bg,
     }}>
       <span style={{ display: "flex", flexShrink: 0 }}>{Icon.phone({ c: C.mint, s: 18 })}</span>
       <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
@@ -7109,6 +7116,7 @@ function InstallBanner({ onHowTo }) {
         {Icon.close({ c: C.muted, s: 15 })}
       </button>
     </div>
+    </div>
   );
 }
 
@@ -7125,7 +7133,7 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
     >
       <div className="nx-set-main" style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
         <div className="nx-set-icon" style={{
-          width: 40, height: 40, borderRadius: 4, border: `1px solid ${C.border}`, flexShrink: 0,
+          width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, flexShrink: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {icon}
@@ -7146,7 +7154,7 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
 function SettingsGroup({ children }) {
   return (
     // Фон страницы — карточка лежит на сетке-чертеже как плашка, линии не идут сквозь текст
-    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 4, marginBottom: 28, background: C.bg }}>
+    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 28, background: C.bg }}>
       {children}
     </div>
   );
@@ -7933,6 +7941,21 @@ export default function NexaApp() {
         }
         .nx-drop { animation: nx-drop-fall 1100ms cubic-bezier(0.5, 0, 0.9, 0.6) 3; }
         @media (prefers-reduced-motion: reduce) { .nx-drop { animation: none !important; } }
+        /* Баннер установки. Закрытие: плашка отклоняется от верхнего края и тает
+           (как складка), а место под ней схлопывается */
+        .nx-banner-wrap { display: grid; grid-template-rows: 1fr; margin-top: 18px; }
+        .nx-banner-wrap > .nx-banner { min-height: 0; overflow: hidden; }
+        @keyframes nx-banner-fold {
+          to { opacity: 0; transform: perspective(600px) rotateX(-70deg) scale(0.96); }
+        }
+        @keyframes nx-banner-collapse {
+          to { grid-template-rows: 0fr; margin-top: 0; }
+        }
+        .nx-banner-wrap.is-closing { animation: nx-banner-collapse 320ms cubic-bezier(0.4, 0, 0.2, 1) 180ms forwards; }
+        .nx-banner-wrap.is-closing > .nx-banner {
+          transform-origin: 50% 0;
+          animation: nx-banner-fold 300ms cubic-bezier(0.4, 0, 1, 1) forwards;
+        }
         /* Расписание: корзина видна при наведении на дело (на телефоне — всегда) */
         .nx-sched-del { opacity: 0; transition: opacity 160ms ease, background-color 160ms ease; }
         .nx-sched-item:hover .nx-sched-del, .nx-sched-del:focus-visible { opacity: 1; }
