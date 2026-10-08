@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NEXA</string>
+    <string name="title_activity_main">NEXA</string>
+    <string name="package_name">ru.nexalink.app</string>
+    <string name="custom_url_scheme">ru.nexalink.app</string>
+</resources>

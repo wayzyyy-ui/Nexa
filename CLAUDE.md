@@ -12,6 +12,17 @@
 - Локально проект запускается командой `vercel dev` (http://localhost:3000). `npm run dev` поднимет только фронт, без `/api/chat`.
 - Продакшен: https://nexaru-ecosystem.vercel.app
 
+## Android-приложение (Capacitor)
+
+- Папка `android/` — проект для Android Studio, `capacitor.config.json` — имя «NEXA» и id `ru.nexalink.app`.
+- Сборка: `npm run build:android` (сайт с настройками из `.env.android` + копирование в `android/`), затем `npm run open:android`.
+- Адрес ассистента в приложении — `VITE_API_BASE` в `.env.android` (файл в git, секретов в нём нет). На сайте адрес остаётся `/api/chat`.
+- Всё, что нужно только приложению, — в `src/native.js` (на сайте ничего не делает). Кнопка «Назад» Android — в NexaApp: закрывает окно (через Esc), потом экран устройства, потом предыдущий раздел, на Главной сворачивает.
+- Отступы под вырез и системную полосу: в CSS использовать `var(--sat)` и `var(--sab)`, а не `env(safe-area-inset-*)` напрямую.
+- Новые окна и меню должны иметь `role="dialog"` / `role="menu"` и закрываться по Esc — тогда кнопка «Назад» закроет и их.
+- Иконка и заставка: картинки в `assets/`, пересоздать — `npx capacitor-assets generate --android` с цветом `#01090F`.
+- Gradle в `android/` обновлён до 9.1: Android Studio идёт с Java 25, со старым Gradle сборка падает.
+
 ## Как устроен App.jsx
 
 1. Объект `C` с токенами цветов. Значения — CSS-переменные (`var(--bg)` и т.п.).

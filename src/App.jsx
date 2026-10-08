@@ -4,6 +4,9 @@ import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "r
 import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
+// Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
+import { isNative, API_CHAT_URL, setSystemBarsTheme } from "./native.js";
+import { App as CapApp } from "@capacitor/app";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
@@ -73,6 +76,7 @@ function readTheme() {
 }
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
+  setSystemBarsTheme(theme); // в приложении: значки статус-бара под тему
   try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
 }
 
@@ -720,7 +724,7 @@ function MobileTabBar({ active, onChange }) {
         border: `1px solid ${C.borderStrong}`,
         borderBottom: "none",
         borderRadius: "24px 24px 0 0",
-        padding: "0 12px env(safe-area-inset-bottom, 0px)",
+        padding: "0 12px var(--sab)",
         display: "flex",
       }}>
         <div style={{ position: "relative", flex: 1, display: "flex", height: 68 }}>
@@ -5689,6 +5693,13 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
     if (el) el.scrollTop = el.scrollHeight;
   };
   const [searchQuery, setSearchQuery] = useState('');
+  // Esc (и кнопка «Назад» на Android) закрывает панель истории
+  useEffect(() => {
+    if (!isHistoryOpen) return;
+    const onKey = (e) => { if (e.key === "Escape") setIsHistoryOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isHistoryOpen]);
 
   // Аура за ответом: появляется, когда ассистент начинает думать,
   // и исчезает через REPLY_AURA_HOLD после ответа
@@ -5902,7 +5913,8 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
           parts: [{ text: m.text }],
         }));
 
-      const res = await fetch('/api/chat', {
+      // На сайте — /api/chat, в приложении — полный адрес (см. src/native.js)
+      const res = await fetch(API_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history }),
@@ -7293,6 +7305,45 @@ export default function NexaApp() {
 
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
+
+  // История разделов — для кнопки «Назад» на Android
+  const tabHistory = useRef([]);
+  const prevTab = useRef(tab);
+  const goingBack = useRef(false);
+  useEffect(() => {
+    if (prevTab.current !== tab && !goingBack.current) {
+      tabHistory.current = [...tabHistory.current, prevTab.current].slice(-20);
+    }
+    goingBack.current = false;
+    prevTab.current = tab;
+  }, [tab]);
+
+  // Свежие значения для обработчика «Назад» (он подключается один раз)
+  const backState = useRef({});
+  backState.current = { openDeviceId, tab };
+  useEffect(() => {
+    if (!isNative) return;
+    const sub = CapApp.addListener("backButton", () => {
+      // 1) Открыто окно, меню, уведомления или история чатов — закрываем его.
+      //    У всех них закрытие уже работает по Esc — нажимаем его за пользователя
+      const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes, .ng-history-panel.is-open');
+      if (layer) {
+        const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        return;
+      }
+      const { openDeviceId: dev, tab: cur } = backState.current;
+      // 2) Открыт экран устройства — назад к списку
+      if (dev) { setOpenDeviceId(null); return; }
+      // 3) Был другой раздел — возвращаемся в него
+      const prev = tabHistory.current.pop();
+      if (prev && prev !== cur) { goingBack.current = true; setFilesFilter(null); setFilesDevice(null); setTab(prev); return; }
+      if (cur !== "home") { goingBack.current = true; setTab("home"); return; }
+      // 4) На Главной — сворачиваем приложение (как обычно на Android)
+      CapApp.minimizeApp();
+    });
+    return () => { sub.then((h) => h.remove()); };
+  }, []);
   // Открыть экран устройства. С «Ассистента» (там своя раскладка) — через Главную
   const showDevice = (id) => {
     if (tab === "assistant") setTab("home");
@@ -7397,6 +7448,21 @@ export default function NexaApp() {
       fontFamily: fontBody,
     }}>
             <style>{`
+        /* Отступы под вырез камеры и системную полосу (safe area).
+           В Android-приложении Capacitor передаёт их в --safe-area-inset-*,
+           в браузере — через env(). Используйте var(--sat) и var(--sab) */
+        :root {
+          --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+          --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+        }
+        /* В приложении: экран ассистента и панель истории закреплены сверху —
+           сдвигаем их под статус-бар, а низ ассистента — над нижней полосой */
+        .nx-native .ng-assistant-wrapper { top: calc(var(--vvt, 0px) + var(--sat)) !important; height: calc(var(--vvh, 100%) - var(--sat)) !important; }
+        @media (max-width: 768px) {
+          .nx-native .ng-assistant-inner { padding-bottom: calc(76px + var(--sab)) !important; }
+          .nx-native body.kb-open .ng-assistant-inner { padding-bottom: 16px !important; }
+          .nx-native .ng-history-panel { padding-top: var(--sat) !important; box-sizing: border-box; }
+        }
         /* Шрифты лежат в public/fonts — так они одинаковые на любом устройстве,
            даже если у человека они не установлены (раньше Raleway брался
            только из системы, и на чужих телефонах подменялся системным) */
@@ -7659,7 +7725,7 @@ export default function NexaApp() {
         }
         @media (max-width: 768px) {
           .nx-toast-host {
-            top: calc(env(safe-area-inset-top, 0px) + 10px);
+            top: calc(var(--sat) + 10px);
             left: 10px; right: 10px; width: auto;
           }
         }
@@ -8095,7 +8161,7 @@ export default function NexaApp() {
             border-left: none !important;
             border-right: none !important;
             border-bottom: none !important;
-            padding-bottom: env(safe-area-inset-bottom, 0px);
+            padding-bottom: var(--sab);
           }
           .nx-viewer-preview > div { height: 180px !important; }
           .nx-viewer-actions > button { flex: 1 1 auto; justify-content: center; }
@@ -8218,8 +8284,8 @@ export default function NexaApp() {
             font-size: 16px !important;
           }
      body {
-    padding-top: env(safe-area-inset-top, 0);
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-top: var(--sat);
+    padding-bottom: var(--sab);
     background: var(--bg);
   }
 

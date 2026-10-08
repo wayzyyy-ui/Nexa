@@ -14,7 +14,32 @@ const SYSTEM_INSTRUCTION = `Ты — NEXA Assistant, AI-ассистент эк�
 - файлы: «загрузи файл».
 Если спрашивают, что ты умеешь или чем можешь помочь (в любой формулировке), перечисли эти возможности коротко и предложи попробовать. Если пользователь просит выполнить такое действие, но сообщение дошло до тебя, предложи сформулировать короче, например «включи светлую тему».`;
 
+/* CORS: разрешаем запросы из Android-приложения NEXA (Capacitor).
+   Приложение открывает интерфейс с адреса https://localhost (Android)
+   или capacitor://localhost (iOS), а сервер живёт на другом адресе —
+   без этих заголовков браузер внутри приложения запрос не пропустит.
+   Сайт ходит на свой же адрес, ему заголовки не нужны и ничего не меняют. */
+const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400'); // проверку можно запомнить на сутки
+  }
+}
+
 export default async function handler(req, res) {
+  applyCors(req, res);
+
+  // Предварительная проверка браузера перед POST из приложения
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
