@@ -4,7 +4,7 @@ import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "r
 import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.4.4";
+const VERSION = "0.4.5";
 
 
 /* =========================================================================
