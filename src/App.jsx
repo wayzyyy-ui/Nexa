@@ -4,7 +4,7 @@ import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "r
 import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.4.1";
+const VERSION = "0.4.2";
 
 
 /* =========================================================================
@@ -1649,7 +1649,8 @@ function TempFold({ temp, tone }) {
 //   Значения размываются, поверх — сообщение и кнопка «Обновить»
 // footer — строка внизу карточки (например «Обновлено в 14:32»),
 // grow — карточка растягивается на всю свободную высоту, значения встают по центру
-function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, details, art, veil, footer, grow }) {
+// onCity — нажатие на город (открыть выбор), cityPicker — сам выбор, если открыт
+function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, details, art, veil, footer, grow, onCity, cityPicker }) {
   return (
     <div className="nx-weather" style={{
       position: "relative", overflow: "hidden",
@@ -1674,8 +1675,10 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
         </div>
         <div className="nx-weather-date" style={{ gridArea: "date", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{date}</div>
         {/* Пока погоды нет (грузится или ошибка), город тоже размыт — как и значения под ним */}
-        {city && (
-          <div className="nx-weather-city" aria-hidden={veil ? true : undefined} style={{
+        {cityPicker}
+        {city && !cityPicker && (
+          <button type="button" onClick={onCity} title="Выбрать город" className="nx-weather-city nx-link-btn" aria-hidden={veil ? true : undefined} style={{
+            ...btnReset, cursor: onCity ? "pointer" : "default",
             gridArea: "city", display: "flex", alignItems: "center", gap: 14, fontSize: 13, color: C.muted, marginTop: 8, minWidth: 0,
             ...(veil ? { filter: "blur(5px)", opacity: 0.45, userSelect: "none" } : {}),
           }}>
@@ -1685,7 +1688,9 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
             {cityNote && (
               <span className="nx-weather-note" style={{ flexShrink: 0, marginLeft: -6, fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap" }}>· {cityNote}</span>
             )}
-          </div>
+            {/* Город не определился — подсказываем, что его можно указать */}
+            {city === "—" && <span style={{ fontSize: 11, color: C.mint, whiteSpace: "nowrap" }}>указать</span>}
+          </button>
         )}
       </div>
 
@@ -1893,7 +1898,14 @@ function forecastDayLabel(date, index) {
    2) ipapi.co — примерно по IP-адресу, без разрешений.
    Приоритет у геолокации: ответ по IP ставим не раньше чем через 1,5 секунды,
    чтобы геолокация успела «победить». Пока ничего не пришло — Казань. */
-const DEFAULT_LOCATION = { city: "Казань", lat: 55.79, lon: 49.11, source: "default" };
+// Пока город не определён — прочерк. Погода для этого случая берётся
+// по запасным координатам (центр Поволжья), пока город не найдётся
+const DEFAULT_LOCATION = { city: "—", lat: 55.79, lon: 49.11, source: "default" };
+const CITY_KEY = "nexa-city"; // город, выбранный вручную
+const readManualCity = () => {
+  try { const v = JSON.parse(localStorage.getItem(CITY_KEY)); if (v && v.city && v.lat != null) return { ...v, source: "manual" }; } catch {}
+  return null;
+};
 
 /* Общие данные экрана «Сегодня»: расписание, город и последняя
    загруженная погода. Ими пользуются и экран «Сегодня», и ассистент
@@ -1932,8 +1944,46 @@ const CITY_LOOKUP_MS = 3000;        // дольше 3 секунд назван�
 const LOCATION_SOURCE_TEXT = {
   geo: "определено точно",
   ip: "примерно по IP",
-  default: "по умолчанию",
+  default: "не определено",
+  manual: "выбран вами",
 };
+
+/* Местоположение по IP: пробуем несколько бесплатных сервисов по очереди
+   (у каждого бывают лимиты и блокировки). Ответ — { lat, lon } или null.
+   С VPN по IP определится город сервера VPN — для точности есть геолокация
+   и ручной выбор города */
+const IP_SERVICES = [
+  ["https://ipapi.co/json/", (d) => !d.error && [d.latitude, d.longitude]],
+  ["https://ipwho.is/", (d) => d.success !== false && [d.latitude, d.longitude]],
+  ["https://get.geojs.io/v1/ip/geo.json", (d) => [parseFloat(d.latitude), parseFloat(d.longitude)]],
+];
+async function ipLocation(signal) {
+  for (const [url, pick] of IP_SERVICES) {
+    try {
+      const res = await fetch(url, { signal });
+      if (!res.ok) continue;
+      const ll = pick(await res.json());
+      if (ll && Number.isFinite(ll[0]) && Number.isFinite(ll[1])) return { lat: ll[0], lon: ll[1] };
+    } catch (e) {
+      if (e.name === "AbortError") return null;
+    }
+  }
+  return null;
+}
+
+/* Поиск города по названию (Open-Meteo, без ключа). До 6 вариантов:
+   { city, region, lat, lon } — регион, чтобы различать одинаковые названия */
+async function searchCities(q, signal) {
+  const res = await fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=ru&format=json&name=" + encodeURIComponent(q), { signal });
+  if (!res.ok) throw new Error("ответ сервера " + res.status);
+  const data = await res.json();
+  return (data.results || []).map((r) => ({
+    city: r.name, region: [r.admin1, r.country].filter(Boolean).join(", "),
+    lat: round2(r.latitude), lon: round2(r.longitude),
+  }))
+    // Одинаковые «город + регион» (город и одноимённый район) показываем один раз
+    .filter((c, i, all) => all.findIndex((x) => x.city === c.city && x.region === c.region) === i);
+}
 
 // Геолокация браузера в виде промиса. Если браузер её не умеет
 // (старый браузер или сайт открыт не по HTTPS) — сразу «отказ»
@@ -2013,9 +2063,12 @@ const round2 = (n) => Math.round(n * 100) / 100;
 /* Хук местоположения. Возвращает { city, lat, lon, source },
    source — "geo" (геолокация), "ip" (по IP) или "default" (Казань). */
 function useLocation() {
+  // Город, выбранный вручную, важнее автоматики
+  const [manual, setManual] = useState(readManualCity);
   const [loc, setLoc] = useState(DEFAULT_LOCATION);
 
   useEffect(() => {
+    if (manual) return; // выбран вручную — ничего не определяем
     let cancelled = false;   // экран закрыли — больше ничего не обновляем
     let geoWon = false;      // геолокация сработала — ответ по IP больше не нужен
     let graceOver = false;   // прошли ли 1,5 секунды ожидания геолокации
@@ -2029,15 +2082,13 @@ function useLocation() {
     };
     const graceTimer = setTimeout(() => { graceOver = true; applyIp(); }, IP_GRACE_MS);
 
-    // Способ 1: по IP. ipapi присылает город латиницей, поэтому
-    // название переспрашиваем по координатам — уже по-русски
-    fetch("https://ipapi.co/json/", { signal: ctrl.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(async (data) => {
-        // При превышении лимита ipapi отвечает { error: true } — это тоже «не вышло»
-        if (!data || data.error || data.latitude == null || data.longitude == null) return;
-        const lat = round2(data.latitude);
-        const lon = round2(data.longitude);
+    // Способ 1: по IP (несколько сервисов по очереди). Название города
+    // переспрашиваем по координатам — так оно по-русски
+    ipLocation(ctrl.signal)
+      .then(async (ll) => {
+        if (!ll) return;
+        const lat = round2(ll.lat);
+        const lon = round2(ll.lon);
         const city = await cityByCoords(lat, lon, ctrl.signal);
         ipLoc = { city, lat, lon, source: "ip" };
         applyIp();
@@ -2062,9 +2113,77 @@ function useLocation() {
       clearTimeout(graceTimer);
       ctrl.abort();
     };
-  }, []);
+  }, [manual]);
 
-  return loc;
+  // Выбрать город вручную (null — снова определять автоматически)
+  const pick = (c) => {
+    try {
+      if (c) localStorage.setItem(CITY_KEY, JSON.stringify({ city: c.city, lat: c.lat, lon: c.lon }));
+      else localStorage.removeItem(CITY_KEY);
+    } catch {}
+    if (!c) setLoc(DEFAULT_LOCATION);
+    setManual(c ? { city: c.city, lat: c.lat, lon: c.lon, source: "manual" } : null);
+  };
+
+  return { ...(manual || loc), pick };
+}
+
+/* Выбор города: поле поиска и список вариантов прямо в карточке погоды.
+   Enter — первый вариант, Esc — отмена */
+function CityPicker({ onPick, onAuto, onClose, isManual }) {
+  const [q, setQ] = useState("");
+  const [state, setState] = useState({ loading: false, list: [], error: null });
+  useEffect(() => {
+    const text = q.trim();
+    if (text.length < 2) { setState({ loading: false, list: [], error: null }); return; }
+    const ctrl = new AbortController();
+    setState((st) => ({ ...st, loading: true, error: null }));
+    // Ищем через 300 мс после последней буквы, чтобы не слать запрос на каждую
+    const t = setTimeout(() => {
+      searchCities(text, ctrl.signal)
+        .then((list) => setState({ loading: false, list, error: null }))
+        .catch((e) => { if (e.name !== "AbortError") setState({ loading: false, list: [], error: "Не удалось найти — проверьте интернет" }); });
+    }, 300);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [q]);
+  const text = q.trim();
+  return (
+    <div className="nx-pop" style={{ gridArea: "city", marginTop: 10 }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+      <form onSubmit={(e) => { e.preventDefault(); if (state.list[0]) onPick(state.list[0]); }} style={{ display: "flex", gap: 6 }}>
+        <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Город, например Канаш"
+          aria-label="Поиск города" style={{
+            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit", fontSize: 16,
+            border: "1px solid " + C.borderStrong, borderRadius: 4, padding: "8px 10px", outline: "none", boxSizing: "border-box",
+          }} />
+        <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Отмена" style={{
+          ...btnReset, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          {Icon.close({ c: C.muted, s: 16 })}
+        </button>
+      </form>
+      <div style={{ marginTop: 6 }}>
+        {state.loading && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, padding: "6px 2px" }}><Spinner /> Ищем…</div>}
+        {state.error && <div style={{ fontSize: 12.5, color: C.red, padding: "6px 2px" }}>{state.error}</div>}
+        {!state.loading && !state.error && text.length >= 2 && state.list.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.mutedSoft, padding: "6px 2px" }}>Ничего не нашлось</div>
+        )}
+        {state.list.map((c) => (
+          <button key={c.lat + "," + c.lon} type="button" className="nx-row-btn" onClick={() => onPick(c)} style={{
+            ...btnReset, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "baseline", gap: 8,
+            padding: "8px 4px", borderBottom: "1px solid " + C.border, fontSize: 13.5,
+          }}>
+            <span>{c.city}</span>
+            <span style={{ fontSize: 11.5, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.region}</span>
+          </button>
+        ))}
+        {isManual && (
+          <button type="button" className="nx-link-btn" onClick={onAuto} style={{ ...btnReset, fontSize: 12.5, color: C.muted, padding: "8px 2px" }}>
+            Определять автоматически
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* Хук погоды. Возвращает { loading, error, now, tomorrow, refetch }.
@@ -2296,6 +2415,7 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
   const location = useLocation();
   // Реальная погода; пока её нет (грузится или ошибка) — заглушки
   const weather = useWeather(location.lat, location.lon);
+  const [pickingCity, setPickingCity] = useState(false); // открыт ли выбор города
   // Город и координаты — в общие данные (для сводки ассистента)
   useEffect(() => {
     TODAY.city = location.city;
@@ -2415,6 +2535,15 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
 
         <div style={{ gridArea: "now" }}>
             <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]}
+            onCity={() => setPickingCity(true)}
+            cityPicker={pickingCity && (
+              <CityPicker
+                isManual={location.source === "manual"}
+                onClose={() => setPickingCity(false)}
+                onPick={(c) => { location.pick(c); setPickingCity(false); }}
+                onAuto={() => { location.pick(null); setPickingCity(false); }}
+              />
+            )}
             temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone}
             details={[
               { label: "Ветер", value: `${now.wind} м/с` },
@@ -5303,7 +5432,7 @@ async function buildTodaySummary() {
   const date = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
   const lines = [`**${date.charAt(0).toUpperCase() + date.slice(1)}.**`];
   lines.push(w
-    ? `${TODAY.city}: ${signed(w.now.temp)}°, ${weatherCodeToText(w.now.code).text.toLowerCase()}, ощущается как ${signed(w.now.feels)}°.`
+    ? `${TODAY.city !== "—" ? `${TODAY.city}: ` : "Сейчас "}${signed(w.now.temp)}°, ${weatherCodeToText(w.now.code).text.toLowerCase()}, ощущается как ${signed(w.now.feels)}°.`
     : "Погоду сейчас загрузить не получилось.");
   const total = `${items.length} ${plural(items.length, ["дело", "дела", "дел"])}`;
   lines.push(left.length
@@ -5459,23 +5588,6 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
   // Запоминаем, где поле было, и после перерисовки анимируем разницу
   const inputDockRef = useRef(null);
   const [inputFocused, setInputFocused] = useState(false); // поле в фокусе — аура «оживает»
-  // На телефоне аура стоит по центру приветствия (а не всей колонки, где внизу поле ввода):
-  // меряем, где приветствие, и кладём высоту в CSS-переменную --aura-y
-  const emptyColRef = useRef(null);
-  useLayoutEffect(() => {
-    const col = emptyColRef.current;
-    if (!col || !window.ResizeObserver) return;
-    const place = () => {
-      const g = col.querySelector(".nx-empty-greet");
-      if (!g) return;
-      const c = col.getBoundingClientRect(), r = g.getBoundingClientRect();
-      col.style.setProperty("--aura-y", `${r.top - c.top + r.height / 2}px`);
-    };
-    place();
-    const ro = new ResizeObserver(place);
-    ro.observe(col);
-    return () => ro.disconnect();
-  });
   const flipFrom = useRef(null);
   const taRef = useRef(null);
   const rememberInputPos = () => {
@@ -6208,7 +6320,7 @@ const menuBlock = isHistoryOpen ? (
           // Новый диалог: приветствие, поле ввода и подсказки — по центру
           // На телефоне (см. .nx-empty-col в стилях): поле ввода внизу,
           // над ним компактные подсказки, приветствие — по центру свободного места
-          <div ref={emptyColRef} className="nx-empty-col" style={{
+          <div className="nx-empty-col" style={{
             flex: 1, minHeight: 0, padding: "0 16px", position: "relative",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22,
           }}>
@@ -7139,7 +7251,21 @@ export default function NexaApp() {
       fontFamily: fontBody,
     }}>
             <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap');
+        /* Шрифты лежат в public/fonts — так они одинаковые на любом устройстве,
+           даже если у человека они не установлены (раньше Raleway брался
+           только из системы, и на чужих телефонах подменялся системным) */
+        @font-face {
+          font-family: 'Raleway';
+          src: url('/fonts/Raleway-Variable.ttf') format('truetype');
+          font-weight: 100 900;
+          font-display: swap;
+        }
+        @font-face {
+          font-family: 'Space Grotesk';
+          src: url('/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
+          font-weight: 300 700;
+          font-display: swap;
+        }
         
         @font-face {
         font-family: 'NexaNumbers';
@@ -7473,7 +7599,7 @@ export default function NexaApp() {
         }
         /* Размытие граней (исключение из правил, см. CLAUDE.md) */
         .nx-aura-blur { filter: blur(34px); }
-        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; top: var(--aura-y, 50%) !important; } .nx-aura-blur { filter: blur(24px); } }
+        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; } .nx-aura-blur { filter: blur(24px); } }
         @media (prefers-reduced-motion: reduce) {
           .nx-aura-facet { animation: none !important; }
           .nx-aura { transition: none !important; }
