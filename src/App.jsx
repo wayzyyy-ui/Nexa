@@ -4,6 +4,9 @@ import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "r
 import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
+// Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
+import Lenis from "lenis";
+import "lenis/dist/lenis.css";
 const VERSION = "0.4.5";
 
 
@@ -463,6 +466,27 @@ function FoldHero({ size = 340 }) {
    (от -1 до 1), прокрутка — --sy (от 0 до 1). React при этом не
    перерисовывается, меняется только transform.
    При «уменьшении движения» фон неподвижный. */
+/* ПЛАВНАЯ ПРОКРУТКА. Колёсико мыши на компьютере прокручивает страницу
+   рывками; Lenis сглаживает это — страница мягко «доезжает».
+   Только на компьютере с мышью/тачпадом: на телефоне палец и так плавный.
+   Не трогаем: экран ассистента (у чата своя прокрутка), открытые окна
+   (страница под ними заблокирована) и внутренние списки — они крутятся
+   как обычно. При «уменьшении движения» выключено */
+// Внутри этих элементов колёсико работает по-обычному
+const NATIVE_SCROLL = '.nx-scroll, .nx-viewer, [role="dialog"], [role="menu"], .nx-notes, textarea';
+function useSmoothScroll(enabled) {
+  useEffect(() => {
+    const mq = window.matchMedia;
+    if (!enabled || !mq || !mq("(pointer: fine)").matches || mq("(prefers-reduced-motion: reduce)").matches) return;
+    const lenis = new Lenis({
+      autoRaf: true,
+      lerp: 0.12, // насколько быстро догоняет: меньше — мягче
+      prevent: (node) => document.body.style.overflow === "hidden" || !!node.closest?.(NATIVE_SCROLL),
+    });
+    return () => lenis.destroy();
+  }, [enabled]);
+}
+
 /* Наклон телефона (гироскоп). На iPhone датчик доступен только после
    разрешения, которое можно спросить лишь по нажатию — поэтому там
    по умолчанию выключено и включается в «Настройках». На Android — сразу. */
@@ -7264,6 +7288,9 @@ export default function NexaApp() {
   const onDeviceFile = (d) => (f) => f.device === d.name || f.device === d.alias;
 
   // Переход по меню всегда открывает "Файлы" без фильтра
+  // Плавная прокрутка колёсиком — на всех экранах, кроме ассистента
+  useSmoothScroll(tab !== "assistant");
+
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
   // Открыть экран устройства. С «Ассистента» (там своя раскладка) — через Главную
