@@ -7,6 +7,8 @@ import foldSvg from "./assets/fold.svg";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
 import { isNative, API_CHAT_URL, setSystemBarsTheme } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
+// QR-код со ссылкой на сайт (блок установки на компьютере)
+import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
@@ -395,6 +397,20 @@ const Icon = {
       <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 13v6.5h14V13" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  // «Поделиться» для инструкции установки: квадрат со срезанным углом (складка)
+  // и стрелка вверх — узнаётся, но нарисована по-своему
+  shareUp: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M9 9H5.5v11.5h13V12.5L15 9" strokeLinejoin="round" />
+      <path d="M12 15V3.5M8.5 7 12 3.5 15.5 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Скачать: стрелка вниз в «лоток»
+  download: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 17v3h14v-3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   send: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M4 11.5 20 4l-6 16-2.5-6.5L4 11.5ZM11.5 13.5 20 4" strokeLinejoin="round" strokeLinecap="round" />
@@ -500,6 +516,18 @@ const TILT_KEY = "nexa-tilt"; // "on" | "off" в localStorage
 // (iPad в режиме «как компьютер» выдаёт себя за Mac с сенсорным экраном)
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+/* Где открыт сайт — от этого зависит, как предлагать установку:
+   "installed" — уже внутри приложения или на экране «Домой» (ничего не предлагаем),
+   "ios" — телефон или планшет Apple, "android" — телефон с Android, "desktop" — компьютер */
+function installPlatform() {
+  const standalone = window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+  if (isNative || standalone) return "installed";
+  if (isIOS()) return "ios";
+  if (/Android/i.test(navigator.userAgent)) return "android";
+  return "desktop";
+}
+const INSTALL_DISMISS_KEY = "nexa-install-dismissed"; // баннер на Главной закрыли
+const APK_URL = "/nexa.apk";
 const tiltNeedsPermission = () =>
   isIOS() && typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
 function readTilt() {
@@ -1525,6 +1553,12 @@ function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDev
             <FoldHero size={168} />
           </div>
         </div>
+
+        {/* Предложение установить приложение (только телефон в браузере) */}
+        <InstallBanner onHowTo={() => {
+          onNavigate("settings");
+          setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
+        }} />
 
         {/* Мои устройства */}
         <div style={{ marginTop: 24 }}>
@@ -6945,6 +6979,139 @@ function SectionTitle({ children }) {
 // icon: иконка слева (в квадрате 40x40), title и subtitle: текст,
 // right: что стоит справа (переключатель, стрелка), wrap: на телефоне
 // правая часть переносится под текст на всю ширину.
+/* ═══ УСТАНОВКА ПРИЛОЖЕНИЯ ═══════════════════════════════════
+   Телефон с Android — кнопка «Скачать приложение» (файл /nexa.apk),
+   iPhone/iPad — как добавить сайт на экран «Домой»,
+   компьютер — QR-код, чтобы открыть сайт на телефоне.
+   Внутри приложения и в уже установленной версии ничего не показываем */
+
+// QR-код: свой рисунок из клеток. Светлая подложка нужна всегда —
+// камеры телефонов плохо читают «перевёрнутый» светлый код на тёмном
+function QrCode({ text, size = 120 }) {
+  const qr = QRCode.create(text, { errorCorrectionLevel: "M" });
+  const n = qr.modules.size, d = qr.modules.data, pad = 2;
+  let path = "";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (d[y * n + x]) path += `M${x + pad} ${y + pad}h1v1h-1z`;
+  return (
+    <svg viewBox={`0 0 ${n + pad * 2} ${n + pad * 2}`} width={size} height={size} role="img" aria-label="QR-код: адрес сайта NEXA"
+      shapeRendering="crispEdges" style={{ display: "block", borderRadius: 4 }}>
+      <rect width="100%" height="100%" style={{ fill: C.onFold }} />
+      <path d={path} style={{ fill: C.foldDeep }} />
+    </svg>
+  );
+}
+
+// Три коротких шага с номерами в квадратиках
+function InstallSteps({ steps }) {
+  return (
+    <ol style={{ listStyle: "none", margin: "6px 0 0", padding: 0, display: "grid", gap: 6 }}>
+      {steps.map((st, i) => (
+        <li key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, lineHeight: 1.35 }}>
+          <span style={{
+            width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.borderStrong}`,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.text,
+          }}>{i + 1}</span>
+          <span>{st}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// Кнопка скачивания — обычная ссылка с атрибутом download
+function ApkButton({ label = "Скачать приложение", small }) {
+  return (
+    <a href={APK_URL} download="NEXA.apk" className="nx-primary" style={{
+      display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", whiteSpace: "nowrap",
+      padding: small ? "7px 14px" : "9px 18px", fontSize: small ? 12.5 : 13.5, fontWeight: 500, borderRadius: 999,
+      color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+    }}>
+      {Icon.download({ c: C.onFold, s: small ? 14 : 16 })} {label}
+    </a>
+  );
+}
+
+// Шаги для iPhone/iPad — вторая строка с нашей иконкой «Поделиться»
+const IOS_STEPS = [
+  "Откройте этот сайт в Safari",
+  <>Нажмите «Поделиться» <span style={{ display: "inline-flex", verticalAlign: "-3px", marginLeft: 2 }}>{Icon.shareUp({ c: C.mint, s: 16 })}</span></>,
+  "Выберите «На экран Домой»",
+];
+const ANDROID_STEPS = ["Скачайте файл NEXA.apk", "Откройте его из уведомления или папки «Загрузки»", "Разрешите установку из этого источника"];
+
+// Группа «Приложение» в Настройках
+function InstallSettings() {
+  const platform = installPlatform();
+  if (platform === "installed") return null;
+  return (
+    <>
+      <SectionTitle>Приложение</SectionTitle>
+      <div id="nx-install">
+      <SettingsGroup>
+        {platform === "android" && (
+          <>
+            <SettingsRow wrap icon={Icon.phone({ c: C.mint, s: 18 })} title="NEXA на телефоне"
+              subtitle="Около 7 МБ, без магазина приложений" right={<ApkButton />} />
+            <SettingsRow last icon={Icon.list({ c: C.muted, s: 18 })} title="Как установить" subtitle={<InstallSteps steps={ANDROID_STEPS} />} />
+          </>
+        )}
+        {platform === "ios" && (
+          <>
+            <SettingsRow icon={Icon.phone({ c: C.mint, s: 18 })} title="NEXA на экране «Домой»"
+              subtitle="Откроется как приложение — на весь экран, без адресной строки" />
+            <SettingsRow last icon={Icon.list({ c: C.muted, s: 18 })} title="Как добавить" subtitle={<InstallSteps steps={IOS_STEPS} />} />
+          </>
+        )}
+        {platform === "desktop" && (
+          <SettingsRow last wrap icon={Icon.phone({ c: C.mint, s: 18 })} title="Приложение для телефона"
+            subtitle="Откройте сайт на телефоне, чтобы установить приложение. Наведите камеру на код"
+            right={<QrCode text={window.location.origin + "/"} size={112} />} />
+        )}
+      </SettingsGroup>
+      </div>
+    </>
+  );
+}
+
+// Баннер на Главной (только на телефоне, только в браузере).
+// Закрыли — запоминаем и больше не показываем.
+// onHowTo — для iPhone: перейти к инструкции в Настройках
+function InstallBanner({ onHowTo }) {
+  const platform = installPlatform();
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem(INSTALL_DISMISS_KEY) === "1"; } catch { return false; }
+  });
+  if (hidden || (platform !== "android" && platform !== "ios")) return null;
+  const close = () => {
+    try { localStorage.setItem(INSTALL_DISMISS_KEY, "1"); } catch {}
+    setHidden(true);
+  };
+  return (
+    <div className="nx-pop" role="region" aria-label="Установка приложения" style={{
+      display: "flex", alignItems: "center", gap: 10, marginTop: 18, padding: "10px 8px 10px 12px",
+      border: `1px solid ${C.borderStrong}`, borderRadius: 4, background: C.bg,
+    }}>
+      <span style={{ display: "flex", flexShrink: 0 }}>{Icon.phone({ c: C.mint, s: 18 })}</span>
+      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.25 }}>{platform === "ios" ? "NEXA на экран «Домой»" : "NEXA как приложение"}</div>
+        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.25 }}>Быстрее и на весь экран</div>
+      </div>
+      {platform === "android" ? <ApkButton label="Скачать" small /> : (
+        <button type="button" className="nx-ghost-btn" onClick={onHowTo} style={{
+          ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5,
+        }}>
+          Как?
+        </button>
+      )}
+      <button type="button" className="nx-icon-btn" onClick={close} aria-label="Скрыть" style={{
+        ...btnReset, width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {Icon.close({ c: C.muted, s: 15 })}
+      </button>
+    </div>
+  );
+}
+
 function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
   return (
     <div
@@ -7113,6 +7280,8 @@ function ScreenSettings({ onOpenSearch }) {
           />
         ))}
       </SettingsGroup>
+
+      <InstallSettings />
 
       <SectionTitle>Об аккаунте</SectionTitle>
       <SettingsGroup>

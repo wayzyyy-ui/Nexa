@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "build:android": "vite build --mode android && cap sync android",
+    "build:android": "vite build --mode android && node -e \"require('fs').rmSync('dist/nexa.apk',{force:true})\" && cap sync android",
     "open:android": "cap open android"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "@capacitor/core": "^8.5.3",
     "@google/genai": "^2.24.0",
     "lenis": "^1.3.26",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
