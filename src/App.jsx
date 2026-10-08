@@ -2249,7 +2249,7 @@ function ScheduleForm({ existing, onSave, onCancel }) {
     <form className="nx-pop nx-sched-form" onSubmit={(e) => { e.preventDefault(); save(); }}
       onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
       style={{ border: `1px solid color-mix(in srgb, ${C.mint} 45%, transparent)`, borderRadius: 6, padding: 12, marginBottom: 20, display: "grid", gap: 8 }}>
-      <div className="nx-sched-form-row" style={{ display: "grid", gridTemplateColumns: "96px minmax(0, 1fr)", gap: 8 }}>
+      <div className="nx-sched-form-row" style={{ display: "grid", gridTemplateColumns: "124px minmax(0, 1fr)", gap: 8 }}>
         <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="nx-input" aria-label="Время" style={field} />
         <input autoFocus value={title} maxLength={60} onChange={(e) => setTitle(e.target.value)} className="nx-input"
           placeholder="Что за дело?" aria-label="Название" aria-invalid={!!error} style={field} />
@@ -2284,10 +2284,12 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
 
   // Курсор «сейчас»: ромб на линии таймлайна, мятная черта и время справа
   const nowMarker = (
-    <div key="now" className="nx-sched-now" aria-label={`Сейчас ${hhmm(clock)}`} style={{ position: "relative", height: 0, top: -7 }}>
-      <span style={{ position: "absolute", left: "var(--dot-x)", top: 0, width: 9, height: 9, margin: "-4.5px 0 0 -4.5px", background: C.mint, transform: "rotate(45deg)" }} />
-      <span style={{ position: "absolute", left: "calc(var(--dot-x) + 10px)", right: 58, top: 0, height: 1, background: `linear-gradient(90deg, ${C.mint}, color-mix(in srgb, ${C.mint} 0%, transparent))` }} />
-      <span style={{ position: "absolute", right: 0, top: -8, fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>{hhmm(clock)}</span>
+    // Своя строка высотой 18px: ромб на линии таймлайна, черта и время —
+    // всё на одной оси, с промежутками до соседних дел (ничего не наезжает)
+    <div key="now" className="nx-sched-now" aria-label={`Сейчас ${hhmm(clock)}`} style={{ position: "relative", height: 18, margin: "-4px 0 10px" }}>
+      <span style={{ position: "absolute", left: "var(--dot-x)", top: "50%", width: 9, height: 9, margin: "-4.5px 0 0 -4.5px", background: C.mint, transform: "rotate(45deg)" }} />
+      <span style={{ position: "absolute", left: "calc(var(--dot-x) + 10px)", right: 52, top: "50%", height: 1, background: `linear-gradient(90deg, ${C.mint}, color-mix(in srgb, ${C.mint} 15%, transparent))` }} />
+      <span style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", fontSize: 11, lineHeight: 1, color: C.mint, letterSpacing: "0.04em" }}>{hhmm(clock)}</span>
     </div>
   );
   // Сначала определяем город, потом по нему грузим погоду
@@ -2384,7 +2386,7 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
                 }} />
                 <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6, color: isNext ? C.mint : C.text }}>{it.time}</div>
                 <div className="nx-sched-box" style={{
-                  gridArea: "box", borderRadius: 6, padding: "9px 10px 9px 14px",
+                  gridArea: "box", borderRadius: 14, padding: "9px 10px 9px 16px",
                   border: `1px solid ${isNext ? `color-mix(in srgb, ${C.mint} 70%, transparent)` : C.borderStrong}`,
                   background: isNext ? `color-mix(in srgb, ${C.mint} 6%, transparent)` : "transparent",
                   display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
@@ -2395,7 +2397,7 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
                     {it.place && <div className="nx-sched-place" style={{ display: "none", fontSize: 12, color: C.muted, marginTop: 2 }}>{it.place}</div>}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    {isNext && <span style={{ fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>далее</span>}
+                    {isNext && <span style={{ fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>скоро</span>}
                     <button type="button" className="nx-icon-btn nx-sched-del" onClick={() => onRemoveItem?.(it)} aria-label={`Удалить «${it.title}»`} title="Удалить" style={{
                       ...btnReset, width: 30, height: 30, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
@@ -4340,14 +4342,24 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Нажатие на пустое место (фон, свободная часть сцены, промежутки) — назад.
-  // Кнопки, поля и всё, что помечено data-keep (превью, полоски, настройки), не уводят.
-  // Если в этот момент выделяли текст — тоже не уводим
-  const onEmptyClick = (e) => {
-    if (e.target.closest('button, a, input, textarea, select, label, [role="switch"], [role="radio"], [data-keep]')) return;
-    if (window.getSelection?.().toString()) return;
-    onBack();
-  };
+  /* Нажатие на любое пустое место страницы — назад: фон, свободная часть
+     сцены, поля слева и справа от экрана, низ с логотипом.
+     Не уводят: кнопки, поля, переключатели, всё с data-keep (превью, полоски,
+     настройки), боковое меню и нижняя панель, уведомления, тосты и окна.
+     Если в этот момент выделяли текст — тоже не уводим.
+     Слушаем весь документ; подключаемся чуть позже, чтобы тот же клик,
+     который открыл экран, не закрыл его сразу */
+  useEffect(() => {
+    const KEEP = 'button, a, input, textarea, select, label, [role="switch"], [role="radio"], [data-keep], ' +
+      '[role="dialog"], [role="menu"], .ng-sidebar, .ng-mobile-tabbar, .nx-notes, .nx-toast-host, .nx-viewer';
+    const onDocClick = (e) => {
+      if (!(e.target instanceof Element) || e.target.closest(KEEP)) return;
+      if (window.getSelection?.().toString()) return;
+      backRef.current();
+    };
+    const t = setTimeout(() => document.addEventListener("click", onDocClick), 0);
+    return () => { clearTimeout(t); document.removeEventListener("click", onDocClick); };
+  }, []);
 
   // Превью масштабируем под ширину сцены: меряем сцену при изменении размера
   // (ResizeObserver срабатывает только когда размер правда поменялся)
@@ -4420,7 +4432,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   };
 
   return (
-    <div className="ng-screen nx-device-screen" onClick={onEmptyClick} style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080 }}>
+    <div className="ng-screen nx-device-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080 }}>
       {/* «Назад» — такой же скошенный чипс, как путь в «Файлах» */}
       <div style={{ display: "flex" }}>
         <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
@@ -5327,14 +5339,14 @@ const AURA_FACETS = [
   { clip: `polygon(76% 92%, 28% 96%, ${AURA_C})`, from: C.foldMint, to: C.foldCyan, depth: 1.4, delay: 270 },
   { clip: `polygon(28% 96%, 6% 32%, ${AURA_C})`,  from: C.foldDeep, to: C.foldMint, depth: 0.9, delay: 360 },
 ];
-// Вершины для тонких линий-сгибов (те же точки, в координатах 0..100)
-const AURA_PTS = [[6, 32], [44, 6], [95, 30], [76, 92], [28, 96]];
 
 function AssistantAura({ active }) {
   const ref = useRef(null);
   useBackdropMotion(ref); // --px / --py от курсора (на телефоне — от наклона)
   return (
     <div ref={ref} aria-hidden="true" className={`nx-aura${active ? " is-active" : ""}`}>
+      {/* Грани размыты одним слоем — получается мягкое цветное поле */}
+      <div className="nx-aura-blur" style={{ position: "absolute", inset: 0 }}>
       {AURA_FACETS.map((f, i) => (
         // Внешний слой — сдвиг за курсором (у каждой грани своя глубина),
         // внутренний — разворачивание при появлении
@@ -5349,21 +5361,35 @@ function AssistantAura({ active }) {
           }} />
         </div>
       ))}
-      {/* Сгибы: тонкие линии от центра к вершинам и по краю складки */}
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="nx-aura-lines" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-        {AURA_PTS.map(([x, y], i) => {
-          const [nx, ny] = AURA_PTS[(i + 1) % AURA_PTS.length];
-          return (
-            <g key={i} fill="none" strokeWidth="1" vectorEffect="non-scaling-stroke">
-              <line x1="47" y1="56" x2={x} y2={y} vectorEffect="non-scaling-stroke" style={{ stroke: `color-mix(in srgb, ${C.mint} 45%, transparent)` }} />
-              <line x1={x} y1={y} x2={nx} y2={ny} vectorEffect="non-scaling-stroke" style={{ stroke: `color-mix(in srgb, ${C.blue} 35%, transparent)` }} />
-            </g>
-          );
-        })}
-      </svg>
+      </div>
     </div>
   );
 }
+
+/* Аура за ответом: пока ассистент думает и печатает, за новым ответом
+   (слева внизу списка) проявляется маленькое размытое поле из тех же граней.
+   Через пару секунд после ответа оно «испаряется»: разрастается, сильнее
+   размывается и тает. fading — идёт исчезновение.
+   posRef — внешний слой: ScreenAssistant ставит его в точку за последним
+   ответом (left/top), сама аура центрируется вокруг этой точки */
+function ReplyAura({ fading, posRef }) {
+  return (
+    <div ref={posRef} aria-hidden="true" className="nx-reply-aura-pos">
+    <div className={`nx-reply-aura${fading ? " is-fading" : ""}`}>
+      <div className="nx-reply-aura-in" style={{ position: "absolute", inset: 0 }}>
+        {AURA_FACETS.map((f, i) => (
+          <div key={i} style={{
+            position: "absolute", inset: 0, clipPath: f.clip,
+            background: `linear-gradient(135deg, color-mix(in srgb, ${f.from} 75%, transparent), color-mix(in srgb, ${f.to} 25%, transparent))`,
+          }} />
+        ))}
+      </div>
+    </div>
+    </div>
+  );
+}
+const REPLY_AURA_HOLD = 1800; // сколько аура держится после ответа
+const REPLY_AURA_FADE = 1000; // сколько «испаряется»
 
 // Подсказки на пустом экране: нажатие отправляет текст как сообщение
 const assistantSuggestions = () => [
@@ -5412,6 +5438,16 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
     if (el) el.scrollTop = el.scrollHeight;
   };
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Аура за ответом: появляется, когда ассистент начинает думать,
+  // и исчезает через REPLY_AURA_HOLD после ответа
+  const [replyAura, setReplyAura] = useState(null); // { id, fading } или null
+  useEffect(() => {
+    if (isLoading) { setReplyAura({ id: Date.now(), fading: false }); return; }
+    const t1 = setTimeout(() => setReplyAura((a) => a && { ...a, fading: true }), REPLY_AURA_HOLD);
+    const t2 = setTimeout(() => setReplyAura(null), REPLY_AURA_HOLD + REPLY_AURA_FADE);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [isLoading]);
 
   // Переход по команде ждёт NAV_DELAY: пока ждёт, его можно отменить
   const [pendingNavId, setPendingNavId] = useState(null);
@@ -5466,6 +5502,36 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
   const messages = currentChat?.messages || [];
   const isEmpty = messages.length === 0 && !isLoading;
 
+  // Где аура: за последним сообщением в чате (это «печатает…» или ответ).
+  // Двигаем внешний слой напрямую, без перерисовки, не чаще раза за кадр
+  const replyAuraPos = useRef(null);
+  const placeFrame = useRef(0);
+  const placeReplyAura = () => {
+    cancelAnimationFrame(placeFrame.current);
+    placeFrame.current = requestAnimationFrame(() => {
+      const el = replyAuraPos.current, list = listRef.current;
+      if (!el || !list) return;
+      const msgs = list.querySelectorAll(".nx-msg");
+      const last = msgs[msgs.length - 1];
+      if (!last) return;
+      const box = el.parentElement.getBoundingClientRect();
+      const r = last.getBoundingClientRect();
+      el.style.left = `${r.left - box.left + Math.min(r.width / 2, 240)}px`;
+      el.style.top = `${r.top - box.top + r.height / 2}px`;
+    });
+  };
+  useLayoutEffect(() => { if (replyAura) placeReplyAura(); }, [replyAura?.id, messages.length, messages[messages.length - 1]?.text, isLoading]);
+  useEffect(() => {
+    const list = listRef.current;
+    if (!replyAura || !list) return;
+    list.addEventListener("scroll", placeReplyAura, { passive: true });
+    window.addEventListener("resize", placeReplyAura);
+    return () => {
+      list.removeEventListener("scroll", placeReplyAura);
+      window.removeEventListener("resize", placeReplyAura);
+      cancelAnimationFrame(placeFrame.current);
+    };
+  }, [replyAura?.id]);
   // Поле ввода переехало (центр ↔ низ): плавно ведём его из старого места.
   // Без движения — если так настроено в системе
   useLayoutEffect(() => {
@@ -5489,6 +5555,9 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
     const h = Math.min(t.scrollHeight, 168);
     t.style.height = `${h}px`;
     t.style.overflowY = t.scrollHeight > 168 ? "auto" : "hidden";
+    // Одна строка — кнопка по центру поля, несколько — прижата к низу
+    const oneLine = parseFloat(getComputedStyle(t).lineHeight) + 12 + 4;
+    t.parentElement.style.alignItems = t.scrollHeight > oneLine ? "flex-end" : "center";
   }, [input, isEmpty]);
 
   useEffect(() => {
@@ -5754,7 +5823,7 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
 
 
  const titleOnly = (
-  <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
+  <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
     {/* Гамбургер — виден только на мобильном */}
     <button
       className="ng-hamburger"
@@ -6120,19 +6189,21 @@ const menuBlock = isHistoryOpen ? (
 
          {isEmpty ? (
           // Новый диалог: приветствие, поле ввода и подсказки — по центру
-          <div style={{
+          // На телефоне (см. .nx-empty-col в стилях): поле ввода внизу,
+          // над ним компактные подсказки, приветствие — по центру свободного места
+          <div className="nx-empty-col" style={{
             flex: 1, minHeight: 0, padding: "0 16px", position: "relative",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22,
           }}>
             {/* Аура: складка из граней позади; при наборе текста приближается */}
             <AssistantAura active={inputFocused || !!input.trim()} />
             <div
-              className="ng-greeting nx-greeting-anim"
+              className="ng-greeting nx-greeting-anim nx-empty-greet"
               style={{ position: "relative", textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}
             >
               {greeting}
             </div>
-            <div ref={inputDockRef} style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
+            <div ref={inputDockRef} className="nx-dock" style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
               {inputRow}
             </div>
             {/* Подсказки-команды: нажатие отправляет текст как сообщение.
@@ -6153,7 +6224,10 @@ const menuBlock = isHistoryOpen ? (
           </div>
         ) : (
           <>
-            {/* Сообщения сверху */}
+            {/* Сообщения сверху. Обёртка нужна для ауры за ответом:
+                аура лежит под списком и не прокручивается вместе с ним */}
+            <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", marginTop: 24, marginBottom: 16 }}>
+            {replyAura && <ReplyAura key={replyAura.id} fading={replyAura.fading} posRef={replyAuraPos} />}
             <div
               ref={listRef}
               className="nx-scroll nx-msg-list"
@@ -6161,11 +6235,10 @@ const menuBlock = isHistoryOpen ? (
                 flex: 1,
                 overflowY: "auto",
                 overscrollBehavior: "contain", // прокрутка списка не тянет за собой страницу
-                marginTop: 24,
-                marginBottom: 16,
                 minHeight: 0,
                 paddingLeft: 8,
                 paddingRight: 8,
+                position: "relative", zIndex: 1,
               }}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
@@ -6189,6 +6262,7 @@ const menuBlock = isHistoryOpen ? (
                 {isLoading && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
                 <div ref={bottomRef} />
               </div>
+            </div>
             </div>
 
             {/* Поле ввода + дисклеймер (дисклеймер только в чате) */}
@@ -7352,11 +7426,39 @@ export default function NexaApp() {
           to   { opacity: 1; transform: none; }
         }
         .nx-aura-facet { animation: nx-aura-in 1100ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
-        @keyframes nx-aura-lines-in { from { opacity: 0; } to { opacity: 1; } }
-        .nx-aura-lines { animation: nx-aura-lines-in 900ms ease 600ms backwards; }
-        @media (max-width: 768px) { .nx-aura { width: 780px; height: 560px; } }
+        /* Аура за ответом: слева внизу списка, за новым сообщением */
+        .nx-reply-aura-pos {
+          position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0; pointer-events: none;
+          transition: left 500ms cubic-bezier(0.16, 1, 0.3, 1), top 500ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .nx-reply-aura {
+          position: absolute; left: -310px; top: -180px; width: 620px; height: 360px;
+          pointer-events: none;
+          -webkit-mask-image: radial-gradient(ellipse 50% 50% at 40% 55%, black 25%, transparent 72%);
+          mask-image: radial-gradient(ellipse 50% 50% at 40% 55%, black 25%, transparent 72%);
+          filter: blur(30px); opacity: 0.7; transform-origin: 30% 70%;
+          transition: opacity ${REPLY_AURA_FADE}ms ease, transform ${REPLY_AURA_FADE}ms cubic-bezier(0.16, 1, 0.3, 1), filter ${REPLY_AURA_FADE}ms ease;
+        }
+        :root[data-theme="light"] .nx-reply-aura { opacity: 0.45; }
+        /* Испаряется: разрастается, сильнее размывается и тает */
+        .nx-reply-aura.is-fading { opacity: 0 !important; transform: scale(1.25) translateY(-20px); filter: blur(60px); }
+        @keyframes nx-reply-aura-in {
+          from { opacity: 0; transform: scale(0.6) rotate(-10deg); }
+          to   { opacity: 1; transform: none; }
+        }
+        .nx-reply-aura-in { transform-origin: 47% 56%; animation: nx-reply-aura-in 800ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        @media (max-width: 768px) { .nx-reply-aura { width: 440px; height: 300px; left: -220px; top: -150px; } }
         @media (prefers-reduced-motion: reduce) {
-          .nx-aura-facet, .nx-aura-lines { animation: none !important; }
+          .nx-reply-aura-in { animation: none !important; }
+          .nx-reply-aura { transition: opacity 300ms ease !important; }
+          .nx-reply-aura-pos { transition: none !important; }
+          .nx-reply-aura.is-fading { transform: none; filter: blur(30px); }
+        }
+        /* Размытие граней (исключение из правил, см. CLAUDE.md) */
+        .nx-aura-blur { filter: blur(34px); }
+        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; } .nx-aura-blur { filter: blur(24px); } }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-aura-facet { animation: none !important; }
           .nx-aura { transition: none !important; }
         }
         /* Все кнопки — скруглённые: кнопки с текстом — «таблетки», кнопки-значки — круги.
@@ -7835,10 +7937,19 @@ export default function NexaApp() {
   }
       /* Приветствие, подзаголовок и сообщения в чате на телефоне */
           .ng-assistant-inner .ng-greeting { font-size: 24px !important; }
+          /* Пустой экран ассистента: поле внизу, подсказки над ним, приветствие по центру */
+          .nx-empty-col { justify-content: flex-end !important; gap: 12px !important; padding-bottom: 6px !important; }
+          .nx-empty-greet { margin: auto 0; }
+          .nx-chips { order: 1; }
+          .nx-dock { order: 2; }
+          /* Подсказки — компактная строка, листается вбок, справа мягко гаснет */
           .nx-chips {
-            flex-wrap: nowrap !important; justify-content: flex-start !important; overflow-x: auto;
+            flex-wrap: nowrap !important; justify-content: flex-start !important; overflow-x: auto; gap: 6px !important;
             width: calc(100% + 32px); margin: 0 -16px; padding: 0 16px; box-sizing: border-box;
+            -webkit-mask-image: linear-gradient(90deg, black 82%, transparent);
+            mask-image: linear-gradient(90deg, black 82%, transparent);
           }
+          .nx-chips button { padding: 6px 11px !important; font-size: 12px !important; gap: 5px !important; }
           .ng-input-field { font-size: 16px !important; }
           .nx-assistant-subtitle { font-size: 13px !important; margin-top: 4px !important; }
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
