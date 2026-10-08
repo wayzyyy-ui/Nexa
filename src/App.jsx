@@ -4,7 +4,7 @@ import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "r
 import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
-const VERSION = "0.4.2";
+const VERSION = "0.4.4";
 
 
 /* =========================================================================
@@ -1492,8 +1492,9 @@ function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDev
               Синхронизировано. Работает. Рядом с вами
             </div>
           </div>
-          <div style={{ flexShrink: 0, alignSelf: "center" }}>
-            <FoldHero size={130} />
+          {/* Складка крупнее и чуть выше — вровень с заголовком */}
+          <div style={{ flexShrink: 0, alignSelf: "flex-start", margin: "-34px -14px 0 -10px" }}>
+            <FoldHero size={168} />
           </div>
         </div>
 
@@ -1623,9 +1624,11 @@ const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
 
 // Крупная температура, за градусом острая складка.
 // tone — цвет складки: мятный для ясной погоды, серый для пасмурной.
-function TempFold({ temp, tone }) {
+// rain — идёт дождь: вдоль складки падают мятные капли
+function TempFold({ temp, tone, rain }) {
   return (
     <div className="nx-temp" style={{ position: "relative", display: "inline-flex", alignItems: "flex-start", paddingRight: 22, flexShrink: 0 }}>
+      {rain && <RainDrops />}
       {/* Складка: светлая у верхней вершины и тающая книзу */}
       <div aria-hidden="true" style={{
         position: "absolute", top: -8, bottom: 0, left: "36%", right: 0,
@@ -1640,6 +1643,30 @@ function TempFold({ temp, tone }) {
   );
 }
 
+/* Капли дождя: короткие косые штрихи, яркие на «голове» и тающие к хвосту.
+   Наклон — как у складки. При появлении капли трижды пролетают вниз
+   и остаются на месте неподвижными штрихами (бесконечного движения нет).
+   x, y — где капля (в % от складки), len — длина, d — задержка, o — яркость */
+const RAIN_DROPS = [
+  [8, 30, 16, 0, 0.5], [18, 8, 22, 420, 0.8], [27, 46, 14, 180, 0.45], [34, 20, 26, 620, 0.9],
+  [42, 60, 18, 300, 0.55], [50, 4, 20, 820, 0.7], [57, 36, 30, 120, 1], [64, 70, 16, 540, 0.5],
+  [70, 18, 18, 720, 0.65], [77, 52, 24, 260, 0.85], [84, 6, 14, 960, 0.5], [90, 34, 20, 380, 0.7],
+  [24, 76, 12, 680, 0.4], [46, 88, 14, 80, 0.45],
+];
+function RainDrops() {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", left: "24%", right: -14, top: -26, bottom: -18, pointerEvents: "none" }}>
+      {RAIN_DROPS.map(([x, y, len, d, o], i) => (
+        <span key={i} className="nx-drop" style={{
+          position: "absolute", left: `${x}%`, top: `${y}%`, width: 1.6, height: len, borderRadius: 1,
+          opacity: o, animationDelay: `${d}ms`,
+          background: `linear-gradient(to bottom, transparent, ${C.mint})`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
 // Карточка погоды (на экране "Сегодня" их две: на сегодня и на завтра).
 // city и details необязательные: у карточки "на завтра" их нет.
 // art — показать складку внутри карточки (только на телефоне, как в макете).
@@ -1650,7 +1677,8 @@ function TempFold({ temp, tone }) {
 // footer — строка внизу карточки (например «Обновлено в 14:32»),
 // grow — карточка растягивается на всю свободную высоту, значения встают по центру
 // onCity — нажатие на город (открыть выбор), cityPicker — сам выбор, если открыт
-function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, details, art, veil, footer, grow, onCity, cityPicker }) {
+// rain — идёт дождь (капли на складке температуры)
+function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, rain, details, art, veil, footer, grow, onCity, cityPicker }) {
   return (
     <div className="nx-weather" style={{
       position: "relative", overflow: "hidden",
@@ -1706,7 +1734,7 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
           filter: "blur(8px)", opacity: 0.45, pointerEvents: "none", userSelect: "none",
         } : { transition: "filter 300ms ease, opacity 300ms ease" }}>
           <div className="nx-weather-main" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 22 }}>
-            <TempFold temp={temp} tone={tone} />
+            <TempFold temp={temp} tone={tone} rain={rain} />
             <div>
               <div style={{ fontSize: 20 }}>{cond}</div>
               <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
@@ -1814,7 +1842,9 @@ const WEATHER_FALLBACK = {
 // мятный — ясно и почти ясно, серый — облачно, осадки, туман
 function weatherCodeToText(code) {
   const clear = { tone: C.mint };
-  const gray = { tone: C.muted };
+  // rain — идут осадки каплями (морось, дождь, ливень, гроза): на складке будут капли
+  const rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95;
+  const gray = { tone: C.muted, rain };
   if (code === 0) return { text: "Ясно", ...clear };
   if (code === 1) return { text: "Почти ясно", ...clear };
   if (code === 2) return { text: "Переменная облачность", ...clear };
@@ -2544,7 +2574,7 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
                 onAuto={() => { location.pick(null); setPickingCity(false); }}
               />
             )}
-            temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone}
+            temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone} rain={nowSky.rain}
             details={[
               { label: "Ветер", value: `${now.wind} м/с` },
               { label: "Влажность", value: `${now.humidity} %` },
@@ -2588,7 +2618,7 @@ function ScreenToday({ schedule = TODAY.schedule, onAddItem, onRemoveItem }) {
         </div>
         <div style={{ gridArea: "next", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
           <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow.date)}
-            temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone}
+            temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone} rain={tomorrowSky.rain}
             veil={veil} grow />
         </div>
         <div style={{ gridArea: "month", alignSelf: "end" }}>
@@ -5588,6 +5618,27 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
   // Запоминаем, где поле было, и после перерисовки анимируем разницу
   const inputDockRef = useRef(null);
   const [inputFocused, setInputFocused] = useState(false); // поле в фокусе — аура «оживает»
+  // На телефоне аура стоит по центру приветствия (а не всей колонки, где внизу поле ввода):
+  // меряем, где приветствие, и кладём высоту в CSS-переменную --aura-y
+  const emptyColRef = useRef(null);
+  useLayoutEffect(() => {
+    const col = emptyColRef.current;
+    if (!col || !window.ResizeObserver) return;
+    const place = () => {
+      const g = col.querySelector(".nx-empty-greet");
+      if (!g) return;
+      const c = col.getBoundingClientRect(), r = g.getBoundingClientRect();
+      col.style.setProperty("--aura-y", `${r.top - c.top + r.height / 2}px`);
+    };
+    place();
+    // Приветствие меняет высоту (сменилась фраза, догрузился шрифт) — переставляем
+    const ro = new ResizeObserver(place);
+    ro.observe(col);
+    const g = col.querySelector(".nx-empty-greet");
+    if (g) ro.observe(g);
+    document.fonts?.ready.then(place);
+    return () => ro.disconnect();
+  });
   const flipFrom = useRef(null);
   const taRef = useRef(null);
   const rememberInputPos = () => {
@@ -6320,7 +6371,7 @@ const menuBlock = isHistoryOpen ? (
           // Новый диалог: приветствие, поле ввода и подсказки — по центру
           // На телефоне (см. .nx-empty-col в стилях): поле ввода внизу,
           // над ним компактные подсказки, приветствие — по центру свободного места
-          <div className="nx-empty-col" style={{
+          <div ref={emptyColRef} className="nx-empty-col" style={{
             flex: 1, minHeight: 0, padding: "0 16px", position: "relative",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22,
           }}>
@@ -7543,6 +7594,15 @@ export default function NexaApp() {
         }
         .nx-stagger > * { animation: nx-unfold 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards; transform-origin: 50% 0; }
         ${Array.from({ length: 14 }, (_, i) => `.nx-stagger > *:nth-child(${i + 2}) { animation-delay: ${(i + 1) * 45}ms; }`).join("\n        ")}
+        /* Капли дождя: наклонены как складка, три раза пролетают вниз и замирают */
+        .nx-drop { transform: rotate(28deg); transform-origin: 50% 0; }
+        @keyframes nx-drop-fall {
+          0%   { transform: rotate(28deg) translateY(-26px); opacity: 0; }
+          25%  { opacity: 1; }
+          100% { transform: rotate(28deg) translateY(30px); opacity: 0; }
+        }
+        .nx-drop { animation: nx-drop-fall 1100ms cubic-bezier(0.5, 0, 0.9, 0.6) 3; }
+        @media (prefers-reduced-motion: reduce) { .nx-drop { animation: none !important; } }
         /* Расписание: корзина видна при наведении на дело (на телефоне — всегда) */
         .nx-sched-del { opacity: 0; transition: opacity 160ms ease, background-color 160ms ease; }
         .nx-sched-item:hover .nx-sched-del, .nx-sched-del:focus-visible { opacity: 1; }
@@ -7599,7 +7659,7 @@ export default function NexaApp() {
         }
         /* Размытие граней (исключение из правил, см. CLAUDE.md) */
         .nx-aura-blur { filter: blur(34px); }
-        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; } .nx-aura-blur { filter: blur(24px); } }
+        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; top: var(--aura-y, 50%) !important; } .nx-aura-blur { filter: blur(24px); } }
         @media (prefers-reduced-motion: reduce) {
           .nx-aura-facet { animation: none !important; }
           .nx-aura { transition: none !important; }
