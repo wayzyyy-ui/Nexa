@@ -5459,6 +5459,23 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
   // Запоминаем, где поле было, и после перерисовки анимируем разницу
   const inputDockRef = useRef(null);
   const [inputFocused, setInputFocused] = useState(false); // поле в фокусе — аура «оживает»
+  // На телефоне аура стоит по центру приветствия (а не всей колонки, где внизу поле ввода):
+  // меряем, где приветствие, и кладём высоту в CSS-переменную --aura-y
+  const emptyColRef = useRef(null);
+  useLayoutEffect(() => {
+    const col = emptyColRef.current;
+    if (!col || !window.ResizeObserver) return;
+    const place = () => {
+      const g = col.querySelector(".nx-empty-greet");
+      if (!g) return;
+      const c = col.getBoundingClientRect(), r = g.getBoundingClientRect();
+      col.style.setProperty("--aura-y", `${r.top - c.top + r.height / 2}px`);
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(col);
+    return () => ro.disconnect();
+  });
   const flipFrom = useRef(null);
   const taRef = useRef(null);
   const rememberInputPos = () => {
@@ -6191,7 +6208,7 @@ const menuBlock = isHistoryOpen ? (
           // Новый диалог: приветствие, поле ввода и подсказки — по центру
           // На телефоне (см. .nx-empty-col в стилях): поле ввода внизу,
           // над ним компактные подсказки, приветствие — по центру свободного места
-          <div className="nx-empty-col" style={{
+          <div ref={emptyColRef} className="nx-empty-col" style={{
             flex: 1, minHeight: 0, padding: "0 16px", position: "relative",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22,
           }}>
@@ -7456,7 +7473,7 @@ export default function NexaApp() {
         }
         /* Размытие граней (исключение из правил, см. CLAUDE.md) */
         .nx-aura-blur { filter: blur(34px); }
-        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; } .nx-aura-blur { filter: blur(24px); } }
+        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; top: var(--aura-y, 50%) !important; } .nx-aura-blur { filter: blur(24px); } }
         @media (prefers-reduced-motion: reduce) {
           .nx-aura-facet { animation: none !important; }
           .nx-aura { transition: none !important; }
