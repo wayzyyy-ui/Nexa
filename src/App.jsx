@@ -1791,7 +1791,9 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
   );
 }
 
-// Расписание на сегодня. place — где проходит (видно только на телефоне)
+// Старый пример расписания. Сейчас по умолчанию расписание пустое, а этот
+// список нужен только чтобы узнать и убрать пример, сохранённый раньше.
+// place — где проходит (видно только на телефоне)
 const SCHEDULE = [
   { time: "09:30", title: "Лекция по проектированию", place: "Колледж" },
   { time: "11:00", title: "Встреча с куратором", place: "Колледж" },
@@ -1803,9 +1805,16 @@ const SCHEDULE = [
 // Своё расписание хранится в браузере; пока его нет — показываем пример выше
 const SCHEDULE_KEY = "nexa-schedule";
 const sortSchedule = (list) => [...list].sort((a, b) => a.time.localeCompare(b.time));
+// Пример, который раньше сохранялся сам: те же дела в том же количестве
+const isOldExample = (list) => list.length === SCHEDULE.length &&
+  SCHEDULE.every((x) => list.some((y) => y.time === x.time && y.title === x.title));
+// По умолчанию расписание пустое. Если в браузере остался старый пример — тоже пустое
 const loadSchedule = () => {
-  try { const v = JSON.parse(localStorage.getItem(SCHEDULE_KEY)); if (Array.isArray(v)) return sortSchedule(v); } catch {}
-  return SCHEDULE;
+  try {
+    const v = JSON.parse(localStorage.getItem(SCHEDULE_KEY));
+    if (Array.isArray(v)) return isOldExample(v) ? [] : sortSchedule(v);
+  } catch {}
+  return [];
 };
 // Минуты от начала дня: "14:30" → 870
 const toMinutes = (hm) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
@@ -1840,6 +1849,38 @@ const WEATHER_FALLBACK = {
 
 // WMO-код погоды → русский текст и цвет складки:
 // мятный — ясно и почти ясно, серый — облачно, осадки, туман
+/* Значок погоды в нашем стиле: тонкие линии и «облако»-грань (параллелограмм).
+   Солнце — мятное, облака — серые грани, осадки — мятные штрихи/точки */
+function weatherKind(code) {
+  if (code === 0 || code === 1) return "sun";
+  if (code === 2) return "partly";
+  if (code === 45 || code === 48) return "fog";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
+  if (code >= 95) return "storm";
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+  return "cloud";
+}
+function WeatherGlyph({ code, s = 20 }) {
+  const kind = weatherKind(code);
+  const mint = { stroke: C.mint }, gray = { stroke: C.muted };
+  const cloud = (pts, o = 1) => <polygon points={pts} strokeWidth="1.3" strokeLinejoin="round" style={{ stroke: C.muted, fill: `color-mix(in srgb, ${C.muted} ${Math.round(o * 35)}%, transparent)` }} />;
+  const rays = (cx, cy, r1, r2, n) => Array.from({ length: n }, (_, i) => {
+    const a = (i * 2 * Math.PI) / n;
+    return <line key={i} x1={cx + r1 * Math.cos(a)} y1={cy + r1 * Math.sin(a)} x2={cx + r2 * Math.cos(a)} y2={cy + r2 * Math.sin(a)} strokeWidth="1.4" strokeLinecap="round" style={mint} />;
+  });
+  return (
+    <svg viewBox="0 0 24 24" width={s} height={s} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      {kind === "sun" && <><circle cx="12" cy="12" r="4" strokeWidth="1.5" style={{ ...mint, fill: `color-mix(in srgb, ${C.mint} 25%, transparent)` }} />{rays(12, 12, 6.6, 9, 8)}</>}
+      {kind === "partly" && <><circle cx="9" cy="9" r="3.2" strokeWidth="1.4" style={mint} />{rays(9, 9, 5.2, 7, 6)}{cloud("5,20 9,13 21,13 17,20")}</>}
+      {kind === "cloud" && <>{cloud("8,15 12,7 22,7 18,15", 0.5)}{cloud("2,20 6,12 17,12 13,20")}</>}
+      {kind === "fog" && [8, 12, 16].map((y, i) => <line key={y} x1={3 + i * 2} y1={y} x2={21 - (2 - i) * 2} y2={y} strokeWidth="1.5" strokeLinecap="round" style={gray} />)}
+      {kind === "rain" && <>{cloud("3,13 7,5 21,5 17,13")}{[7, 12, 17].map((x) => <line key={x} x1={x} y1="16" x2={x - 2} y2="21" strokeWidth="1.5" strokeLinecap="round" style={mint} />)}</>}
+      {kind === "snow" && <>{cloud("3,13 7,5 21,5 17,13")}{[[7, 17], [12, 20], [17, 17]].map(([x, y]) => <rect key={x} x={x - 1.3} y={y - 1.3} width="2.6" height="2.6" transform={`rotate(45 ${x} ${y})`} style={{ fill: C.mint }} />)}</>}
+      {kind === "storm" && <>{cloud("3,12 7,4 21,4 17,12")}<path d="M13 13 9.5 18h4L11 22.5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={mint} /></>}
+    </svg>
+  );
+}
+
 function weatherCodeToText(code) {
   const clear = { tone: C.mint };
   // rain — идут осадки каплями (морось, дождь, ливень, гроза): на складке будут капли
@@ -1942,7 +1983,7 @@ const readManualCity = () => {
    (сводка «что у меня сегодня»). Экран обновляет город и погоду,
    когда они загружаются. */
 const TODAY = {
-  schedule: SCHEDULE,
+  schedule: [],
   city: DEFAULT_LOCATION.city, lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon,
   weather: null, weatherAt: 0,
 };
@@ -2180,7 +2221,7 @@ function CityPicker({ onPick, onAuto, onClose, isManual }) {
   return (
     <div className="nx-pop" style={{ gridArea: "city", marginTop: 10 }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
       <form onSubmit={(e) => { e.preventDefault(); if (state.list[0]) onPick(state.list[0]); }} style={{ display: "flex", gap: 6 }}>
-        <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Город, например Канаш"
+        <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Введите город"
           aria-label="Поиск города" style={{
             flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit", fontSize: 16,
             border: "1px solid " + C.borderStrong, borderRadius: 4, padding: "8px 10px", outline: "none", boxSizing: "border-box",
@@ -2315,12 +2356,8 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
               borderTop: i ? `1px solid ${C.border}` : "none",
             }}>
               <div style={{ width: 86, flexShrink: 0, color: i < 2 ? C.text : C.muted }}>{forecastDayLabel(day.date, i)}</div>
-              {/* Маленькая складка в цвет погоды: мятная — ясно, серая — облачно */}
-              <span aria-hidden="true" style={{
-                width: 16, height: 11, flexShrink: 0,
-                clipPath: "polygon(18% 0, 100% 0, 82% 100%, 0 100%)",
-                background: `linear-gradient(135deg, ${sky.tone}, color-mix(in srgb, ${sky.tone} 25%, transparent))`,
-              }} />
+              {/* Значок погоды: солнце, облака, дождь, снег, туман или гроза */}
+              <WeatherGlyph code={day.code} />
               <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sky.text}</div>
               {/* Днём и ночью */}
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -2926,37 +2963,75 @@ function MediaTitle({ title, subtitle }) {
   );
 }
 
-/* Один сегмент диаграммы хранилища — стеклянная складка.
-   ВАЖНО: форма вырезается через css clip-path прямо на самом элементе,
-   а не отдельной svg-картинкой поверх текста — раньше подписи были
-   нарисованы отдельным слоем и на разной ширине окна съезжали
-   относительно формы. Сейчас подпись лежит внутри той же фигуры.
-   Сегмент — это кнопка: по нажатию он выделяется, остальные бледнеют.
-   Нажимается только сама фигура: clip-path обрезает и область клика. */
-function StorageSegment({ cat, first, dimmed, active, onClick }) {
+/* Хранилище по макету: одна лента из пяти стеклянных складок, которые
+   наезжают друг на друга. Рисуем одной svg-картинкой (растягивается по
+   ширине карточки), подписи — поверх, в тех же процентах. Картинка и подписи
+   растягиваются вместе с карточкой, поэтому подпись не съезжает с формы.
+   pts — углы складки в координатах 1000×150, label — где подпись (x%, y%),
+   from / to — цвета градиента, edge — светлая грань у правого края */
+const STORAGE_FOLDS = {
+  photo: { pts: "0,140 118,20 362,4 244,128",          label: [13, 36],  from: C.foldDeep, to: C.foldBlue, edge: C.foldCyan },
+  video: { pts: "188,148 425,26 558,132 420,144",       label: [37, 56], from: C.foldDeep, to: C.foldBlue, edge: C.foldBlue },
+  doc:   { pts: "470,48 716,2 676,134 560,130",         label: [56, 34], from: C.foldBlue, to: C.foldCyan, edge: C.foldCyan },
+  music: { pts: "600,150 742,30 880,12 800,142",        label: [72, 38], from: C.foldCyan, to: C.foldMint, edge: C.foldMint },
+  other: { pts: "806,138 848,26 1000,44 990,138",       label: [88, 40], from: C.foldMint, to: C.foldGreen, edge: C.foldMint },
+};
+
+// Вся лента: складки-кнопки (нажатие — подробности категории) и подписи
+function StorageFolds({ cats, selected, onSelect }) {
   return (
-    <button type="button" className="nx-seg-btn" onClick={onClick} aria-pressed={active} style={{
-      ...btnReset,
-      flex: cat.flex,
-      position: "relative", top: cat.top, height: cat.h,
-      marginLeft: first ? 0 : -30, // складки наезжают друг на друга
-      clipPath: cat.clip,
-      background: foldFill(cat),
-      color: C.onFold,
-      opacity: dimmed ? 0.4 : 1,
-      transition: "opacity 200ms ease",
-      display: "flex", alignItems: "center",
-    }}>
-      {/* paddingLeft в % считается от ширины самой складки,
-          поэтому подпись всегда попадает внутрь фигуры */}
-      <div className="nx-seg-label" style={{ "--lx": cat.labelX, paddingLeft: "var(--lx)", lineHeight: 1.25, whiteSpace: "nowrap" }}>
-        <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>{cat.label}</span>
-        <span style={{ display: "block", fontSize: 12 }}>{cat.gb} ГБ</span>
-        <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{cat.pct}%</span>
-      </div>
-    </button>
+    <div className="ng-storage-folds" style={{ position: "relative", flex: 1, height: 132, minWidth: 0 }}>
+      <svg viewBox="0 0 1000 150" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
+        <defs>
+          {cats.map((c) => {
+            const f = STORAGE_FOLDS[c.id];
+            return (
+              // Градиент снизу-слева (глубокий) к верху-справа (светлый край) — как стекло
+              <linearGradient key={c.id} id={`nx-sf-${c.id}`} x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0" style={{ stopColor: f.from, stopOpacity: 0.95 }} />
+                <stop offset="0.62" style={{ stopColor: f.to, stopOpacity: 0.9 }} />
+                <stop offset="1" style={{ stopColor: f.edge, stopOpacity: 1 }} />
+              </linearGradient>
+            );
+          })}
+        </defs>
+        {cats.map((c) => {
+          const f = STORAGE_FOLDS[c.id];
+          const dimmed = selected !== null && selected !== c.id;
+          return (
+            <g key={c.id} className="nx-seg-btn nx-sf" role="button" tabIndex={0} aria-pressed={selected === c.id}
+              aria-label={`${c.label}: ${c.gb} ГБ`}
+              onClick={() => onSelect(c.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(c.id); } }}
+              style={{ cursor: "pointer", opacity: dimmed ? 0.35 : 1, transition: "opacity 200ms ease, filter 160ms ease" }}>
+              <polygon points={f.pts} fill={`url(#nx-sf-${c.id})`} />
+              {/* Тонкий светлый край — граница стекла */}
+              <polygon points={f.pts} fill="none" strokeWidth="1" vectorEffect="non-scaling-stroke"
+                style={{ stroke: `color-mix(in srgb, ${C.onFold} 22%, transparent)` }} />
+            </g>
+          );
+        })}
+      </svg>
+      {/* Подписи поверх складок; нажатие проходит сквозь них на складку */}
+      {cats.map((c) => {
+        const f = STORAGE_FOLDS[c.id];
+        const dimmed = selected !== null && selected !== c.id;
+        return (
+          <div key={c.id} className="nx-seg-label" aria-hidden="true" style={{
+            position: "absolute", left: `${f.label[0]}%`, top: `${f.label[1]}%`, pointerEvents: "none",
+            color: C.onFold, lineHeight: 1.2, whiteSpace: "nowrap",
+            opacity: dimmed ? 0.45 : 1, transition: "opacity 200ms ease",
+          }}>
+            <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>{c.label}</span>
+            <span style={{ display: "block", fontSize: 12 }}>{c.gb} ГБ</span>
+            <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{c.pct}%</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
+
 
 // ЭКРАН "МЕДИА И ФАЙЛЫ" — диаграмма хранилища + категории + недавние файлы
 // files — общий список файлов из App, onOpenFile открывает окно просмотра,
@@ -3005,17 +3080,8 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory, onTransfer }) {
           </div>
           {/* Собираем диаграмму из массива MEDIA_CATS — чтобы поменять пропорции
               или форму складки, меняй объект в этом массиве */}
-          <div className="ng-storage-segments" style={{ display: "flex", flex: 1, height: 132, minWidth: 0 }}>
-            {cats.map((c, i) => (
-              <StorageSegment
-                key={c.id} cat={c} first={i === 0}
-                active={selected === c.id}
-                dimmed={selected !== null && selected !== c.id}
-                // Повторное нажатие снимает выделение
-                onClick={() => setSelected(selected === c.id ? null : c.id)}
-              />
-            ))}
-          </div>
+          {/* Повторное нажатие на складку снимает выделение */}
+          <StorageFolds cats={cats} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} />
         </div>
 
         {/* Подробности по выбранной складке. key={sel.id} нужен,
@@ -5465,8 +5531,10 @@ async function buildTodaySummary() {
     ? `${TODAY.city !== "—" ? `${TODAY.city}: ` : "Сейчас "}${signed(w.now.temp)}°, ${weatherCodeToText(w.now.code).text.toLowerCase()}, ощущается как ${signed(w.now.feels)}°.`
     : "Погоду сейчас загрузить не получилось.");
   const total = `${items.length} ${plural(items.length, ["дело", "дела", "дел"])}`;
-  lines.push(left.length
-    ? `В расписании ${total}, впереди ${left.length}. Ближайшее — **${left[0].time} · ${left[0].title}** (${left[0].place}).`
+  lines.push(!items.length
+    ? "В расписании пока пусто — дела можно добавить на экране «Сегодня»."
+    : left.length
+    ? `В расписании ${total}, впереди ${left.length}. Ближайшее — **${left[0].time} · ${left[0].title}**${left[0].place ? ` (${left[0].place})` : ""}.`
     : `Все ${total} на сегодня позади — можно отдыхать.`);
   return lines.join("\n");
 }
@@ -7742,6 +7810,9 @@ export default function NexaApp() {
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }
+        /* Складка хранилища: без прямоугольной рамки фокуса — с клавиатуры она просто ярче */
+        .nx-sf:focus { outline: none; }
+        .nx-sf:focus-visible { filter: brightness(1.25); }
         /* disabled — нельзя нажать */
         :is(.nx-row-btn, .nx-ghost-btn, .nx-icon-btn, .nx-primary, .nx-cat-card, .nx-link-btn):disabled {
           opacity: 0.45; cursor: default !important; transform: none !important;
@@ -7929,14 +8000,11 @@ export default function NexaApp() {
              Заголовок "Хранилище" стоит над карточкой (.nx-storage-head) */
           .nx-storage-label { display: none !important; }
           .nx-storage-box { padding: 12px 10px !important; margin-bottom: 28px !important; }
-          .ng-storage-segments { height: 84px !important; }
-          .ng-storage-segments > * { margin-left: -14px !important; }
-          .ng-storage-segments > *:first-child { margin-left: 0 !important; }
+          .ng-storage-folds { height: 92px !important; }
           /* Подпись ближе к левому краю складки, чтобы поместилась в узкие */
-          .ng-storage-segments .nx-seg-label { padding-left: calc(var(--lx) * 0.75) !important; }
-          .ng-storage-segments .nx-seg-label span:nth-child(1) { font-size: 9.5px !important; }
-          .ng-storage-segments .nx-seg-label span:nth-child(2) { font-size: 9.5px !important; }
-          .ng-storage-segments .nx-seg-label span:nth-child(3) { font-size: 9px !important; }
+          .ng-storage-folds .nx-seg-label span:nth-child(1) { font-size: 9.5px !important; }
+          .ng-storage-folds .nx-seg-label span:nth-child(2) { font-size: 9px !important; }
+          .ng-storage-folds .nx-seg-label span:nth-child(3) { display: none !important; }
 
           /* ─── Сегодня на телефоне ─── */
           /* Блоки друг под другом: погода, расписание, завтра, прогноз */
