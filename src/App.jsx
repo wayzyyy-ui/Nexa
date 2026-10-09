@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.5.6";
+const VERSION = "0.5.7";
 
 
 /* =========================================================================
@@ -7031,10 +7031,39 @@ function InstallSteps({ steps }) {
   );
 }
 
+/* Обновление для тех, кто скачал APK с сайта.
+   Сайт не видит, установлено ли приложение, поэтому запоминаем в браузере,
+   какую версию человек скачал. Если на сайте (version.json) версия новее —
+   на Главной показываем баннер «Обновить», даже если баннер установки закрыли */
+const APK_DOWNLOADED_KEY = "nexa-apk-downloaded"; // версия последнего скачанного APK
+const rememberApkDownload = (version) => { try { localStorage.setItem(APK_DOWNLOADED_KEY, version); } catch {} };
+// "0.5.6" → 506, как versionCode в Android-сборке
+const versionCode = (v) => { const [a = 0, b = 0, c = 0] = String(v).split(".").map((x) => parseInt(x, 10) || 0); return a * 10000 + b * 100 + c; };
+
+// Есть ли на сайте APK новее скачанного. Возвращает { version } или null
+function useSiteApkUpdate(enabled) {
+  const [update, setUpdate] = useState(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let had = null;
+    try { had = localStorage.getItem(APK_DOWNLOADED_KEY); } catch {}
+    if (!had) return; // APK с этого браузера не качали — предлагать нечего
+    fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => { if (v && Number(v.versionCode) > versionCode(had)) setUpdate({ version: v.version }); })
+      .catch(() => {});
+  }, [enabled]);
+  return update;
+}
+
 // Кнопка скачивания — обычная ссылка с атрибутом download
-function ApkButton({ label = "Скачать приложение", small }) {
+// version — какую версию качаем (по умолчанию — версия сайта);
+// onDownload — что сделать после нажатия (например, спрятать баннер)
+function ApkButton({ label = "Скачать приложение", small, version = VERSION, onDownload }) {
   return (
-    <a href={APK_URL} download="NEXA.apk" className="nx-primary" style={{
+    <a href={APK_URL} download="NEXA.apk" className="nx-primary"
+      onClick={() => { rememberApkDownload(version); onDownload?.(); }}
+      style={{
       display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", whiteSpace: "nowrap",
       padding: small ? "7px 14px" : "9px 18px", fontSize: small ? 12.5 : 13.5, fontWeight: 500, borderRadius: 999,
       color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
@@ -7130,6 +7159,9 @@ function InstallBanner({ onHowTo }) {
   const [hidden, setHidden] = useState(() => {
     try { return localStorage.getItem(INSTALL_DISMISS_KEY) === "1"; } catch { return false; }
   });
+  // Уже качали APK, а на сайте версия новее — предлагаем обновиться
+  const siteUpdate = useSiteApkUpdate(platform === "android");
+  if (siteUpdate) return <SiteUpdateBanner update={siteUpdate} />;
   if (hidden || (platform !== "android" && platform !== "ios")) return null;
   return (
     <SlimBanner
@@ -7146,6 +7178,28 @@ function InstallBanner({ onHowTo }) {
       )}
       onClose={() => { try { localStorage.setItem(INSTALL_DISMISS_KEY, "1"); } catch {} }}
       onClosed={() => setHidden(true)}
+    />
+  );
+}
+
+/* Баннер «Вышла новая версия» на сайте — для тех, кто раньше скачал APK.
+   «Обновить» скачивает новый файл; закрыли — не показываем до следующей версии */
+function SiteUpdateBanner({ update }) {
+  const [hiddenFor, setHiddenFor] = useState(() => {
+    try { return localStorage.getItem(UPDATE_DISMISS_KEY); } catch { return null; }
+  });
+  const [started, setStarted] = useState(false);
+  if (hiddenFor === update.version) return null;
+  return (
+    <SlimBanner
+      key={update.version}
+      label="Обновление приложения"
+      icon={Icon.refresh({ c: C.mint, s: 18 })}
+      title={`Вышла NEXA ${update.version}`}
+      sub={started ? "Откройте скачанный файл — обновится поверх" : "Скачайте и установите поверх, данные сохранятся"}
+      action={<ApkButton label="Обновить" small version={update.version} onDownload={() => setStarted(true)} />}
+      onClose={() => { try { localStorage.setItem(UPDATE_DISMISS_KEY, update.version); } catch {} }}
+      onClosed={() => setHiddenFor(update.version)}
     />
   );
 }
