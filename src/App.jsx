@@ -1559,7 +1559,10 @@ function ScreenHome({ devices, received = {}, update, onNavigate, onOpenDevice, 
         {/* В приложении: вышла новая версия — предлагаем обновиться */}
         <UpdateBanner update={update} />
         {/* Предложение установить приложение (только телефон в браузере) */}
-        <InstallBanner />
+        <InstallBanner onHowTo={() => {
+          onNavigate("settings");
+          setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
+        }} />
 
         {/* Мои устройства */}
         <div style={{ marginTop: 24 }}>
@@ -1668,12 +1671,6 @@ function ScreenHome({ devices, received = {}, update, onNavigate, onOpenDevice, 
             {Icon.chevron({ c: C.text })}
           </div>
         </div>
-
-        {/* Приложение NEXA: скачать (Android) или «на экран Домой» (iPhone) */}
-        <AppPromoCard onHowTo={() => {
-          onNavigate("settings");
-          setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
-        }} />
       </div>
 
     </div>
@@ -7037,6 +7034,7 @@ function InstallSteps({ steps }) {
    Сайт не видит, установлено ли приложение, поэтому запоминаем в браузере,
    какую версию человек скачал. Если на сайте (version.json) версия новее —
    на Главной показываем баннер «Обновить», даже если баннер установки закрыли */
+const INSTALL_DISMISS_KEY = "nexa-install-dismissed"; // баннер установки закрыли крестиком
 const APK_DOWNLOADED_KEY = "nexa-apk-downloaded"; // версия последнего скачанного APK
 const rememberApkDownload = (version) => { try { localStorage.setItem(APK_DOWNLOADED_KEY, version); } catch {} };
 // "0.5.6" → 506, как versionCode в Android-сборке
@@ -7153,52 +7151,36 @@ function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
   );
 }
 
-// Баннер наверху Главной (сайт на Android-телефоне): если человек уже
-// качал APK, а на сайте вышла версия новее — предлагаем обновиться
-function InstallBanner() {
-  const siteUpdate = useSiteApkUpdate(installPlatform() === "android");
-  return siteUpdate ? <SiteUpdateBanner update={siteUpdate} /> : null;
-}
-
-/* Карточка «Приложение NEXA» внизу Главной, под ассистентом (телефон, браузер).
-   Без крестика: Android — скачать APK, iPhone — «Как?» ведёт к инструкции
-   в Настройках. В приложении и на компьютере не видна.
-   Кто уже качал APK с этого браузера, карточку не видит — ему наверху
-   показывается баннер «Вышла новая версия» (InstallBanner) */
-function AppPromoCard({ onHowTo }) {
+/* Баннер наверху Главной (только на телефоне, только в браузере).
+   - Уже качали APK, а на сайте версия новее — «Вышла NEXA … · Обновить».
+   - Ещё не качали — «Приложение NEXA · Быстрее и удобнее, чем в браузере».
+     Нажали «Скачать» — баннер уходит; закрыли крестиком — больше не показываем.
+   - Качали последнюю версию — ничего.
+   onHowTo — для iPhone: перейти к инструкции в Настройках */
+function InstallBanner({ onHowTo }) {
   const platform = installPlatform();
-  // Скачал — значит, знает про приложение; после нажатия «Скачать» карточка уходит
-  const [downloaded, setDownloaded] = useState(() => {
-    try { return !!localStorage.getItem(APK_DOWNLOADED_KEY); } catch { return false; }
+  const siteUpdate = useSiteApkUpdate(platform === "android");
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem(INSTALL_DISMISS_KEY) === "1" || (platform === "android" && !!localStorage.getItem(APK_DOWNLOADED_KEY)); } catch { return false; }
   });
-  if (platform !== "android" && platform !== "ios") return null;
-  if (platform === "android" && downloaded) return null;
+  if (siteUpdate) return <SiteUpdateBanner update={siteUpdate} />;
+  if (hidden || (platform !== "android" && platform !== "ios")) return null;
   return (
-    <div className="nx-pop" role="region" aria-label="Приложение NEXA" style={{
-      marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 16px",
-      display: "flex", alignItems: "center", gap: 14, background: C.bg,
-    }}>
-      <div style={{
-        width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
-        border: `1px solid color-mix(in srgb, ${C.mint} 45%, transparent)`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        {Icon.phone({ c: C.mint, s: 19 })}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>Приложение NEXA</div>
-        <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-          {platform === "ios" ? "Удобнее с экрана «Домой»" : "Быстрее и удобнее, чем в браузере"}
-        </div>
-      </div>
-      {platform === "android" ? <ApkButton label="Скачать" small onDownload={() => setTimeout(() => setDownloaded(true), 1200)} /> : (
+    <SlimBanner
+      label="Установка приложения"
+      icon={Icon.phone({ c: C.mint, s: 18 })}
+      title="Приложение NEXA"
+      sub={platform === "ios" ? "Удобнее с экрана «Домой»" : "Быстрее и удобнее, чем в браузере"}
+      action={platform === "android" ? <ApkButton label="Скачать" small onDownload={() => setTimeout(() => setHidden(true), 1200)} /> : (
         <button type="button" className="nx-ghost-btn" onClick={onHowTo} style={{
           ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5,
         }}>
           Как?
         </button>
       )}
-    </div>
+      onClose={() => { try { localStorage.setItem(INSTALL_DISMISS_KEY, "1"); } catch {} }}
+      onClosed={() => setHidden(true)}
+    />
   );
 }
 
