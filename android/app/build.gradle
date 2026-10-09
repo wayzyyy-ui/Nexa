@@ -4,7 +4,8 @@ apply plugin: 'com.android.application'
 // versionName — для людей, versionCode — число для сравнения версий:
 // 0.5.1 → 501, 0.6.0 → 600. Оно должно расти с каждым выпуском,
 // иначе Android не поставит обновление поверх старого приложения
-def nexaVersion = new groovy.json.JsonSlurper().parse(file("../../package.json")).version
+// Ищем в тексте package.json строку "version": "0.5.3" и берём число в кавычках
+def nexaVersion = (file("../../package.json").text =~ /"version"\s*:\s*"([^"]+)"/)[0][1]
 def nexaParts = nexaVersion.tokenize(".").collect { it.replaceAll(/\D.*/, "") as int }
 def nexaVersionCode = nexaParts[0] * 10000 + nexaParts[1] * 100 + nexaParts[2]
 
