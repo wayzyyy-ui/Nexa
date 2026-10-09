@@ -51,14 +51,17 @@ copyFileSync(apk, path("public/nexa.apk"));
 
 // 4) Номер версии рядом с APK.
 //    minVersionCode — самая старая версия, которой ещё можно пользоваться.
-//    По умолчанию это новая версия: все старые покажут «Эта версия устарела».
-//    Мягкий выпуск (старые версии работают, только баннер «Обновить»):
+//    Версии старше неё закрываются размытием и надписью «Обновите приложение».
+//    Версии от неё до новой работают, но с баннером «Обновить» без крестика.
+//    По умолчанию минимальная — предыдущий выпуск: он ещё работает (с баннером),
+//    всё, что старше, — закрыто.
+//    npm run release:android -- --hard — закрыть все старые версии сразу;
 //    npm run release:android -- --soft — минимальная версия остаётся прежней
-const soft = process.argv.includes("--soft");
-let minVersionCode = versionCode;
-if (soft && existsSync(versionFile)) {
-  minVersionCode = JSON.parse(readFileSync(versionFile, "utf8")).minVersionCode || 0;
-}
+const prev = existsSync(versionFile) ? JSON.parse(readFileSync(versionFile, "utf8")) : {};
+let minVersionCode = prev.versionCode || versionCode;
+if (process.argv.includes("--hard")) minVersionCode = versionCode;
+else if (process.argv.includes("--soft")) minVersionCode = prev.minVersionCode || 0;
+minVersionCode = Math.min(minVersionCode, versionCode);
 const size = statSync(apk).size;
 writeFileSync(versionFile, JSON.stringify({ version, versionCode, minVersionCode, url: "/nexa.apk", size }, null, 2) + "\n");
 

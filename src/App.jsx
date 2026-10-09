@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.5.9";
+const VERSION = "0.6.0";
 
 
 /* =========================================================================
@@ -7118,6 +7118,7 @@ function InstallSettings() {
 /* Тонкий баннер на Главной: значок, заголовок с подписью, действие и крестик.
    Закрыли — плашка «складывается» и место под ней схлопывается
    (см. .nx-banner-wrap в стилях), после чего вызывается onClosed.
+   Без onClose и onClosed крестика нет — баннер закрыть нельзя.
    label — подпись для экранного диктора */
 function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
   const [closing, setClosing] = useState(false);
@@ -7132,7 +7133,7 @@ function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
     <div className={closing ? "nx-banner-wrap is-closing" : "nx-banner-wrap"}
       onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) onClosed?.(); }}>
     <div className="nx-pop nx-banner" role="region" aria-label={label} style={{
-      display: "flex", alignItems: "center", gap: 10, padding: "10px 8px 10px 12px",
+      display: "flex", alignItems: "center", gap: 10, padding: onClose || onClosed ? "10px 8px 10px 12px" : "10px 12px",
       border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.bg,
     }}>
       <span style={{ display: "flex", flexShrink: 0 }}>{icon}</span>
@@ -7141,11 +7142,13 @@ function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
         <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.25 }}>{sub}</div>
       </div>
       {action}
-      <button type="button" className="nx-icon-btn" onClick={close} aria-label="Скрыть" style={{
-        ...btnReset, width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        {Icon.close({ c: C.muted, s: 15 })}
-      </button>
+      {(onClose || onClosed) && (
+        <button type="button" className="nx-icon-btn" onClick={close} aria-label="Скрыть" style={{
+          ...btnReset, width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {Icon.close({ c: C.muted, s: 15 })}
+        </button>
+      )}
     </div>
     </div>
   );
@@ -7207,22 +7210,20 @@ function SiteUpdateBanner({ update }) {
 }
 
 /* Баннер «Доступна новая версия» — только в Android-приложении.
-   update = { version, url } (см. checkForUpdate в src/native.js) или null.
-   Закрыли — не показываем, пока не выйдет следующая версия */
-const UPDATE_DISMISS_KEY = "nexa-update-dismissed"; // какую версию уже скрыли
+   update = { version, url, required } (см. checkForUpdate в src/native.js) или null.
+   Приложение работает, но баннер закрыть нельзя — мягко подталкиваем обновиться.
+   Если версия совсем старая (required), вместо него — ForceUpdateScreen */
+const UPDATE_DISMISS_KEY = "nexa-update-dismissed"; // сайт: какую версию уже скрыли
 function UpdateBanner({ update }) {
-  const [hiddenFor, setHiddenFor] = useState(() => {
-    try { return localStorage.getItem(UPDATE_DISMISS_KEY); } catch { return null; }
-  });
   const [started, setStarted] = useState(false); // нажали «Обновить» — файл скачивается
-  if (!update || hiddenFor === update.version) return null;
+  if (!update) return null;
   return (
     <SlimBanner
       key={update.version}
       label="Обновление приложения"
       icon={Icon.refresh({ c: C.mint, s: 18 })}
       title={`Доступна NEXA ${update.version}`}
-      sub={started ? "Скачивается — откройте файл, чтобы обновить" : "Обновится поверх, данные сохранятся"}
+      sub={started ? "Скачивается — откройте файл, чтобы обновить" : "Эта версия скоро перестанет работать. Данные сохранятся"}
       action={
         <button type="button" className="nx-primary" onClick={() => { setStarted(true); openUpdate(update.url); }} style={{
           ...btnReset, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
@@ -7232,37 +7233,38 @@ function UpdateBanner({ update }) {
           {Icon.download({ c: C.onFold, s: 14 })} Обновить
         </button>
       }
-      onClose={() => { try { localStorage.setItem(UPDATE_DISMISS_KEY, update.version); } catch {} }}
-      onClosed={() => setHiddenFor(update.version)}
     />
   );
 }
 
-/* Экран «Эта версия устарела» — только в Android-приложении.
+/* Экран «Обновите приложение» — только в Android-приложении.
    Показывается поверх всего, если версия приложения старше минимальной
-   из version.json (update.required). Закрыть нельзя — только скачать новую.
+   из version.json (update.required): интерфейс виден, но размыт и не нажимается.
+   Закрыть нельзя — только скачать новую.
    Без интернета проверка не проходит, и старая версия открывается как обычно */
 function ForceUpdateScreen({ update }) {
   const [started, setStarted] = useState(false); // нажали «Скачать» — файл скачивается
   return (
-    <div className="nx-force-update" role="alertdialog" aria-modal="true" aria-label="Версия устарела" style={{
-      position: "fixed", inset: 0, zIndex: 1000, background: C.bg,
+    <div className="nx-force-update" role="alertdialog" aria-modal="true" aria-label="Обновите приложение" style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
+      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
       padding: "calc(var(--sat) + 24px) 28px calc(var(--sab) + 24px)",
     }}>
       <img src={foldSvg} alt="" style={{ width: 120, height: "auto", marginBottom: 28 }} />
-      <div className="ng-display" style={{ fontSize: 26, lineHeight: 1.2, marginBottom: 10 }}>Эта версия устарела</div>
+      <div className="ng-display" style={{ fontSize: 26, lineHeight: 1.2, marginBottom: 10 }}>Обновите приложение</div>
       <div style={{ fontSize: 14.5, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 28 }}>
         {started
           ? "Скачивается — откройте файл, чтобы установить. Данные сохранятся."
-          : `Чтобы пользоваться NEXA, установите версию ${update.version}. Она встанет поверх, данные сохранятся.`}
+          : `Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
       </div>
       <button type="button" className="nx-primary" onClick={() => { setStarted(true); openUpdate(update.url); }} style={{
         ...btnReset, display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
         padding: "12px 22px", fontSize: 15, fontWeight: 500, borderRadius: 999, border: "1px solid transparent",
         color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
       }}>
-        {Icon.download({ c: C.onFold, s: 16 })} {started ? "Скачать ещё раз" : `Скачать NEXA ${update.version}`}
+        {Icon.download({ c: C.onFold, s: 16 })} {started ? "Скачать ещё раз" : "Обновить"}
       </button>
     </div>
   );
