@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.5.5";
+const VERSION = "0.5.6";
 
 
 /* =========================================================================
