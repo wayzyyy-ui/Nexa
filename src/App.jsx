@@ -15,7 +15,7 @@ import "lenis/dist/lenis.css";
 // Аккаунты: клиент Supabase и список разрешённых почт
 import { supabase, authAvailable } from "./lib/supabase.js";
 import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 
 /* =========================================================================
@@ -140,29 +140,39 @@ syncChannel?.addEventListener("message", (e) => {
 });
 
 /* useState, который сам сохраняется в localStorage под key и делится
-   с другими вкладками. load — как прочитать начальное значение.
-   Пришедшее из другой вкладки сохраняем, но обратно не рассылаем */
+   с другими вкладками. load(key) — как прочитать значение.
+   Пришедшее из другой вкладки сохраняем, но обратно не рассылаем.
+   key может смениться (вошли в аккаунт или вышли) — тогда значение
+   читается заново из нового места, старое остаётся лежать под своим ключом */
 function useSharedState(key, load) {
-  const [value, setValue] = useState(load);
+  const [state, setState] = useState(() => ({ key, value: load(key) }));
+  // Ключ сменился — сразу берём значение нового ключа
+  const cur = state.key === key ? state : { key, value: load(key) };
+  if (cur !== state) setState(cur);
   const fromRemote = useRef(false);
-  const first = useRef(true);
+  const savedKey = useRef(null); // под каким ключом сохраняли в прошлый раз
   useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
-    if (first.current) { first.current = false; return; } // начальное значение не рассылаем
+    try { localStorage.setItem(cur.key, JSON.stringify(cur.value)); } catch {}
+    // Начальное значение и значение после смены ключа не рассылаем
+    const switched = savedKey.current !== cur.key;
+    savedKey.current = cur.key;
+    if (switched) return;
     if (fromRemote.current) { fromRemote.current = false; return; }
-    syncChannel?.postMessage({ key, value, from: TAB_ID });
-  }, [value]);
+    syncChannel?.postMessage({ key: cur.key, value: cur.value, from: TAB_ID });
+  }, [cur]);
   useEffect(() => {
     if (!syncChannel) return;
     const onMessage = (e) => {
       if (e.data?.key !== key || e.data.from === TAB_ID) return;
       fromRemote.current = true;
-      setValue(e.data.value);
+      setState({ key, value: e.data.value });
     };
     syncChannel.addEventListener("message", onMessage);
     return () => syncChannel.removeEventListener("message", onMessage);
   }, [key]);
-  return [value, setValue];
+  // Как обычный setState: можно передать значение или функцию от старого
+  const setValue = useRef((v) => setState((st) => ({ key: st.key, value: typeof v === "function" ? v(st.value) : v }))).current;
+  return [cur.value, setValue];
 }
 
 
@@ -1239,9 +1249,9 @@ const DEVICES_KEY = "nexa-devices"; // ключ в localStorage
    added   — устройства, которые пользователь добавил сам;
    removed — id удалённых исходных устройств.
    Раньше там лежал только state — такой старый формат тоже читаем. */
-function loadDeviceStore() {
+function loadDeviceStore(key = DEVICES_KEY) {
   let raw = null;
-  try { raw = JSON.parse(localStorage.getItem(DEVICES_KEY)); } catch {}
+  try { raw = JSON.parse(localStorage.getItem(key)); } catch {}
   if (raw && raw.v === 2) {
     return { v: 2, state: raw.state || {}, added: raw.added || [], removed: raw.removed || [] };
   }
@@ -1252,11 +1262,13 @@ function loadDeviceStore() {
 const deviceStatus = (d) =>
   !d.online ? "Не в сети" : d.battery != null ? `Онлайн • ${d.battery}%` : "Онлайн";
 
-// Сколько ГБ занимают файлы на устройстве — считаем по данным хранилища
-const deviceUsed = (d) =>
-  MEDIA_CATS.reduce((sum, c) => sum + c.devices
+// Сколько ГБ занимают файлы на устройстве.
+// Демо — по выдуманным цифрам хранилища, аккаунт — по своим файлам
+const deviceUsed = (d, files = [], demo = true) => demo
+  ? MEDIA_CATS.reduce((sum, c) => sum + c.devices
     .filter(([n]) => n === d.name || n === d.alias)
-    .reduce((s, [, gb]) => s + gb, 0), 0);
+    .reduce((s, [, gb]) => s + gb, 0), 0)
+  : Math.round(files.filter((f) => f.device === d.name || f.device === d.alias).reduce((s, f) => s + f.mb, 0) / 100) / 10;
 
 // ЭКРАН "ГЛАВНАЯ" — список устройств + складка + карточка ассистента
 // devices — устройства с текущим состоянием (в сети или нет) из App,
@@ -2861,9 +2873,9 @@ const DEMO_FILES = [
 const FILES_KEY = "nexa-files";
 const UPLOAD_MS = 1100; // сколько идёт "загрузка" (показываем полоску прогресса)
 
-function loadFileStore() {
+function loadFileStore(key = FILES_KEY) {
   let raw = null;
-  try { raw = JSON.parse(localStorage.getItem(FILES_KEY)); } catch {}
+  try { raw = JSON.parse(localStorage.getItem(key)); } catch {}
   return {
     added: raw?.added || [], removed: raw?.removed || [],
     renamed: raw?.renamed || {}, folders: raw?.folders || [],
@@ -3113,18 +3125,19 @@ function StorageFolds({ cats, selected, onSelect }) {
 // onOpenCategory переводит на экран "Файлы" с фильтром по категории
 // (null — без фильтра).
 // onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
-function ScreenMedia({ files, onOpenFile, onOpenCategory, onTransfer }) {
+// demo — гость: к своим файлам прибавляются выдуманные цифры хранилища
+function ScreenMedia({ files, demo = true, onOpenFile, onOpenCategory, onTransfer }) {
   // Какой сегмент хранилища выбран (id категории или null)
   const [selected, setSelected] = useState(null);
   // Добавленные пользователем файлы прибавляем к объёму своей категории
   const round1 = (n) => Math.round(n * 10) / 10;
   const addedMb = (id) => files.filter((f) => f.uploaded && (!id || f.cat === id)).reduce((s, f) => s + f.mb, 0);
-  const cats = MEDIA_CATS.map((c) => ({ ...c, gb: round1(c.gb + addedMb(c.id) / 1000) }));
+  const cats = MEDIA_CATS.map((c) => ({ ...c, gb: round1((demo ? c.gb : 0) + addedMb(c.id) / 1000) }));
   const sel = cats.find((c) => c.id === selected);
   const ownMb = addedMb(null);
-  const used = round1(MEDIA_CATS.reduce((sum, c) => sum + c.gb, 0) + ownMb / 1000);
+  const used = round1((demo ? MEDIA_CATS.reduce((sum, c) => sum + c.gb, 0) : 0) + ownMb / 1000);
   // Подпись под объёмом: сколько места заняли файлы, добавленные вами
-  const ownNote = ownMb > 0 && (
+  const ownNote = demo && ownMb > 0 && (
     <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35, whiteSpace: "nowrap" }}>
       <div style={{ color: C.mint }}>+ {formatSize(ownMb)}</div>
       <div style={{ color: C.mutedSoft }}>ваши файлы</div>
@@ -3240,6 +3253,15 @@ function ScreenMedia({ files, onOpenFile, onOpenCategory, onTransfer }) {
       </div>
 
       <div className="ng-display" style={{ fontSize: 24, fontWeight: 400, marginBottom: 16 }}>Недавние файлы</div>
+      {/* Файлов ещё нет (новый аккаунт) — подсказка вместо пустой ленты */}
+      {recent.length === 0 && (
+        <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+          Пока пусто. Добавьте файлы в разделе{" "}
+          <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{ ...btnReset, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
+            «Файлы»
+          </button>{" "}— они появятся здесь.
+        </div>
+      )}
       {/* Лента: вертикальная линия слева и кружок у каждого файла */}
       <div className="nx-stagger" style={{ position: "relative", paddingLeft: 26 }}>
         <div style={{ position: "absolute", left: 6, top: 24, bottom: 24, width: 1, background: C.borderStrong }} />
@@ -4339,8 +4361,16 @@ function WatchFace({ online, now, battery }) {
 // ТВ: «Продолжить просмотр» и полка медиа
 function TvScreen({ files }) {
   const videos = files.filter((f) => f.cat === "video");
-  const main = videos[0] || DEMO_FILES.find((f) => f.cat === "video");
-  const shelf = files.filter((f) => f.cat === "video" || f.cat === "photo").filter((f) => f.id !== main.id).slice(0, 4);
+  const main = videos[0];
+  const shelf = files.filter((f) => f.cat === "video" || f.cat === "photo").filter((f) => f.id !== main?.id).slice(0, 4);
+  // Видео ещё нет — на экране ТВ просто подсказка
+  if (!main) return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, textAlign: "center", padding: 16, boxSizing: "border-box" }}>
+      {Icon.video({ c: C.muted, s: 22 })}
+      <div style={{ fontSize: 11 }}>Здесь появятся ваши видео</div>
+      <div style={{ fontSize: 8.5, color: C.muted }}>Загрузите их в «Файлы»</div>
+    </div>
+  );
   return (
     <div style={{ height: "100%", boxSizing: "border-box", padding: "16px 18px", textAlign: "left", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 8, letterSpacing: "0.18em", color: C.muted }}>ПРОДОЛЖИТЬ ПРОСМОТР</div>
@@ -4585,7 +4615,7 @@ const RESULT_MS = 1600;     // сколько кнопка показывает 
 
 // onBack — вернуться назад, onRemove — удалить устройство из списка,
 // devices / files / folders — данные для превью, received — только что получен файл
-function DeviceScreen({ device: d, fileCount, devices, files, folders, received, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast }) {
+function DeviceScreen({ device: d, fileCount, devices, files, folders, received, demo = true, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const delRef = useRef(null);
@@ -4618,7 +4648,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       { duration: 520, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }
     );
   }, [flip]);
-  const used = deviceUsed(d);
+  const used = deviceUsed(d, files, demo);
 
   // Таймеры подключения: при закрытии окна их нужно отменить
   const timers = useRef([]);
@@ -7334,8 +7364,20 @@ const saveGuest = (on) => { try { on ? localStorage.setItem(GUEST_KEY, "1") : lo
 /* Кто вошёл. Supabase сам хранит сессию и сам сообщает о входе и выходе
    (onAuthStateChange; первое событие приходит сразу — сессия из прошлого раза).
    ready — Supabase уже ответил, можно решать, показывать ли экран входа */
+// Сохранённый вход из прошлого раза — только чтобы при запуске сразу знать,
+// чьи данные показывать (иначе на миг мелькнут демо-устройства). Только читаем:
+// сессию хранит и обновляет сам Supabase, через миг он подтвердит её или сбросит
+function storedSession() {
+  if (!supabase) return null;
+  try {
+    const k = Object.keys(localStorage).find((x) => x.startsWith("sb-") && x.endsWith("-auth-token"));
+    const s = k && JSON.parse(localStorage.getItem(k));
+    return s?.user?.id ? s : null;
+  } catch { return null; }
+}
+
 function useAuth() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(storedSession);
   const [ready, setReady] = useState(!supabase);
   useEffect(() => {
     if (!supabase) return;
@@ -7811,18 +7853,27 @@ export default function NexaApp() {
 }
   }, [tab]);
 
+  // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
+  const auth = useAuth();
+  /* Демо-данные (выдуманные устройства, файлы, цифры хранилища) — только без входа.
+     У аккаунта своё хранилище в браузере: ключи с id пользователя (nexa-devices@…),
+     сначала пустое. Гостевое демо при этом не трогаем — после выхода оно на месте */
+  const demo = !auth.user;
+  const scope = auth.user ? `@${auth.user.id}` : "";
+
   // Общие данные для "Медиа" и "Файлов": список файлов, фильтр по категории
   // и файл, открытый в окне просмотра.
   // Добавленные файлы, удаления, новые имена и папки запоминаем в браузере
   // useSharedState: сохраняется в браузере и делится с другими вкладками
-  const [fileStore, setFileStore] = useSharedState(FILES_KEY, loadFileStore);
+  const [fileStore, setFileStore] = useSharedState(FILES_KEY + scope, loadFileStore);
   // Превью картинок живут только пока открыта вкладка: { id: адрес картинки }
   const [previews, setPreviews] = useState({});
   // Идущие загрузки: [{ id, names, folder }] — для полоски прогресса
   const [uploads, setUploads] = useState([]);
-  const folders = [...FOLDERS, ...fileStore.folders];
+  // В аккаунте — только основные папки (Фото, Видео, Документы…), без выдуманных вложенных
+  const folders = [...(demo ? FOLDERS : FOLDERS.filter((f) => !f.parent)), ...fileStore.folders];
   const files = [
-    ...DEMO_FILES.filter((f) => !fileStore.removed.includes(f.id)),
+    ...(demo ? DEMO_FILES.filter((f) => !fileStore.removed.includes(f.id)) : []),
     ...fileStore.added.map((f) => ({ ...withWhen(f), uploaded: true })),
   ].map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name, preview: previews[f.id] }));
   const [filesFilter, setFilesFilter] = useState(null);
@@ -7863,11 +7914,11 @@ export default function NexaApp() {
   // Устройства: в сети ли и положение переключателей. Запоминаем в браузере,
   // чтобы после перезагрузки всё осталось как было
   // Здесь же — добавленные и удалённые устройства (см. loadDeviceStore)
-  const [deviceStore, setDeviceStore] = useSharedState(DEVICES_KEY, loadDeviceStore);
+  const [deviceStore, setDeviceStore] = useSharedState(DEVICES_KEY + scope, loadDeviceStore);
   // Итоговый список: исходные (кроме удалённых) + добавленные,
   // поверх — настройки по умолчанию и сохранённое состояние
   const devices = [
-    ...DEVICES.filter((d) => !deviceStore.removed.includes(d.id)),
+    ...(demo ? DEVICES.filter((d) => !deviceStore.removed.includes(d.id)) : []),
     ...deviceStore.added.map((d) => ({ ...d, icon: deviceType(d.type).icon })),
   ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }));
   const patchDevice = (id, patch) => setDeviceStore((s) => ({
@@ -7977,8 +8028,7 @@ export default function NexaApp() {
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
 
-  // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
-  const auth = useAuth();
+  // Аккаунт: кто вошёл (Supabase) — см. начало NexaApp. Гостевой режим и окно входа
   const [guest, setGuest] = useState(readGuest);
   const [authOpen, setAuthOpen] = useState(false);
   // Экран входа при первом запуске: аккаунты доступны, Supabase ответил,
@@ -9114,6 +9164,7 @@ export default function NexaApp() {
         files={files}
         folders={folders}
         received={received[openDevice.id]}
+        demo={demo}
         fileCount={files.filter(onDeviceFile(openDevice)).length}
         onBack={() => setOpenDeviceId(null)}
         onSetOnline={(online) => patchDevice(openDevice.id, { online })}
@@ -9145,11 +9196,11 @@ export default function NexaApp() {
           onOpenDevice={showDevice}
           onAddDevice={() => setAddOpen(true)}
           onRestoreDevices={restoreDevices}
-          canRestore={deviceStore.removed.length > 0}
+          canRestore={demo && deviceStore.removed.length > 0}
         />
       )}
       {tab === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} />}
-      {tab === "media" && <ScreenMedia files={files} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
+      {tab === "media" && <ScreenMedia files={files} demo={demo} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
       {tab === "files" && (
         <ScreenFiles
           key={`files-${searchFolder || "root"}`}

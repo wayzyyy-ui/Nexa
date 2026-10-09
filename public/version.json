@@ -1,7 +1,7 @@
 {
-  "version": "0.6.0",
-  "versionCode": 600,
-  "minVersionCode": 509,
+  "version": "0.6.1",
+  "versionCode": 601,
+  "minVersionCode": 600,
   "url": "/nexa.apk",
-  "size": 7715002
+  "size": 7597303
 }
