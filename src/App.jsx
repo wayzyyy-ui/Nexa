@@ -17,6 +17,8 @@ import { supabase, authAvailable } from "./lib/supabase.js";
 import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
 // Синхронизация устройств и чатов аккаунта с облаком
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
+// Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
+import { useDeviceLink, safeUrl, TEXT_MAX } from "./lib/realtime.js";
 const VERSION = "0.6.2";
 
 
@@ -1436,7 +1438,8 @@ function LinkPulse({ p, onDone }) {
 // received — у каких устройств отметка «Получен файл» { id: { name } }
 // update — вышла новая версия приложения (баннер «Обновить», только в приложении)
 // loading — устройства аккаунта ещё грузятся из облака
-function ScreenHome({ devices, received = {}, update, loading, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
+// linkPanel — блок «Связь устройств» (DeviceLinkPanel), рисуется внизу Главной
+function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
 
@@ -1575,6 +1578,7 @@ function ScreenHome({ devices, received = {}, update, loading, onNavigate, onOpe
             </div>
           </div>
         </div>
+        {linkPanel && <div style={{ marginTop: 40 }}>{linkPanel}</div>}
       </div>
 
       {/* ══════════ МОБИЛЬНАЯ ВЕРСИЯ ══════════ */}
@@ -1721,9 +1725,245 @@ function ScreenHome({ devices, received = {}, update, loading, onNavigate, onOpe
             {Icon.chevron({ c: C.text })}
           </div>
         </div>
+        {linkPanel && <div style={{ marginTop: 20 }}>{linkPanel}</div>}
       </div>
 
     </div>
+  );
+}
+
+/* ═══ СВЯЗЬ УСТРОЙСТВ (Supabase Realtime, src/lib/realtime.js) ═══
+   Блок на Главной: кто из устройств аккаунта онлайн, «Передать» текст или
+   ссылку и «Входящее». Демо-устройства тут ни при чём — это настоящие окна
+   и приложения, где выполнен вход в тот же аккаунт */
+const peerLabel = (d) => `${d.kind === "app" ? "Приложение" : "Сайт"} · ${d.platform === "mobile" ? "телефон" : "компьютер"}`;
+const LINK_STATUS = {
+  online: "На связи", connecting: "Подключаемся…", offline: "Нет связи", denied: "Канал не настроен", off: "",
+};
+// Время входящего: «14:05» сегодня, иначе «3 окт., 14:05»
+const inboxTime = (ts) => {
+  const d = new Date(ts), today = new Date().toDateString() === d.toDateString();
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return today ? hm : `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}, ${hm}`;
+};
+// Скопировать текст: буфер обмена, а если он недоступен — старый способ
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy"); ta.remove(); return ok;
+  } catch { return false; }
+}
+
+// Подзаголовок секции внутри блока
+const LinkLabel = ({ children, right }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+    <div style={{ fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.mutedSoft }}>{children}</div>
+    {right}
+  </div>
+);
+
+// Одно входящее: от кого, текст (только как текст), «Копировать» и «Открыть» для ссылок
+function InboxItem({ item, onRemove }) {
+  const [copied, setCopied] = useState(false);
+  const url = safeUrl(item.text);
+  const small = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", fontSize: 12.5, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, textDecoration: "none" };
+  return (
+    <div className="nx-pop" style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: "10px 12px", background: C.bg }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.mutedSoft }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {item.from_name} · {inboxTime(item.ts)}
+        </span>
+        <button type="button" className="nx-icon-btn" onClick={() => onRemove(item.id)} aria-label="Убрать из входящих" style={{
+          ...btnReset, width: 24, height: 24, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {Icon.close({ c: C.mutedSoft, s: 13 })}
+        </button>
+      </div>
+      {/* Текст выводим только как текст — React сам экранирует всё, HTML не вставляется */}
+      <div className="nx-scroll" style={{ fontSize: 14, lineHeight: 1.45, marginTop: 4, whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 132, overflowY: "auto", color: url ? C.mint : C.text }}>
+        {item.text}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <button type="button" className="nx-ghost-btn" onClick={async () => { if (await copyText(item.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={small}>
+          {copied ? Icon.check({ c: C.green, s: 14 }) : Icon.copy({ c: C.text, s: 14 })} {copied ? "Скопировано" : "Копировать"}
+        </button>
+        {url && (
+          <a href={url} target="_blank" rel="noopener noreferrer" className="nx-ghost-btn" style={small}>
+            {Icon.shareUp({ c: C.text, s: 14 })} Открыть
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Сам блок. link — результат useDeviceLink, user — кто вошёл,
+   onLogin — открыть окно входа */
+function DeviceLinkPanel({ link, user, onLogin }) {
+  const [text, setText] = useState("");
+  const [to, setTo] = useState(null);
+  const [sendState, setSendState] = useState("idle"); // idle | loading | success | error
+  const [note, setNote] = useState(null);
+  const selfId = link.self?.device_id;
+  const others = link.peers.filter((d) => d.device_id !== selfId);
+  // Одно устройство онлайн — выбираем его сами; выбранное ушло — выбор сбрасывается
+  const target = others.length === 1 ? others[0].device_id : others.some((d) => d.device_id === to) ? to : null;
+  const online = link.status === "online";
+
+  const send = async () => {
+    if (sendState === "loading") return;
+    setSendState("loading"); setNote(null);
+    const res = await link.send(text, target);
+    if (res.ok) {
+      setText(""); setSendState("success");
+      setTimeout(() => setSendState("idle"), 1500);
+    } else {
+      setNote(res.error); setSendState("error");
+      setTimeout(() => setSendState("idle"), 1800);
+    }
+  };
+
+  const frame = { border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 18px 20px", background: C.bg, textAlign: "left" };
+  const head = (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+      <div className="ng-display" style={{ fontSize: 20, fontWeight: 500 }}>Связь устройств</div>
+      {user && link.status !== "off" && (
+        <span role="status" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: online ? C.text : C.mutedSoft }}>
+          {online ? <Dot color={C.green} /> : link.status === "connecting" ? <Spinner s={11} /> : <Dot color={C.mutedSoft} />}
+          {LINK_STATUS[link.status]}
+        </span>
+      )}
+    </div>
+  );
+
+  // Гость или аккаунты выключены — ничего не подключаем
+  if (!user) {
+    return (
+      <section aria-label="Связь устройств" style={frame}>
+        {head}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 220px", fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+            Войдите, чтобы связать устройства: передавать текст и ссылки между сайтом и приложением.
+          </div>
+          <button type="button" className="nx-primary" onClick={onLogin} style={{
+            ...btnReset, borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500,
+            border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          }}>
+            Войти
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="Связь устройств" style={frame}>
+      {head}
+      <div className="nx-link-grid">
+        {/* Подключённые сейчас (Presence) */}
+        <div>
+          <LinkLabel>Подключённые сейчас</LinkLabel>
+          {!online ? (
+            <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>
+              {link.status === "connecting" ? "Ищем ваши устройства…"
+                : link.status === "denied" ? "Канал связи ещё не настроен в Supabase"
+                : "Нет связи. Остальное работает как обычно"}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {link.peers.map((d) => (
+                <div key={d.device_id} className="nx-pop" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 4 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {(d.platform === "mobile" ? Icon.phone : Icon.laptop)({ c: C.muted, s: 16 })}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {d.name}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 1 }}>{peerLabel(d)}{d.device_id === selfId && " · это устройство"}</div>
+                  </div>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.green, flexShrink: 0 }}>
+                    <Dot color={C.green} /> онлайн
+                  </span>
+                </div>
+              ))}
+              {others.length === 0 && (
+                <div style={{ fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
+                  Откройте NEXA на другом устройстве с этой же почтой — оно появится здесь.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Передать (Broadcast «text.send») */}
+        <form onSubmit={(e) => { e.preventDefault(); send(); }}>
+          <LinkLabel right={text.length > TEXT_MAX - 300 && (
+            <span style={{ fontSize: 11.5, color: text.length > TEXT_MAX ? C.red : C.mutedSoft }}>{text.length}/{TEXT_MAX}</span>
+          )}>Передать</LinkLabel>
+          <textarea
+            className="nx-input" value={text} rows={3} maxLength={TEXT_MAX}
+            onChange={(e) => { setText(e.target.value); setNote(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
+            placeholder="Текст или ссылка"
+            aria-label="Текст или ссылка для передачи"
+            style={{
+              display: "block", width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 74,
+              background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit", lineHeight: 1.45,
+              border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "10px 12px", outline: "none",
+            }}
+          />
+          {/* Кому: одно устройство — подпись, несколько — выбор */}
+          <div style={{ marginTop: 10, fontSize: 12.5, color: C.mutedSoft }}>
+            {others.length === 0 ? "Некому отправить — другие устройства не в сети"
+              : others.length === 1 ? <>Получит: <span style={{ color: C.text }}>{others[0].name}</span></>
+              : (
+                <div role="radiogroup" aria-label="Кому отправить" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {others.map((d) => (
+                    <button key={d.device_id} type="button" role="radio" aria-checked={target === d.device_id} onClick={() => setTo(d.device_id)} style={{
+                      ...btnReset, padding: "6px 10px", fontSize: 12.5, borderRadius: 4,
+                      border: `1px solid ${target === d.device_id ? C.mint : C.borderStrong}`,
+                      color: target === d.device_id ? C.text : C.muted,
+                    }}>
+                      {d.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+          </div>
+          {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 8 }}>{note}</div>}
+          <StateButton
+            variant="primary" state={sendState}
+            labels={{ loading: "Отправляем…", success: "Отправлено", error: "Не отправилось" }}
+            icon={Icon.send({ c: C.onFold, s: 14 })}
+            disabled={!online || !target || !text.trim()}
+            onClick={send}
+            style={{ marginTop: 12, width: "100%", padding: "10px 16px", borderRadius: 999 }}
+          >
+            Отправить
+          </StateButton>
+        </form>
+
+        {/* Входящее: последние 20, новое появляется сверху */}
+        <div>
+          <LinkLabel right={link.inbox.length > 0 && (
+            <button type="button" onClick={link.clearInbox} style={{ ...btnReset, fontSize: 12, color: C.mutedSoft, textDecoration: "underline", textUnderlineOffset: 3 }}>
+              Очистить
+            </button>
+          )}>Входящее</LinkLabel>
+          {link.inbox.length === 0 ? (
+            <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>Пока ничего не пришло.</div>
+          ) : (
+            <div className="nx-scroll" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" }}>
+              {link.inbox.map((it) => <InboxItem key={it.id} item={it} onRemove={link.removeInbox} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -8152,6 +8392,14 @@ export default function NexaApp() {
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
   const retrySync = () => { devicesSync.retry(); chatsSync.retry(); };
 
+  // Связь устройств: свой закрытый канал аккаунта (src/lib/realtime.js).
+  // Пришло новое — короткое уведомление (текст выводится только как текст)
+  const link = useDeviceLink(uid, (item) => showToast({
+    title: `Пришло с устройства «${item.from_name}»`,
+    text: item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
+    kind: "device",
+  }));
+
   // «Удалить мои данные»: облако → потом всё локальное этого аккаунта.
   // Возвращает текст ошибки или null
   const deleteMyData = async () => {
@@ -8892,6 +9140,11 @@ export default function NexaApp() {
         .nx-upload-bar { transform-origin: left; animation: nx-upload linear 1 both; }
         /* Поле ввода (название устройства): в фокусе рамка мятная, при ошибке остаётся красной */
         .nx-input { transition: border-color 160ms ease; }
+        /* Блок «Связь устройств»: три колонки на компьютере */
+        .nx-link-grid { display: grid; grid-template-columns: 1fr 1.15fr 1.15fr; gap: 24px; align-items: start; }
+        /* Колонки не раздвигаются длинным текстом — он переносится или обрезается */
+        .nx-link-grid > * { min-width: 0; }
+        @media (max-width: 1100px) { .nx-link-grid { grid-template-columns: 1fr 1fr; } }
         /* Строка синхронизации аккаунта: на компьютере — внизу слева, у боковой панели */
         .nx-sync-status { left: 98px; bottom: 20px; }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
@@ -9017,6 +9270,8 @@ export default function NexaApp() {
           /* Экран настроек на телефоне */
           .ng-display.nx-section-title { font-size: 18px !important; margin-bottom: 10px !important; }
           .nx-settings-search { display: none !important; }
+          /* Связь устройств — одной колонкой */
+          .nx-link-grid { grid-template-columns: 1fr !important; gap: 20px !important; }
           /* Строка синхронизации — над нижней панелью */
           .nx-sync-status { left: 16px !important; bottom: calc(var(--sab) + 96px) !important; }
           /* Строка с переключателем темы: переключатель уходит под текст
@@ -9404,6 +9659,7 @@ export default function NexaApp() {
           onOpenDevice={showDevice}
           onAddDevice={() => setAddOpen(true)}
           onRestoreDevices={restoreDevices}
+          linkPanel={<DeviceLinkPanel link={link} user={auth.user} onLogin={() => setAuthOpen(true)} />}
           loading={syncLoading && !!syncState.devices?.loading}
           canRestore={demo && deviceStore.removed.length > 0}
         />
