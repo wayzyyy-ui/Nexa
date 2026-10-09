@@ -5,7 +5,7 @@ import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -18,8 +18,8 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 // Синхронизация устройств и чатов аккаунта с облаком
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
-import { useDeviceLink, safeUrl, TEXT_MAX } from "./lib/realtime.js";
-const VERSION = "0.6.2";
+import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, SCENE_IDS } from "./lib/realtime.js";
+const VERSION = "0.7.1";
 
 
 /* =========================================================================
@@ -322,6 +322,11 @@ const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M3.5 6.5h17v11h-17z" strokeLinejoin="round" />
       <path d="M3.5 6.5 12 13l8.5-6.5" strokeLinejoin="round" />
+    </svg>
+  ),
+  moon: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M15.5 3.5 8 6.5 5.5 13l4 7 7.5-1.5A8 8 0 0 1 15.5 3.5Z" strokeLinejoin="round" />
     </svg>
   ),
   logout: (p) => (
@@ -1439,9 +1444,15 @@ function LinkPulse({ p, onDone }) {
 // update — вышла новая версия приложения (баннер «Обновить», только в приложении)
 // loading — устройства аккаунта ещё грузятся из облака
 // linkPanel — блок «Связь устройств» (DeviceLinkPanel), рисуется внизу Главной
-function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
+// topBlock — блок над устройствами (сцена «В дороге» поднимает «Связь устройств»),
+// quiet — сцена с «не беспокоить»; findState / onFind — «Найти» у реальных устройств
+function ScreenHome({ devices, received = {}, update, loading, linkPanel, topBlock, quiet, findState = {}, onFind, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
+  // Подпись под устройством: статус, «это устройство», «не беспокоить» (сцена)
+  const statusOf = (d) => [deviceStatus(d), d.isSelf && "это устройство", quiet && d.online && "не беспокоить"].filter(Boolean).join(" · ");
+  // «Найти» — только у реального устройства в сети и не у себя
+  const findable = (d) => d.real && d.online && !d.isSelf && onFind;
 
   // Пустой список: добавить новое или вернуть исходные.
   // Пока грузим из облака — вместо «Устройств пока нет» заготовка строк
@@ -1468,6 +1479,8 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
       {/* Высота — почти на всё окно (минус футер и отступы), а содержимое
           стоит по центру по вертикали, чтобы снизу не было пустоты */}
       <div className="ng-home-desktop">
+        {/* Отступ сверху — под часами и значками верхней строки */}
+        {topBlock && <div style={{ marginTop: 64, marginBottom: 32 }}>{topBlock}</div>}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40, position: "relative" }}>
           {/* Связи рисуются первыми — складка и карточки лежат поверх линий */}
           <DeviceLinks devices={devices} received={received} />
@@ -1505,18 +1518,26 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
               {empty}
               {/* Каждая строка — кнопка: открывает окно устройства */}
               {devices.map((d) => (
-                <button key={d.id} data-link-id={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
-                  style={{ ...btnReset, display: "block", width: "100%" }}>
-                  <Row
-                    leftIcon={d.icon({ c: C.text, s: 19 })}
-                    title={d.name}
-                    subtitle={deviceStatus(d)}
-                    right={<>
-                      {received[d.id] && <ReceivedTag name={received[d.id].name} />}
-                      <Dot color={d.online ? C.green : C.red} />
-                    </>}
-                  />
-                </button>
+                // Обёртка: «Найти» — отдельная кнопка рядом, а не внутри строки-кнопки
+                <div key={d.id} style={{ position: "relative" }}>
+                  <button data-link-id={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
+                    style={{ ...btnReset, display: "block", width: "100%" }}>
+                    <Row
+                      leftIcon={d.icon({ c: C.text, s: 19 })}
+                      title={d.name}
+                      subtitle={statusOf(d)}
+                      right={<>
+                        {received[d.id] && <ReceivedTag name={received[d.id].name} />}
+                        {findable(d) && <span style={{ width: 108 }} />}
+                        <Dot color={d.online ? C.green : C.red} />
+                      </>}
+                    />
+                  </button>
+                  {findable(d) && (
+                    <FindChip state={findState[d.device_id]} onClick={() => onFind(d)}
+                      style={{ position: "absolute", right: 40, top: "50%", transform: "translateY(-50%)" }} />
+                  )}
+                </div>
               ))}
               {/* Последняя строка — "Добавить устройство" */}
               {devices.length > 0 && (
@@ -1618,6 +1639,7 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
           setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
         }} />
 
+        {topBlock && <div style={{ marginTop: 24 }}>{topBlock}</div>}
         {/* Мои устройства */}
         <div style={{ marginTop: 24 }}>
           <div style={{
@@ -1641,9 +1663,9 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
           }}>
             {/* Карточка — кнопка: открывает окно устройства */}
             {devices.map((d) => (
+              <div key={d.id} style={{ position: "relative", minWidth: 0, display: "flex" }}>
               <button
                 type="button"
-                key={d.id}
                 data-link-id={d.id}
                 className="nx-row-btn"
                 onClick={() => onOpenDevice(d.id)}
@@ -1652,7 +1674,7 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
                   border: `1px solid ${C.border}`, borderRadius: 14,
                   padding: 14, cursor: "pointer", position: "relative",
                   display: "flex", flexDirection: "column", gap: 10,
-                  minHeight: 96, minWidth: 0,
+                  minHeight: 96, minWidth: 0, flex: 1,
                 }}
               >
                 <div style={{ position: "absolute", top: 12, right: 12, display: "flex" }}>
@@ -1666,9 +1688,14 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
                   {/* Только что получен файл — отметка вместо статуса */}
                   {received[d.id]
                     ? <div style={{ marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></div>
-                    : <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{deviceStatus(d)}</div>}
+                    : <div style={{ fontSize: 13, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{statusOf(d)}</div>}
                 </div>
               </button>
+              {findable(d) && (
+                <FindChip compact state={findState[d.device_id]} onClick={() => onFind(d)}
+                  style={{ position: "absolute", top: 8, right: 28 }} />
+              )}
+              </div>
             ))}
             {/* Последняя карточка — "Добавить": пунктирная рамка, мятный плюс */}
             {devices.length > 0 && (
@@ -1732,6 +1759,417 @@ function ScreenHome({ devices, received = {}, update, loading, linkPanel, onNavi
   );
 }
 
+/* ═══ СЦЕНЫ ═══════════════════════════════════════════════════
+   Сцена меняет только то, что есть в самом NEXA:
+   - подсветка и подпись активной сцены на всех устройствах аккаунта;
+   - «не беспокоить» на карточках устройств (Работа, Сон);
+   - «В дороге» поднимает блок «Связь устройств» наверх Главной;
+   - «Сон» включает тёмную тему на этом устройстве (прежнюю можно вернуть).
+   Выбранная сцена хранится в аккаунте (user_metadata.scene) и в браузере */
+const SCENES = {
+  // from / to / clip / facet — складка сцены, как у категорий в «Медиа»
+  work:  { label: "Работа",   hint: "Не беспокоить на всех устройствах", icon: (p) => Icon.laptop(p), quiet: true,
+           from: C.foldDeep, to: C.foldBlue, clip: "polygon(0 100%, 30% 4%, 100% 0, 72% 96%)", facet: "118deg" },
+  home:  { label: "Дома",     hint: "Всё как обычно", icon: (p) => Icon.home(p),
+           from: C.foldBlue, to: C.foldCyan, clip: "polygon(0 78%, 40% 6%, 100% 0, 74% 100%, 28% 96%)", facet: "100deg" },
+  road:  { label: "В дороге", hint: "Связь устройств — первой на Главной", icon: (p) => Icon.pin(p),
+           from: C.foldCyan, to: C.foldMint, clip: "polygon(6% 100%, 30% 6%, 100% 0, 82% 96%)", facet: "108deg" },
+  sleep: { label: "Сон",      hint: "Тёмная тема и «не беспокоить»", icon: (p) => Icon.moon(p), quiet: true,
+           from: C.foldDeep, to: `color-mix(in srgb, ${C.foldBlue} 55%, ${C.foldDeep})`, clip: "polygon(0 96%, 14% 0, 100% 12%, 94% 88%)", facet: "128deg" },
+};
+const SCENE_THEME_KEY = "nexa-scene-theme"; // какая тема была до «Сна» (чтобы вернуть)
+
+/* Заголовок раздела на Главной — как «Мои устройства»: маленькая надпись
+   сверху (eyebrow), крупный заголовок и что-то справа (статус, счётчик) */
+function SectionHead({ eyebrow, title, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ minWidth: 0 }}>
+        {eyebrow && <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: C.mutedSoft, marginBottom: 6 }}>{eyebrow}</div>}
+        <div className="ng-display" style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1 }}>{title}</div>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+// Скошенный ярлык — как чипсы пути в «Файлах» (складка)
+const SkewTag = ({ children, active = true, style }) => (
+  <span style={{
+    display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, lineHeight: 1, whiteSpace: "nowrap",
+    padding: "5px 13px 5px 12px", color: C.onFold,
+    clipPath: "polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%)",
+    background: active
+      ? `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`
+      : `linear-gradient(90deg, ${C.foldDeep}, color-mix(in srgb, ${C.foldBlue} 70%, ${C.foldDeep}))`,
+    ...style,
+  }}>{children}</span>
+);
+
+// Маленькая контурная складка — для пустых состояний и приглашений
+const OutlineFold = ({ s = 44 }) => (
+  <svg viewBox="0 0 44 32" width={s} height={s * 32 / 44} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <polygon points="2,26 14,3 28,8 18,30" style={{ stroke: C.borderStrong }} strokeWidth="1" />
+    <polygon points="18,30 28,8 42,14 34,29" style={{ stroke: C.mint }} strokeWidth="1" opacity="0.7" />
+  </svg>
+);
+
+function ScenesBlock({ scene, onPick, user, online, canRestoreTheme, onRestoreTheme }) {
+  const cur = SCENES[scene];
+  return (
+    <section aria-label="Сцены" style={{ textAlign: "left", marginBottom: 36 }}>
+      <SectionHead eyebrow="Режим дня" title="Сцены" right={
+        <div role="status" style={{ fontSize: 12.5, color: C.mutedSoft, paddingBottom: 2 }}>
+          {cur ? <>Сейчас: <span style={{ color: C.text }}>{cur.label}</span></> : "Выберите, чем вы сейчас заняты"}
+        </div>
+      } />
+      <div className="nx-scene-grid" role="radiogroup" aria-label="Сцена">
+        {SCENE_IDS.map((id) => {
+          const sc = SCENES[id], on = scene === id;
+          return (
+            <button key={id} type="button" role="radio" aria-checked={on} className="nx-row-btn nx-scene-tile" onClick={() => onPick(id)} style={{
+              ...btnReset, position: "relative", textAlign: "left", minWidth: 0, minHeight: 132, boxSizing: "border-box",
+              padding: "14px 14px 13px", borderRadius: 14,
+              border: `1px solid ${on ? C.mint : C.borderStrong}`,
+              background: on
+                ? `linear-gradient(160deg, color-mix(in srgb, ${C.mint} 8%, ${C.panel2}), ${C.bg})`
+                : `linear-gradient(160deg, ${C.panel2}, ${C.bg})`,
+              display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 12,
+              transition: "border-color 200ms ease",
+            }}>
+              {/* Складка сцены: у выбранной наливается цветом */}
+              <div className="nx-scene-fold" style={{
+                width: "56%", height: 44, clipPath: sc.clip,
+                background: foldFill(sc), opacity: on ? 1 : 0.28,
+              }} />
+              {on && <SkewTag style={{ position: "absolute", top: 12, right: 12 }}>Сейчас</SkewTag>}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14.5, fontWeight: 500 }}>
+                  {sc.icon({ c: on ? C.mint : C.muted, s: 15 })} {sc.label}
+                </div>
+                <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 4, lineHeight: 1.35 }}>{sc.hint}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, fontSize: 12, color: C.mutedSoft }}>
+        <span>{!user ? "Без входа сцена меняется только здесь" : online ? "Меняется сразу на всех ваших устройствах онлайн" : "Нет связи — сцена поменяется только здесь"}</span>
+        {canRestoreTheme && (
+          <button type="button" onClick={onRestoreTheme} style={{ ...btnReset, fontSize: 12, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
+            Вернуть светлую тему
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ═══ НАЙТИ УСТРОЙСТВО ════════════════════════════════════════ */
+const FIND_RING_MS = 60 * 1000; // сигнал сам выключается через минуту
+
+// Кнопка «Найти» на карточке реального устройства и её состояния
+function FindChip({ state, onClick, compact, style }) {
+  const look = {
+    ringing: { text: "Ищем…", color: C.text, icon: <Spinner s={11} /> },
+    found: { text: "Нашлось", color: C.green, icon: Icon.check({ c: C.green, s: 13 }) },
+    timeout: { text: "Не ответило", color: C.mutedSoft, icon: null },
+  }[state] || { text: "Найти", color: C.text, icon: Icon.search({ c: C.text, s: 13 }) };
+  return (
+    <button type="button" className="nx-ghost-btn" onClick={onClick} disabled={state === "ringing"}
+      aria-label={state ? look.text : "Найти устройство"}
+      style={{
+        ...btnReset, display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
+        padding: compact ? "4px 9px" : "6px 12px", fontSize: compact ? 11.5 : 12.5, borderRadius: 999,
+        border: `1px solid ${C.borderStrong}`, color: look.color, background: C.bg, ...style,
+      }}>
+      {look.icon}{compact && !state ? null : null}{look.text}
+    </button>
+  );
+}
+
+/* Экран «Устройство ищут» поверх всего: вибрация, тихий повторяющийся
+   сигнал (Web Audio) и большая кнопка «Нашёл». Сам выключается через минуту.
+   Браузер может не разрешить звук без нажатия — тогда просто без звука */
+function FindOverlay({ from, onFound, onTimeout }) {
+  const found = useRef(onFound); found.current = onFound;
+  const timeout = useRef(onTimeout); timeout.current = onTimeout;
+  useEffect(() => {
+    let ctx = null;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { ctx = new AC(); ctx.resume?.().catch(() => {}); }
+    } catch {}
+    const beep = () => {
+      vibrate(400);
+      if (!ctx || ctx.state !== "running") return;
+      try {
+        const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+        o.type = "sine"; o.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t); o.stop(t + 0.3);
+      } catch {}
+    };
+    beep();
+    const tick = setInterval(beep, 1500);
+    const stop = setTimeout(() => timeout.current?.(), FIND_RING_MS);
+    const onKey = (e) => { if (e.key === "Escape") found.current?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      clearInterval(tick); clearTimeout(stop);
+      window.removeEventListener("keydown", onKey);
+      try { navigator.vibrate?.(0); } catch {}
+      ctx?.close?.().catch(() => {});
+    };
+  }, []);
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="nx-find-title" className="nx-find-overlay" style={{
+      position: "fixed", inset: 0, zIndex: 950, background: C.bg,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
+      padding: "calc(var(--sat) + 24px) 24px calc(var(--sab) + 24px)",
+    }}>
+      {/* Расходящиеся квадратные волны — «сигнал»; при reduced motion неподвижны */}
+      <div aria-hidden="true" style={{ position: "relative", width: 150, height: 150, marginBottom: 36 }}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="nx-find-wave" style={{
+            position: "absolute", inset: 0, border: `1px solid ${C.mint}`, borderRadius: 4,
+            transform: "rotate(45deg)", animationDelay: `${i * 600}ms`,
+          }} />
+        ))}
+        <span style={{ position: "absolute", inset: 46, border: `1px solid ${C.mint}`, borderRadius: 4, transform: "rotate(45deg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ transform: "rotate(-45deg)", display: "flex" }}>{Icon.search({ c: C.mint, s: 24 })}</span>
+        </span>
+      </div>
+      <div id="nx-find-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>Устройство ищут</div>
+      <div style={{ fontSize: 14.5, color: C.muted, marginTop: 10, maxWidth: 320, lineHeight: 1.5 }}>
+        Вас зовёт «{from}». Нажмите, когда найдёте — сигнал выключится.
+      </div>
+      <button type="button" className="nx-primary" onClick={() => found.current?.()} autoFocus style={{
+        ...btnReset, marginTop: 30, padding: "16px 48px", fontSize: 17, fontWeight: 500, borderRadius: 999,
+        border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+        display: "inline-flex", alignItems: "center", gap: 10,
+      }}>
+        {Icon.check({ c: C.onFold, s: 18 })} Нашёл
+      </button>
+      <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 16 }}>Сигнал выключится сам через минуту</div>
+    </div>
+  );
+}
+
+/* ═══ ПОДКЛЮЧЕНИЕ УСТРОЙСТВА ПО КОДУ / QR ═════════════════════
+   Устройство с окном «Подключить устройство» выдаёт одноразовый код (6 символов,
+   2 минуты). Подключаемое устройство (вход в тот же аккаунт) шлёт pair.claim с кодом,
+   выдавшее сверяет код у себя и отвечает pair.ok или pair.fail.
+   Код живёт только в памяти выдавшего устройства и никуда не пишется */
+const PAIR_TTL_MS = 2 * 60 * 1000;     // код действует 2 минуты
+const PAIR_MAX_TRIES = 5;              // неверных попыток до блокировки
+const PAIR_LOCK_MS = 60 * 1000;        // блокировка на минуту
+const PAIR_ANSWER_MS = 6000;           // сколько ждём ответа на код
+const PAIR_LOCK_KEY = "nexa-pair-lock"; // у подключаемого: { wrong, until }
+// Адрес для QR: на сайте — свой, в приложении — сайт NEXA
+const pairUrl = (code) => `${isNative ? "https://nexa-link.ru" : location.origin}/?pair=${code}`;
+// Случайный код из «непохожих» символов (криптостойкий генератор)
+function makePairCode() {
+  const buf = new Uint32Array(6);
+  crypto.getRandomValues(buf);
+  return [...buf].map((n) => PAIR_ALPHABET[n % PAIR_ALPHABET.length]).join("");
+}
+const readPairLock = () => { try { return JSON.parse(localStorage.getItem(PAIR_LOCK_KEY)) || { wrong: 0, until: 0 }; } catch { return { wrong: 0, until: 0 }; } };
+const savePairLock = (v) => { try { localStorage.setItem(PAIR_LOCK_KEY, JSON.stringify(v)); } catch {} };
+const mmss = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+
+/* Окно «Подключить устройство» на устройстве, которое выдаёт код.
+   session — { code, expiresAt, used, lockedUntil } (живёт в NexaApp) */
+function PairModal({ session, online, onNewCode, onDemo, onClose }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(t); }, []);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, []);
+  const left = session ? session.expiresAt - now : 0;
+  const expired = !session || left <= 0;
+  const locked = session && session.lockedUntil > now;
+  const step = (n, text) => (
+    <li style={{ display: "flex", gap: 10, fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+      <span style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.borderStrong}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.text, marginTop: 1 }}>{n}</span>
+      <span>{text}</span>
+    </li>
+  );
+  return (
+    <div className="nx-viewer" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      // Фон под окном «Добавить устройство» слегка размыт (разрешённое исключение)
+      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
+      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-pair-title" className="nx-viewer-panel nx-pop nx-scroll"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+          boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
+        }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div id="nx-pair-title" style={{ fontFamily: fontDisplay, fontSize: 24, lineHeight: 1.15 }}>Подключить устройство</div>
+            <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6, lineHeight: 1.45 }}>Телефон или другой компьютер — с входом в ту же почту</div>
+          </div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
+            ...btnReset, width: 34, height: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.close({ c: C.muted, s: 18 })}
+          </button>
+        </div>
+
+        {!online ? (
+          <div style={{ marginTop: 18 }}>
+            <StateNote kind="error">Нет связи — подключение по коду сейчас недоступно. Проверьте интернет.</StateNote>
+          </div>
+        ) : (
+          <div className="nx-pair-body" style={{ display: "flex", gap: 20, marginTop: 20, alignItems: "stretch" }}>
+            {/* QR ведёт на сайт с ?pair=КОД — камера телефона откроет его сама */}
+            <div style={{ flexShrink: 0 }}>
+              <SkewTag>Камерой телефона</SkewTag>
+              <div style={{ marginTop: 10, opacity: expired || locked ? 0.25 : 1, transition: "opacity 200ms ease" }}>
+                {session && <QrCode text={pairUrl(session.code)} size={164} radius={0} label="QR-код для подключения устройства" />}
+              </div>
+            </div>
+            {/* Тонкая вертикальная грань между способами */}
+            <div className="nx-pair-or" aria-hidden="true" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, color: C.mutedSoft, fontSize: 11.5 }}>
+              <span style={{ flex: 1, width: 1, background: C.border }} />или<span style={{ flex: 1, width: 1, background: C.border }} />
+            </div>
+            <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column" }}>
+              <SkewTag active={false} style={{ alignSelf: "flex-start" }}>Кодом вручную</SkewTag>
+              {/* Код по клеткам — как поле ввода на другом устройстве */}
+              <div aria-label="Код подключения" style={{ display: "flex", gap: 5, marginTop: 14, userSelect: "all" }}>
+                {(session?.code || "").split("").map((ch, i) => (
+                  <span key={i} style={{
+                    width: 34, height: 46, flexShrink: 0, boxSizing: "border-box",
+                    border: `1px solid ${expired || locked ? C.border : C.borderStrong}`, borderRadius: 4,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    fontFamily: fontDisplay, fontSize: 22, color: expired || locked ? C.mutedSoft : C.text,
+                    background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`,
+                  }}>{ch}</span>
+                ))}
+              </div>
+              {/* Сколько осталось: полоса тает вместе со временем */}
+              <div aria-hidden="true" style={{ height: 3, marginTop: 14, background: `color-mix(in srgb, ${C.text} 8%, transparent)` }}>
+                <div style={{
+                  height: "100%", width: `${expired || locked ? 0 : Math.max(0, Math.min(100, (left / PAIR_TTL_MS) * 100))}%`,
+                  background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, transition: "width 500ms linear",
+                }} />
+              </div>
+              <div role="status" style={{ fontSize: 13, marginTop: 8, color: locked || expired ? C.red : C.muted }}>
+                {locked ? `Много неверных попыток. Снова через ${mmss(session.lockedUntil - now)}`
+                  : expired ? "Код истёк"
+                  : <>Действует ещё <span style={{ fontFamily: fontDisplay, color: C.text }}>{mmss(left)}</span></>}
+              </div>
+              {(expired || locked) && (
+                <button type="button" className="nx-primary" onClick={onNewCode} style={{
+                  ...btnReset, marginTop: 12, alignSelf: "flex-start", padding: "8px 16px", fontSize: 13, fontWeight: 500, borderRadius: 999,
+                  border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                }}>
+                  {Icon.refresh({ c: C.onFold, s: 14 })} Новый код
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <ol style={{ listStyle: "none", margin: "20px 0 0", padding: 0, display: "grid", gap: 8 }}>
+          {step(1, "Наведите камеру телефона на QR — откроется NEXA, останется войти и подтвердить")}
+          {step(2, "Или откройте NEXA на другом устройстве: Главная → «Связь устройств» → «Подключить по коду»")}
+        </ol>
+
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 12.5, color: C.mutedSoft }}>
+          Хотите просто посмотреть, как это выглядит?{" "}
+          <button type="button" onClick={onDemo} style={{ ...btnReset, fontSize: 12.5, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
+            Добавить демо-устройство
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Окно на подключаемом устройстве: «Подключаем…» → «Подключено» или ошибка.
+   claim — { phase: "waiting" | "ok" | "error", text } */
+function PairStatusDialog({ claim, onClose }) {
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const ok = claim.phase === "ok", waiting = claim.phase === "waiting";
+  return (
+    <div className="nx-viewer" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 320, background: `color-mix(in srgb, ${C.bg} 80%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-claim-title" className="nx-viewer-panel nx-pop" onClick={(e) => e.stopPropagation()}
+        style={{ width: "min(380px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "22px 22px 20px", boxSizing: "border-box", textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <span style={{ width: 48, height: 48, borderRadius: 4, transform: "rotate(45deg)", border: `1px solid ${ok ? C.green : waiting ? C.mint : C.red}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ transform: "rotate(-45deg)", display: "flex" }}>
+              {waiting ? <Spinner s={18} /> : ok ? Icon.check({ c: C.green, s: 20 }) : Icon.alert({ c: C.red, s: 20 })}
+            </span>
+          </span>
+        </div>
+        <div id="nx-claim-title" style={{ fontFamily: fontDisplay, fontSize: 22 }}>{waiting ? "Подключаем…" : ok ? "Подключено" : "Не получилось"}</div>
+        <div role="status" style={{ fontSize: 13.5, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
+          {waiting ? "Проверяем код на другом устройстве" : ok ? "Это устройство теперь в списке ваших устройств" : claim.text}
+        </div>
+        <button type="button" className="nx-ghost-btn" onClick={onClose} style={{
+          ...btnReset, marginTop: 18, padding: "9px 22px", fontSize: 13.5, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text,
+        }}>
+          {waiting ? "Скрыть" : ok ? "Готово" : "Закрыть"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Ввод кода с другого экрана (внизу колонки «Онлайн» в «Связи устройств»)
+function PairCodeForm({ onClaim }) {
+  const [code, setCode] = useState("");
+  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (clean.length === 6) { onClaim(clean); setCode(""); } }}
+      style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+      <label htmlFor="nx-pair-code" style={{ display: "block", fontSize: 13, fontWeight: 500, marginBottom: 3 }}>Подключить по коду</label>
+      <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 10, lineHeight: 1.4 }}>Код — на экране другого устройства в окне «Подключить»</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input id="nx-pair-code" className="nx-input" value={clean} onChange={(e) => setCode(e.target.value)}
+          autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={6} placeholder="······"
+          style={{
+            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: fontDisplay, fontSize: 19,
+            letterSpacing: "0.32em", textAlign: "center", textTransform: "uppercase",
+            border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "8px 10px", outline: "none",
+          }} />
+        <button type="submit" className={clean.length === 6 ? "nx-primary" : "nx-ghost-btn"} disabled={clean.length !== 6} style={{
+          ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999, fontWeight: 500,
+          ...(clean.length === 6
+            ? { border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }
+            : { border: `1px solid ${C.borderStrong}`, color: C.mutedSoft }),
+        }}>
+          Подключить
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /* ═══ СВЯЗЬ УСТРОЙСТВ (Supabase Realtime, src/lib/realtime.js) ═══
    Блок на Главной: кто из устройств аккаунта онлайн, «Передать» текст или
    ссылку и «Входящее». Демо-устройства тут ни при чём — это настоящие окна
@@ -1757,11 +2195,21 @@ async function copyText(text) {
   } catch { return false; }
 }
 
-// Подзаголовок секции внутри блока
-const LinkLabel = ({ children, right }) => (
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
-    <div style={{ fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.mutedSoft }}>{children}</div>
+// Шапка колонки внутри панели — как шапка списка «Устройства»
+const LinkColHead = ({ title, right }) => (
+  <div className="nx-link-colhead" style={{
+    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+    padding: "14px 18px", borderBottom: `1px solid ${C.border}`, minHeight: 22,
+  }}>
+    <span style={{ fontSize: 15, fontWeight: 500 }}>{title}</span>
     {right}
+  </div>
+);
+
+// Пусто в колонке: контурная складка и короткая подсказка
+const LinkEmpty = ({ children }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0", fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
+    <OutlineFold s={40} /> <span>{children}</span>
   </div>
 );
 
@@ -1769,30 +2217,34 @@ const LinkLabel = ({ children, right }) => (
 function InboxItem({ item, onRemove }) {
   const [copied, setCopied] = useState(false);
   const url = safeUrl(item.text);
-  const small = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", fontSize: 12.5, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, textDecoration: "none" };
+  const small = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", fontSize: 12, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, textDecoration: "none" };
   return (
-    <div className="nx-pop" style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: "10px 12px", background: C.bg }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.mutedSoft }}>
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div className="nx-pop nx-inbox-item" style={{ padding: "12px 0", borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <SkewTag active={!!url}>{url ? "Ссылка" : "Текст"}</SkewTag>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {item.from_name} · {inboxTime(item.ts)}
         </span>
         <button type="button" className="nx-icon-btn" onClick={() => onRemove(item.id)} aria-label="Убрать из входящих" style={{
-          ...btnReset, width: 24, height: 24, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          ...btnReset, width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {Icon.close({ c: C.mutedSoft, s: 13 })}
         </button>
       </div>
       {/* Текст выводим только как текст — React сам экранирует всё, HTML не вставляется */}
-      <div className="nx-scroll" style={{ fontSize: 14, lineHeight: 1.45, marginTop: 4, whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 132, overflowY: "auto", color: url ? C.mint : C.text }}>
+      <div className="nx-scroll" style={{
+        fontSize: 14, lineHeight: 1.45, marginTop: 8, whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 132, overflowY: "auto",
+        color: url ? C.mint : C.text,
+      }}>
         {item.text}
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
         <button type="button" className="nx-ghost-btn" onClick={async () => { if (await copyText(item.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={small}>
-          {copied ? Icon.check({ c: C.green, s: 14 }) : Icon.copy({ c: C.text, s: 14 })} {copied ? "Скопировано" : "Копировать"}
+          {copied ? Icon.check({ c: C.green, s: 13 }) : Icon.copy({ c: C.text, s: 13 })} {copied ? "Скопировано" : "Копировать"}
         </button>
         {url && (
           <a href={url} target="_blank" rel="noopener noreferrer" className="nx-ghost-btn" style={small}>
-            {Icon.shareUp({ c: C.text, s: 14 })} Открыть
+            {Icon.shareUp({ c: C.text, s: 13 })} Открыть
           </a>
         )}
       </div>
@@ -1801,14 +2253,17 @@ function InboxItem({ item, onRemove }) {
 }
 
 /* Сам блок. link — результат useDeviceLink, user — кто вошёл,
-   onLogin — открыть окно входа */
-function DeviceLinkPanel({ link, user, onLogin }) {
+   onLogin — открыть окно входа, onClaim — подключиться по коду,
+   names — { device_id: название } реальных устройств из списка (их можно переименовать) */
+function DeviceLinkPanel({ link, user, onLogin, onClaim, names = {} }) {
   const [text, setText] = useState("");
   const [to, setTo] = useState(null);
   const [sendState, setSendState] = useState("idle"); // idle | loading | success | error
   const [note, setNote] = useState(null);
   const selfId = link.self?.device_id;
-  const others = link.peers.filter((d) => d.device_id !== selfId);
+  // Устройство уже в списке — показываем его название оттуда
+  const peers = link.peers.map((d) => (names[d.device_id] ? { ...d, name: names[d.device_id] } : d));
+  const others = peers.filter((d) => d.device_id !== selfId);
   // Одно устройство онлайн — выбираем его сами; выбранное ушло — выбор сбрасывается
   const target = others.length === 1 ? others[0].device_id : others.some((d) => d.device_id === to) ? to : null;
   const online = link.status === "online";
@@ -1826,30 +2281,34 @@ function DeviceLinkPanel({ link, user, onLogin }) {
     }
   };
 
-  const frame = { border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 18px 20px", background: C.bg, textAlign: "left" };
-  const head = (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-      <div className="ng-display" style={{ fontSize: 20, fontWeight: 500 }}>Связь устройств</div>
-      {user && link.status !== "off" && (
-        <span role="status" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: online ? C.text : C.mutedSoft }}>
-          {online ? <Dot color={C.green} /> : link.status === "connecting" ? <Spinner s={11} /> : <Dot color={C.mutedSoft} />}
-          {LINK_STATUS[link.status]}
-        </span>
-      )}
-    </div>
+  // Статус канала справа от заголовка
+  const statusPill = user && link.status !== "off" && (
+    <span role="status" style={{
+      display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "5px 12px",
+      borderRadius: 999, border: `1px solid ${online ? `color-mix(in srgb, ${C.green} 45%, transparent)` : C.borderStrong}`,
+      color: online ? C.text : C.mutedSoft,
+    }}>
+      {online ? <Dot color={C.green} /> : link.status === "connecting" ? <Spinner s={11} /> : <Dot color={C.mutedSoft} />}
+      {LINK_STATUS[link.status]}
+    </span>
   );
+  const card = { border: `1px solid ${C.border}`, borderRadius: 16, background: C.bg, textAlign: "left", overflow: "hidden" };
 
   // Гость или аккаунты выключены — ничего не подключаем
   if (!user) {
     return (
-      <section aria-label="Связь устройств" style={frame}>
-        {head}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 220px", fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
-            Войдите, чтобы связать устройства: передавать текст и ссылки между сайтом и приложением.
+      <section aria-label="Связь устройств" style={{ textAlign: "left" }}>
+        <SectionHead eyebrow="Между устройствами" title="Связь устройств" />
+        <div style={{ ...card, padding: "18px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <OutlineFold s={52} />
+          <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 500 }}>Войдите, чтобы связать устройства</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginTop: 3 }}>
+              Передавайте текст и ссылки между сайтом и приложением, подключайте телефон по QR.
+            </div>
           </div>
           <button type="button" className="nx-primary" onClick={onLogin} style={{
-            ...btnReset, borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500,
+            ...btnReset, borderRadius: 999, padding: "9px 22px", fontSize: 13.5, fontWeight: 500,
             border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
           }}>
             Войти
@@ -1860,107 +2319,119 @@ function DeviceLinkPanel({ link, user, onLogin }) {
   }
 
   return (
-    <section aria-label="Связь устройств" style={frame}>
-      {head}
-      <div className="nx-link-grid">
-        {/* Подключённые сейчас (Presence) */}
-        <div>
-          <LinkLabel>Подключённые сейчас</LinkLabel>
-          {!online ? (
-            <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>
-              {link.status === "connecting" ? "Ищем ваши устройства…"
-                : link.status === "denied" ? "Канал связи ещё не настроен в Supabase"
-                : "Нет связи. Остальное работает как обычно"}
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {link.peers.map((d) => (
-                <div key={d.device_id} className="nx-pop" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 4 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {(d.platform === "mobile" ? Icon.phone : Icon.laptop)({ c: C.muted, s: 16 })}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {d.name}
+    <section aria-label="Связь устройств" style={{ textAlign: "left" }}>
+      <SectionHead eyebrow="Между устройствами" title="Связь устройств" right={statusPill} />
+      <div className="nx-link-grid" style={card}>
+        {/* Онлайн (Presence) */}
+        <div className="nx-link-col">
+          <LinkColHead title="Онлайн" right={online && (
+            <span title="В сети" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted }}>{peers.length} <Dot color={C.green} /></span>
+          )} />
+          <div style={{ padding: "8px 18px 18px" }}>
+            {!online ? (
+              <LinkEmpty>
+                {link.status === "connecting" ? "Ищем ваши устройства…"
+                  : link.status === "denied" ? "Канал связи ещё не настроен в Supabase"
+                  : "Нет связи. Остальное работает как обычно"}
+              </LinkEmpty>
+            ) : (
+              <>
+                {peers.map((d) => (
+                  <div key={d.device_id} className="nx-pop" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {(d.platform === "mobile" ? Icon.phone : Icon.laptop)({ c: C.text, s: 17 })}
                     </div>
-                    <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 1 }}>{peerLabel(d)}{d.device_id === selfId && " · это устройство"}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{peerLabel(d)}{d.device_id === selfId && " · это устройство"}</div>
+                    </div>
+                    <Dot color={C.green} />
                   </div>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.green, flexShrink: 0 }}>
-                    <Dot color={C.green} /> онлайн
-                  </span>
-                </div>
-              ))}
-              {others.length === 0 && (
-                <div style={{ fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
-                  Откройте NEXA на другом устройстве с этой же почтой — оно появится здесь.
-                </div>
-              )}
-            </div>
-          )}
+                ))}
+                {others.length === 0 && (
+                  <LinkEmpty>Откройте NEXA на другом устройстве с этой же почтой — оно появится здесь.</LinkEmpty>
+                )}
+              </>
+            )}
+            {online && onClaim && <PairCodeForm onClaim={onClaim} />}
+          </div>
         </div>
 
         {/* Передать (Broadcast «text.send») */}
-        <form onSubmit={(e) => { e.preventDefault(); send(); }}>
-          <LinkLabel right={text.length > TEXT_MAX - 300 && (
-            <span style={{ fontSize: 11.5, color: text.length > TEXT_MAX ? C.red : C.mutedSoft }}>{text.length}/{TEXT_MAX}</span>
-          )}>Передать</LinkLabel>
-          <textarea
-            className="nx-input" value={text} rows={3} maxLength={TEXT_MAX}
-            onChange={(e) => { setText(e.target.value); setNote(null); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
-            placeholder="Текст или ссылка"
-            aria-label="Текст или ссылка для передачи"
-            style={{
-              display: "block", width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 74,
-              background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit", lineHeight: 1.45,
-              border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "10px 12px", outline: "none",
-            }}
-          />
-          {/* Кому: одно устройство — подпись, несколько — выбор */}
-          <div style={{ marginTop: 10, fontSize: 12.5, color: C.mutedSoft }}>
-            {others.length === 0 ? "Некому отправить — другие устройства не в сети"
-              : others.length === 1 ? <>Получит: <span style={{ color: C.text }}>{others[0].name}</span></>
-              : (
-                <div role="radiogroup" aria-label="Кому отправить" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {others.map((d) => (
-                    <button key={d.device_id} type="button" role="radio" aria-checked={target === d.device_id} onClick={() => setTo(d.device_id)} style={{
-                      ...btnReset, padding: "6px 10px", fontSize: 12.5, borderRadius: 4,
-                      border: `1px solid ${target === d.device_id ? C.mint : C.borderStrong}`,
-                      color: target === d.device_id ? C.text : C.muted,
-                    }}>
-                      {d.name}
-                    </button>
-                  ))}
+        <form className="nx-link-col" onSubmit={(e) => { e.preventDefault(); send(); }}>
+          <LinkColHead title="Передать" right={text.length > TEXT_MAX - 300 && (
+            <span style={{ fontSize: 12, color: text.length > TEXT_MAX ? C.red : C.mutedSoft }}>{text.length}/{TEXT_MAX}</span>
+          )} />
+          <div style={{ padding: "16px 18px 18px" }}>
+            <textarea
+              className="nx-input" value={text} rows={3} maxLength={TEXT_MAX}
+              onChange={(e) => { setText(e.target.value); setNote(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
+              placeholder="Текст или ссылка"
+              aria-label="Текст или ссылка для передачи"
+              style={{
+                display: "block", width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 84,
+                background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`, color: C.text, fontSize: 15, fontFamily: "inherit", lineHeight: 1.45,
+                border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "11px 13px", outline: "none",
+              }}
+            />
+            {/* Кому: скошенные чипсы, как путь в «Файлах». Одно устройство — выбрано само */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <span style={{ fontSize: 12, color: C.mutedSoft }}>Кому</span>
+              {others.length === 0 ? (
+                <span style={{ fontSize: 12.5, color: C.mutedSoft }}>— другие устройства не в сети</span>
+              ) : (
+                <div role="radiogroup" aria-label="Кому отправить" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {others.map((d) => {
+                    const on = target === d.device_id;
+                    return (
+                      <button key={d.device_id} type="button" role="radio" aria-checked={on} onClick={() => setTo(d.device_id)}
+                        className={on ? undefined : "nx-crumb"} style={{
+                          ...btnReset, height: 28, padding: "0 18px 0 16px", fontSize: 12.5, whiteSpace: "nowrap",
+                          clipPath: "polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%)",
+                          background: on
+                            ? `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`
+                            : `linear-gradient(90deg, ${C.foldDeep}, color-mix(in srgb, ${C.foldBlue} 70%, ${C.foldDeep}))`,
+                          color: C.onFold, opacity: on ? 1 : 0.85,
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                        }}>
+                        {(d.platform === "mobile" ? Icon.phone : Icon.laptop)({ c: C.onFold, s: 13 })} {d.name}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+            </div>
+            {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10 }}>{note}</div>}
+            <StateButton
+              variant="primary" state={sendState}
+              labels={{ loading: "Отправляем…", success: "Отправлено", error: "Не отправилось" }}
+              icon={Icon.send({ c: C.onFold, s: 14 })}
+              disabled={!online || !target || !text.trim()}
+              onClick={send}
+              style={{ marginTop: 14, width: "100%", padding: "11px 16px", borderRadius: 999, fontSize: 13.5 }}
+            >
+              Отправить
+            </StateButton>
           </div>
-          {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 8 }}>{note}</div>}
-          <StateButton
-            variant="primary" state={sendState}
-            labels={{ loading: "Отправляем…", success: "Отправлено", error: "Не отправилось" }}
-            icon={Icon.send({ c: C.onFold, s: 14 })}
-            disabled={!online || !target || !text.trim()}
-            onClick={send}
-            style={{ marginTop: 12, width: "100%", padding: "10px 16px", borderRadius: 999 }}
-          >
-            Отправить
-          </StateButton>
         </form>
 
         {/* Входящее: последние 20, новое появляется сверху */}
-        <div>
-          <LinkLabel right={link.inbox.length > 0 && (
+        <div className="nx-link-col">
+          <LinkColHead title="Входящее" right={link.inbox.length > 0 && (
             <button type="button" onClick={link.clearInbox} style={{ ...btnReset, fontSize: 12, color: C.mutedSoft, textDecoration: "underline", textUnderlineOffset: 3 }}>
               Очистить
             </button>
-          )}>Входящее</LinkLabel>
-          {link.inbox.length === 0 ? (
-            <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>Пока ничего не пришло.</div>
-          ) : (
-            <div className="nx-scroll" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" }}>
-              {link.inbox.map((it) => <InboxItem key={it.id} item={it} onRemove={link.removeInbox} />)}
-            </div>
-          )}
+          )} />
+          <div style={{ padding: "4px 18px 14px" }}>
+            {link.inbox.length === 0 ? (
+              <div style={{ paddingTop: 8 }}><LinkEmpty>Пока ничего не пришло. Отправленное с другого устройства появится здесь.</LinkEmpty></div>
+            ) : (
+              <div className="nx-scroll nx-inbox-list" style={{ maxHeight: 420, overflowY: "auto" }}>
+                {link.inbox.map((it) => <InboxItem key={it.id} item={it} onRemove={link.removeInbox} />)}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -4903,7 +5374,40 @@ const RESULT_MS = 1600;     // сколько кнопка показывает 
 
 // onBack — вернуться назад, onRemove — удалить устройство из списка,
 // devices / files / folders — данные для превью, received — только что получен файл
-function DeviceScreen({ device: d, fileCount, devices, files, folders, received, demo = true, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast }) {
+// Реальное устройство (d.real): «в сети» — по Presence, «Найти» зовёт его
+// по-настоящему (onFind, findState), можно переименовать (onRename)
+// Карточка реального устройства на его экране: переименовать, тип, статус
+function RealDeviceInfo({ d, onRename }) {
+  const [name, setName] = useState(d.name);
+  useEffect(() => setName(d.name), [d.name]);
+  const clean = name.trim().slice(0, 40);
+  const changed = clean && clean !== d.name;
+  return (
+    <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px" }}>
+      <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
+        <label htmlFor="nx-real-name" style={{ fontSize: 12.5, color: C.mutedSoft }}>Название</label>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input id="nx-real-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
+            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
+            border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "9px 12px", outline: "none",
+          }} />
+          <button type="submit" className="nx-ghost-btn" disabled={!changed} style={{
+            ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999,
+            border: `1px solid ${C.borderStrong}`, color: changed ? C.text : C.mutedSoft,
+          }}>
+            Сохранить
+          </button>
+        </div>
+      </form>
+      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.5 }}>
+        {peerLabel(d)} · подключено по коду{d.isSelf ? " · это устройство" : ""}
+        <br />{d.online ? "Сейчас в сети" : "Сейчас не в сети — статус появится, когда NEXA откроют на нём"}
+      </div>
+    </div>
+  );
+}
+
+function DeviceScreen({ device: d, fileCount, devices, files, folders, received, demo = true, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast, onFind, findState, onRename }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const delRef = useRef(null);
@@ -5040,7 +5544,8 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       low: d.battery != null && d.battery < 20,
     },
     { label: "Память", value: `${used} из ${d.memory} ГБ`, pct: Math.min(100, (used / d.memory) * 100) },
-  ];
+  // Заряд настоящего устройства нам неизвестен — не выдумываем, показываем только память
+  ].filter((b) => !(d.real && b.label === "Заряд"));
   // Кнопки окна устройства — «таблетки», как в макете
   const pillBtn = { borderRadius: 999, minHeight: 46, padding: "10px 16px", justifyContent: "center", whiteSpace: "nowrap" };
 
@@ -5154,8 +5659,9 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(136px, 1fr))",
           gap: 10, padding: "20px 0 4px",
         }}>
-          {/* Главная кнопка экрана — подключить / отключить, на всю ширину */}
-          <StateButton
+          {/* Главная кнопка экрана — подключить / отключить, на всю ширину.
+              У реального устройства «в сети» решает само устройство — кнопки нет */}
+          {!d.real && <StateButton
             state={power}
             labels={powerLabels}
             icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
@@ -5163,15 +5669,17 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             style={{ ...pillBtn, gridColumn: "1 / -1" }}
           >
             {d.online ? "Отключить устройство" : "Подключить устройство"}
-          </StateButton>
+          </StateButton>}
           {/* Пока устройство звонит, кнопка в состоянии «загрузка» */}
           <StateButton
             variant="primary"
-            state={ringing ? "loading" : "idle"}
-            labels={{ loading: "Звонит…" }}
+            state={d.real
+              ? ({ ringing: "loading", found: "success", timeout: "error" }[findState] || "idle")
+              : ringing ? "loading" : "idle"}
+            labels={d.real ? { loading: "Ищем…", success: "Нашлось", error: "Не ответило" } : { loading: "Звонит…" }}
             icon={Icon.search({ c: C.onFold, s: 16 })}
-            disabled={!d.online || power === "loading"}
-            onClick={find}
+            disabled={!d.online || power === "loading" || d.isSelf}
+            onClick={d.real ? () => onFind?.(d) : find}
             style={pillBtn}
           >
             Найти
@@ -5185,11 +5693,18 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             Найти можно только устройство в сети
           </div>
         )}
+        {d.isSelf && (
+          <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
+            Это устройство — вы держите его в руках
+          </div>
+        )}
       </div>
 
       <div data-keep>
+        {/* Реальное устройство: имя и что это за устройство. Выдуманных переключателей нет */}
+        {d.real && <RealDeviceInfo d={d} onRename={onRename} />}
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
-        <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
+        {!d.real && <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
             <div key={s.key} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
@@ -5203,7 +5718,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
               <Toggle on={d[s.key]} onClick={() => onSetting(s.key)} />
             </div>
           ))}
-        </div>
+        </div>}
 
         {/* Удаление устройства. Сначала спрашиваем прямо здесь: "Удалить?" */}
         <div ref={delRef} style={{ padding: "14px 0 0" }}>
@@ -7317,14 +7832,14 @@ function SectionTitle({ children }) {
 
 // QR-код: свой рисунок из клеток. Светлая подложка нужна всегда —
 // камеры телефонов плохо читают «перевёрнутый» светлый код на тёмном
-function QrCode({ text, size = 120 }) {
+function QrCode({ text, size = 120, radius = 10, label = "QR-код: адрес сайта NEXA" }) {
   const qr = QRCode.create(text, { errorCorrectionLevel: "M" });
   const n = qr.modules.size, d = qr.modules.data, pad = 2;
   let path = "";
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (d[y * n + x]) path += `M${x + pad} ${y + pad}h1v1h-1z`;
   return (
-    <svg viewBox={`0 0 ${n + pad * 2} ${n + pad * 2}`} width={size} height={size} role="img" aria-label="QR-код: адрес сайта NEXA"
-      shapeRendering="crispEdges" style={{ display: "block", borderRadius: 10 }}>
+    <svg viewBox={`0 0 ${n + pad * 2} ${n + pad * 2}`} width={size} height={size} role="img" aria-label={label}
+      shapeRendering="crispEdges" style={{ display: "block", borderRadius: radius }}>
       <rect width="100%" height="100%" style={{ fill: C.onFold }} />
       <path d={path} style={{ fill: C.foldDeep }} />
     </svg>
@@ -7920,7 +8435,7 @@ function AuthGate({ onGuest }) {
 
 /* Окно входа из Настроек: та же панель, крестик и Esc закрывают.
    Фон под окном просто затемнён, без размытия */
-function AuthModal({ onClose }) {
+function AuthModal({ onClose, hint }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -7942,7 +8457,7 @@ function AuthModal({ onClose }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div id="nx-auth-modal-title" style={{ fontFamily: fontDisplay, fontSize: 24, lineHeight: 1.15 }}>Вход в NEXA</div>
-            <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6 }}>По коду из письма, без пароля</div>
+            <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6, lineHeight: 1.45 }}>{hint || "По коду из письма, без пароля"}</div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
             ...btnReset, width: 34, height: 34, flexShrink: 0,
@@ -8296,6 +8811,20 @@ export default function NexaApp() {
     return () => window.removeEventListener("nexa-log", onLog);
   }, []);
 
+  /* Связь устройств: свой закрытый канал аккаунта (src/lib/realtime.js).
+     Пришёл текст — короткое уведомление (только как текст); остальные события
+     (подключение, сцены, поиск) разбирает handleLinkEvent ниже */
+  const uid = auth.user?.id || null;
+  const link = useDeviceLink(uid, {
+    onText: (item) => showToast({
+      title: `Пришло с устройства «${item.from_name}»`,
+      text: item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
+      kind: "device",
+    }),
+    onEvent: (event, payload) => handleLinkEvent(event, payload),
+  });
+  const peerIds = new Set(link.peers.map((d) => d.device_id));
+
   // Тост — и сразу запись в центр уведомлений, чтобы не исчезал бесследно
   const showToast = (t) => {
     addNote(t);
@@ -8317,7 +8846,11 @@ export default function NexaApp() {
   const devices = [
     ...(demo ? DEVICES.filter((d) => !deviceStore.removed.includes(d.id)) : []),
     ...deviceStore.added.map((d) => ({ ...d, icon: deviceType(d.type).icon })),
-  ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }));
+  ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }))
+    // Реальные устройства (подключены по коду): «в сети» — по Presence
+    .map((d) => (d.real ? { ...d, online: peerIds.has(d.device_id), isSelf: d.device_id === link.self?.device_id } : d));
+  // Названия реальных устройств по device_id — для блока «Связь устройств»
+  const realNames = Object.fromEntries(devices.filter((d) => d.real).map((d) => [d.device_id, d.name]));
   const patchDevice = (id, patch) => setDeviceStore((s) => ({
     ...s, state: { ...s.state, [id]: { ...s.state[id], ...patch } },
     updated: { ...s.updated, [id]: Date.now() },
@@ -8370,7 +8903,6 @@ export default function NexaApp() {
 
   /* Облако аккаунта: устройства и чаты (src/lib/sync.js). Гостю — ничего не меняется.
      syncState — что сейчас с синхронизацией у каждой таблицы */
-  const uid = auth.user?.id || null;
   const [syncState, setSyncState] = useState({});
   useEffect(() => { setSyncState({}); }, [uid]);
   const devicesSync = useCloudList({
@@ -8392,13 +8924,238 @@ export default function NexaApp() {
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
   const retrySync = () => { devicesSync.retry(); chatsSync.retry(); };
 
-  // Связь устройств: свой закрытый канал аккаунта (src/lib/realtime.js).
-  // Пришло новое — короткое уведомление (текст выводится только как текст)
-  const link = useDeviceLink(uid, (item) => showToast({
-    title: `Пришло с устройства «${item.from_name}»`,
-    text: item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
-    kind: "device",
-  }));
+  /* ── События канала (кроме текста) ── */
+  const handleLinkEvent = (event, p) => {
+    if (event === "pair.claim") return answerClaim(p);
+    if (event === "pair.ok" || event === "pair.fail") return onPairAnswer(event, p);
+    if (event === "devices.changed") return refreshDevicesSoon();
+    if (event === "scene.set") return applyScene(p.scene, p.from_name || "другое устройство");
+    if (event === "find.ring") {
+      if (p.target_device_id === link.self?.device_id) setFinding({ from: p.from_name || "Устройство" });
+      return;
+    }
+    if (event === "find.stop") return onFindStop(p);
+  };
+  // Список устройств поменялся на другом устройстве — перечитываем из облака
+  const refreshDevicesSoon = () => setTimeout(() => devicesSync.retry(), 300);
+
+  /* ── Подключение: это устройство выдаёт код ── */
+  const pairRef = useRef(null);                  // { code, expiresAt, used, wrong, lockedUntil } — только в памяти
+  const [pairView, setPairView] = useState(null); // копия для окна
+  const [pairOpen, setPairOpen] = useState(false);
+  const newPairCode = () => {
+    const sess = { code: makePairCode(), expiresAt: Date.now() + PAIR_TTL_MS, used: false, wrong: 0, lockedUntil: 0 };
+    pairRef.current = sess; setPairView({ ...sess });
+  };
+  const openPair = () => { newPairCode(); setPairOpen(true); };
+  const closePair = () => { pairRef.current = null; setPairView(null); setPairOpen(false); };
+  // «Добавить устройство»: вошли — подключение по коду, гость — демо-мастер
+  const onAddDevice = () => (auth.user ? openPair() : setAddOpen(true));
+
+  // Реальное устройство в списке (повторное подключение — обновляем, не дублируем)
+  const addRealDevice = (p) => setDeviceStore((s) => {
+    const now = Date.now();
+    const old = s.added.find((d) => s.state[d.id]?.device_id === p.device_id);
+    const info = { real: true, device_id: p.device_id, kind: p.kind, platform: p.platform };
+    if (old) return { ...s, state: { ...s.state, [old.id]: { ...s.state[old.id], ...info } }, updated: { ...s.updated, [old.id]: now } };
+    const type = p.platform === "mobile" ? "phone" : "laptop";
+    const d = {
+      id: newId(), type, name: uniqueDeviceName(p.name || "Устройство", s.added.map((x) => x.name)),
+      createdAt: now, battery: null, memory: deviceType(type).memory, online: false, lastSeen: "только что",
+    };
+    return { ...s, added: [...s.added, d], state: { ...s.state, [d.id]: info }, updated: { ...s.updated, [d.id]: now } };
+  });
+
+  // Пришёл код: сверяем здесь, на выдавшем устройстве. Код нигде не логируем
+  const answerClaim = (p) => {
+    const sess = pairRef.current;
+    if (!sess) return; // окна с кодом нет — отвечает не это устройство
+    const fail = (reason, left) => link.emit("pair.fail", { device_id: p.device_id, reason, ...(left != null ? { left } : {}) });
+    const now = Date.now();
+    if (sess.lockedUntil > now) return fail("locked");
+    if (sess.used) return fail("used");
+    if (now > sess.expiresAt) return fail("expired");
+    if (p.code !== sess.code) {
+      sess.wrong += 1;
+      if (sess.wrong >= PAIR_MAX_TRIES) { sess.wrong = 0; sess.lockedUntil = now + PAIR_LOCK_MS; setPairView({ ...sess }); return fail("locked"); }
+      setPairView({ ...sess });
+      return fail("wrong", PAIR_MAX_TRIES - sess.wrong);
+    }
+    sess.used = true; // код сразу недействителен
+    addRealDevice(p);
+    link.emit("pair.ok", { device_id: p.device_id, name: p.name || "Устройство" });
+    showToast({ title: "Устройство подключено", text: p.name || "Устройство", kind: "device" });
+    closePair();
+    // Когда новое устройство уйдёт в облако — пусть остальные перечитают список
+    setTimeout(() => link.emit("devices.changed", {}), 2500);
+  };
+
+  /* ── Подключение: это устройство вводит код ── */
+  const [claim, setClaim] = useState(null); // { phase: "waiting" | "ok" | "error", text }
+  const claimTimer = useRef(null);
+  const claimPair = async (raw) => {
+    const code = String(raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!PAIR_CODE_RE.test(code)) return setClaim({ phase: "error", text: "Код — это 6 букв и цифр с экрана другого устройства. Проверьте, нет ли опечатки." });
+    const lock = readPairLock();
+    if (lock.until > Date.now()) return setClaim({ phase: "error", text: `Слишком много неверных попыток. Попробуйте через ${mmss(lock.until - Date.now())}.` });
+    if (link.status !== "online") return setClaim({ phase: "error", text: "Нет связи — подключиться не получится. Проверьте интернет и попробуйте снова." });
+    setClaim({ phase: "waiting" });
+    const me = link.self;
+    const sent = await link.emit("pair.claim", { code, device_id: me.device_id, name: me.name, kind: me.kind, platform: me.platform });
+    if (!sent) return setClaim({ phase: "error", text: "Не отправилось — попробуйте ещё раз." });
+    clearTimeout(claimTimer.current);
+    claimTimer.current = setTimeout(() => setClaim((c) => (c?.phase === "waiting"
+      ? { phase: "error", text: "Ответа нет. Проверьте, что окно с кодом открыто на другом устройстве и там вход с той же почтой." }
+      : c)), PAIR_ANSWER_MS);
+  };
+  const onPairAnswer = (event, p) => {
+    if (p.device_id !== link.self?.device_id) {
+      // Подключили другое устройство — обновим список
+      if (event === "pair.ok") refreshDevicesSoon();
+      return;
+    }
+    if (event === "pair.ok") {
+      clearTimeout(claimTimer.current);
+      savePairLock({ wrong: 0, until: 0 });
+      setClaim({ phase: "ok" });
+      setTimeout(() => devicesSync.retry(), 2800); // к этому времени устройство уже в облаке
+      return;
+    }
+    setClaim((c) => {
+      if (c?.phase === "ok") return c; // другое окно уже ответило «подключено»
+      clearTimeout(claimTimer.current);
+      if (p.reason === "wrong") {
+        const lock = readPairLock(); const wrong = lock.wrong + 1;
+        if (wrong >= PAIR_MAX_TRIES) { savePairLock({ wrong: 0, until: Date.now() + PAIR_LOCK_MS }); return { phase: "error", text: "Неверный код. Попыток больше нет — подождите минуту." }; }
+        savePairLock({ wrong, until: 0 });
+        return { phase: "error", text: `Неверный код. Осталось попыток: ${Math.min(PAIR_MAX_TRIES - wrong, p.left ?? 5)}.` };
+      }
+      return { phase: "error", text: {
+        expired: "Код истёк. Нажмите «Новый код» на другом устройстве.",
+        used: "Этот код уже использован. Нужен новый.",
+        locked: "Слишком много неверных попыток. Подождите минуту.",
+      }[p.reason] };
+    });
+  };
+
+  // Открыли сайт по QR (?pair=КОД): запоминаем код и сразу убираем его из адреса
+  const [pendingPair, setPendingPair] = useState(() => {
+    try {
+      const u = new URL(window.location.href);
+      if (!u.searchParams.has("pair")) return null;
+      const c = (u.searchParams.get("pair") || "").toUpperCase();
+      u.searchParams.delete("pair");
+      window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+      return PAIR_CODE_RE.test(c) ? c : null;
+    } catch { return null; }
+  });
+  useEffect(() => {
+    if (!pendingPair || !auth.ready) return;
+    if (!auth.user) { if (!showGate) setAuthOpen(true); return; } // сначала вход
+    if (link.status === "online") { claimPair(pendingPair); setPendingPair(null); return; }
+    if (link.status === "offline" || link.status === "denied") {
+      setClaim({ phase: "error", text: "Нет связи — подключиться не получится. Откройте ссылку ещё раз, когда появится интернет." });
+      setPendingPair(null);
+    }
+  }, [pendingPair, auth.ready, auth.user?.id, link.status]);
+
+  /* ── Сцены ── */
+  const sceneKey = uid ? `nexa-scene@${uid}` : "nexa-scene";
+  const readScene = (key) => { try { const v = localStorage.getItem(key); return SCENE_IDS.includes(v) ? v : null; } catch { return null; } };
+  const [scene, setScene] = useState(() => readScene(sceneKey));
+  const [prevTheme, setPrevTheme] = useState(() => { try { return localStorage.getItem(SCENE_THEME_KEY); } catch { return null; } });
+  // Сон — тёмная тема на этом устройстве (прежнюю запоминаем); другая сцена — возвращаем
+  const sceneTheme = (id) => {
+    const cur = readTheme();
+    if (id === "sleep") {
+      if (cur !== "dark") {
+        try { localStorage.setItem(SCENE_THEME_KEY, cur); } catch {}
+        setPrevTheme(cur);
+        switchTheme("dark", () => window.dispatchEvent(new Event("nexa-theme-change")));
+      }
+      return;
+    }
+    let prev = null;
+    try { prev = localStorage.getItem(SCENE_THEME_KEY); localStorage.removeItem(SCENE_THEME_KEY); } catch {}
+    setPrevTheme(null);
+    if (prev && prev !== cur) switchTheme(prev, () => window.dispatchEvent(new Event("nexa-theme-change")));
+  };
+  const restoreTheme = () => {
+    const prev = prevTheme || "light";
+    try { localStorage.removeItem(SCENE_THEME_KEY); } catch {}
+    setPrevTheme(null);
+    switchTheme(prev, () => window.dispatchEvent(new Event("nexa-theme-change")));
+  };
+  // Применить сцену здесь. from — кто включил (для уведомления), если не мы
+  const applyScene = (id, from) => {
+    if (!SCENE_IDS.includes(id) || id === sceneRef.current) return;
+    sceneRef.current = id;
+    setScene(id);
+    try { localStorage.setItem(sceneKey, id); } catch {}
+    sceneTheme(id);
+    if (from) showToast({ title: `Сцена «${SCENES[id].label}»`, text: `Включили на устройстве «${from}»`, kind: "theme" });
+  };
+  const sceneRef = useRef(scene);
+  // Выбрали сцену: здесь, на всех устройствах онлайн и в аккаунте (для входа на другом устройстве)
+  const pickScene = (id) => {
+    applyScene(id);
+    if (uid) {
+      link.emit("scene.set", { scene: id });
+      supabase?.auth.updateUser({ data: { scene: id } }).catch(() => {});
+    }
+  };
+  // Вошли / сменили аккаунт: сцена из браузера, потом свежая из аккаунта
+  useEffect(() => {
+    const local = readScene(sceneKey);
+    sceneRef.current = local; setScene(local);
+    if (!uid || !supabase) return;
+    let off = false;
+    supabase.auth.getUser().then(({ data }) => {
+      const sc = data?.user?.user_metadata?.scene;
+      if (!off && SCENE_IDS.includes(sc) && sc !== sceneRef.current) applyScene(sc);
+    }).catch(() => {});
+    return () => { off = true; };
+  }, [uid]);
+  const quiet = !!SCENES[scene]?.quiet;
+
+  /* ── Найти устройство ── */
+  const [finding, setFinding] = useState(null);     // меня ищут: { from }
+  const [findState, setFindState] = useState({});   // ищем мы: { device_id: "ringing" | "found" | "timeout" }
+  const findTimers = useRef({});
+  const clearFindLater = (id) => setTimeout(() => setFindState((st) => { const n = { ...st }; delete n[id]; return n; }), 5000);
+  const findDevice = async (d) => {
+    if (!d.real || !d.online || d.isSelf) return;
+    setFindState((st) => ({ ...st, [d.device_id]: "ringing" }));
+    const ok = await link.emit("find.ring", { target_device_id: d.device_id, id: newId() });
+    if (!ok) {
+      setFindState((st) => ({ ...st, [d.device_id]: "timeout" })); clearFindLater(d.device_id);
+      showToast({ title: "Не получилось позвать устройство", text: "Нет связи — попробуйте ещё раз" });
+      return;
+    }
+    clearTimeout(findTimers.current[d.device_id]);
+    // Не ответило за минуту с запасом — «Не ответило»
+    findTimers.current[d.device_id] = setTimeout(() => {
+      setFindState((st) => (st[d.device_id] === "ringing" ? { ...st, [d.device_id]: "timeout" } : st));
+      clearFindLater(d.device_id);
+    }, FIND_RING_MS + 5000);
+  };
+  const onFindStop = (p) => {
+    setFindState((st) => (st[p.target_device_id] ? { ...st, [p.target_device_id]: p.found ? "found" : "timeout" } : st));
+    clearTimeout(findTimers.current[p.target_device_id]);
+    clearFindLater(p.target_device_id);
+    if (p.found) showToast({ title: "Нашлось", text: p.from_name || "Устройство", kind: "device" });
+  };
+  // Меня нашли (или минута прошла): выключаем сигнал и сообщаем
+  const stopFinding = (found) => {
+    setFinding(null);
+    link.emit("find.stop", { target_device_id: link.self.device_id, found });
+  };
+  // Переименовать реальное устройство
+  const renameDevice = (id, name) => {
+    setDeviceStore((s) => ({ ...s, added: s.added.map((d) => (d.id === id ? { ...d, name } : d)), updated: { ...s.updated, [id]: Date.now() } }));
+    showToast({ title: "Название сохранено", text: name, kind: "device" });
+    setTimeout(() => link.emit("devices.changed", {}), 2000);
+  };
 
   // «Удалить мои данные»: облако → потом всё локальное этого аккаунта.
   // Возвращает текст ошибки или null
@@ -9140,11 +9897,24 @@ export default function NexaApp() {
         .nx-upload-bar { transform-origin: left; animation: nx-upload linear 1 both; }
         /* Поле ввода (название устройства): в фокусе рамка мятная, при ошибке остаётся красной */
         .nx-input { transition: border-color 160ms ease; }
+        /* Сцены: четыре в ряд на компьютере, две на телефоне */
+        .nx-scene-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+        /* «Устройство ищут»: квадратные волны расходятся от центра */
+        .nx-find-wave { animation: nx-find-wave 1.8s ease-out infinite; opacity: 0; }
+        @keyframes nx-find-wave { from { transform: rotate(45deg) scale(0.5); opacity: 0.9; } to { transform: rotate(45deg) scale(1.25); opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) { .nx-find-wave { animation: none; opacity: 0.5; } }
         /* Блок «Связь устройств»: три колонки на компьютере */
-        .nx-link-grid { display: grid; grid-template-columns: 1fr 1.15fr 1.15fr; gap: 24px; align-items: start; }
+        .nx-link-grid { display: grid; grid-template-columns: 1fr 1.15fr 1.15fr; align-items: stretch; }
+        /* Колонки разделены тонкой линией, как строки в списке устройств */
+        .nx-link-col + .nx-link-col { border-left: 1px solid ${C.border}; }
+        .nx-inbox-list > .nx-inbox-item:first-child { border-top: none !important; }
+        /* Складка сцены плавно наливается цветом при выборе */
+        .nx-scene-fold { transition: opacity 260ms ease; }
+        .nx-scene-tile:hover .nx-scene-fold { opacity: 0.6 !important; }
+        .nx-scene-tile[aria-checked="true"]:hover .nx-scene-fold { opacity: 1 !important; }
         /* Колонки не раздвигаются длинным текстом — он переносится или обрезается */
         .nx-link-grid > * { min-width: 0; }
-        @media (max-width: 1100px) { .nx-link-grid { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 1100px) { .nx-link-grid { grid-template-columns: 1fr 1fr; } .nx-link-col:last-child { grid-column: 1 / -1; border-left: none !important; border-top: 1px solid ${C.border}; } }
         /* Строка синхронизации аккаунта: на компьютере — внизу слева, у боковой панели */
         .nx-sync-status { left: 98px; bottom: 20px; }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
@@ -9270,8 +10040,12 @@ export default function NexaApp() {
           /* Экран настроек на телефоне */
           .ng-display.nx-section-title { font-size: 18px !important; margin-bottom: 10px !important; }
           .nx-settings-search { display: none !important; }
+          .nx-scene-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .nx-pair-body { flex-direction: column; align-items: flex-start !important; }
+          .nx-pair-or { display: none !important; }
           /* Связь устройств — одной колонкой */
-          .nx-link-grid { grid-template-columns: 1fr !important; gap: 20px !important; }
+          .nx-link-grid { grid-template-columns: 1fr !important; }
+          .nx-link-col + .nx-link-col { border-left: none !important; border-top: 1px solid ${C.border}; }
           /* Строка синхронизации — над нижней панелью */
           .nx-sync-status { left: 16px !important; bottom: calc(var(--sab) + 96px) !important; }
           /* Строка с переключателем темы: переключатель уходит под текст
@@ -9595,7 +10369,14 @@ export default function NexaApp() {
       <SyncStatus loading={syncLoading} text={syncError} onRetry={retrySync} />
       {/* Первый запуск: войти или продолжить без аккаунта */}
       {showGate && <AuthGate onGuest={() => { saveGuest(true); setGuest(true); }} />}
-      {authOpen && !auth.user && <AuthModal onClose={() => setAuthOpen(false)} />}
+      {authOpen && !auth.user && <AuthModal onClose={() => { setAuthOpen(false); setPendingPair(null); }}
+        hint={pendingPair ? "Войдите той же почтой, что и на другом устройстве, — потом подключим это устройство" : null} />}
+      {/* Подключение по коду: окно с кодом и окно «Подключаем…» */}
+      {pairOpen && <PairModal session={pairView} online={link.status === "online"} onNewCode={newPairCode}
+        onDemo={() => { closePair(); setAddOpen(true); }} onClose={closePair} />}
+      {claim && <PairStatusDialog claim={claim} onClose={() => setClaim(null)} />}
+      {/* Это устройство ищут */}
+      {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
       <Sidebar active={tab} onChange={goTab} />
           <MobileTabBar active={tab} onChange={goTab} />
 
@@ -9631,8 +10412,11 @@ export default function NexaApp() {
         onSetOnline={(online) => patchDevice(openDevice.id, { online })}
         onSetting={(key) => patchDevice(openDevice.id, { [key]: !openDevice[key] })}
         onOpenFiles={() => openDeviceFiles(openDevice.id)}
-        onRemove={() => removeDevices([openDevice.id])}
+        onRemove={() => { const real = openDevice.real; removeDevices([openDevice.id]); if (real) setTimeout(() => link.emit("devices.changed", {}), 2000); }}
         onToast={showToast}
+        onFind={findDevice}
+        findState={openDevice.real ? findState[openDevice.device_id] : undefined}
+        onRename={(name) => renameDevice(openDevice.id, name)}
       />
     </div>
   ) : tab === "assistant" ? (
@@ -9644,7 +10428,7 @@ export default function NexaApp() {
       tab={tab}
       setTab={goTab}
       devices={devices}
-      onAddDevice={() => setAddOpen(true)}
+      onAddDevice={onAddDevice}
       onUploadFiles={() => uploadInputRef.current?.click()}
       bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />}
     />
@@ -9657,9 +10441,17 @@ export default function NexaApp() {
           update={appUpdate}
           onNavigate={goTab}
           onOpenDevice={showDevice}
-          onAddDevice={() => setAddOpen(true)}
+          onAddDevice={onAddDevice}
           onRestoreDevices={restoreDevices}
-          linkPanel={<DeviceLinkPanel link={link} user={auth.user} onLogin={() => setAuthOpen(true)} />}
+          quiet={quiet}
+          findState={findState}
+          onFind={findDevice}
+          topBlock={scene === "road" ? <DeviceLinkPanel link={link} user={auth.user} onLogin={() => setAuthOpen(true)} onClaim={claimPair} names={realNames} /> : null}
+          linkPanel={<>
+            <ScenesBlock scene={scene} onPick={pickScene} user={auth.user} online={link.status === "online"}
+              canRestoreTheme={scene === "sleep" && !!prevTheme} onRestoreTheme={restoreTheme} />
+            {scene !== "road" && <DeviceLinkPanel link={link} user={auth.user} onLogin={() => setAuthOpen(true)} onClaim={claimPair} names={realNames} />}
+          </>}
           loading={syncLoading && !!syncState.devices?.loading}
           canRestore={demo && deviceStore.removed.length > 0}
         />

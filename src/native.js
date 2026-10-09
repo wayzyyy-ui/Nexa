@@ -47,6 +47,19 @@ export function openUpdate(url) {
   window.location.href = url;
 }
 
+/* Вибрация (экран «Устройство ищут»). В приложении — через плагин Haptics,
+   на сайте — navigator.vibrate (на iPhone в браузере её нет — тогда просто тихо) */
+export async function vibrate(ms = 400) {
+  try {
+    if (isNative) {
+      const { Haptics } = await import("@capacitor/haptics");
+      await Haptics.vibrate({ duration: ms });
+    } else {
+      navigator.vibrate?.(ms);
+    }
+  } catch {}
+}
+
 /* Значки статус-бара и нижней полосы — под цвет темы.
    Сами полосы прозрачные (приложение рисуется до краёв экрана), под ними
    виден фон страницы, поэтому их цвет и так совпадает с темой.

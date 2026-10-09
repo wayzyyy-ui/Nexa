@@ -4,8 +4,9 @@
    доступ проверяют правила из supabase/realtime-policies.sql).
    - Presence — кто сейчас онлайн: каждое устройство сообщает о себе
      { device_id, name, kind, platform, joined_at }.
-   - Broadcast — сообщения между устройствами. Пока одно событие:
-     «text.send» { id, text, from_device, from_name, to_device, ts }.
+   - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
+     pair.fail, scene.set, find.ring, find.stop, devices.changed.
+     Ко всем сообщениям добавляются from_device, from_name и ts.
    Протокол описан в CLAUDE.md, раздел «Связь устройств». */
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
@@ -14,10 +15,16 @@ import { newId } from "./sync.js";
 
 export const EVENT_TEXT = "text.send";
 export const TEXT_MAX = 2000;    // самое длинное сообщение
-export const SEND_GAP_MS = 300;  // не чаще одного сообщения в 300 мс с устройства
+export const SEND_GAP_MS = 300;  // отправляем не чаще одного сообщения в 300 мс
+const RECEIVE_GAP_MS = 250;      // принимаем с одного устройства не чаще (запас на задержки сети)
 export const INBOX_MAX = 20;     // сколько входящих помним
 const DEVICE_ID_KEY = "nexa-device-id";
 const inboxKey = (uid) => `nexa-inbox@${uid}`;
+
+// Код подключения: 6 символов без похожих (нет 0, O, 1, I, L)
+export const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const PAIR_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
+export const SCENE_IDS = ["work", "home", "road", "sleep"];
 
 /* Кто это устройство. device_id создаётся один раз и живёт в localStorage,
    имя — по типу: приложение, сайт на телефоне или на компьютере */
@@ -45,23 +52,41 @@ export function safeUrl(text) {
   } catch { return null; }
 }
 
-// Сообщение правильной формы? Всё остальное молча пропускаем
+/* ─── Проверка формы сообщений. Неверное — молча пропускаем ─── */
 const isStr = (v, max) => typeof v === "string" && v.length > 0 && v.length <= max;
-function validText(p) {
-  return !!p && typeof p === "object"
-    && isStr(p.id, 64) && isStr(p.from_device, 64)
+const isId = (v) => isStr(v, 64);
+const isTs = (v) => typeof v === "number" && Number.isFinite(v);
+const isName = (v) => v == null || (typeof v === "string" && v.length <= 60);
+const isKind = (v) => v === "web" || v === "app";
+const isPlatform = (v) => v === "desktop" || v === "mobile";
+// Общее у всех: кто прислал и когда
+const base = (p) => !!p && typeof p === "object" && !Array.isArray(p) && isId(p.from_device) && isTs(p.ts) && isName(p.from_name);
+
+const SCHEMAS = {
+  "text.send": (p) => base(p) && isId(p.id)
     && typeof p.text === "string" && p.text.trim().length > 0 && p.text.length <= TEXT_MAX
-    && typeof p.ts === "number" && Number.isFinite(p.ts)
-    && (p.to_device == null || isStr(p.to_device, 64))
-    && (p.from_name == null || (typeof p.from_name === "string" && p.from_name.length <= 60));
-}
+    && (p.to_device == null || isId(p.to_device)),
+  // Подключаемое устройство предъявляет код
+  "pair.claim": (p) => base(p) && typeof p.code === "string" && PAIR_CODE_RE.test(p.code)
+    && isId(p.device_id) && p.device_id === p.from_device && isName(p.name) && isKind(p.kind) && isPlatform(p.platform),
+  // Ответ устройства с кодом: подключено / не вышло
+  "pair.ok": (p) => base(p) && isId(p.device_id) && isName(p.name),
+  "pair.fail": (p) => base(p) && isId(p.device_id) && ["wrong", "expired", "used", "locked"].includes(p.reason)
+    && (p.left == null || (Number.isInteger(p.left) && p.left >= 0 && p.left <= 5)),
+  "scene.set": (p) => base(p) && SCENE_IDS.includes(p.scene),
+  "find.ring": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
+  "find.stop": (p) => base(p) && isId(p.target_device_id) && typeof p.found === "boolean",
+  // Список устройств аккаунта изменился — перечитать из облака
+  "devices.changed": (p) => base(p),
+};
+export const LINK_EVENTS = Object.keys(SCHEMAS);
 
 // Из состояния Presence — список устройств (по одному на device_id)
 function flattenPresence(state) {
   const list = [];
   for (const metas of Object.values(state || {})) {
     const m = metas?.[0];
-    if (!m || !isStr(m.device_id, 64)) continue;
+    if (!m || !isId(m.device_id)) continue;
     list.push({
       device_id: m.device_id,
       name: typeof m.name === "string" ? m.name.slice(0, 60) : "Устройство",
@@ -74,15 +99,19 @@ function flattenPresence(state) {
 }
 
 function loadInbox(uid) {
-  try { const v = JSON.parse(localStorage.getItem(inboxKey(uid))); return Array.isArray(v) ? v.filter(validText).slice(0, INBOX_MAX) : []; } catch { return []; }
+  try {
+    const v = JSON.parse(localStorage.getItem(inboxKey(uid)));
+    return Array.isArray(v) ? v.filter((x) => x && isId(x.id) && typeof x.text === "string" && isTs(x.ts)).slice(0, INBOX_MAX) : [];
+  } catch { return []; }
 }
 
 /* Хук связи устройств.
    uid — id вошедшего (null — гость: ничего не подключаем);
-   onIncoming(item) — пришло новое сообщение (для уведомления).
+   handlers — { onText(item), onEvent(event, payload) }: что делать с пришедшим.
    Возвращает: status ("off" | "connecting" | "online" | "offline" | "denied"),
-   self (это устройство), peers (кто онлайн, вместе с этим), inbox, send, removeInbox, clearInbox */
-export function useDeviceLink(uid, onIncoming) {
+   self (это устройство), peers (кто онлайн, вместе с этим), inbox,
+   send (текст), emit (любое событие протокола), removeInbox, clearInbox */
+export function useDeviceLink(uid, handlers) {
   const [status, setStatus] = useState("off");
   const [peers, setPeers] = useState([]);
   const [inbox, setInbox] = useState(() => (uid ? loadInbox(uid) : []));
@@ -90,10 +119,12 @@ export function useDeviceLink(uid, onIncoming) {
   const self = useRef(null);
   if (!self.current) self.current = deviceIdentity();
   const channelRef = useRef(null);
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const lastSent = useRef(0);
   const lastFrom = useRef({});   // device_id → когда пришло последнее (защита от шквала)
-  const incoming = useRef(onIncoming);
-  incoming.current = onIncoming;
+  const h = useRef(handlers);
+  h.current = handlers;
 
   // Входящее у каждого аккаунта своё
   useEffect(() => { setInbox(uid ? loadInbox(uid) : []); }, [uid]);
@@ -106,25 +137,31 @@ export function useDeviceLink(uid, onIncoming) {
     const me = self.current;
     setStatus(navigator.onLine === false ? "offline" : "connecting");
 
-    // Пришло сообщение: проверяем форму, своё и не нам — пропускаем
-    const receive = (payload) => {
-      if (!validText(payload)) return;
+    // Пришло сообщение: неизвестное, неверной формы, своё и слишком частое — пропускаем
+    const receive = (event, payload) => {
+      const ok = SCHEMAS[event];
+      if (!ok || !ok(payload)) return;
       if (payload.from_device === me.device_id) return;
-      if (payload.to_device && payload.to_device !== me.device_id) return;
       const now = Date.now();
-      if (now - (lastFrom.current[payload.from_device] || 0) < SEND_GAP_MS) return;
+      if (now - (lastFrom.current[payload.from_device] || 0) < RECEIVE_GAP_MS) return;
       lastFrom.current[payload.from_device] = now;
-      const item = {
-        id: payload.id, text: payload.text, from_device: payload.from_device,
-        from_name: payload.from_name || "Устройство", ts: payload.ts, to_device: payload.to_device ?? null,
-      };
-      setInbox((list) => {
-        if (list.some((x) => x.id === item.id)) return list;
-        const next = [item, ...list].slice(0, INBOX_MAX);
-        try { localStorage.setItem(inboxKey(uid), JSON.stringify(next)); } catch {}
-        return next;
-      });
-      incoming.current?.(item);
+
+      if (event === "text.send") {
+        if (payload.to_device && payload.to_device !== me.device_id) return; // не нам
+        const item = {
+          id: payload.id, text: payload.text, from_device: payload.from_device,
+          from_name: payload.from_name || "Устройство", ts: payload.ts, to_device: payload.to_device ?? null,
+        };
+        setInbox((list) => {
+          if (list.some((x) => x.id === item.id)) return list;
+          const next = [item, ...list].slice(0, INBOX_MAX);
+          try { localStorage.setItem(inboxKey(uid), JSON.stringify(next)); } catch {}
+          return next;
+        });
+        h.current?.onText?.(item);
+        return;
+      }
+      h.current?.onEvent?.(event, payload);
     };
 
     (async () => {
@@ -135,20 +172,20 @@ export function useDeviceLink(uid, onIncoming) {
         config: { private: true, broadcast: { self: false, ack: true }, presence: { key: me.device_id } },
       });
       channelRef.current = channel;
-      channel
-        .on("presence", { event: "sync" }, () => setPeers(flattenPresence(channel.presenceState())))
-        .on("broadcast", { event: EVENT_TEXT }, ({ payload }) => receive(payload))
-        .subscribe(async (st, err) => {
-          if (closed) return;
-          if (st === "SUBSCRIBED") {
-            setStatus("online");
-            try { await channel.track({ ...me, joined_at: new Date().toISOString() }); } catch {}
-          } else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT" || st === "CLOSED") {
-            // Нет прав на канал (правила не вставлены) — отдельная подпись
-            setStatus(/unauthori|permission/i.test(String(err?.message || "")) ? "denied" : "offline");
-            setPeers([]);
-          }
-        });
+      channel.on("presence", { event: "sync" }, () => setPeers(flattenPresence(channel.presenceState())));
+      // Слушаем только известные события — остальные до нас не доходят
+      for (const ev of LINK_EVENTS) channel.on("broadcast", { event: ev }, ({ payload }) => receive(ev, payload));
+      channel.subscribe(async (st, err) => {
+        if (closed) return;
+        if (st === "SUBSCRIBED") {
+          setStatus("online");
+          try { await channel.track({ ...me, joined_at: new Date().toISOString() }); } catch {}
+        } else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT" || st === "CLOSED") {
+          // Нет прав на канал (правила не вставлены) — отдельная подпись
+          setStatus(/unauthori|permission/i.test(String(err?.message || "")) ? "denied" : "offline");
+          setPeers([]);
+        }
+      });
     })();
 
     const onOffline = () => { setStatus("offline"); setPeers([]); };
@@ -174,27 +211,34 @@ export function useDeviceLink(uid, onIncoming) {
     };
   }, [uid]);
 
+  /* Отправить событие протокола. Пауза 300 мс между сообщениями соблюдается
+     сама: если отправляли только что — ждём. Возвращает true, если дошло до сервера */
+  const emit = async (event, payload = {}) => {
+    const ch = channelRef.current;
+    if (!ch || statusRef.current !== "online" || !SCHEMAS[event]) return false;
+    const waitMs = lastSent.current + SEND_GAP_MS - Date.now();
+    lastSent.current = Math.max(Date.now(), lastSent.current + SEND_GAP_MS);
+    if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+    const me = self.current;
+    try {
+      const res = await ch.send({ type: "broadcast", event, payload: { ...payload, from_device: me.device_id, from_name: me.name, ts: Date.now() } });
+      return res === "ok";
+    } catch { return false; }
+  };
+
   // Отправить текст или ссылку на устройство to (device_id). Возвращает { ok } или { error }
   const send = async (text, to) => {
     const t = String(text || "").trim();
     if (!t) return { error: "Напишите текст или вставьте ссылку" };
     if (t.length > TEXT_MAX) return { error: `Слишком длинно — до ${TEXT_MAX} символов` };
-    const ch = channelRef.current;
-    if (!ch || status !== "online") return { error: "Нет связи — отправить не получилось" };
+    if (!channelRef.current || status !== "online") return { error: "Нет связи — отправить не получилось" };
     if (Date.now() - lastSent.current < SEND_GAP_MS) return { error: "Чуть помедленнее — подождите секунду" };
-    lastSent.current = Date.now();
-    const me = self.current;
-    const payload = { id: newId(), text: t, from_device: me.device_id, from_name: me.name, to_device: to || null, ts: Date.now() };
-    try {
-      const res = await ch.send({ type: "broadcast", event: EVENT_TEXT, payload });
-      return res === "ok" ? { ok: true } : { error: "Не дошло — попробуйте ещё раз" };
-    } catch {
-      return { error: "Не дошло — попробуйте ещё раз" };
-    }
+    const ok = await emit(EVENT_TEXT, { id: newId(), text: t, to_device: to || null });
+    return ok ? { ok: true } : { error: "Не дошло — попробуйте ещё раз" };
   };
 
   const removeInbox = (id) => setInbox((list) => { const next = list.filter((x) => x.id !== id); saveInbox(next); return next; });
   const clearInbox = () => { setInbox([]); saveInbox([]); };
 
-  return { status, self: self.current, peers, inbox, send, removeInbox, clearInbox };
+  return { status, self: self.current, peers, inbox, send, emit, removeInbox, clearInbox };
 }
