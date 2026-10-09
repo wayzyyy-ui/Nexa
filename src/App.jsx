@@ -15,7 +15,9 @@ import "lenis/dist/lenis.css";
 // Аккаунты: клиент Supabase и список разрешённых почт
 import { supabase, authAvailable } from "./lib/supabase.js";
 import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
-const VERSION = "0.6.1";
+// Синхронизация устройств и чатов аккаунта с облаком
+import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
+const VERSION = "0.6.2";
 
 
 /* =========================================================================
@@ -1253,9 +1255,34 @@ function loadDeviceStore(key = DEVICES_KEY) {
   let raw = null;
   try { raw = JSON.parse(localStorage.getItem(key)); } catch {}
   if (raw && raw.v === 2) {
-    return { v: 2, state: raw.state || {}, added: raw.added || [], removed: raw.removed || [] };
+    return { v: 2, state: raw.state || {}, added: raw.added || [], removed: raw.removed || [], updated: raw.updated || {} };
   }
-  return { v: 2, state: raw || {}, added: [], removed: [] };
+  return { v: 2, state: raw || {}, added: [], removed: [], updated: {} };
+}
+
+/* Устройства аккаунта ↔ строки таблицы devices (см. src/lib/sync.js).
+   В облаке у устройства: name, type и state — всё остальное одним объектом
+   (заряд, память, в сети ли, переключатели). updated — когда меняли (для спора «что новее») */
+function devicesToList(store) {
+  return store.added.map((d) => {
+    const { id, type, name, createdAt, ...rest } = d;
+    return { id, type, name, createdAt: createdAt || 0, updatedAt: store.updated?.[id] || createdAt || 0, state: { ...rest, ...store.state[id] } };
+  });
+}
+function devicesFromList(list, prev) {
+  return {
+    v: 2, removed: prev?.removed || [],
+    added: list.map((i) => ({
+      id: i.id, type: i.type, name: i.name, createdAt: i.createdAt,
+      battery: i.state.battery ?? null, memory: i.state.memory ?? deviceType(i.type).memory,
+      online: i.state.online ?? true, lastSeen: i.state.lastSeen || "только что",
+    })),
+    state: Object.fromEntries(list.map((i) => {
+      const { battery, memory, lastSeen, ...st } = i.state;
+      return [i.id, st];
+    })),
+    updated: Object.fromEntries(list.map((i) => [i.id, i.updatedAt])),
+  };
 }
 
 // Подпись статуса: "Онлайн • 92%", "Онлайн" или "Не в сети"
@@ -1408,12 +1435,14 @@ function LinkPulse({ p, onDone }) {
 
 // received — у каких устройств отметка «Получен файл» { id: { name } }
 // update — вышла новая версия приложения (баннер «Обновить», только в приложении)
-function ScreenHome({ devices, received = {}, update, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
+// loading — устройства аккаунта ещё грузятся из облака
+function ScreenHome({ devices, received = {}, update, loading, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
 
-  // Пустой список: добавить новое или вернуть исходные
-  const empty = devices.length === 0 && (
+  // Пустой список: добавить новое или вернуть исходные.
+  // Пока грузим из облака — вместо «Устройств пока нет» заготовка строк
+  const empty = devices.length === 0 && (loading ? <DevicesSkeleton /> : (
     <EmptyState
       compact
       title="Устройств пока нет"
@@ -1427,7 +1456,7 @@ function ScreenHome({ devices, received = {}, update, onNavigate, onOpenDevice, 
         </div>
       }
     />
-  );
+  ));
 
   return (
     <div className="ng-screen ng-home" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
@@ -3752,6 +3781,25 @@ function StateNote({ kind = "error", children }) {
 }
 
 // Пустое состояние: контурная складка, заголовок, подсказка и, если нужно, кнопка
+// Заготовка списка устройств, пока они грузятся: серые плашки без анимации
+function DevicesSkeleton() {
+  const bar = (w, h = 10) => <div style={{ width: w, height: h, borderRadius: 4, background: C.panel2 }} />;
+  return (
+    <div role="status" aria-label="Загружаем устройства" style={{ padding: "18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      {[0, 1].map((i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `1px solid ${C.border}`, borderRadius: 14 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: C.panel2, flexShrink: 0 }} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+            {bar(i ? "46%" : "60%", 11)}
+            {bar(i ? "28%" : "34%", 9)}
+          </div>
+        </div>
+      ))}
+      <div style={{ fontSize: 12.5, color: C.mutedSoft, textAlign: "center" }}>Загружаем ваши устройства…</div>
+    </div>
+  );
+}
+
 function EmptyState({ title, text, action, compact }) {
   return (
     <div className="nx-pop" style={{
@@ -5270,7 +5318,7 @@ function ToastItem({ toast, onClose }) {
    файлам, папкам, диалогам ассистента и строкам настроек.
    Открывается по иконке поиска в верхней строке (или кнопке
    в настройках), закрывается по Esc или клику по затемнению. */
-function GlobalSearch({ files, folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate }) {
+function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
   const q = query.trim().toLowerCase();
@@ -5294,10 +5342,7 @@ function GlobalSearch({ files, folders: allFolders = FOLDERS, devices: allDevice
   const fileHits = hasQuery ? sortByRecent(files.filter((f) => match(f.name))) : [];
   const chatHits = (() => {
     if (!hasQuery) return [];
-    try {
-      const saved = JSON.parse(localStorage.getItem("nexa-chats") || "[]");
-      return saved.filter((c) => match(c.title));
-    } catch { return []; }
+    return chats.filter((c) => match(c.title));
   })();
   const settingHits = hasQuery
     ? SETTINGS_INDEX.filter((s) => match(s.title) || match(s.subtitle) || hitKeys(s.keywords))
@@ -5737,7 +5782,8 @@ const assistantSuggestions = () => [
 // tab / setTab — текущий раздел и переход (из NexaApp), devices — устройства,
 // onAddDevice — открыть окно добавления устройства, onUploadFiles — выбор файлов
 // bell — колокольчик уведомлений (у ассистента своя верхняя строка)
-function ScreenAssistant({ initialChatId, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell }) {
+// chats / setChats — диалоги из App: там они сохраняются в браузере и в облаке аккаунта
+function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -5754,13 +5800,6 @@ const [greeting, setGreeting] = useState('');
 useEffect(() => {
   setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
 }, []);
-// Диалоги: сохраняются в браузере и общие для всех вкладок
-const [chats, setChats] = useSharedState('nexa-chats', () => {
-  try {
-    const saved = localStorage.getItem('nexa-chats');
-    return saved ? JSON.parse(saved) : [];
-  } catch { return []; }
-});
   const [currentChatId, setCurrentChatId] = useState(initialChatId || null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -6104,7 +6143,7 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
     let chatId = currentChatId;
 
     if (!chatId) {
-      chatId = Date.now().toString();
+      chatId = newId(); // uuid — такой же id будет у диалога в облаке
       setChats(prev => [{
         id: chatId,
         title: text.length > 40 ? text.slice(0, 40) + '…' : text,
@@ -7354,6 +7393,27 @@ function SettingsGroup({ children }) {
    разрешённые почты — src/lib/allowedEmailDomains.js.
    Пока аккаунт ни к чему не привязан: устройства и чаты живут в браузере, как раньше. */
 const GUEST_KEY = "nexa-guest";   // "1" — выбрали «Продолжить без аккаунта»
+const CHATS_KEY = "nexa-chats";   // диалоги ассистента (у аккаунта — nexa-chats@id)
+const MIGRATED_KEY = "nexa-chats-migrated"; // кому уже перенесли гостевые диалоги в облако (список id)
+const loadChats = (key = CHATS_KEY) => {
+  try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : []; } catch { return []; }
+};
+/* Перенос гостевых диалогов в облако при первом входе: в облаке пусто,
+   а в браузере есть диалоги «без аккаунта» — копируем их (с новыми id) один раз.
+   Гостевые при этом не удаляются */
+function chatMigration(uid) {
+  const done = () => { try { return JSON.parse(localStorage.getItem(MIGRATED_KEY) || "[]"); } catch { return []; } };
+  return {
+    // null — переносить нечего
+    prepare: (local, cloudRows) => {
+      if (!uid || cloudRows.length || done().includes(uid)) return null;
+      const guest = loadChats(CHATS_KEY);
+      if (!guest.length) return null;
+      return [...local, ...guest.map((c) => ({ ...c, id: newId(), updatedAt: c.updatedAt || c.createdAt || Date.now() }))];
+    },
+    migrated: () => { try { localStorage.setItem(MIGRATED_KEY, JSON.stringify([...new Set([...done(), uid])])); } catch {} },
+  };
+}
 const RESEND_SECONDS = 60;        // пауза перед повторной отправкой кода
 const OTP_LIFETIME_MS = 60 * 60 * 1000; // сколько живёт код (как в настройках Supabase по умолчанию)
 const CODE_MIN = 6, CODE_MAX = 8; // длина кода из письма
@@ -7535,6 +7595,9 @@ function AuthPanel({ onEscape }) {
         style={{ width: "100%", marginTop: 18, padding: "12px 16px", fontSize: 14 }}>
         Получить код
       </StateButton>
+      <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
+        Проект учебный. Данные хранятся для демонстрации и удаляются по запросу.
+      </div>
     </form>
   ) : (
     <form className="nx-auth-step" data-step="code" onSubmit={(e) => { e.preventDefault(); verify(); }} noValidate>
@@ -7655,8 +7718,9 @@ function AuthModal({ onClose }) {
 }
 
 /* Группа «Аккаунт» в Настройках: вошли — почта и «Выйти», нет — «Войти» */
-function AccountSettings({ user, onLogin }) {
+function AccountSettings({ user, onLogin, onDeleteData }) {
   const [leaving, setLeaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false); // окно «Удалить мои данные?»
   const logout = async () => {
     setLeaving(true);
     try { await signOut(); } finally { setLeaving(false); }
@@ -7699,13 +7763,96 @@ function AccountSettings({ user, onLogin }) {
             }
           />
         )}
+        {user && (
+          <SettingsRow
+            last
+            icon={Icon.trash({ c: C.red, s: 18 })}
+            title="Удалить мои данные"
+            subtitle="Устройства и чаты — из облака и с этого устройства"
+            right={
+              <button type="button" className="nx-ghost-btn" onClick={() => setConfirmOpen(true)}
+                style={{ ...pill, border: `1px solid color-mix(in srgb, ${C.red} 55%, transparent)`, color: C.red }}>
+                Удалить
+              </button>
+            }
+          />
+        )}
       </SettingsGroup>
+      {confirmOpen && <DeleteDataDialog onConfirm={onDeleteData} onClose={() => setConfirmOpen(false)} />}
     </>
   );
 }
 
+/* Подтверждение «Удалить мои данные». onConfirm — асинхронное удаление;
+   вернуло текст ошибки — показываем его, окно не закрываем */
+function DeleteDataDialog({ onConfirm, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape" && !busy) closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy]);
+  const run = async () => {
+    setBusy(true); setError(null);
+    const err = await onConfirm();
+    setBusy(false);
+    if (err) setError(err); else onClose();
+  };
+  return (
+    <div className="nx-viewer" onClick={() => !busy && onClose()} style={{
+      position: "fixed", inset: 0, zIndex: 300, background: `color-mix(in srgb, ${C.bg} 80%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-del-title" className="nx-viewer-panel nx-pop"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: "min(400px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "20px 22px 22px", boxSizing: "border-box", textAlign: "left" }}>
+        <div id="nx-del-title" style={{ fontFamily: fontDisplay, fontSize: 22, lineHeight: 1.2 }}>Удалить мои данные?</div>
+        <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginTop: 10 }}>
+          Устройства и чаты аккаунта удалятся из облака и с этого устройства. Вернуть их не получится. Аккаунт останется — войти можно будет снова.
+        </div>
+        {error && <div style={{ marginTop: 14 }}><StateNote kind="error">{error}</StateNote></div>}
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button type="button" className="nx-ghost-btn" onClick={onClose} disabled={busy} style={{
+            ...btnReset, flex: 1, padding: "11px 16px", fontSize: 13.5, border: `1px solid ${C.borderStrong}`, color: C.text, textAlign: "center",
+          }}>
+            Отмена
+          </button>
+          <StateButton state={busy ? "loading" : "idle"} labels={{ loading: "Удаляем…" }} onClick={run}
+            style={{ flex: 1, padding: "11px 16px", fontSize: 13.5, borderRadius: 999, borderColor: C.red, color: C.red }}>
+            Удалить
+          </StateButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Тихая строка о синхронизации: «Загружаем…» или «Нет связи, работаем локально».
+   Без свечения: плашка с обводкой 1px внизу экрана */
+function SyncStatus({ loading, text, onRetry }) {
+  if (!loading && !text) return null;
+  return (
+    <div className="nx-sync-status nx-pop" role="status" style={{
+      position: "fixed", zIndex: 60, display: "flex", alignItems: "center", gap: 10,
+      padding: "8px 12px", border: `1px solid ${C.borderStrong}`, borderRadius: 4, background: C.panel,
+      fontSize: 12.5, color: C.muted, maxWidth: "calc(100vw - 32px)", boxSizing: "border-box",
+    }}>
+      {loading ? <Spinner s={12} /> : <Dot color={C.red} />}
+      <span>{loading ? "Загружаем данные аккаунта…" : text}</span>
+      {!loading && onRetry && (
+        <button type="button" onClick={onRetry} style={{ ...btnReset, color: C.mint, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3 }}>
+          Повторить
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
-function ScreenSettings({ onOpenSearch, user, onLogin }) {
+function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData }) {
   // Список уведомлений хранится в состоянии (useState),
   // потому что он меняется при кликах
   const [notifs, setNotifs] = useState([
@@ -7776,7 +7923,7 @@ function ScreenSettings({ onOpenSearch, user, onLogin }) {
         </button>
         </div>
 
-      <AccountSettings user={user} onLogin={onLogin} />
+      <AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} />
 
       <SectionTitle>Внешний вид</SectionTitle>
       <SettingsGroup>
@@ -7866,6 +8013,16 @@ export default function NexaApp() {
   // Добавленные файлы, удаления, новые имена и папки запоминаем в браузере
   // useSharedState: сохраняется в браузере и делится с другими вкладками
   const [fileStore, setFileStore] = useSharedState(FILES_KEY + scope, loadFileStore);
+
+  /* Диалоги ассистента. У гостя — «nexa-chats», как раньше; у аккаунта —
+     свои (nexa-chats@id) и в облаке. setChats ставит updatedAt изменённым
+     диалогам — по нему решается, какая версия новее */
+  const [chats, setChatsStore] = useSharedState(CHATS_KEY + scope, loadChats);
+  const setChats = (upd) => setChatsStore((prev) => {
+    const next = typeof upd === "function" ? upd(prev) : upd;
+    const old = new Map(prev.map((c) => [c.id, c]));
+    return next.map((c) => (old.get(c.id) === c ? c : { ...c, updatedAt: Date.now() }));
+  });
   // Превью картинок живут только пока открыта вкладка: { id: адрес картинки }
   const [previews, setPreviews] = useState({});
   // Идущие загрузки: [{ id, names, folder }] — для полоски прогресса
@@ -7923,15 +8080,16 @@ export default function NexaApp() {
   ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }));
   const patchDevice = (id, patch) => setDeviceStore((s) => ({
     ...s, state: { ...s.state, [id]: { ...s.state[id], ...patch } },
+    updated: { ...s.updated, [id]: Date.now() },
   }));
   // Новое устройство: сразу в сети
   const addDevice = (type, name) => {
     const t = deviceType(type);
     const d = {
-      id: `dev-${Date.now()}`, type, name,
+      id: newId(), type, name, createdAt: Date.now(),
       battery: t.battery, memory: t.memory, online: true, lastSeen: "только что",
     };
-    setDeviceStore((s) => ({ ...s, added: [...s.added, d] }));
+    setDeviceStore((s) => ({ ...s, added: [...s.added, d], updated: { ...s.updated, [d.id]: d.createdAt } }));
     logEvent({ title: "Устройство подключено", text: name, kind: "device" });
   };
 
@@ -7969,6 +8127,48 @@ export default function NexaApp() {
   };
   // Вернуть исходные устройства, если их удалили
   const restoreDevices = () => setDeviceStore((s) => ({ ...s, removed: [] }));
+
+  /* Облако аккаунта: устройства и чаты (src/lib/sync.js). Гостю — ничего не меняется.
+     syncState — что сейчас с синхронизацией у каждой таблицы */
+  const uid = auth.user?.id || null;
+  const [syncState, setSyncState] = useState({});
+  useEffect(() => { setSyncState({}); }, [uid]);
+  const devicesSync = useCloudList({
+    uid, table: "devices", value: deviceStore, setValue: setDeviceStore,
+    toList: devicesToList, fromList: devicesFromList, rows: DEVICE_ROWS,
+    onStatus: (st) => setSyncState((s) => ({ ...s, devices: st })),
+  });
+  const chatsSync = useCloudList({
+    uid, table: "chats", value: chats, setValue: setChatsStore,
+    toList: (list) => list.map((c) => ({ ...c, updatedAt: c.updatedAt || c.createdAt || 0 })),
+    fromList: (list) => list, rows: CHAT_ROWS,
+    // Первый вход: в облаке пусто, а в браузере есть гостевые диалоги — переносим один раз
+    migrate: {
+      ...chatMigration(uid),
+    },
+    onStatus: (st) => setSyncState((s) => ({ ...s, chats: st })),
+  });
+  const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
+  const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
+  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); };
+
+  // «Удалить мои данные»: облако → потом всё локальное этого аккаунта.
+  // Возвращает текст ошибки или null
+  const deleteMyData = async () => {
+    if (!uid) return null;
+    try {
+      await deleteAllMine(uid);
+    } catch (e) {
+      return navigator.onLine === false || /fetch|network/i.test(String(e?.message))
+        ? "Нет связи — удалить не получилось. Попробуйте, когда появится интернет."
+        : "Не получилось удалить. Попробуйте ещё раз чуть позже.";
+    }
+    setDeviceStore({ v: 2, state: {}, added: [], removed: [], updated: {} });
+    setChatsStore([]);
+    setOpenDeviceId(null);
+    showToast({ title: "Данные удалены", text: "Устройства и чаты аккаунта стёрты" });
+    return null;
+  };
   const [addOpen, setAddOpen] = useState(false);            // открыто ли окно добавления
   const uploadInputRef = useRef(null);                      // выбор файлов по команде ассистента
   const [openDeviceId, setOpenDeviceId] = useState(null);   // чей экран устройства открыт
@@ -8692,6 +8892,8 @@ export default function NexaApp() {
         .nx-upload-bar { transform-origin: left; animation: nx-upload linear 1 both; }
         /* Поле ввода (название устройства): в фокусе рамка мятная, при ошибке остаётся красной */
         .nx-input { transition: border-color 160ms ease; }
+        /* Строка синхронизации аккаунта: на компьютере — внизу слева, у боковой панели */
+        .nx-sync-status { left: 98px; bottom: 20px; }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }
@@ -8815,6 +9017,8 @@ export default function NexaApp() {
           /* Экран настроек на телефоне */
           .ng-display.nx-section-title { font-size: 18px !important; margin-bottom: 10px !important; }
           .nx-settings-search { display: none !important; }
+          /* Строка синхронизации — над нижней панелью */
+          .nx-sync-status { left: 16px !important; bottom: calc(var(--sab) + 96px) !important; }
           /* Строка с переключателем темы: переключатель уходит под текст
              и растягивается на всю ширину, чтобы ничего не обрезалось */
           .nx-set-row { padding: 12px 14px !important; gap: 12px !important; }
@@ -9132,6 +9336,8 @@ export default function NexaApp() {
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
+      {/* Синхронизация аккаунта: «Загружаем…» или «Нет связи, работаем локально» */}
+      <SyncStatus loading={syncLoading} text={syncError} onRetry={retrySync} />
       {/* Первый запуск: войти или продолжить без аккаунта */}
       {showGate && <AuthGate onGuest={() => { saveGuest(true); setGuest(true); }} />}
       {authOpen && !auth.user && <AuthModal onClose={() => setAuthOpen(false)} />}
@@ -9177,6 +9383,8 @@ export default function NexaApp() {
   ) : tab === "assistant" ? (
     <ScreenAssistant
       initialChatId={searchChatId}
+      chats={chats}
+      setChats={setChats}
       onToast={showToast}
       tab={tab}
       setTab={goTab}
@@ -9196,6 +9404,7 @@ export default function NexaApp() {
           onOpenDevice={showDevice}
           onAddDevice={() => setAddOpen(true)}
           onRestoreDevices={restoreDevices}
+          loading={syncLoading && !!syncState.devices?.loading}
           canRestore={demo && deviceStore.removed.length > 0}
         />
       )}
@@ -9217,7 +9426,7 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} />}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} />}
     </div>
   )}
 </div>
@@ -9284,6 +9493,7 @@ export default function NexaApp() {
       {searchOpen && (
         <GlobalSearch
           files={files}
+          chats={chats}
           folders={folders}
           devices={devices}
           onOpenDevice={showDevice}
