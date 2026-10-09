@@ -12,6 +12,9 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
+// Аккаунты: клиент Supabase и список разрешённых почт
+import { supabase, authAvailable } from "./lib/supabase.js";
+import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
 const VERSION = "0.6.0";
 
 
@@ -299,6 +302,12 @@ const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M4 10v3.5l3-.6 8 3.3V7.3l-8 3.3-3-.6Z" strokeLinejoin="round" />
       <path d="M15 6v12" strokeLinecap="round" />
+    </svg>
+  ),
+  mail: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M3.5 6.5h17v11h-17z" strokeLinejoin="round" />
+      <path d="M3.5 6.5 12 13l8.5-6.5" strokeLinejoin="round" />
     </svg>
   ),
   logout: (p) => (
@@ -7310,8 +7319,351 @@ function SettingsGroup({ children }) {
   );
 }
 
-// ЭКРАН "НАСТРОЙКИ": профиль, тема, уведомления, аккаунт
-function ScreenSettings({ onOpenSearch }) {
+/* ═══ АККАУНТЫ (Supabase) ═══════════════════════════════════
+   Вход по коду из письма, без паролей. Клиент — src/lib/supabase.js,
+   разрешённые почты — src/lib/allowedEmailDomains.js.
+   Пока аккаунт ни к чему не привязан: устройства и чаты живут в браузере, как раньше. */
+const GUEST_KEY = "nexa-guest";   // "1" — выбрали «Продолжить без аккаунта»
+const RESEND_SECONDS = 60;        // пауза перед повторной отправкой кода
+const OTP_LIFETIME_MS = 60 * 60 * 1000; // сколько живёт код (как в настройках Supabase по умолчанию)
+const CODE_MIN = 6, CODE_MAX = 8; // длина кода из письма
+
+const readGuest = () => { try { return localStorage.getItem(GUEST_KEY) === "1"; } catch { return false; } };
+const saveGuest = (on) => { try { on ? localStorage.setItem(GUEST_KEY, "1") : localStorage.removeItem(GUEST_KEY); } catch {} };
+
+/* Кто вошёл. Supabase сам хранит сессию и сам сообщает о входе и выходе
+   (onAuthStateChange; первое событие приходит сразу — сессия из прошлого раза).
+   ready — Supabase уже ответил, можно решать, показывать ли экран входа */
+function useAuth() {
+  const [session, setSession] = useState(null);
+  const [ready, setReady] = useState(!supabase);
+  useEffect(() => {
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      setReady(true);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+  return { session, user: session?.user || null, ready };
+}
+
+// Выйти: только на этом устройстве. Сессия стирается даже без интернета
+const signOut = () => supabase?.auth.signOut({ scope: "local" });
+
+/* Понятный текст ошибки Supabase.
+   step — где ошиблись: "send" (отправка кода) или "verify" (проверка кода).
+   Неверный и просроченный код Supabase сообщает одинаково — различаем по времени:
+   если с отправки прошло больше часа, код истёк */
+function authErrorText(error, step, sentAt) {
+  const code = error?.code || "";
+  const msg = String(error?.message || "").toLowerCase();
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  // Серверная проверка почты (supabase/restrict-email-domains.sql) не пустила адрес:
+  // Supabase отвечает ошибкой базы «Database error saving new user»
+  if (step === "send" && (msg.includes("database error") || msg.includes("not allowed"))) {
+    return DOMAIN_NOT_ALLOWED_MESSAGE;
+  }
+  // Запрос не дошёл до сервера вообще (у такой ошибки нет кода ответа, status 0).
+  // Ошибки самого сервера Supabase приходят тем же типом, но с кодом 5xx — это не «нет интернета»
+  const noAnswer = error?.name === "AuthRetryableFetchError" && !error?.status;
+  if (offline || noAnswer || msg.includes("failed to fetch") || msg.includes("networkerror")) {
+    return "Нет интернета. Проверьте подключение и попробуйте ещё раз.";
+  }
+  if (error?.status === 429 || code.startsWith("over_") || msg.includes("rate limit") || msg.includes("security purposes")) {
+    return "Слишком много попыток. Подождите пару минут и попробуйте снова.";
+  }
+  if (step === "verify" && (code === "otp_expired" || msg.includes("expired") || msg.includes("invalid"))) {
+    return sentAt && Date.now() - sentAt > OTP_LIFETIME_MS
+      ? "Код истёк. Запросите новый."
+      : "Неверный код. Проверьте цифры в письме.";
+  }
+  if (code === "signup_disabled" || code === "otp_disabled" || code === "email_provider_disabled") {
+    return "Вход по почте сейчас выключен. Попробуйте позже.";
+  }
+  return "Что-то пошло не так. Попробуйте ещё раз.";
+}
+
+// Поле ввода входа: угол 4px, обводка 1px, красная при ошибке
+const authField = (invalid) => ({
+  display: "block", width: "100%", boxSizing: "border-box", marginTop: 8,
+  background: "transparent", color: C.text, fontSize: 16, fontFamily: "inherit",
+  border: `1px solid ${invalid ? C.red : C.borderStrong}`, borderRadius: 4,
+  padding: "12px 14px", outline: "none",
+});
+// Кнопка-ссылка: «Отправить ещё раз», «Изменить почту»
+const authLink = { ...btnReset, padding: 0, fontSize: 13, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 };
+
+/* Панель входа: шаг 1 — почта и «Получить код», шаг 2 — код и «Войти».
+   onEscape — что делать по Esc на шаге почты (на шаге кода Esc возвращает к почте).
+   Сама панель ничего не закрывает: после входа Supabase сообщит о сессии,
+   и экран входа уберёт тот, кто его показал */
+function AuthPanel({ onEscape }) {
+  const [step, setStep] = useState("email"); // "email" | "code"
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [sentAt, setSentAt] = useState(0);   // когда отправили последний код
+  const [now, setNow] = useState(Date.now()); // тикает раз в секунду для паузы «ещё раз»
+  const codeRef = useRef(null);
+
+  // Обратный отсчёт до повторной отправки
+  const wait = Math.max(0, RESEND_SECONDS - Math.floor((now - sentAt) / 1000));
+  useEffect(() => {
+    if (step !== "code" || wait === 0) return;
+    const t = setTimeout(() => setNow(Date.now()), 1000);
+    return () => clearTimeout(t);
+  }, [step, wait, now]);
+
+  // На шаге кода сразу ставим курсор в поле
+  useEffect(() => { if (step === "code") codeRef.current?.focus(); }, [step]);
+
+  // Esc: с кода — назад к почте, с почты — решает тот, кто показал панель
+  const escRef = useRef();
+  escRef.current = () => {
+    if (step === "code") { setStep("email"); setCode(""); setError(null); }
+    else onEscape?.();
+  };
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") escRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Шаг 1: проверяем почту у себя и просим Supabase прислать код
+  const sendCode = async () => {
+    if (busy) return;
+    if (!looksLikeEmail(cleanEmail)) { setError("Похоже, в адресе опечатка. Проверьте почту."); return; }
+    if (!isAllowedEmail(cleanEmail)) { setError(DOMAIN_NOT_ALLOWED_MESSAGE); return; }
+    if (navigator.onLine === false) { setError(authErrorText(null)); return; }
+    setBusy(true); setError(null);
+    try {
+      const { error: err } = await supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: true } });
+      if (err) { setError(authErrorText(err, "send")); return; }
+      setSentAt(Date.now()); setNow(Date.now());
+      setCode(""); setStep("code");
+    } catch (err) {
+      setError(authErrorText(err, "send"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Шаг 2: проверяем код. Успех — Supabase сам сообщит о входе (onAuthStateChange)
+  const verify = async () => {
+    if (busy || code.length < CODE_MIN) return;
+    if (navigator.onLine === false) { setError(authErrorText(null)); return; }
+    setBusy(true); setError(null);
+    try {
+      const { error: err } = await supabase.auth.verifyOtp({ email: cleanEmail, token: code, type: "email" });
+      if (err) setError(authErrorText(err, "verify", sentAt));
+    } catch (err) {
+      setError(authErrorText(err, "verify", sentAt));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!supabase) {
+    return (
+      <StateNote kind="error">Аккаунты сейчас недоступны. Пользуйтесь NEXA без входа — всё работает как обычно.</StateNote>
+    );
+  }
+
+  return step === "email" ? (
+    // form — чтобы кнопка срабатывала и по Enter
+    <form className="nx-auth-step" data-step="email" onSubmit={(e) => { e.preventDefault(); sendCode(); }} noValidate>
+      <label htmlFor="nx-auth-email" style={{ fontSize: 13, color: C.muted }}>Почта</label>
+      <input
+        id="nx-auth-email" type="email" inputMode="email" autoComplete="email" autoFocus
+        className="nx-input" value={email} disabled={busy}
+        placeholder="name@yandex.ru"
+        onChange={(e) => { setEmail(e.target.value); setError(null); }}
+        aria-invalid={!!error} aria-describedby="nx-auth-hint"
+        style={authField(!!error)}
+      />
+      <div id="nx-auth-hint" role={error ? "alert" : undefined} style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
+        {error || "Пришлём код — пароль не нужен"}
+      </div>
+      <StateButton variant="primary" state={busy ? "loading" : "idle"} labels={{ loading: "Отправляем…" }}
+        disabled={!cleanEmail} onClick={sendCode}
+        style={{ width: "100%", marginTop: 18, padding: "12px 16px", fontSize: 14 }}>
+        Получить код
+      </StateButton>
+    </form>
+  ) : (
+    <form className="nx-auth-step" data-step="code" onSubmit={(e) => { e.preventDefault(); verify(); }} noValidate>
+      <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+        Код отправили на <span style={{ color: C.text }}>{cleanEmail}</span>.{" "}
+        <button type="button" onClick={() => { setStep("email"); setError(null); }} style={authLink}>Изменить почту</button>
+      </div>
+      <label htmlFor="nx-auth-code" style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 16 }}>Код из письма</label>
+      <input
+        id="nx-auth-code" ref={codeRef} inputMode="numeric" autoComplete="one-time-code"
+        className="nx-input nx-auth-code" value={code} disabled={busy} maxLength={CODE_MAX}
+        placeholder="••••••"
+        // Только цифры: лишнее (пробелы, дефисы при вставке) отбрасываем
+        onChange={(e) => { setCode(e.target.value.replace(/\D/g, "").slice(0, CODE_MAX)); setError(null); }}
+        aria-invalid={!!error} aria-describedby="nx-auth-code-hint"
+        style={{ ...authField(!!error), fontFamily: fontDisplay, fontSize: 22, letterSpacing: "0.3em" }}
+      />
+      <div id="nx-auth-code-hint" role={error ? "alert" : undefined} style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
+        {error || "Письмо может прийти через минуту. Загляните и в «Спам»"}
+      </div>
+      <StateButton variant="primary" state={busy ? "loading" : "idle"} labels={{ loading: "Проверяем…" }}
+        disabled={code.length < CODE_MIN} onClick={verify}
+        style={{ width: "100%", marginTop: 18, padding: "12px 16px", fontSize: 14 }}>
+        Войти
+      </StateButton>
+      <div style={{ marginTop: 14, fontSize: 13, color: C.mutedSoft, textAlign: "center" }}>
+        {wait > 0
+          ? <>Отправить ещё раз через <span style={{ fontFamily: fontDisplay }}>{wait}</span> с</>
+          : <button type="button" onClick={sendCode} disabled={busy} style={authLink}>Отправить ещё раз</button>}
+      </div>
+    </form>
+  );
+}
+
+/* Экран входа при первом запуске: «Войти» (панель с почтой) или
+   «Продолжить без аккаунта» — гостевой режим, запоминаем в nexa-guest.
+   Показывается, только если аккаунты доступны (есть настройки Supabase) */
+function AuthGate({ onGuest }) {
+  const [open, setOpen] = useState(false); // нажали «Войти» — видна панель с почтой
+  return (
+    <div className="nx-auth-gate nx-scroll" role="dialog" aria-modal="true" aria-labelledby="nx-auth-title" style={{
+      position: "fixed", inset: 0, zIndex: 900, background: C.bg, overflowY: "auto",
+      display: "flex", flexDirection: "column", alignItems: "center",
+      padding: "calc(var(--sat) + 32px) 20px calc(var(--sab) + 32px)", boxSizing: "border-box",
+    }}>
+      <div style={{ margin: "auto 0", width: "min(400px, 100%)", textAlign: "left" }}>
+        <img src={foldSvg} alt="" style={{ width: 96, height: "auto", display: "block", marginBottom: 28 }} />
+        <div id="nx-auth-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>Добро пожаловать в NEXA</div>
+        <div style={{ fontSize: 14.5, color: C.muted, lineHeight: 1.5, marginTop: 10, marginBottom: 26 }}>
+          Войдите по почте — без пароля, по коду из письма. Или загляните без аккаунта.
+        </div>
+        {open ? (
+          <div className="nx-pop" style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 18px 20px", background: C.panel }}>
+            {/* Esc / «Назад» на шаге почты: на телефоне сворачиваем, на сайте — назад к выбору */}
+            <AuthPanel onEscape={() => (isNative ? CapApp.minimizeApp() : setOpen(false))} />
+          </div>
+        ) : (
+          <button type="button" className="nx-primary" onClick={() => setOpen(true)} style={{
+            ...btnReset, width: "100%", padding: "13px 16px", fontSize: 14.5, fontWeight: 500,
+            border: "1px solid transparent", color: C.onFold,
+            background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            {Icon.mail({ c: C.onFold, s: 17 })} Войти
+          </button>
+        )}
+        <button type="button" className="nx-ghost-btn" onClick={onGuest} style={{
+          ...btnReset, width: "100%", marginTop: 12, padding: "12px 16px", fontSize: 14,
+          border: `1px solid ${C.borderStrong}`, color: C.text, textAlign: "center",
+        }}>
+          Продолжить без аккаунта
+        </button>
+        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 14, lineHeight: 1.5 }}>
+          Войти можно и потом — в Настройках.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Окно входа из Настроек: та же панель, крестик и Esc закрывают.
+   Фон под окном просто затемнён, без размытия */
+function AuthModal({ onClose }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  return (
+    <div className="nx-viewer" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      background: `color-mix(in srgb, ${C.bg} 80%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-auth-modal-title"
+        className="nx-viewer-panel nx-pop nx-scroll" onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(420px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+          boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
+        }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div id="nx-auth-modal-title" style={{ fontFamily: fontDisplay, fontSize: 24, lineHeight: 1.15 }}>Вход в NEXA</div>
+            <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6 }}>По коду из письма, без пароля</div>
+          </div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
+            ...btnReset, width: 34, height: 34, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.close({ c: C.muted, s: 18 })}
+          </button>
+        </div>
+        <AuthPanel onEscape={onClose} />
+      </div>
+    </div>
+  );
+}
+
+/* Группа «Аккаунт» в Настройках: вошли — почта и «Выйти», нет — «Войти» */
+function AccountSettings({ user, onLogin }) {
+  const [leaving, setLeaving] = useState(false);
+  const logout = async () => {
+    setLeaving(true);
+    try { await signOut(); } finally { setLeaving(false); }
+  };
+  const pill = { ...btnReset, flexShrink: 0, borderRadius: 999, padding: "8px 16px", fontSize: 13, whiteSpace: "nowrap" };
+  return (
+    <>
+      <SectionTitle>Аккаунт</SectionTitle>
+      <SettingsGroup>
+        {user ? (
+          <SettingsRow
+            last
+            icon={Icon.user({ c: C.muted, s: 20 })}
+            title={<span style={{ overflowWrap: "anywhere" }}>{user.email}</span>}
+            subtitle={
+              <span style={{ color: C.green, display: "flex", alignItems: "center", gap: 6 }}>
+                <Dot color={C.green} /> Вы вошли
+              </span>
+            }
+            right={
+              <button type="button" className="nx-ghost-btn" onClick={logout} disabled={leaving}
+                style={{ ...pill, border: `1px solid ${C.borderStrong}`, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
+                {Icon.logout({ c: C.text, s: 15 })} {leaving ? "Выходим…" : "Выйти"}
+              </button>
+            }
+          />
+        ) : (
+          <SettingsRow
+            last
+            icon={Icon.user({ c: C.muted, s: 20 })}
+            title="Вы не вошли"
+            subtitle={authAvailable ? "Вход по почте, без пароля" : "Аккаунты сейчас недоступны"}
+            right={
+              <button type="button" className="nx-primary" onClick={onLogin} style={{
+                ...pill, border: "1px solid transparent", color: C.onFold, fontWeight: 500,
+                background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+              }}>
+                Войти
+              </button>
+            }
+          />
+        )}
+      </SettingsGroup>
+    </>
+  );
+}
+
+// ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
+function ScreenSettings({ onOpenSearch, user, onLogin }) {
   // Список уведомлений хранится в состоянии (useState),
   // потому что он меняется при кликах
   const [notifs, setNotifs] = useState([
@@ -7382,23 +7734,7 @@ function ScreenSettings({ onOpenSearch }) {
         </button>
         </div>
 
-      <SectionTitle>Профиль</SectionTitle>
-      <SettingsGroup>
-        <SettingsRow
-          last
-          icon={Icon.user({ c: C.muted, s: 20 })}
-          title="Пользователь"
-          subtitle={
-            <>
-              <div>user@example.com</div>
-              <div style={{ color: C.green, display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-                <Dot color={C.green} /> Активный аккаунт
-              </div>
-            </>
-          }
-          right={Icon.chevron({})}
-        />
-      </SettingsGroup>
+      <AccountSettings user={user} onLogin={onLogin} />
 
       <SectionTitle>Внешний вид</SectionTitle>
       <SettingsGroup>
@@ -7446,9 +7782,8 @@ function ScreenSettings({ onOpenSearch }) {
 
       <InstallSettings />
 
-      <SectionTitle>Об аккаунте</SectionTitle>
+      <SectionTitle>Система</SectionTitle>
       <SettingsGroup>
-        <SettingsRow icon={Icon.logout({ c: C.text, s: 18 })} title="Выйти из аккаунта" subtitle="Завершить сессию на всех устройствах" right={Icon.chevron({})} />
         <SettingsRow last icon={Icon.info({ c: C.text, s: 18 })} title="О системе" subtitle={`NEXA ${VERSION}`} right={Icon.chevron({})} />
       </SettingsGroup>
     </div>
@@ -7642,6 +7977,31 @@ export default function NexaApp() {
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
 
+  // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
+  const auth = useAuth();
+  const [guest, setGuest] = useState(readGuest);
+  const [authOpen, setAuthOpen] = useState(false);
+  // Экран входа при первом запуске: аккаунты доступны, Supabase ответил,
+  // никто не вошёл и «без аккаунта» ещё не выбирали
+  const showGate = authAvailable && auth.ready && !auth.user && !guest;
+  // Вошли — гостевой режим больше не нужен, окно входа закрываем.
+  // Вышли — остаёмся гостем, экран первого запуска не возвращаем
+  const prevUser = useRef(null);
+  const authSettled = useRef(false); // первый ответ Supabase уже был (вход из прошлого раза — не новость)
+  useEffect(() => {
+    if (!auth.ready) return;
+    const was = prevUser.current, now = auth.user;
+    if (now && !was) {
+      saveGuest(false); setGuest(false); setAuthOpen(false);
+      if (authSettled.current) showToast({ title: "Вы вошли", text: now.email, kind: "success" });
+    } else if (!now && was) {
+      saveGuest(true); setGuest(true);
+      showToast({ title: "Вы вышли из аккаунта", text: "NEXA работает без входа", kind: "info" });
+    }
+    prevUser.current = now;
+    authSettled.current = true;
+  }, [auth.ready, auth.user?.id]);
+
   // В приложении: убрать заставку и проявить интерфейс (см. startIntro)
   useEffect(() => { startIntro(); }, []);
 
@@ -7676,6 +8036,10 @@ export default function NexaApp() {
     const sub = CapApp.addListener("backButton", () => {
       // 0) Версия устарела — экран обновления не закрывается, просто сворачиваем
       if (backState.current.blocked) { CapApp.minimizeApp(); return; }
+      // Экран входа при первом запуске, панель почты ещё не открыта — сворачиваем
+      // (открыта — Esc ниже вернёт с кода к почте, с почты свернёт приложение)
+      const gate = document.querySelector(".nx-auth-gate");
+      if (gate && !gate.querySelector(".nx-auth-step")) { CapApp.minimizeApp(); return; }
       // 1) Открыто окно, меню, уведомления или история чатов — закрываем его.
       //    У всех них закрытие уже работает по Esc — нажимаем его за пользователя
       const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes, .ng-history-panel.is-open');
@@ -8718,6 +9082,9 @@ export default function NexaApp() {
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
+      {/* Первый запуск: войти или продолжить без аккаунта */}
+      {showGate && <AuthGate onGuest={() => { saveGuest(true); setGuest(true); }} />}
+      {authOpen && !auth.user && <AuthModal onClose={() => setAuthOpen(false)} />}
       <Sidebar active={tab} onChange={goTab} />
           <MobileTabBar active={tab} onChange={goTab} />
 
@@ -8799,7 +9166,7 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} />}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} />}
     </div>
   )}
 </div>
