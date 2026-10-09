@@ -5,14 +5,14 @@ import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.5.4";
+const VERSION = "0.5.5";
 
 
 /* =========================================================================
@@ -7549,6 +7549,9 @@ export default function NexaApp() {
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
 
+  // В приложении: убрать заставку и проявить интерфейс (см. startIntro)
+  useEffect(() => { startIntro(); }, []);
+
   // Новая версия приложения: проверяем при запуске и когда приложение
   // снова открыли из фона (на сайте checkForUpdate сразу возвращает null)
   const [appUpdate, setAppUpdate] = useState(null);
@@ -8047,7 +8050,10 @@ export default function NexaApp() {
           to   { opacity: 1; filter: blur(0); transform: none; }
         }
         #root { animation: nx-intro 650ms cubic-bezier(0.16, 1, 0.3, 1); }
-        @media (prefers-reduced-motion: reduce) { #root { animation: none; } }
+        /* В приложении: ждём, пока уйдёт заставка Android, и только тогда проявляемся */
+        .nx-intro-wait #root { animation: none; opacity: 0; }
+        .nx-intro-go #root { animation: nx-intro 750ms cubic-bezier(0.16, 1, 0.3, 1); }
+        @media (prefers-reduced-motion: reduce) { #root, .nx-intro-go #root { animation: none; } .nx-intro-wait #root { opacity: 1; } }
         /* Аура нового диалога: по центру за приветствием и полем ввода.
            Края растворяются маской (не размытие). Приближение — по фокусу/тексту */
         .nx-aura {

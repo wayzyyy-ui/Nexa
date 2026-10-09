@@ -10,6 +10,12 @@
       "insetsHandling": "css",
       "initialViewportFitValueHint": "cover",
       "style": "DARK"
+    },
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#01090F",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
     }
   }
 }

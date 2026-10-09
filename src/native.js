@@ -50,6 +50,24 @@ export function setSystemBarsTheme(theme) {
   SystemBars.setStyle({ style: theme === "dark" ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => {});
 }
 
+/* Появление интерфейса из размытия в приложении.
+   Пока приложение грузится, Android показывает заставку — если начать
+   анимацию сразу, она пройдёт под заставкой и её не увидят. Поэтому:
+   интерфейс ждёт скрытым (класс nx-intro-wait), потом убираем заставку
+   и в тот же момент запускаем проявление (класс nx-intro-go) */
+export async function startIntro() {
+  if (!isNative) return;
+  const root = document.documentElement;
+  try {
+    const { SplashScreen } = await import("@capacitor/splash-screen");
+    await SplashScreen.hide({ fadeOutDuration: 250 });
+  } catch {}
+  requestAnimationFrame(() => {
+    root.classList.remove("nx-intro-wait");
+    root.classList.add("nx-intro-go");
+  });
+}
+
 // Запрет масштабирования двумя пальцами — только в приложении
 // (на сайте зум оставляем: он нужен людям с плохим зрением)
 if (isNative) {
@@ -57,5 +75,10 @@ if (isNative) {
   if (meta && !/user-scalable/.test(meta.content)) {
     meta.content += ", maximum-scale=1, user-scalable=no";
   }
-  document.documentElement.classList.add("nx-native");
+  document.documentElement.classList.add("nx-native", "nx-intro-wait");
+  // Подстраховка: если по какой-то причине startIntro не сработал,
+  // через 4 секунды всё равно показываем интерфейс и убираем заставку
+  setTimeout(() => {
+    if (document.documentElement.classList.contains("nx-intro-wait")) startIntro();
+  }, 4000);
 }
