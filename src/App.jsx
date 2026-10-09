@@ -5,7 +5,7 @@ import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -1387,7 +1387,8 @@ function LinkPulse({ p, onDone }) {
 }
 
 // received — у каких устройств отметка «Получен файл» { id: { name } }
-function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
+// update — вышла новая версия приложения (баннер «Обновить», только в приложении)
+function ScreenHome({ devices, received = {}, update, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
 
@@ -1432,6 +1433,8 @@ function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDev
             <div style={{ fontSize: 14, color: C.muted, marginTop: 14, marginBottom: 30 }}>
               Синхронизировано. Работает. Рядом с вами
             </div>
+            {/* В приложении на планшете: баннер обновления над списком устройств */}
+            {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateBanner update={update} /></div>}
 
             <div className="nx-stagger" style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
               <div style={{
@@ -1554,6 +1557,8 @@ function ScreenHome({ devices, received = {}, onNavigate, onOpenDevice, onAddDev
           </div>
         </div>
 
+        {/* В приложении: вышла новая версия — предлагаем обновиться */}
+        <UpdateBanner update={update} />
         {/* Предложение установить приложение (только телефон в браузере) */}
         <InstallBanner onHowTo={() => {
           onNavigate("settings");
@@ -7073,43 +7078,32 @@ function InstallSettings() {
   );
 }
 
-// Баннер на Главной (только на телефоне, только в браузере).
-// Закрыли — запоминаем и больше не показываем.
-// onHowTo — для iPhone: перейти к инструкции в Настройках
-function InstallBanner({ onHowTo }) {
-  const platform = installPlatform();
-  const [hidden, setHidden] = useState(() => {
-    try { return localStorage.getItem(INSTALL_DISMISS_KEY) === "1"; } catch { return false; }
-  });
-  // closing — идёт анимация закрытия: баннер «складывается» и схлопывается
+/* Тонкий баннер на Главной: значок, заголовок с подписью, действие и крестик.
+   Закрыли — плашка «складывается» и место под ней схлопывается
+   (см. .nx-banner-wrap в стилях), после чего вызывается onClosed.
+   label — подпись для экранного диктора */
+function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
   const [closing, setClosing] = useState(false);
-  if (hidden || (platform !== "android" && platform !== "ios")) return null;
   const close = () => {
-    try { localStorage.setItem(INSTALL_DISMISS_KEY, "1"); } catch {}
+    onClose?.();
     // Без движения (так в системе) — убираем сразу
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) setHidden(true);
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) onClosed?.();
     else setClosing(true);
   };
   return (
     // Обёртка схлопывается по высоте — содержимое ниже плавно подтягивается вверх
     <div className={closing ? "nx-banner-wrap is-closing" : "nx-banner-wrap"}
-      onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) setHidden(true); }}>
-    <div className="nx-pop nx-banner" role="region" aria-label="Установка приложения" style={{
+      onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) onClosed?.(); }}>
+    <div className="nx-pop nx-banner" role="region" aria-label={label} style={{
       display: "flex", alignItems: "center", gap: 10, padding: "10px 8px 10px 12px",
       border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.bg,
     }}>
-      <span style={{ display: "flex", flexShrink: 0 }}>{Icon.phone({ c: C.mint, s: 18 })}</span>
+      <span style={{ display: "flex", flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.25 }}>{platform === "ios" ? "NEXA на экран «Домой»" : "NEXA как приложение"}</div>
-        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.25 }}>Быстрее и на весь экран</div>
+        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.25 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.25 }}>{sub}</div>
       </div>
-      {platform === "android" ? <ApkButton label="Скачать" small /> : (
-        <button type="button" className="nx-ghost-btn" onClick={onHowTo} style={{
-          ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5,
-        }}>
-          Как?
-        </button>
-      )}
+      {action}
       <button type="button" className="nx-icon-btn" onClick={close} aria-label="Скрыть" style={{
         ...btnReset, width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
       }}>
@@ -7117,6 +7111,66 @@ function InstallBanner({ onHowTo }) {
       </button>
     </div>
     </div>
+  );
+}
+
+// Баннер установки на Главной (только на телефоне, только в браузере).
+// Закрыли — запоминаем и больше не показываем.
+// onHowTo — для iPhone: перейти к инструкции в Настройках
+function InstallBanner({ onHowTo }) {
+  const platform = installPlatform();
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem(INSTALL_DISMISS_KEY) === "1"; } catch { return false; }
+  });
+  if (hidden || (platform !== "android" && platform !== "ios")) return null;
+  return (
+    <SlimBanner
+      label="Установка приложения"
+      icon={Icon.phone({ c: C.mint, s: 18 })}
+      title={platform === "ios" ? "NEXA на экран «Домой»" : "NEXA как приложение"}
+      sub="Быстрее и на весь экран"
+      action={platform === "android" ? <ApkButton label="Скачать" small /> : (
+        <button type="button" className="nx-ghost-btn" onClick={onHowTo} style={{
+          ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5,
+        }}>
+          Как?
+        </button>
+      )}
+      onClose={() => { try { localStorage.setItem(INSTALL_DISMISS_KEY, "1"); } catch {} }}
+      onClosed={() => setHidden(true)}
+    />
+  );
+}
+
+/* Баннер «Доступна новая версия» — только в Android-приложении.
+   update = { version, url } (см. checkForUpdate в src/native.js) или null.
+   Закрыли — не показываем, пока не выйдет следующая версия */
+const UPDATE_DISMISS_KEY = "nexa-update-dismissed"; // какую версию уже скрыли
+function UpdateBanner({ update }) {
+  const [hiddenFor, setHiddenFor] = useState(() => {
+    try { return localStorage.getItem(UPDATE_DISMISS_KEY); } catch { return null; }
+  });
+  const [started, setStarted] = useState(false); // нажали «Обновить» — файл скачивается
+  if (!update || hiddenFor === update.version) return null;
+  return (
+    <SlimBanner
+      key={update.version}
+      label="Обновление приложения"
+      icon={Icon.refresh({ c: C.mint, s: 18 })}
+      title={`Доступна NEXA ${update.version}`}
+      sub={started ? "Скачивается — откройте файл, чтобы обновить" : "Обновится поверх, данные сохранятся"}
+      action={
+        <button type="button" className="nx-primary" onClick={() => { setStarted(true); openUpdate(update.url); }} style={{
+          ...btnReset, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+          padding: "7px 14px", fontSize: 12.5, fontWeight: 500, borderRadius: 999, border: "1px solid transparent",
+          color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+        }}>
+          {Icon.download({ c: C.onFold, s: 14 })} Обновить
+        </button>
+      }
+      onClose={() => { try { localStorage.setItem(UPDATE_DISMISS_KEY, update.version); } catch {} }}
+      onClosed={() => setHiddenFor(update.version)}
+    />
   );
 }
 
@@ -7482,6 +7536,17 @@ export default function NexaApp() {
 
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setTab(t); };
+
+  // Новая версия приложения: проверяем при запуске и когда приложение
+  // снова открыли из фона (на сайте checkForUpdate сразу возвращает null)
+  const [appUpdate, setAppUpdate] = useState(null);
+  useEffect(() => {
+    if (!isNative) return;
+    const check = () => checkForUpdate().then(setAppUpdate);
+    check();
+    const sub = CapApp.addListener("resume", check);
+    return () => { sub.then((h) => h.remove()); };
+  }, []);
 
   // История разделов — для кнопки «Назад» на Android
   const tabHistory = useRef([]);
@@ -8579,6 +8644,7 @@ export default function NexaApp() {
         <ScreenHome
           devices={devices}
           received={received}
+          update={appUpdate}
           onNavigate={goTab}
           onOpenDevice={showDevice}
           onAddDevice={() => setAddOpen(true)}

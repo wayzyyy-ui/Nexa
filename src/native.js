@@ -13,6 +13,34 @@ export const isNative = Capacitor.isNativePlatform();
 const API_BASE = (import.meta.env.VITE_API_BASE ?? (isNative ? "https://nexa-link.ru" : "")).replace(/\/+$/, "");
 export const API_CHAT_URL = `${API_BASE}/api/chat`;
 
+/* Проверка обновлений (только в приложении).
+   На сайте рядом с nexa.apk лежит version.json — номер версии этого APK
+   (его пишет npm run release:android). Если там номер больше, чем у
+   установленного приложения, возвращаем { version, url } — можно обновиться.
+   Нет сети или файла — тихо возвращаем null, приложение работает как обычно */
+export async function checkForUpdate() {
+  if (!isNative) return null;
+  try {
+    const { App } = await import("@capacitor/app");
+    const info = await App.getInfo(); // build — число версии установленного приложения
+    const res = await fetch(`${API_BASE}/version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const latest = await res.json();
+    if (!latest || !(Number(latest.versionCode) > Number(info.build))) return null;
+    // ?v= — чтобы телефон не взял старый файл из кэша
+    return { version: latest.version, url: `${API_BASE}${latest.url || "/nexa.apk"}?v=${latest.versionCode}` };
+  } catch {
+    return null;
+  }
+}
+
+/* Скачать обновление: открываем ссылку на APK — Capacitor отдаёт внешние
+   адреса системному браузеру, он скачивает файл, а Android предлагает
+   установить его поверх старого приложения (данные сохраняются) */
+export function openUpdate(url) {
+  window.location.href = url;
+}
+
 /* Значки статус-бара и нижней полосы — под цвет темы.
    Сами полосы прозрачные (приложение рисуется до краёв экрана), под ними
    виден фон страницы, поэтому их цвет и так совпадает с темой.

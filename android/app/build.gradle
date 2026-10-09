@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+// Версия приложения берётся из package.json (поле "version", например 0.5.1).
+// versionName — для людей, versionCode — число для сравнения версий:
+// 0.5.1 → 501, 0.6.0 → 600. Оно должно расти с каждым выпуском,
+// иначе Android не поставит обновление поверх старого приложения
+def nexaVersion = new groovy.json.JsonSlurper().parse(file("../../package.json")).version
+def nexaParts = nexaVersion.tokenize(".").collect { it.replaceAll(/\D.*/, "") as int }
+def nexaVersionCode = nexaParts[0] * 10000 + nexaParts[1] * 100 + nexaParts[2]
+
 android {
     namespace = "ru.nexalink.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +15,8 @@ android {
         applicationId "ru.nexalink.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode nexaVersionCode
+        versionName nexaVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
