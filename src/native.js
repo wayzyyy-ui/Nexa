@@ -16,7 +16,9 @@ export const API_CHAT_URL = `${API_BASE}/api/chat`;
 /* Проверка обновлений (только в приложении).
    На сайте рядом с nexa.apk лежит version.json — номер версии этого APK
    (его пишет npm run release:android). Если там номер больше, чем у
-   установленного приложения, возвращаем { version, url } — можно обновиться.
+   установленного приложения, возвращаем { version, url, required } — можно обновиться.
+   required: true — версия приложения старше minVersionCode из version.json,
+   то есть запрещена: приложение покажет экран «Эта версия устарела».
    Нет сети или файла — тихо возвращаем null, приложение работает как обычно */
 export async function checkForUpdate() {
   if (!isNative) return null;
@@ -28,7 +30,11 @@ export async function checkForUpdate() {
     const latest = await res.json();
     if (!latest || !(Number(latest.versionCode) > Number(info.build))) return null;
     // ?v= — чтобы телефон не взял старый файл из кэша
-    return { version: latest.version, url: `${API_BASE}${latest.url || "/nexa.apk"}?v=${latest.versionCode}` };
+    return {
+      version: latest.version,
+      url: `${API_BASE}${latest.url || "/nexa.apk"}?v=${latest.versionCode}`,
+      required: Number(info.build) < Number(latest.minVersionCode || 0),
+    };
   } catch {
     return null;
   }

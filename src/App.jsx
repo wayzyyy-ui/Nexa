@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.5.8";
+const VERSION = "0.5.9";
 
 
 /* =========================================================================
@@ -7161,11 +7161,18 @@ function InstallBanner() {
 }
 
 /* Карточка «Приложение NEXA» внизу Главной, под ассистентом (телефон, браузер).
-   Всегда на месте, без крестика: Android — скачать APK, iPhone — «Как?»
-   ведёт к инструкции в Настройках. В приложении и на компьютере не видна */
+   Без крестика: Android — скачать APK, iPhone — «Как?» ведёт к инструкции
+   в Настройках. В приложении и на компьютере не видна.
+   Кто уже качал APK с этого браузера, карточку не видит — ему наверху
+   показывается баннер «Вышла новая версия» (InstallBanner) */
 function AppPromoCard({ onHowTo }) {
   const platform = installPlatform();
+  // Скачал — значит, знает про приложение; после нажатия «Скачать» карточка уходит
+  const [downloaded, setDownloaded] = useState(() => {
+    try { return !!localStorage.getItem(APK_DOWNLOADED_KEY); } catch { return false; }
+  });
   if (platform !== "android" && platform !== "ios") return null;
+  if (platform === "android" && downloaded) return null;
   return (
     <div className="nx-pop" role="region" aria-label="Приложение NEXA" style={{
       marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 16px",
@@ -7181,10 +7188,10 @@ function AppPromoCard({ onHowTo }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 500 }}>Приложение NEXA</div>
         <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-          {platform === "ios" ? "Добавьте на экран «Домой»" : "Быстрее и на весь экран"}
+          {platform === "ios" ? "Удобнее с экрана «Домой»" : "Быстрее и удобнее, чем в браузере"}
         </div>
       </div>
-      {platform === "android" ? <ApkButton label="Скачать" small /> : (
+      {platform === "android" ? <ApkButton label="Скачать" small onDownload={() => setTimeout(() => setDownloaded(true), 1200)} /> : (
         <button type="button" className="nx-ghost-btn" onClick={onHowTo} style={{
           ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5,
         }}>
@@ -7246,6 +7253,36 @@ function UpdateBanner({ update }) {
       onClose={() => { try { localStorage.setItem(UPDATE_DISMISS_KEY, update.version); } catch {} }}
       onClosed={() => setHiddenFor(update.version)}
     />
+  );
+}
+
+/* Экран «Эта версия устарела» — только в Android-приложении.
+   Показывается поверх всего, если версия приложения старше минимальной
+   из version.json (update.required). Закрыть нельзя — только скачать новую.
+   Без интернета проверка не проходит, и старая версия открывается как обычно */
+function ForceUpdateScreen({ update }) {
+  const [started, setStarted] = useState(false); // нажали «Скачать» — файл скачивается
+  return (
+    <div className="nx-force-update" role="alertdialog" aria-modal="true" aria-label="Версия устарела" style={{
+      position: "fixed", inset: 0, zIndex: 1000, background: C.bg,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
+      padding: "calc(var(--sat) + 24px) 28px calc(var(--sab) + 24px)",
+    }}>
+      <img src={foldSvg} alt="" style={{ width: 120, height: "auto", marginBottom: 28 }} />
+      <div className="ng-display" style={{ fontSize: 26, lineHeight: 1.2, marginBottom: 10 }}>Эта версия устарела</div>
+      <div style={{ fontSize: 14.5, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 28 }}>
+        {started
+          ? "Скачивается — откройте файл, чтобы установить. Данные сохранятся."
+          : `Чтобы пользоваться NEXA, установите версию ${update.version}. Она встанет поверх, данные сохранятся.`}
+      </div>
+      <button type="button" className="nx-primary" onClick={() => { setStarted(true); openUpdate(update.url); }} style={{
+        ...btnReset, display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
+        padding: "12px 22px", fontSize: 15, fontWeight: 500, borderRadius: 999, border: "1px solid transparent",
+        color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+      }}>
+        {Icon.download({ c: C.onFold, s: 16 })} {started ? "Скачать ещё раз" : `Скачать NEXA ${update.version}`}
+      </button>
+    </div>
   );
 }
 
@@ -7336,8 +7373,13 @@ function ScreenSettings({ onOpenSearch }) {
 
   return (
     <div className="ng-screen nx-stagger" style={{ padding: "28px 40px 40px" }}>
-      {/* Справа отступ под иконки поиска и профиля, которые лежат поверх экрана */}
-      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: 110 }}>
+      {/* Справа отступ под значки колокольчика, поиска и профиля, которые лежат
+          поверх экрана у правого края окна. На широком экране контент уже
+          (не больше 1440px) и значки стоят правее него — тогда отступ не нужен,
+          и строка поиска встаёт ровно по краю карточек.
+          78px — ширина левой панели, 160px — место под значки с зазором,
+          (100vw − 78px − 1440px) / 2 — пустое поле справа от контента */}
+      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: "max(0px, calc(160px - max(0px, (100vw - 78px - 1440px) / 2)))" }}>
         <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>Настройки</div>
         {/* Поиск по настройкам. Открывает общий поиск по всему приложению.
             На телефоне скрыт: там есть иконка поиска в верхней строке */}
@@ -7644,10 +7686,12 @@ export default function NexaApp() {
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
-  backState.current = { openDeviceId, tab };
+  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required };
   useEffect(() => {
     if (!isNative) return;
     const sub = CapApp.addListener("backButton", () => {
+      // 0) Версия устарела — экран обновления не закрывается, просто сворачиваем
+      if (backState.current.blocked) { CapApp.minimizeApp(); return; }
       // 1) Открыто окно, меню, уведомления или история чатов — закрываем его.
       //    У всех них закрытие уже работает по Esc — нажимаем его за пользователя
       const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes, .ng-history-panel.is-open');
@@ -8688,6 +8732,8 @@ export default function NexaApp() {
       `}</style>
       {/* Фон за содержимым: на «Настройках» — сетка-чертёж, на остальных — грани складки */}
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
+      {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
+      {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       <Sidebar active={tab} onChange={goTab} />
           <MobileTabBar active={tab} onChange={goTab} />
 

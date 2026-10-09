@@ -49,9 +49,18 @@ run(`${gradlew} assembleDebug`, { cwd: path("android"), env });
 const apk = path("android/app/build/outputs/apk/debug/app-debug.apk");
 copyFileSync(apk, path("public/nexa.apk"));
 
-// 4) Номер версии рядом с APK
+// 4) Номер версии рядом с APK.
+//    minVersionCode — самая старая версия, которой ещё можно пользоваться.
+//    По умолчанию это новая версия: все старые покажут «Эта версия устарела».
+//    Мягкий выпуск (старые версии работают, только баннер «Обновить»):
+//    npm run release:android -- --soft — минимальная версия остаётся прежней
+const soft = process.argv.includes("--soft");
+let minVersionCode = versionCode;
+if (soft && existsSync(versionFile)) {
+  minVersionCode = JSON.parse(readFileSync(versionFile, "utf8")).minVersionCode || 0;
+}
 const size = statSync(apk).size;
-writeFileSync(versionFile, JSON.stringify({ version, versionCode, url: "/nexa.apk", size }, null, 2) + "\n");
+writeFileSync(versionFile, JSON.stringify({ version, versionCode, minVersionCode, url: "/nexa.apk", size }, null, 2) + "\n");
 
 console.log(`\n✔ Готово: public/nexa.apk (${(size / 1e6).toFixed(1)} МБ) и public/version.json — версия ${version}.`);
 console.log("  Сделайте коммит и выложите сайт — установленные приложения предложат обновиться.\n");
