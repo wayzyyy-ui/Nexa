@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 // Плавная прокрутка колёсиком мыши (см. useSmoothScroll)
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-const VERSION = "0.5.3";
+const VERSION = "0.5.4";
 
 
 /* =========================================================================
@@ -4758,7 +4758,10 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             <div
               ref={foldRef}
               // Складка — акцент: стоит правее центра и выглядывает из-за устройства
-              style={{ position: "absolute", width: "min(460px, 54%)", height: "68%", left: "46%", top: "16%" }}
+              // Пропорции постоянные (236×166) — складка всегда лежит горизонтально,
+              // на любой ширине; стоит правее центра и выглядывает из-за устройства
+              className="nx-device-fold"
+              style={{ position: "absolute", width: "min(460px, 54%)", aspectRatio: "236 / 166", left: "46%", top: "50%", marginTop: "calc(min(460px, 54%) * -0.35)" }}
             >
               {DEVICE_FOLD_FACETS.map((f) => (
                 <div key={f.id} className="nx-facet" style={{
@@ -5794,28 +5797,33 @@ const [chats, setChats] = useSharedState('nexa-chats', () => {
     // Определяем клавиатуру по уменьшению visualViewport.
   // Порог снижен до 80px, чтобы ловить и панель AutoFill iOS.
  useEffect(() => {
-    const onFocusIn = (e) => {
-      const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
-        document.body.classList.add('kb-open');
-      }
+    // Клавиатура открыта = поле в фокусе И экран заметно ниже обычного.
+    // fullH — самая большая высота экрана, которую видели (без клавиатуры)
+    let fullH = window.innerHeight;
+    let timer = 0;
+    const update = () => {
+      const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      fullH = Math.max(fullH, window.innerHeight, h);
+      const a = document.activeElement;
+      const focused = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+      const shrunk = fullH - h > 120;
+      // На компьютере высота не меняется — там достаточно фокуса
+      const touch = window.matchMedia?.('(pointer: coarse)').matches;
+      document.body.classList.toggle('kb-open', !!focused && (!touch || shrunk));
     };
-    const onFocusOut = () => {
-      // Небольшая задержка — даём браузеру переключить фокус
-      setTimeout(() => {
-        const a = document.activeElement;
-        const stillFocused = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
-        if (!stillFocused) {
-          document.body.classList.remove('kb-open');
-        }
-      }, 100);
-    };
-
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('focusout', onFocusOut);
+    // После смены фокуса и изменения размера — с небольшой задержкой:
+    // клавиатура выезжает не мгновенно
+    const later = () => { clearTimeout(timer); timer = setTimeout(update, 150); };
+    document.addEventListener('focusin', later);
+    document.addEventListener('focusout', later);
+    window.visualViewport?.addEventListener('resize', later);
+    window.addEventListener('resize', later);
     return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('focusout', onFocusOut);
+      clearTimeout(timer);
+      document.removeEventListener('focusin', later);
+      document.removeEventListener('focusout', later);
+      window.visualViewport?.removeEventListener('resize', later);
+      window.removeEventListener('resize', later);
       document.body.classList.remove('kb-open');
     };
   }, []);
@@ -7531,6 +7539,10 @@ export default function NexaApp() {
   const onDeviceFile = (d) => (f) => f.device === d.name || f.device === d.alias;
 
   // Переход по меню всегда открывает "Файлы" без фильтра
+  // Ушли с экрана — признак «клавиатура открыта» снимаем, иначе нижняя
+  // панель может остаться спрятанной
+  useEffect(() => { document.body.classList.remove("kb-open"); }, [tab, openDeviceId]);
+
   // Плавная прокрутка колёсиком — на всех экранах, кроме ассистента
   useSmoothScroll(tab !== "assistant");
 
@@ -8028,6 +8040,14 @@ export default function NexaApp() {
         /* Значок часов у поля времени — под цвет темы */
         :root[data-theme="dark"] input[type="time"] { color-scheme: dark; }
         :root[data-theme="light"] input[type="time"] { color-scheme: light; }
+        /* Запуск приложения: интерфейс проявляется из размытия, один раз.
+           Анимируем только #root и только при загрузке (после — без фильтра) */
+        @keyframes nx-intro {
+          from { opacity: 0; filter: blur(14px); transform: scale(1.015); }
+          to   { opacity: 1; filter: blur(0); transform: none; }
+        }
+        #root { animation: nx-intro 650ms cubic-bezier(0.16, 1, 0.3, 1); }
+        @media (prefers-reduced-motion: reduce) { #root { animation: none; } }
         /* Аура нового диалога: по центру за приветствием и полем ввода.
            Края растворяются маской (не размытие). Приближение — по фокусу/тексту */
         .nx-aura {
@@ -8231,20 +8251,24 @@ export default function NexaApp() {
         }
 
         /* ─── Фирменный скроллбар NEXA ──────────────────────── */
-        .nx-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: color-mix(in srgb, var(--mint) 35%, transparent) transparent;
+        /* Мятный ползунок везде: у страницы и у всех прокручиваемых блоков.
+           scrollbar-color передаётся по наследству, поэтому хватает html —
+           и новые блоки сами получат мятный ползунок */
+        html {
+          scrollbar-color: color-mix(in srgb, var(--mint) 70%, transparent) transparent;
         }
-        .nx-scroll::-webkit-scrollbar { width: 8px; }
-        .nx-scroll::-webkit-scrollbar-track { background: transparent; }
-        .nx-scroll::-webkit-scrollbar-thumb {
-          background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 50%, transparent), color-mix(in srgb, var(--mint) 50%, transparent));
+        .nx-scroll { scrollbar-width: thin; }
+        /* Для браузеров, которые не понимают scrollbar-color (старый Safari) */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+          background: color-mix(in srgb, var(--mint) 70%, transparent);
           border-radius: 999px;
           border: 2px solid transparent;
           background-clip: padding-box;
         }
-        .nx-scroll::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 85%, transparent), color-mix(in srgb, var(--mint) 85%, transparent));
+        ::-webkit-scrollbar-thumb:hover {
+          background: var(--mint);
           background-clip: padding-box;
         }
 
@@ -8396,6 +8420,8 @@ export default function NexaApp() {
           .nx-transfer-btn { padding: 9px !important; }
           /* Экран устройства: сцена ниже, статус и настройки одной колонкой */
           .nx-device-stage { height: 360px !important; }
+          /* На телефоне складка шире — за устройством, по центру сцены */
+          .nx-device-fold { width: 86% !important; left: 7% !important; margin-top: calc(86% * -0.35) !important; }
           .nx-device-info { grid-template-columns: minmax(0, 1fr) !important; }
           .nx-device-title { font-size: 30px !important; }
           /* Фон на телефоне: на весь экран, грани в обоих углах — поменьше
