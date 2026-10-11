@@ -24,7 +24,7 @@ import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
 } from "./lib/files.js";
-const VERSION = "0.8.7";
+const VERSION = "0.8.8";
 
 
 /* =========================================================================
