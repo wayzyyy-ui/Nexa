@@ -10,7 +10,7 @@ export const isNative = Capacitor.isNativePlatform();
    На сайте — пусто, запрос идёт на свой же адрес: /api/chat.
    В приложении сайта рядом нет, поэтому нужен полный адрес. Он берётся из
    файла .env.android (VITE_API_BASE). Если его нет — запасной nexa-link.ru */
-const API_BASE = (import.meta.env.VITE_API_BASE ?? (isNative ? "https://nexa-link.ru" : "")).replace(/\/+$/, "");
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? (isNative ? "https://nexa-link.ru" : "")).replace(/\/+$/, "");
 export const API_CHAT_URL = `${API_BASE}/api/chat`;
 
 /* Проверка обновлений (только в приложении).
@@ -58,6 +58,38 @@ export async function vibrate(ms = 400) {
       navigator.vibrate?.(ms);
     }
   } catch {}
+}
+
+/* Сканер QR — только в приложении (Google Code Scanner: свой экран камеры,
+   разрешение на камеру не нужно). Возвращает текст из QR, null — отменили,
+   { error } — сканер недоступен. Первый раз Android может докачать модуль сканера */
+export const canScanQr = isNative;
+export async function scanQr() {
+  if (!isNative) return { error: "Сканер есть только в приложении NEXA" };
+  try {
+    const { BarcodeScanner, BarcodeFormat } = await import("@capacitor-mlkit/barcode-scanning");
+    const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
+    if (!available) {
+      // Модуля ещё нет — просим Android его скачать и ждём (до 30 секунд)
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("timeout")), 30000);
+        BarcodeScanner.addListener("googleBarcodeScannerModuleInstallProgress", (e) => {
+          if (e.state === 4) { clearTimeout(timer); resolve(); }          // готово
+          if (e.state === 3 || e.state === 5) { clearTimeout(timer); reject(new Error("install")); } // отменено / ошибка
+        });
+        BarcodeScanner.installGoogleBarcodeScannerModule().catch(reject);
+      });
+    }
+    // Закрыли сканер («Назад» или крестик) — Google отвечает ошибкой; это не сбой, просто null
+    try {
+      const { barcodes } = await BarcodeScanner.scan({ formats: [BarcodeFormat.QrCode], autoZoom: true });
+      return barcodes?.[0]?.rawValue ?? null;
+    } catch { return null; }
+  } catch (e) {
+    // Человек закрыл сканер — это не ошибка
+    if (/cancel/i.test(String(e?.message))) return null;
+    return { error: "Не получилось открыть сканер. Введите код вручную." };
+  }
 }
 
 /* Значки статус-бара и нижней полосы — под цвет темы.

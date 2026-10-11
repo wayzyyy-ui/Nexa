@@ -5,7 +5,7 @@
    - Presence — кто сейчас онлайн: каждое устройство сообщает о себе
      { device_id, name, kind, platform, joined_at }.
    - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
-     pair.fail, scene.set, find.ring, find.stop, devices.changed.
+     pair.fail, find.ring, find.stop, devices.changed.
      Ко всем сообщениям добавляются from_device, from_name и ts.
    Протокол описан в CLAUDE.md, раздел «Связь устройств». */
 import { useEffect, useRef, useState } from "react";
@@ -24,7 +24,6 @@ const inboxKey = (uid) => `nexa-inbox@${uid}`;
 // Код подключения: 6 символов без похожих (нет 0, O, 1, I, L)
 export const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const PAIR_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
-export const SCENE_IDS = ["work", "home", "road", "sleep"];
 
 /* Кто это устройство. device_id создаётся один раз и живёт в localStorage,
    имя — по типу: приложение, сайт на телефоне или на компьютере */
@@ -73,7 +72,6 @@ const SCHEMAS = {
   "pair.ok": (p) => base(p) && isId(p.device_id) && isName(p.name),
   "pair.fail": (p) => base(p) && isId(p.device_id) && ["wrong", "expired", "used", "locked"].includes(p.reason)
     && (p.left == null || (Number.isInteger(p.left) && p.left >= 0 && p.left <= 5)),
-  "scene.set": (p) => base(p) && SCENE_IDS.includes(p.scene),
   "find.ring": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
   "find.stop": (p) => base(p) && isId(p.target_device_id) && typeof p.found === "boolean",
   // Список устройств аккаунта изменился — перечитать из облака
