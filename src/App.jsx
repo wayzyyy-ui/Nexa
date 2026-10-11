@@ -19,7 +19,7 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
-const VERSION = "0.8.2";
+const VERSION = "0.8.3";
 
 
 /* =========================================================================
@@ -10107,6 +10107,10 @@ export default function NexaApp() {
         /* Все кнопки — скруглённые: кнопки с текстом — «таблетки», кнопки-значки — круги.
            Скошенные чипсы пути (складка), строки списков и карточки не трогаем */
         .nx-ghost-btn, .nx-primary, .nx-icon-btn, .nx-action { border-radius: 999px !important; }
+        /* Градиент — на всю кнопку вместе с рамкой. Иначе под прозрачной рамкой 1px
+           браузер повторяет градиент с другого края: по бокам видны тонкие полоски
+           чужого цвета (голубая слева, синяя справа) */
+        .nx-primary, [style*="linear-gradient"] { background-origin: border-box !important; }
         /* Стрелка в строке чуть шагает вправо при наведении — «можно перейти» */
         .nx-chev { display: flex; transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1); }
         .nx-row-btn:hover .nx-chev { transform: translateX(3px); }
