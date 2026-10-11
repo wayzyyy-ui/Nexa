@@ -5,7 +5,8 @@
    - Presence — кто сейчас онлайн: каждое устройство сообщает о себе
      { device_id, name, kind, platform, joined_at }.
    - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
-     pair.fail, find.ring, find.stop, devices.changed, sync.changed.
+     pair.fail, find.ring, find.stop, lock.on, lock.off, file.send, link.open,
+     devices.changed, sync.changed.
      Ко всем сообщениям добавляются from_device, from_name и ts.
    Протокол описан в CLAUDE.md, раздел «Связь устройств». */
 import { useEffect, useRef, useState } from "react";
@@ -74,6 +75,14 @@ const SCHEMAS = {
     && (p.left == null || (Number.isInteger(p.left) && p.left >= 0 && p.left <= 5)),
   "find.ring": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
   "find.stop": (p) => base(p) && isId(p.target_device_id) && typeof p.found === "boolean",
+  // Демонстрационная блокировка экрана NEXA (не системная блокировка телефона)
+  "lock.on": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
+  "lock.off": (p) => base(p) && isId(p.target_device_id),
+  // Файл уже лежит в облаке аккаунта (путь <uid>/<id>) — получатель открывает его сам
+  "file.send": (p) => base(p) && isId(p.id) && isId(p.to_device) && isStr(p.name, 255)
+    && Number.isFinite(p.size) && p.size >= 0 && (p.mime == null || (typeof p.mime === "string" && p.mime.length <= 255)),
+  // Открыть ссылку на устройстве: только http/https, получатель проверяет ещё раз
+  "link.open": (p) => base(p) && isId(p.id) && isId(p.to_device) && typeof p.url === "string" && p.url.length <= 2048 && !!safeUrl(p.url),
   // Список устройств аккаунта изменился — перечитать из облака
   "devices.changed": (p) => base(p),
   // В облаке новое (устройства или чаты) — перечитать эту таблицу сразу
@@ -189,7 +198,18 @@ export function useDeviceLink(uid, handlers) {
     })();
 
     const onOffline = () => { setStatus("offline"); setPeers([]); };
-    const onOnline = () => setStatus((s) => (s === "offline" ? "connecting" : s));
+    // Сеть вернулась. Короткий обрыв часто не рвёт само соединение с каналом —
+    // тогда сразу снова «на связи» и берём свежий список «кто онлайн».
+    // Если соединение всё же порвалось, библиотека переподключится сама (SUBSCRIBED выше)
+    const onOnline = () => {
+      if (channel && channel.state === "joined") {
+        setStatus("online");
+        setPeers(flattenPresence(channel.presenceState()));
+        channel.track({ ...me, joined_at: new Date().toISOString() }).catch(() => {});
+      } else {
+        setStatus((s) => (s === "offline" ? "connecting" : s));
+      }
+    };
     // Закрыли страницу — уходим из канала (статус «онлайн» пропадёт у других)
     const leave = () => {
       if (!channel) return;
