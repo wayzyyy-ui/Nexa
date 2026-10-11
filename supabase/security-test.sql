@@ -26,6 +26,7 @@ declare
   dB uuid := gen_random_uuid();         -- тестовое устройство B
   cA uuid := gen_random_uuid();         -- тестовый чат A
   cB uuid := gen_random_uuid();         -- тестовый чат B
+  fB uuid := gen_random_uuid();         -- тестовый файл B
   n integer;
   r text[] := '{}';                     -- строки отчёта
   -- одна строка отчёта
@@ -152,26 +153,80 @@ begin
     r := r || format(ok_line, '15', 'chats: записать диалог больше 1 МБ', 'ошибка check', 'ошибка ' || sqlstate, 'OK');
   end;
 
-  -- 16. Таблица files (файлы пока не синхронизируются — её может не быть)
+  -- 16. Файлы: сведения (таблица files, supabase/files-storage.sql)
   if to_regclass('public.files') is null then
-    r := r || format(ok_line, '16', 'files: таблица', 'нет / только свои', 'таблицы нет', 'OK (проверять нечего)');
+    r := r || format(ok_line, '16', 'files: таблица', 'есть', 'таблицы нет', 'не применён files-storage.sql');
   else
+    -- строка B подкладывается от имени администратора
+    reset role;
+    execute 'insert into public.files (id, user_id, name, storage_path) values ($1, $2, $3, $4)'
+      using fB, B, 'ТЕСТ B.pdf', B::text || '/' || fB::text;
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+    execute 'select count(*) from public.files where user_id <> $1' into n using A;
+    r := r || format(ok_line, '16', 'files: прочитать чужие файлы', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    execute 'update public.files set name = $1 where id = $2' using 'ВЗЛОМ', fB;
+    get diagnostics n = row_count;
+    r := r || format(ok_line, '16', 'files: переименовать чужой файл', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    execute 'delete from public.files where id = $1' using fB;
+    get diagnostics n = row_count;
+    r := r || format(ok_line, '16', 'files: удалить чужой файл', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
     begin
-      execute 'select count(*) from public.files where user_id <> $1' into n using A;
-      r := r || format(ok_line, '16', 'files: прочитать чужие файлы', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+      execute 'insert into public.files (user_id, name) values ($1, $2)' using B, 'ПОДЛОГ';
+      r := r || format(ok_line, '16', 'files: добавить файл с user_id чужого', 'ошибка RLS', 'добавилось', '‼ ПРОБЛЕМА');
     exception when others then
-      r := r || format(ok_line, '16', 'files: прочитать чужие файлы', '0 строк', 'ошибка ' || sqlstate, 'OK');
+      r := r || format(ok_line, '16', 'files: добавить файл с user_id чужого', 'ошибка RLS', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'insert into public.files (name, storage_path) values ($1, $2)' using 'ССЫЛКА', B::text || '/' || fB::text;
+      r := r || format(ok_line, '16', 'files: своя запись с путём в чужую папку', 'ошибка check', 'добавилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '16', 'files: своя запись с путём в чужую папку', 'ошибка check', 'ошибка ' || sqlstate, 'OK');
     end;
   end if;
 
-  -- 17. Storage: видит ли A чужие файлы в хранилище
-  begin
-    select count(*) into n from storage.objects o
-      where coalesce(to_jsonb(o) ->> 'owner_id', to_jsonb(o) ->> 'owner', '') <> A::text;
-    r := r || format(ok_line, '17', 'storage.objects: чужие объекты', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
-  exception when others then
-    r := r || format(ok_line, '17', 'storage.objects: чужие объекты', '0 строк', 'ошибка ' || sqlstate, 'OK (нет доступа)');
-  end;
+  -- 17. Storage, корзина nexa-files: чужая папка <B>/…
+  if not exists (select 1 from storage.buckets where id = 'nexa-files') then
+    r := r || format(ok_line, '17', 'storage: корзина nexa-files', 'есть, закрытая', 'корзины нет', 'не применён files-storage.sql');
+  else
+    select count(*) into n from storage.buckets where id = 'nexa-files' and public;
+    r := r || format(ok_line, '17', 'storage: корзина nexa-files публичная?', 'нет', case when n = 0 then 'нет' else 'ДА' end, case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    -- объект B подкладывается от имени администратора
+    reset role;
+    begin
+      insert into storage.objects (bucket_id, name, owner, metadata) values ('nexa-files', B::text || '/секрет', B, '{"size": 10}');
+    exception when others then null;
+    end;
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+    begin
+      select count(*) into n from storage.objects where bucket_id = 'nexa-files' and name like B::text || '/%';
+      r := r || format(ok_line, '17', 'storage: увидеть файлы в чужой папке', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '17', 'storage: увидеть файлы в чужой папке', '0 строк', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      delete from storage.objects where bucket_id = 'nexa-files' and name like B::text || '/%';
+      get diagnostics n = row_count;
+      r := r || format(ok_line, '17', 'storage: удалить файл в чужой папке', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '17', 'storage: удалить файл в чужой папке', '0 строк', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      insert into storage.objects (bucket_id, name, owner) values ('nexa-files', B::text || '/подлог', A);
+      r := r || format(ok_line, '17', 'storage: положить файл в чужую папку', 'ошибка RLS', 'положилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '17', 'storage: положить файл в чужую папку', 'ошибка RLS', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      insert into storage.objects (bucket_id, name, owner) values ('nexa-files', A::text || '/своё', A);
+      r := r || format(ok_line, '17', 'storage: положить файл в СВОЮ папку', 'можно', 'положилось', 'OK');
+    exception when others then
+      r := r || format(ok_line, '17', 'storage: положить файл в СВОЮ папку', 'можно', 'ошибка ' || sqlstate, '‼ проверьте files-storage.sql');
+    end;
+  end if;
 
   -- 18–19. Realtime: писать в канал чужого (nexa:<B>) и в свой (nexa:<A>)
   perform set_config('realtime.topic', 'nexa:' || B, true);
@@ -250,14 +305,14 @@ select * from (
          'включена' as ожидается
   from pg_class c join pg_namespace s on s.oid = c.relnamespace
   where s.nspname = 'public' and c.relkind = 'r'
-    and c.relname in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files')
+    and c.relname in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders')
 
   union all
   -- Сколько правил RLS на каждой таблице
   select 'правил RLS: ' || tablename, count(*)::text,
-         case tablename when 'devices' then '4' when 'chats' then '4' else '0 (только сервер)' end
+         case when tablename in ('devices', 'chats', 'files', 'file_folders') then '4' else '0 (только сервер)' end
   from pg_policies where schemaname = 'public'
-    and tablename in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files')
+    and tablename in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders')
   group by tablename
 
   union all
@@ -265,7 +320,7 @@ select * from (
   select 'права anon: ' || table_name, string_agg(privilege_type, ', '), 'нет строк — значит, прав нет'
   from information_schema.role_table_grants
   where grantee = 'anon' and table_schema = 'public'
-    and table_name in ('devices', 'chats', 'qr_logins', 'api_rate_limits')
+    and table_name in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders')
   group by table_name
 
   union all
@@ -275,12 +330,12 @@ select * from (
 
   union all
   -- Storage: публичные корзины (NEXA ими не пользуется)
-  select 'storage: корзина ' || name, case when public then 'ПУБЛИЧНАЯ' else 'закрытая' end, 'корзин нет или все закрытые'
+  select 'storage: корзина ' || name, case when public then 'ПУБЛИЧНАЯ' else 'закрытая' end, 'nexa-files — закрытая'
   from storage.buckets
 
   union all
   -- Storage: правила на файлы
-  select 'storage: правило ' || policyname, cmd || ' для ' || array_to_string(roles, ','), 'нет правил или только «свои файлы»'
+  select 'storage: правило ' || policyname, cmd || ' для ' || array_to_string(roles, ','), 'три правила nexa-files (читать / класть / удалять свои)'
   from pg_policies where schemaname = 'storage' and tablename = 'objects'
 
   union all

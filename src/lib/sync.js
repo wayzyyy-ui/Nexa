@@ -64,11 +64,24 @@ async function pushRows(table, upserts, deletes) {
 }
 // «Удалить мои данные»: все устройства и чаты этого пользователя
 export async function deleteAllMine(uid) {
-  for (const table of ["devices", "chats"]) {
+  // Сначала содержимое файлов в хранилище (папка <id аккаунта>/), потом записи
+  await removeAllStorage(uid);
+  for (const table of ["devices", "chats", "files", "file_folders"]) {
     const { error } = await supabase.from(table).delete().eq("user_id", uid);
-    if (error) throw error;
+    // Таблиц файлов может ещё не быть (не запущен files-storage.sql) — это не ошибка
+    if (error && !(table.startsWith("file") && isMissingTable(error))) throw error;
   }
   clearMeta(uid);
+}
+const isMissingTable = (e) => ["42P01", "PGRST205"].includes(String(e?.code)) || /does not exist|could not find the table/i.test(String(e?.message));
+// Все объекты аккаунта в корзине файлов — пачками по 100
+async function removeAllStorage(uid) {
+  for (let i = 0; i < 50; i++) {
+    const { data, error } = await supabase.storage.from("nexa-files").list(uid, { limit: 100 });
+    if (error || !data?.length) return; // корзины ещё нет или пусто
+    const { error: rmErr } = await supabase.storage.from("nexa-files").remove(data.map((o) => `${uid}/${o.name}`));
+    if (rmErr) throw rmErr;
+  }
 }
 
 /* ─── Как строки таблиц выглядят в приложении ───
@@ -183,7 +196,9 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
         writeMeta(uid, table, { synced: sorted.map((i) => i.id), deleted: [] });
         baseline.current = new Map(sorted.map((i) => [i.id, i.updatedAt]));
         ready.current = true;
-        setValue(fromList(sorted, latest.current));
+        // Функцией: в одном хранилище бывают два списка (файлы и папки) —
+        // берём самое свежее состояние, чтобы не затереть соседний список
+        setValue((prev) => fromList(sorted, prev));
         status.current?.({ ok: true });
       } catch (e) {
         if (!cancelled) status.current?.({ error: e, text: syncErrorText(e) });

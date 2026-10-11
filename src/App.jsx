@@ -19,7 +19,12 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
-const VERSION = "0.8.5";
+// Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
+import {
+  fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
+  rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
+} from "./lib/files.js";
+const VERSION = "0.8.6";
 
 
 /* =========================================================================
@@ -3520,7 +3525,6 @@ const DEMO_FILES = [
    renamed — новые имена { id: "имя" };
    folders — папки, созданные пользователем { id, name, parent }. */
 const FILES_KEY = "nexa-files";
-const UPLOAD_MS = 1100; // сколько идёт "загрузка" (показываем полоску прогресса)
 
 function loadFileStore(key = FILES_KEY) {
   let raw = null;
@@ -3628,15 +3632,22 @@ const foldFill = (c) =>
 
 /* Миниатюра файла: цветная плашка по категории + иконка.
    У фото угол градиента зависит от id, поэтому карточки не одинаковые. */
-// Если у файла есть preview (картинка, добавленная в этой вкладке) —
-// показываем саму картинку. После перезагрузки превью нет, остаётся иконка
+// Чьи файлы сейчас на экране: id аккаунта или "guest". Ставит NexaApp при каждой
+// отрисовке — миниатюры по нему находят содержимое (облако или этот браузер)
+let FILE_SCOPE = "guest";
+// Оттенок градиента по id (id бывает числом у демо и строкой-uuid у настоящих файлов)
+const idHue = (id) => [...String(id)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+
+// У настоящей картинки (загруженной пользователем) — сама картинка из хранилища,
+// и после перезагрузки, и на другом устройстве. У остальных — цветная плашка с иконкой
 function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6, fit = "cover" }) {
   const cat = catOf(file);
   const plain = file.cat === "doc" || file.cat === "other";
-  if (file.preview) {
+  const url = useFileUrl(file, FILE_SCOPE, !!file.uploaded && file.cat === "photo");
+  if (url) {
     return (
       <div style={{ width: w, height: h, borderRadius: radius, flexShrink: 0, overflow: "hidden", background: C.chip }}>
-        <img src={file.preview} alt="" style={{ width: "100%", height: "100%", objectFit: fit, display: "block" }} />
+        <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: fit, display: "block" }} />
       </div>
     );
   }
@@ -3644,7 +3655,7 @@ function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6, fit = "cov
     <div style={{
       width: w, height: h, borderRadius: radius, flexShrink: 0, position: "relative", overflow: "hidden",
       display: "flex", alignItems: "center", justifyContent: "center",
-      background: plain ? C.chip : `linear-gradient(${(file.id * 47) % 360}deg, ${cat.from}, ${cat.to})`,
+      background: plain ? C.chip : `linear-gradient(${idHue(file.id)}deg, ${cat.from}, ${cat.to})`,
     }}>
       {/* Складка: тёмная треугольная грань поверх цвета */}
       {!plain && <div style={{
@@ -3986,7 +3997,8 @@ function Crumb({ children, active, onClick }) {
 // folders — все папки (демо + созданные), uploads — идущие загрузки,
 // onAddFiles(список, папка) — добавить файлы, onCreateFolder(имя, родитель) — новая папка
 // onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
-function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer }) {
+// onUploadAction(id, "cancel" | "retry" | "dismiss") — управление строкой загрузки
+function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
   const fileInput = useRef(null);
@@ -4207,24 +4219,41 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
         </div>
       </div>
 
-      {/* Идущие загрузки: имя и полоска, которая заполняется за UPLOAD_MS */}
-      {uploads.map((u) => (
-        <div key={u.id} role="status" className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-            <Spinner />
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {u.names.length === 1 ? `Загружаем «${u.names[0]}»` : `Загружаем ${u.names.length} ${plural(u.names.length, ["файл", "файла", "файлов"])}`}
-            </span>
-            <span style={{ marginLeft: "auto", fontSize: 12, color: C.mutedSoft, whiteSpace: "nowrap" }}>в «{folderName(folders, u.folder)}»</span>
+      {/* Загрузки: имя, настоящий процент, отмена; ошибка — «Повторить» и «Убрать» */}
+      {uploads.map((u) => {
+        const failed = u.status === "error";
+        const small = { ...btnReset, fontSize: 12.5, padding: "4px 10px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
+        return (
+          <div key={u.id} role={failed ? "alert" : "status"} className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+              {failed ? Icon.alert({ c: C.red, s: 16 }) : <Spinner />}
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {failed ? `Не загрузилось: «${u.name}»` : `Загружаем «${u.name}»`}
+              </span>
+              <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                {!failed && <span style={{ fontSize: 12, color: C.mutedSoft, fontFamily: fontDisplay }}>{Math.round(u.progress * 100)}%</span>}
+                {failed && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction?.(u.id, "retry")} style={small}>Повторить</button>}
+                <button type="button" className="nx-icon-btn" onClick={() => onUploadAction?.(u.id, failed ? "dismiss" : "cancel")}
+                  aria-label={failed ? "Убрать" : "Отменить загрузку"} title={failed ? "Убрать" : "Отменить"} style={{
+                    ...btnReset, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                  {Icon.close({ c: C.muted, s: 13 })}
+                </button>
+              </span>
+            </div>
+            {failed
+              ? <div style={{ fontSize: 12, color: C.red, marginTop: 6, paddingLeft: 26 }}>{u.error}</div>
+              : (
+                <div style={{ height: 2, background: C.border, marginTop: 10, overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%", width: `${Math.max(2, u.progress * 100)}%`, transition: "width 200ms linear",
+                    background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+                  }} />
+                </div>
+              )}
           </div>
-          <div style={{ height: 2, background: C.border, marginTop: 10, overflow: "hidden" }}>
-            <div className="nx-upload-bar" style={{
-              height: "100%", background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
-              animationDuration: `${UPLOAD_MS}ms`,
-            }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Рамка "отпустите файлы": видна, пока над окном держат файлы */}
       {dragging && (
@@ -4609,6 +4638,10 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
           <div className="nx-viewer-preview" style={{ display: "flex" }}>
             <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
           </div>
+          {/* Содержимое: открыть и скачать (только у загруженных; у демо-файлов его нет) */}
+          {file.uploaded
+            ? <FileContentActions file={file} onToast={onToast} />
+            : <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>Демо-файл: содержимого нет, только пример в списке</div>}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 18px", padding: "18px 18px 4px", fontSize: 13 }}>
@@ -4689,6 +4722,48 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* «Открыть» и «Скачать» содержимое файла. Ссылка — из этого браузера (IndexedDB)
+   или временная подписанная ссылка облака. В приложении — всегда ссылка облака:
+   её откроет системный браузер */
+function FileContentActions({ file, onToast }) {
+  const [state, setState] = useState(null); // null | "open" | "download" — что сейчас готовим
+  const cloudOnly = isNative && FILE_SCOPE !== "guest";
+  const go = async (download) => {
+    setState(download ? "download" : "open");
+    try {
+      const url = cloudOnly || download && FILE_SCOPE !== "guest" && file.path
+        ? await fileUrl({ ...file, id: cloudOnly ? `cloud-${file.id}` : file.id }, FILE_SCOPE, { download })
+        : await fileUrl(file, FILE_SCOPE);
+      if (!url) {
+        onToast?.({
+          title: "Содержимое недоступно",
+          text: navigator.onLine === false ? "Нет связи — файл ещё не скачан на это устройство" : "Файл добавили до появления хранилища — содержимое не сохранилось",
+        });
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = url;
+      a.rel = "noopener noreferrer";
+      if (download) a.download = safeFileName(file.name); else a.target = "_blank";
+      document.body.appendChild(a); a.click(); a.remove();
+    } finally { setState(null); }
+  };
+  const btn = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text };
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+      <button type="button" className="nx-ghost-btn" onClick={() => go(false)} disabled={!!state} style={btn}>
+        {state === "open" ? <Spinner s={13} /> : Icon.shareUp({ c: C.text, s: 15 })} Открыть
+      </button>
+      <button type="button" className="nx-ghost-btn" onClick={() => go(true)} disabled={!!state} style={btn}>
+        {state === "download" ? <Spinner s={13} /> : Icon.download({ c: C.text, s: 15 })} Скачать
+      </button>
+      <span style={{ alignSelf: "center", fontSize: 12, color: C.mutedSoft }}>
+        {FILE_SCOPE === "guest" ? "Хранится только в этом браузере" : "Хранится в облаке аккаунта"}
+      </span>
     </div>
   );
 }
@@ -8146,6 +8221,7 @@ function clearLocalAccountData(uid) {
     const mine = Object.keys(localStorage).filter((k) => k.startsWith("nexa-") && k.endsWith(`@${uid}`));
     mine.forEach((k) => localStorage.removeItem(k));
   } catch {}
+  cacheClearScope(uid); // копии содержимого файлов (IndexedDB)
 }
 
 /* Понятный текст ошибки Supabase.
@@ -9088,16 +9164,16 @@ export default function NexaApp() {
     const old = new Map(prev.map((c) => [c.id, c]));
     return next.map((c) => (old.get(c.id) === c ? c : { ...c, updatedAt: Date.now() }));
   });
-  // Превью картинок живут только пока открыта вкладка: { id: адрес картинки }
-  const [previews, setPreviews] = useState({});
-  // Идущие загрузки: [{ id, names, folder }] — для полоски прогресса
+  // Чьи файлы на экране — для миниатюр и окна файла (см. FILE_SCOPE)
+  FILE_SCOPE = auth.user?.id || "guest";
+  // Загрузки: [{ id, fileId, name, folder, progress 0…1, status "uploading" | "error", error, file }]
   const [uploads, setUploads] = useState([]);
   // В аккаунте — только основные папки (Фото, Видео, Документы…), без выдуманных вложенных
   const folders = [...(demo ? FOLDERS : FOLDERS.filter((f) => !f.parent)), ...fileStore.folders];
   const files = [
     ...(demo ? DEMO_FILES.filter((f) => !fileStore.removed.includes(f.id)) : []),
     ...fileStore.added.map((f) => ({ ...withWhen(f), uploaded: true })),
-  ].map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name, preview: previews[f.id] }));
+  ].map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name }));
   const [filesFilter, setFilesFilter] = useState(null);
   const [openFile, setOpenFile] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -9235,9 +9311,46 @@ export default function NexaApp() {
     onStatus: (st) => setSyncState((s) => ({ ...s, chats: st })),
     onPushed: () => link.emit("sync.changed", { table: "chats" }),
   });
+  /* Сведения о файлах и папки аккаунта — в облако (таблицы files и file_folders).
+     Сами байты лежат в Storage, сюда не попадают */
+  const filesSync = useCloudList({
+    uid, table: "files", value: fileStore, setValue: setFileStore,
+    toList: (st) => st.added.map((f) => ({
+      id: f.id, name: f.name, cat: f.cat, folder: f.folder ?? null, device: f.device, mime: f.mime || "",
+      size: f.size ?? Math.round((f.mb || 0) * 1e6), path: f.path || null,
+      createdAt: f.addedAt || 0, updatedAt: f.updatedAt || f.addedAt || 0,
+    })),
+    fromList: (list, prev) => ({
+      ...prev,
+      added: list.map((i) => ({
+        id: i.id, name: i.name, cat: i.cat, folder: i.folder, device: i.device, mime: i.mime, size: i.size,
+        mb: toMb(i.size || 0), path: i.path, addedAt: i.createdAt, updatedAt: i.updatedAt,
+      })),
+    }),
+    rows: FILE_ROWS,
+    onStatus: (st) => setSyncState((s) => ({ ...s, files: st })),
+    onPushed: () => link.emit("sync.changed", { table: "files" }),
+  });
+  const foldersSync = useCloudList({
+    uid, table: "file_folders", value: fileStore, setValue: setFileStore,
+    toList: (st) => st.folders.map((f) => ({ ...f, createdAt: f.createdAt || 0, updatedAt: f.updatedAt || f.createdAt || 0 })),
+    fromList: (list, prev) => ({ ...prev, folders: list }),
+    rows: FOLDER_ROWS,
+    onStatus: (st) => setSyncState((s) => ({ ...s, folders: st })),
+    onPushed: () => link.emit("sync.changed", { table: "file_folders" }),
+  });
+  // Удаления из хранилища, которые не прошли без сети, — повторяем при входе и когда связь вернулась
+  useEffect(() => {
+    if (!uid) return;
+    flushTrash(uid);
+    const again = () => flushTrash(uid);
+    window.addEventListener("online", again);
+    return () => window.removeEventListener("online", again);
+  }, [uid]);
+
   const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
-  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); };
+  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); };
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
   const pullRefresh = async () => {
@@ -9266,7 +9379,8 @@ export default function NexaApp() {
   const refreshTimers = useRef({});
   const refreshTableSoon = (table) => {
     clearTimeout(refreshTimers.current[table]);
-    refreshTimers.current[table] = setTimeout(() => (table === "chats" ? chatsSync : devicesSync).retry(), 400);
+    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync }[table] || devicesSync;
+    refreshTimers.current[table] = setTimeout(() => hook.retry(), 400);
   };
 
   /* ── Подключение: это устройство выдаёт код ── */
@@ -9472,6 +9586,8 @@ export default function NexaApp() {
     }
     setDeviceStore({ v: 2, state: {}, added: [], removed: [], updated: {} });
     setChatsStore([]);
+    setFileStore({ added: [], removed: [], renamed: {}, folders: [] });
+    cacheClearScope(uid);
     setOpenDeviceId(null);
     showToast({ title: "Данные удалены", text: "Устройства и чаты аккаунта стёрты" });
     return null;
@@ -9642,7 +9758,9 @@ export default function NexaApp() {
     setSearchChatId(chatId);
     setTab("assistant");
   };
-  // Удаление: демо-файл запоминаем в removed, добавленный просто убираем
+  /* Удаление: демо-файл запоминаем в removed, настоящий убираем из списка
+     и вместе с содержимым — из облака (без сети — удалим, когда связь вернётся)
+     и из этого браузера */
   const deleteFile = (f) => {
     setFileStore((s) => {
       const renamed = { ...s.renamed };
@@ -9653,46 +9771,90 @@ export default function NexaApp() {
         removed: f.uploaded ? s.removed : [...s.removed, f.id],
       };
     });
-    if (previews[f.id]) {
-      URL.revokeObjectURL(previews[f.id]); // освобождаем память картинки
-      setPreviews(({ [f.id]: _, ...rest }) => rest);
+    if (f.uploaded) {
+      forgetUrl(FILE_SCOPE, f.id);
+      cacheDel(cacheKey(FILE_SCOPE, f.id));
+      if (uid && f.path) removeFromCloud(uid, [f.path]);
     }
     setOpenFile(null);
   };
-  const renameFile = (id, name) =>
-    setFileStore((s) => ({ ...s, renamed: { ...s.renamed, [id]: name } }));
+  // Переименование меняет только сведения: в хранилище файл лежит под своим id
+  const renameFile = (id, name) => {
+    const clean = safeFileName(name);
+    setFileStore((s) => (s.added.some((f) => f.id === id)
+      ? { ...s, added: s.added.map((f) => (f.id === id ? { ...f, name: clean, updatedAt: Date.now() } : f)) }
+      : { ...s, renamed: { ...s.renamed, [id]: clean } }));
+  };
   // Новая папка внутри parent (null — в корне). Возвращает её id
   const createFolder = (name, parent) => {
-    const id = `u-${Date.now()}`;
-    setFileStore((s) => ({ ...s, folders: [...s.folders, { id, name, parent }] }));
+    const now = Date.now();
+    const id = uid ? newId() : `u-${now}`;
+    setFileStore((s) => ({ ...s, folders: [...s.folders, { id, name: safeFileName(name), parent, createdAt: now, updatedAt: now }] }));
     return id;
   };
-  /* Загрузка файлов с компьютера или телефона в папку folder.
-     Сохраняем только сведения о файле; картинкам делаем превью.
-     Сначала UPLOAD_MS идёт полоска прогресса, потом файлы
-     появляются в списке и всплывает уведомление */
+  /* Загрузка файлов в папку folder.
+     Вошедший: байты — в облако (Supabase Storage, с настоящим процентом и отменой),
+     сведения — в список (он сам уйдёт в таблицу files). Гость: байты — в этот браузер.
+     Файл появляется в списке только после того, как содержимое сохранено */
+  const uploadCtl = useRef({}); // id загрузки → { abort }
+  const guestSeq = useRef(0);
   const addFiles = (fileList, folder) => {
     const picked = Array.from(fileList || []);
     if (!picked.length) return;
-    const now = Date.now();
-    const device = uploadDevice();
-    const metas = picked.map((file, i) => ({
-      id: now + i, name: file.name, cat: catFromFile(file), folder,
-      device, mb: toMb(file.size), addedAt: now,
-    }));
-    const batch = { id: now, names: metas.map((m) => m.name), folder };
-    setUploads((u) => [...u, batch]);
-    setTimeout(() => {
-      const urls = {};
-      picked.forEach((file, i) => { if (file.type.startsWith("image/")) urls[metas[i].id] = URL.createObjectURL(file); });
-      setPreviews((p) => ({ ...p, ...urls }));
-      setFileStore((s) => ({ ...s, added: [...s.added, ...metas] }));
-      setUploads((u) => u.filter((b) => b.id !== batch.id));
-      const where = folderName(folders, folder);
-      showToast(metas.length === 1
-        ? { title: "Файл добавлен", text: `${metas[0].name} → ${where}` }
-        : { title: `Добавлено ${metas.length} ${plural(metas.length, ["файл", "файла", "файлов"])}`, text: `В папку «${where}»` });
-    }, UPLOAD_MS);
+    const rejected = [];
+    picked.forEach((file) => {
+      const problem = fileProblem(file);
+      if (problem) rejected.push(`«${safeFileName(file.name)}» — ${problem.toLowerCase()}`);
+      else startUpload(file, folder);
+    });
+    if (rejected.length) {
+      showToast({ title: rejected.length === 1 ? "Файл не добавлен" : `Не добавлено: ${rejected.length}`, text: rejected.slice(0, 2).join("; "), kind: "error" });
+    }
+  };
+  const startUpload = (file, folder, fileId) => {
+    const upId = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    // У гостя id — число (как у демо-файлов), у аккаунта — uuid (как в облаке)
+    const id = fileId ?? (uid ? newId() : Date.now() * 100 + (guestSeq.current++ % 100));
+    const name = safeFileName(file.name);
+    const meta = {
+      id, name, cat: catFromFile(file), folder, device: uploadDevice(),
+      mb: toMb(file.size), size: file.size, mime: file.type || "", addedAt: Date.now(),
+    };
+    const patch = (fields) => setUploads((list) => list.map((u) => (u.id === upId ? { ...u, ...fields } : u)));
+    const fail = (text) => patch({ status: "error", error: text });
+    const done = (extra) => {
+      setUploads((list) => list.filter((u) => u.id !== upId));
+      delete uploadCtl.current[upId];
+      setFileStore((s) => ({ ...s, added: [...s.added, { ...meta, ...extra, updatedAt: meta.addedAt }] }));
+      showToast({ title: "Файл добавлен", text: `${name} → ${folderName(folders, folder)}` });
+    };
+    setUploads((list) => [...list, { id: upId, fileId: id, name, folder, progress: 0, status: "uploading", file }]);
+
+    if (!uid) {
+      // Гость: содержимое — только в этот браузер
+      rememberLocal("guest", id, file);
+      patch({ progress: 1 });
+      setTimeout(() => done({}), 250);
+      return;
+    }
+    if (navigator.onLine === false) { fail("Нет связи — файл не загрузился"); return; }
+    const ctl = uploadToCloud({ uid, id, file, onProgress: (pr) => patch({ progress: pr }) });
+    uploadCtl.current[upId] = ctl;
+    ctl.promise
+      .then(({ path }) => { rememberLocal(uid, id, file); done({ path }); })
+      .catch((err) => {
+        delete uploadCtl.current[upId];
+        if (err?.kind === "abort") setUploads((list) => list.filter((u) => u.id !== upId));
+        else fail(err?.text || "Не загрузилось — попробуйте ещё раз");
+      });
+  };
+  // Отменить идущую загрузку, повторить неудачную или убрать строку с ошибкой
+  const uploadAction = (upId, action) => {
+    const u = uploads.find((x) => x.id === upId);
+    if (!u) return;
+    if (action === "cancel") { uploadCtl.current[upId]?.abort(); return; }
+    setUploads((list) => list.filter((x) => x.id !== upId));
+    if (action === "retry") startUpload(u.file, u.folder, u.fileId);
   };
   const closeViewer = () => setOpenFile(null);
 
@@ -10776,6 +10938,7 @@ export default function NexaApp() {
           folders={folders}
           uploads={uploads}
           onAddFiles={addFiles}
+          onUploadAction={uploadAction}
           onCreateFolder={createFolder}
           onTransfer={openTransfer}
         />
