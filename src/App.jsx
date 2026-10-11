@@ -19,7 +19,7 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
-const VERSION = "0.8.0";
+const VERSION = "0.8.1";
 
 
 /* =========================================================================
@@ -2990,8 +2990,12 @@ function useWeather(lat, lon) {
   useEffect(() => {
     loadRef.current();
     const id = setInterval(() => loadRef.current(), WEATHER_REFRESH_MS);
+    // Потянули экран вниз в приложении (событие "nexa-refresh") — тоже обновляем
+    const onRefresh = () => loadRef.current();
+    window.addEventListener("nexa-refresh", onRefresh);
     return () => {
       clearInterval(id);
+      window.removeEventListener("nexa-refresh", onRefresh);
       ctrlRef.current?.abort();
     };
     // Перезагружаем погоду, когда меняется город (то есть координаты)
@@ -8164,6 +8168,83 @@ function authErrorText(error, step, sentAt) {
   return "Что-то пошло не так. Попробуйте ещё раз.";
 }
 
+/* ═══ ПОТЯНИТЕ, ЧТОБЫ ОБНОВИТЬ (только в приложении) ════════════
+   В браузере телефона это уже есть, а в приложении — нет. Тянем страницу
+   вниз, когда она прокручена до самого верха: появляется значок, отпустили
+   после порога — onRefresh (облако, погода, проверка обновления).
+   Внутри окон, полей ввода и прокручиваемых блоков жест не срабатывает */
+const PULL_THRESHOLD = 64; // столько пикселей нужно протянуть
+function usePullToRefresh(enabled, onRefresh) {
+  const [pull, setPull] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const refresh = useRef(onRefresh);
+  refresh.current = onRefresh;
+  const busyRef = useRef(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let startY = null, dist = 0;
+    const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
+    const blocked = (t) => !!t?.closest?.('[role="dialog"], .nx-scroll, .ng-assistant-wrapper, textarea, input, select, .nx-auth-gate');
+    const onStart = (e) => {
+      startY = null; dist = 0;
+      if (busyRef.current || e.touches.length !== 1 || !atTop() || blocked(e.target)) return;
+      startY = e.touches[0].clientY;
+    };
+    const onMove = (e) => {
+      if (startY == null) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0 || !atTop()) { if (dist) { dist = 0; setPull(0); } if (dy < 0) startY = null; return; }
+      dist = Math.min(110, dy * 0.5); // тянется «туго» — вдвое медленнее пальца
+      setPull(dist);
+      if (e.cancelable) e.preventDefault(); // страница не дёргается вместе с жестом
+    };
+    const onEnd = async () => {
+      if (startY == null) return;
+      startY = null;
+      const go = dist >= PULL_THRESHOLD;
+      dist = 0;
+      if (!go) { setPull(0); return; }
+      busyRef.current = true; setBusy(true); setPull(PULL_THRESHOLD);
+      // Крутим значок хотя бы 0,9 с — чтобы было видно, что обновили
+      try { await Promise.all([refresh.current?.(), new Promise((r) => setTimeout(r, 900))]); } catch {}
+      busyRef.current = false; setBusy(false); setPull(0);
+    };
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchcancel", onEnd);
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      window.removeEventListener("touchcancel", onEnd);
+    };
+  }, [enabled]);
+  return { pull, busy };
+}
+
+// Значок над страницей: выезжает за пальцем, поворачивается, после порога — крутится
+function PullIndicator({ pull, busy }) {
+  if (!pull && !busy) return null;
+  const ready = pull >= PULL_THRESHOLD;
+  return (
+    <div role="status" aria-live="polite" className="nx-pull" style={{
+      position: "fixed", left: "50%", top: `calc(var(--sat) + ${pull - 28}px)`, zIndex: 400,
+      transform: "translateX(-50%)", opacity: Math.min(1, pull / PULL_THRESHOLD),
+      transition: busy || !pull ? "top 200ms ease, opacity 200ms ease" : "none",
+      width: 40, height: 40, borderRadius: "50%", boxSizing: "border-box",
+      border: `1px solid ${ready ? C.mint : C.borderStrong}`, background: C.panel,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <span className="visually-hidden" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+        {busy ? "Обновляем" : ready ? "Отпустите, чтобы обновить" : "Потяните, чтобы обновить"}
+      </span>
+      {busy ? <Spinner s={16} />
+        : <span className="nx-pull-icon" style={{ display: "flex", transform: `rotate(${pull * 3}deg)` }}>{Icon.refresh({ c: ready ? C.mint : C.muted, s: 17 })}</span>}
+    </div>
+  );
+}
+
 /* ═══ ВХОД ПО QR (как в Телеграме) ═══════════════════════════
    Новое устройство показывает QR и код (QrLoginView), вошедшее подтверждает
    (ApproveLoginModal). Сервер — api/qr-login.js, таблица — supabase/qr-login.sql */
@@ -9118,6 +9199,8 @@ export default function NexaApp() {
     uid, table: "devices", value: deviceStore, setValue: setDeviceStore,
     toList: devicesToList, fromList: devicesFromList, rows: DEVICE_ROWS,
     onStatus: (st) => setSyncState((s) => ({ ...s, devices: st })),
+    // Правки ушли в облако — остальные устройства аккаунта перечитают их сразу
+    onPushed: () => link.emit("sync.changed", { table: "devices" }),
   });
   const chatsSync = useCloudList({
     uid, table: "chats", value: chats, setValue: setChatsStore,
@@ -9128,16 +9211,27 @@ export default function NexaApp() {
       ...chatMigration(uid),
     },
     onStatus: (st) => setSyncState((s) => ({ ...s, chats: st })),
+    onPushed: () => link.emit("sync.changed", { table: "chats" }),
   });
   const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
   const retrySync = () => { devicesSync.retry(); chatsSync.retry(); };
+
+  /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
+  const pullRefresh = async () => {
+    retrySync();
+    window.dispatchEvent(new Event("nexa-refresh"));
+    try { setAppUpdate(await checkForUpdate()); } catch {}
+  };
+  const pull = usePullToRefresh(isNative, pullRefresh);
 
   /* ── События канала (кроме текста) ── */
   const handleLinkEvent = (event, p) => {
     if (event === "pair.claim") return answerClaim(p);
     if (event === "pair.ok" || event === "pair.fail") return onPairAnswer(event, p);
     if (event === "devices.changed") return refreshDevicesSoon();
+    // На другом устройстве что-то поменяли и уже отправили в облако — перечитываем эту таблицу
+    if (event === "sync.changed") return refreshTableSoon(p.table);
     if (event === "find.ring") {
       if (p.target_device_id === link.self?.device_id) setFinding({ from: p.from_name || "Устройство" });
       return;
@@ -9146,6 +9240,12 @@ export default function NexaApp() {
   };
   // Список устройств поменялся на другом устройстве — перечитываем из облака
   const refreshDevicesSoon = () => setTimeout(() => devicesSync.retry(), 300);
+  // Несколько сигналов подряд (например, ответ ассистента) — перечитываем один раз
+  const refreshTimers = useRef({});
+  const refreshTableSoon = (table) => {
+    clearTimeout(refreshTimers.current[table]);
+    refreshTimers.current[table] = setTimeout(() => (table === "chats" ? chatsSync : devicesSync).retry(), 400);
+  };
 
   /* ── Подключение: это устройство выдаёт код ── */
   const pairRef = useRef(null);                  // { code, expiresAt, used, wrong, lockedUntil } — только в памяти
@@ -10085,6 +10185,8 @@ export default function NexaApp() {
         @media (prefers-reduced-motion: reduce) { .nx-find-wave { animation: none; opacity: 0.5; } }
         /* Блок «Связь устройств»: три колонки на компьютере */
         .nx-msg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: stretch; }
+        /* Приложение: на самом верху страница не «пружинит» сама — у нас свой жест обновления */
+        .nx-native body { overscroll-behavior-y: contain; }
         /* Дни над расписанием: скруглённые плашки (не «таблетки»), подсветка при наведении */
         .nx-day-chip { transition: border-color 160ms ease; }
         .nx-day-chip[aria-selected="false"]:hover { border-color: var(--mint) !important; }
@@ -10541,6 +10643,8 @@ export default function NexaApp() {
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
+      {/* Приложение: «потяните, чтобы обновить» */}
+      <PullIndicator pull={pull.pull} busy={pull.busy} />
       {/* Синхронизация аккаунта: «Загружаем…» или «Нет связи, работаем локально» */}
       <SyncStatus loading={syncLoading} text={syncError} onRetry={retrySync} />
       {/* Первый запуск: войти или продолжить без аккаунта */}

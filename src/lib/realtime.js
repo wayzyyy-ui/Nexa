@@ -5,7 +5,7 @@
    - Presence — кто сейчас онлайн: каждое устройство сообщает о себе
      { device_id, name, kind, platform, joined_at }.
    - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
-     pair.fail, find.ring, find.stop, devices.changed.
+     pair.fail, find.ring, find.stop, devices.changed, sync.changed.
      Ко всем сообщениям добавляются from_device, from_name и ts.
    Протокол описан в CLAUDE.md, раздел «Связь устройств». */
 import { useEffect, useRef, useState } from "react";
@@ -76,6 +76,8 @@ const SCHEMAS = {
   "find.stop": (p) => base(p) && isId(p.target_device_id) && typeof p.found === "boolean",
   // Список устройств аккаунта изменился — перечитать из облака
   "devices.changed": (p) => base(p),
+  // В облаке новое (устройства или чаты) — перечитать эту таблицу сразу
+  "sync.changed": (p) => base(p) && (p.table === "devices" || p.table === "chats"),
 };
 export const LINK_EVENTS = Object.keys(SCHEMAS);
 

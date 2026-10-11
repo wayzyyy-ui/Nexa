@@ -134,8 +134,11 @@ export function syncErrorText(e) {
    rows      — CHAT_ROWS или DEVICE_ROWS;
    migrate   — для чатов: { prepare(local, cloudRows) → список с перенесёнными гостевыми
                диалогами или null, migrated() — отметить, что перенос сделан };
-   onStatus  — сообщить состояние: { loading } | { ok } | { error, text } */
-export function useCloudList({ uid, table, value, setValue, toList, fromList, rows, migrate, onStatus }) {
+   onStatus  — сообщить состояние: { loading } | { ok } | { error, text };
+   onPushed  — правки этого устройства ушли в облако (сказать остальным «обновитесь»).
+               После простой сводки при входе не вызывается — иначе устройства
+               гоняли бы друг другу «обновись» по кругу */
+export function useCloudList({ uid, table, value, setValue, toList, fromList, rows, migrate, onStatus, onPushed }) {
   const latest = useRef(value);
   latest.current = value;
   const baseline = useRef(new Map()); // что уже лежит в облаке: id → updatedAt
@@ -144,6 +147,8 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
   const [retry, setRetry] = useState(0);
   const status = useRef(onStatus);
   status.current = onStatus;
+  const pushed = useRef(onPushed);
+  pushed.current = onPushed;
 
   // Связь вернулась — сводим заново (заодно уйдёт всё, что накопилось без сети)
   useEffect(() => {
@@ -218,6 +223,7 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
           deleted: m.deleted.filter((id) => !deletes.includes(id)),
         });
         status.current?.({ ok: true });
+        pushed.current?.();
       } catch (e) {
         status.current?.({ error: e, text: syncErrorText(e) });
       }
