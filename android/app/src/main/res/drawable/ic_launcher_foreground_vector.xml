@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Передний слой значка NEXA (адаптивная иконка) — вектор вместо маленькой PNG.
+     108dp, Android обрезает края под форму значка; логотип внутри круга 66dp -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.072"
+        android:scaleY="0.072"
+        android:translateX="18"
+        android:translateY="19.22">
+        <path
+            android:fillColor="#2BF2FAFF"
+            android:pathData="M735.977 854.646L617.779 491.514L322.477 780.644Z" />
+        <path
+            android:fillColor="#63F2FAFF"
+            android:pathData="M722.457 237.212L798.145 743.09L322.197 555.698Z" />
+        <path android:pathData="M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="503.169"
+                    android:startY="110.956"
+                    android:endX="322.501"
+                    android:endY="780.716"
+                    android:startColor="#8AF2FAFF"
+                    android:endColor="#75F2FAFF" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

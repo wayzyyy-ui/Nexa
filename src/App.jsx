@@ -19,7 +19,7 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
-const VERSION = "0.8.1";
+const VERSION = "0.8.2";
 
 
 /* =========================================================================
@@ -10039,11 +10039,11 @@ export default function NexaApp() {
         /* Значок часов у поля времени — под цвет темы */
         :root[data-theme="dark"] input[type="time"] { color-scheme: dark; }
         :root[data-theme="light"] input[type="time"] { color-scheme: light; }
-        /* Запуск приложения: интерфейс проявляется из размытия, один раз.
-           Анимируем только #root и только при загрузке (после — без фильтра) */
+        /* Запуск: интерфейс один раз проявляется — только прозрачность и небольшой
+           сдвиг снизу. Без размытия и масштаба: всё чёткое на каждом кадре */
         @keyframes nx-intro {
-          from { opacity: 0; filter: blur(14px); transform: scale(1.015); }
-          to   { opacity: 1; filter: blur(0); transform: none; }
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: none; }
         }
         #root { animation: nx-intro 650ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* В приложении: ждём, пока уйдёт заставка Android, и только тогда проявляемся */

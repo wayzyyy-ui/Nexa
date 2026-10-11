@@ -101,22 +101,70 @@ export function setSystemBarsTheme(theme) {
   SystemBars.setStyle({ style: theme === "dark" ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => {});
 }
 
-/* Появление интерфейса из размытия в приложении.
-   Пока приложение грузится, Android показывает заставку — если начать
-   анимацию сразу, она пройдёт под заставкой и её не увидят. Поэтому:
-   интерфейс ждёт скрытым (класс nx-intro-wait), потом убираем заставку
-   и в тот же момент запускаем проявление (класс nx-intro-go) */
+/* Запуск приложения — бесшовно и без размытия.
+   1) Android показывает заставку: тёмный фон и векторный логотип
+      (res/drawable/splash_icon.xml, 288dp, логотип в круге 192dp).
+   2) Пока грузится интерфейс, поверх него лежит #nx-boot — тот же логотип,
+      того же размера и в той же точке экрана (центр, 288×288). Убираем
+      системную заставку — на экране ничего не меняется, прыжка нет.
+   3) Грани логотипа чуть разъезжаются и тают (только прозрачность и сдвиг
+      векторных фигур), фон уходит, интерфейс проявляется (прозрачность + сдвиг).
+   При «уменьшить движение» — только плавное исчезновение, без сдвигов.
+   Цвета — как в assets/logo_splash.svg; фон — цвет заставки (не цвет темы),
+   иначе в светлой теме был бы скачок */
+const SPLASH_BG = "#01090F"; // как windowSplashScreenBackground в styles.xml
+const BOOT_FACETS = [
+  ["nx-boot-f1", "M735.977 854.646L617.779 491.514L322.477 780.644Z", 'fill="#F2FAFF" fill-opacity="0.17"'],
+  ["nx-boot-f2", "M722.457 237.212L798.145 743.09L322.197 555.698Z", 'fill="#F2FAFF" fill-opacity="0.39"'],
+  ["nx-boot-f3", "M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z", 'fill="url(#nx-boot-g)"'],
+];
+function mountBootLogo() {
+  const style = document.createElement("style");
+  style.textContent = `
+    #nx-boot { position: fixed; inset: 0; z-index: 2147483000; background: ${SPLASH_BG};
+      display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    #nx-boot svg { display: block; width: 288px; height: 288px; flex-shrink: 0; overflow: visible; }
+    #nx-boot path { transition: transform 560ms cubic-bezier(0.16, 1, 0.3, 1), opacity 360ms ease 140ms; }
+    .nx-boot-go #nx-boot { opacity: 0; transition: opacity 420ms ease 200ms; }
+    .nx-boot-go .nx-boot-f1 { transform: translate(30px, 90px); opacity: 0; }
+    .nx-boot-go .nx-boot-f2 { transform: translate(90px, -30px); opacity: 0; }
+    .nx-boot-go .nx-boot-f3 { transform: translate(-80px, -60px); opacity: 0; }
+    @media (prefers-reduced-motion: reduce) {
+      #nx-boot path { transition: none; }
+      .nx-boot-go #nx-boot path { transform: none; }
+      .nx-boot-go #nx-boot { transition: opacity 300ms ease; }
+    }`;
+  document.head.appendChild(style);
+  const el = document.createElement("div");
+  el.id = "nx-boot";
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = `<svg viewBox="0 0 288 288" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="nx-boot-g" x1="503.169" y1="110.956" x2="322.501" y2="780.716" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2FAFF" stop-opacity="0.54"/><stop offset="1" stop-color="#F2FAFF" stop-opacity="0.46"/>
+    </linearGradient></defs>
+    <g transform="translate(57.65 60.59) scale(0.1727)">
+      ${BOOT_FACETS.map(([cls, d, fill]) => `<path class="${cls}" d="${d}" ${fill}/>`).join("")}
+    </g></svg>`;
+  document.body.appendChild(el);
+}
+
 export async function startIntro() {
   if (!isNative) return;
   const root = document.documentElement;
+  if (root.classList.contains("nx-boot-go")) return; // уже запускали
   try {
     const { SplashScreen } = await import("@capacitor/splash-screen");
-    await SplashScreen.hide({ fadeOutDuration: 250 });
+    // Под заставкой уже лежит такой же логотип — смена незаметна
+    await SplashScreen.hide({ fadeOutDuration: 200 });
   } catch {}
-  requestAnimationFrame(() => {
-    root.classList.remove("nx-intro-wait");
-    root.classList.add("nx-intro-go");
-  });
+  // Ждём, пока системная заставка растворится, и только тогда раскрываемся
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      root.classList.remove("nx-intro-wait");
+      root.classList.add("nx-intro-go", "nx-boot-go");
+      setTimeout(() => document.getElementById("nx-boot")?.remove(), 900);
+    });
+  }, 220);
 }
 
 // Запрет масштабирования двумя пальцами — только в приложении
@@ -127,9 +175,11 @@ if (isNative) {
     meta.content += ", maximum-scale=1, user-scalable=no";
   }
   document.documentElement.classList.add("nx-native", "nx-intro-wait");
+  // Тот же логотип, что на заставке Android, — сразу поверх интерфейса
+  mountBootLogo();
   // Подстраховка: если по какой-то причине startIntro не сработал,
   // через 4 секунды всё равно показываем интерфейс и убираем заставку
   setTimeout(() => {
-    if (document.documentElement.classList.contains("nx-intro-wait")) startIntro();
+    if (!document.documentElement.classList.contains("nx-boot-go")) startIntro();
   }, 4000);
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фон заставки и значка NEXA (тёмный фон сайта) -->
+    <color name="nexaBg">#01090F</color>
+</resources>

@@ -1,0 +1,14 @@
+<!-- NEXA: чистый логотип для заставки и значка — без теней, размытия и режимов
+     смешивания (их не умеет вектор Android). Те же грани, что в logo_android.svg;
+     цвета подобраны так, чтобы на фоне #01090F выглядело так же -->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="p3" x1="503.169" y1="110.956" x2="322.501" y2="780.716" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2FAFF" stop-opacity="0.54"/>
+      <stop offset="1" stop-color="#F2FAFF" stop-opacity="0.46"/>
+    </linearGradient>
+  </defs>
+  <path d="M735.977 854.646L617.779 491.514L322.477 780.644Z" fill="#F2FAFF" fill-opacity="0.17"/>
+  <path d="M722.457 237.212L798.145 743.09L322.197 555.698Z" fill="#F2FAFF" fill-opacity="0.39"/>
+  <path d="M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z" fill="url(#p3)"/>
+</svg>

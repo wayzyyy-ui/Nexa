@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок заставки Android 12+ — вектор, поэтому чёткий на любом экране.
+     Размер 288dp (без подложки): Android показывает круг 192dp в середине,
+     логотип вписан в него с запасом. Те же грани и цвета, что в assets/logo_splash.svg,
+     и то же положение, что у логотипа в src/native.js (бесшовный переход) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <group
+        android:scaleX="0.1727"
+        android:scaleY="0.1727"
+        android:translateX="57.65"
+        android:translateY="60.59">
+        <path
+            android:fillColor="#2BF2FAFF"
+            android:pathData="M735.977 854.646L617.779 491.514L322.477 780.644Z" />
+        <path
+            android:fillColor="#63F2FAFF"
+            android:pathData="M722.457 237.212L798.145 743.09L322.197 555.698Z" />
+        <path android:pathData="M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="503.169"
+                    android:startY="110.956"
+                    android:endX="322.501"
+                    android:endY="780.716"
+                    android:startColor="#8AF2FAFF"
+                    android:endColor="#75F2FAFF" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>
