@@ -19,7 +19,7 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
-const VERSION = "0.8.3";
+const VERSION = "0.8.4";
 
 
 /* =========================================================================
@@ -8184,7 +8184,13 @@ function usePullToRefresh(enabled, onRefresh) {
     if (!enabled) return;
     let startY = null, dist = 0;
     const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
-    const blocked = (t) => !!t?.closest?.('[role="dialog"], .nx-scroll, .ng-assistant-wrapper, textarea, input, select, .nx-auth-gate');
+    // Не мешаем: окна, поля ввода, ассистент — и внутренние блоки, которые сейчас
+    // прокручены вниз по вертикали (тянуть надо их). Полоса дней листается вбок — не мешает
+    const blocked = (t) => {
+      if (t?.closest?.('[role="dialog"], .ng-assistant-wrapper, textarea, input, select, .nx-auth-gate')) return true;
+      const sc = t?.closest?.(".nx-scroll");
+      return !!sc && sc.scrollHeight > sc.clientHeight + 2 && sc.scrollTop > 0;
+    };
     const onStart = (e) => {
       startY = null; dist = 0;
       if (busyRef.current || e.touches.length !== 1 || !atTop() || blocked(e.target)) return;
@@ -10189,10 +10195,15 @@ export default function NexaApp() {
         @media (prefers-reduced-motion: reduce) { .nx-find-wave { animation: none; opacity: 0.5; } }
         /* Блок «Связь устройств»: три колонки на компьютере */
         .nx-msg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: stretch; }
-        /* Приложение: на самом верху страница не «пружинит» сама — у нас свой жест обновления */
-        .nx-native body { overscroll-behavior-y: contain; }
+        /* Приложение: на самом верху страница не «пружинит» сама — у нас свой жест обновления.
+           Только на html (вся страница)! На body нельзя: body у нас — отдельный
+           прокручиваемый слой, и запрет на нём обрывает прокрутку страницы */
+        html.nx-native { overscroll-behavior-y: contain; }
         /* Дни над расписанием: скруглённые плашки (не «таблетки»), подсветка при наведении */
         .nx-day-chip { transition: border-color 160ms ease; }
+        /* Полоса дней листается пальцем — полоса прокрутки под ней не нужна */
+        .nx-day-strip { scrollbar-width: none; }
+        .nx-day-strip::-webkit-scrollbar { display: none; }
         .nx-day-chip[aria-selected="false"]:hover { border-color: var(--mint) !important; }
         /* Колонки разделены тонкой линией, как строки в списке устройств */
         .nx-link-col + .nx-link-col { border-left: 1px solid ${C.border}; }
