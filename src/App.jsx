@@ -19,7 +19,7 @@ import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./li
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
-const VERSION = "0.8.4";
+const VERSION = "0.8.5";
 
 
 /* =========================================================================
@@ -8135,6 +8135,19 @@ function useAuth() {
 // Выйти: только на этом устройстве. Сессия стирается даже без интернета
 const signOut = () => supabase?.auth.signOut({ scope: "local" });
 
+/* После выхода стираем из браузера копии данных аккаунта: устройства, файлы,
+   чаты, входящие и служебные отметки синхронизации (ключи nexa-…@<id>).
+   В облаке всё остаётся — при следующем входе вернётся. Иначе на общем
+   компьютере следующий человек мог бы достать чужие чаты из памяти браузера.
+   Правки, которые не успели уйти в облако без интернета, при этом пропадут */
+function clearLocalAccountData(uid) {
+  if (!uid) return;
+  try {
+    const mine = Object.keys(localStorage).filter((k) => k.startsWith("nexa-") && k.endsWith(`@${uid}`));
+    mine.forEach((k) => localStorage.removeItem(k));
+  } catch {}
+}
+
 /* Понятный текст ошибки Supabase.
    step — где ошиблись: "send" (отправка кода) или "verify" (проверка кода).
    Неверный и просроченный код Supabase сообщает одинаково — различаем по времени:
@@ -8758,8 +8771,11 @@ function AccountSettings({ user, onLogin, onDeleteData, onApproveLogin }) {
   const [leaving, setLeaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false); // окно «Удалить мои данные?»
   const logout = async () => {
+    const uid = user?.id;
     setLeaving(true);
     try { await signOut(); } finally { setLeaving(false); }
+    // Чуть ждём: интерфейс уже переключился на гостевые данные и больше не пишет в ключи аккаунта
+    setTimeout(() => clearLocalAccountData(uid), 400);
   };
   const pill = { ...btnReset, flexShrink: 0, borderRadius: 999, padding: "8px 16px", fontSize: 13, whiteSpace: "nowrap" };
   return (

@@ -1,4 +1,13 @@
 import { GoogleGenAI } from '@google/genai';
+import { allow, clientKey } from './_lib/rate-limit.js';
+
+// Защита от злоупотреблений: длина вопроса, размер истории и частота запросов
+const MESSAGE_MAX = 4000;        // символов в одном вопросе
+const HISTORY_MAX = 30;          // последних сообщений, которые уходят модели
+const HISTORY_ITEM_MAX = 4000;   // символов в одном сообщении истории
+const BODY_MAX = 200 * 1000;     // весь запрос — не больше ~200 КБ
+const LIMIT_PER_MINUTE = 15;     // вопросов в минуту с одного адреса
+const LIMIT_PER_DAY = 300;       // вопросов в сутки с одного адреса
 
 const MODEL = 'gemini-flash-lite-latest';
 
@@ -70,16 +79,35 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Слишком большой запрос — сразу отказ
+  let bodySize = 0;
+  try { bodySize = JSON.stringify(req.body || {}).length; } catch {}
+  if (bodySize > BODY_MAX) {
+    return res.status(413).json({ error: 'Слишком длинное сообщение' });
+  }
+
   const { message, history } = req.body || {};
 
   if (!message || typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: 'Message is required' });
   }
+  if (message.length > MESSAGE_MAX) {
+    return res.status(413).json({ error: `Слишком длинное сообщение — до ${MESSAGE_MAX} символов` });
+  }
 
+  // Частота: не больше LIMIT_PER_MINUTE в минуту и LIMIT_PER_DAY в сутки с одного адреса
+  const who = clientKey(req);
+  const allowed = await allow([[`chat:m:${who}`, LIMIT_PER_MINUTE, 60], [`chat:d:${who}`, LIMIT_PER_DAY, 86400]]);
+  if (!allowed) {
+    res.setHeader('Retry-After', '60');
+    return res.status(429).json({ error: 'Слишком много вопросов подряд — подождите минуту' });
+  }
+
+  // История: только последние HISTORY_MAX сообщений, каждое не длиннее HISTORY_ITEM_MAX
   const contents = [
-    ...(Array.isArray(history) ? history.map(m => ({
-      role: m.role === 'ai' || m.role === 'model' ? 'model' : 'user',
-      parts: [{ text: m.parts?.[0]?.text || m.text || '' }],
+    ...(Array.isArray(history) ? history.slice(-HISTORY_MAX).map(m => ({
+      role: m?.role === 'ai' || m?.role === 'model' ? 'model' : 'user',
+      parts: [{ text: String(m?.parts?.[0]?.text || m?.text || '').slice(0, HISTORY_ITEM_MAX) }],
     })).filter(m => m.parts[0].text) : []),
     { role: 'user', parts: [{ text: message }] },
   ];
@@ -103,7 +131,8 @@ export default async function handler(req, res) {
     }
     res.end();
   } catch (error) {
-    console.error('Gemini API error:', error);
+    // В журнал — только код и тип ошибки, без текста запроса и служебных подробностей
+    console.error('Gemini API error:', error?.status || error?.code || error?.name || 'unknown');
     if (!res.headersSent) {
       const status = error?.status;
       if (status === 503) {

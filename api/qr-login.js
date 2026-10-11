@@ -14,6 +14,7 @@
    Таблица — supabase/qr-login.sql. Коды, секреты и пропуски никогда не пишем в журнал. */
 import { createClient } from '@supabase/supabase-js';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { allow, clientKey } from './_lib/rate-limit.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // без 0, O, 1, I, L — как у подключения
 const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
@@ -74,8 +75,11 @@ export default async function handler(req, res) {
   const body = req.body || {};
   const action = body.action;
 
+  const who = clientKey(req);
   try {
     if (action === 'start') {
+      // Новые коды: не больше 10 за 10 минут с одного адреса (иначе таблицу можно забить)
+      if (!(await allow([[`qr:start:${who}`, 10, 600]]))) return res.status(429).json({ error: 'Слишком часто — подождите пару минут' });
       // Заодно убираем старые запросы (старше часа)
       await sb.from('qr_logins').delete().lt('expires_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
       let code = makeCode();
@@ -90,7 +94,9 @@ export default async function handler(req, res) {
     }
 
     if (action === 'poll') {
-      if (typeof body.id !== 'string' || typeof body.secret !== 'string') return res.status(400).json({ error: 'bad request' });
+      if (typeof body.id !== 'string' || typeof body.secret !== 'string' || body.secret.length > 128) return res.status(400).json({ error: 'bad request' });
+      // Новое устройство спрашивает раз в 2 с — 90 в минуту с запасом
+      if (!(await allow([[`qr:poll:${who}`, 90, 60]]))) return res.status(429).json({ status: 'slow_down' });
       const { data: row } = await sb.from('qr_logins').select('id, secret_hash, status, token_hash, expires_at').eq('id', body.id).maybeSingle();
       if (!row || !sameHash(row.secret_hash, sha256(body.secret))) return res.status(404).json({ status: 'not_found' });
       if (row.status === 'approved' && row.token_hash) {
@@ -107,6 +113,11 @@ export default async function handler(req, res) {
     if (action === 'peek' || action === 'approve') {
       const user = await userFrom(req, sb);
       if (!user?.email) return res.status(401).json({ error: 'Войдите, чтобы подтвердить вход' });
+      // Перебор кодов: не больше 10 проверок в минуту и 40 в час на аккаунт
+      // (раньше ограничение было только в браузере — его легко обойти)
+      if (!(await allow([[`qr:peek:${user.id}`, 10, 60], [`qr:peek:h:${user.id}`, 40, 3600]]))) {
+        return res.status(429).json({ error: 'Слишком много попыток. Подождите минуту' });
+      }
       const code = String(body.code || '').toUpperCase();
       if (!CODE_RE.test(code)) return res.status(400).json({ error: 'Код — это 6 букв и цифр' });
       const row = await pendingByCode(sb, code);
