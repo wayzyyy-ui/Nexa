@@ -27,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.16";
+const VERSION = "0.8.17";
 
 
 /* =========================================================================
@@ -7445,18 +7445,29 @@ useEffect(() => {
       { duration: 560, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
   }, [isEmpty]);
 
-  // Поле ввода растёт по высоте вместе с текстом (до ~6 строк, дальше прокрутка)
-  useLayoutEffect(() => {
+  // Поле ввода растёт по высоте вместе с текстом, дальше — прокрутка внутри поля.
+  // Потолок — до ~6 строк, но не больше 30% видимой высоты экрана: на маленьком
+  // экране с открытой клавиатурой поле не выдавливает переписку
+  const fitInput = () => {
     const t = taRef.current;
     if (!t) return;
+    const visible = window.visualViewport?.height || window.innerHeight;
+    const cap = Math.max(60, Math.min(168, Math.round(visible * 0.3)));
+    t.style.maxHeight = `${cap}px`;
     t.style.height = "auto";
-    const h = Math.min(t.scrollHeight, 168);
-    t.style.height = `${h}px`;
-    t.style.overflowY = t.scrollHeight > 168 ? "auto" : "hidden";
+    t.style.height = `${Math.min(t.scrollHeight, cap)}px`;
+    t.style.overflowY = t.scrollHeight > cap ? "auto" : "hidden";
     // Одна строка — кнопка по центру поля, несколько — прижата к низу
     const oneLine = parseFloat(getComputedStyle(t).lineHeight) + 12 + 4;
     t.parentElement.style.alignItems = t.scrollHeight > oneLine ? "flex-end" : "center";
-  }, [input, isEmpty]);
+  };
+  useLayoutEffect(fitInput, [input, isEmpty]);
+  // Открылась / закрылась клавиатура — потолок пересчитываем
+  useEffect(() => {
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", fitInput);
+    return () => vv?.removeEventListener("resize", fitInput);
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -7740,10 +7751,12 @@ useEffect(() => {
         <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
       </svg>
     </button>
-    <div style={{ textAlign: "left" }}>
-      <div className="ng-display" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
-        ИИ - Ассистент
+    <div style={{ textAlign: "left", minWidth: 0 }}>
+      {/* На телефоне — одна строка без переноса: название и маленькая версия рядом */}
+      <div className="ng-display nx-assistant-title" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
+        ИИ — Ассистент<span className="nx-assistant-ver"> v{VERSION}</span>
       </div>
+      {/* Описание — только на компьютере */}
        <div className="nx-assistant-subtitle" style={{ fontSize: 13, color: C.muted, marginTop: 6, textAlign: "left" }}>
         Интеллектуальный центр системы NEXA · v{VERSION}
       </div>
@@ -7779,7 +7792,7 @@ const menuBlock = (
 );
 
     const inputRow = (
-  <div style={{
+  <div className="nx-input-ring" style={{
     width: "100%", maxWidth: 820,
     padding: 1,
     // 25 = половина высоты однострочного поля: одна строка — «таблетка»,
@@ -7957,7 +7970,7 @@ const menuBlock = (
           <>
             {/* Сообщения сверху. Обёртка нужна для ауры за ответом:
                 аура лежит под списком и не прокручивается вместе с ним */}
-            <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", marginTop: 24, marginBottom: 16 }}>
+            <div className="nx-chat-area" style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", marginTop: 24, marginBottom: 16 }}>
             {replyAura && <ReplyAura key={replyAura.id} fading={replyAura.fading} posRef={replyAuraPos} />}
             <div
               ref={listRef}
@@ -7972,7 +7985,7 @@ const menuBlock = (
                 position: "relative", zIndex: 1,
               }}
             >
-              <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
+              <div className="nx-msg-col" style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
                 {messages.map((m, i) => (
                   <MessageBubble
                     key={i}
@@ -7998,8 +8011,9 @@ const menuBlock = (
             </div>
             </div>
 
-            {/* Поле ввода + дисклеймер (дисклеймер только в чате) */}
-            <div ref={inputDockRef} style={{
+            {/* Поле ввода + дисклеймер (дисклеймер только в чате).
+                На телефоне — закреплённая область с переходом в переписку (.nx-chat-dock) */}
+            <div ref={inputDockRef} className="nx-chat-dock" style={{
               flexShrink: 0,
               display: "flex",
               flexDirection: "column",
@@ -10878,8 +10892,6 @@ export default function NexaApp() {
            закрывает и полосу статус-бара, и линии фона страницы там не торчат обрывками */
         .nx-native .ng-assistant-wrapper { top: var(--vvt, 0px) !important; height: var(--vvh, 100%) !important; padding-top: var(--sat); box-sizing: border-box; }
         @media (max-width: 768px) {
-          .nx-native .ng-assistant-inner { padding-bottom: calc(76px + var(--sab)) !important; }
-          .nx-native body.kb-open .ng-assistant-inner { padding-bottom: 16px !important; }
         }
         /* Шрифты лежат в public/fonts — так они одинаковые на любом устройстве,
            даже если у человека они не установлены (раньше Raleway брался
@@ -11012,6 +11024,7 @@ export default function NexaApp() {
         /* ─── Десктопные показы ─────────────────────────────── */
         .ng-mobile-tabbar { display: none; }
         .ng-hamburger { display: none; }
+        .nx-assistant-ver { display: none; }
         .ng-devices-list { display: block; }
         .ng-devices-mobile { display: none; }
 
@@ -11805,15 +11818,50 @@ export default function NexaApp() {
             white-space: nowrap !important;
           }
 
-          /* Ассистент */
+          /* Ассистент: переписке — всё место между шапкой и полем ввода.
+             Снизу запас ровно под нижнюю панель: её 68 px + системная полоса
+             (--sab) + 4 px. Клавиатура открыта — панели нет, запас минимальный */
           .ng-assistant-wrapper { left: 0 !important; }
           .ng-assistant-inner {
-            padding: 24px 16px 76px 16px !important;
+            --chat-bottom: calc(72px + var(--sab));
+            padding: 8px 14px var(--chat-bottom) 14px !important;
           }
-          /* Когда клавиатура открыта — уменьшаем нижний отступ */
-          body.kb-open .ng-assistant-inner {
-            padding-bottom: 16px !important;
+          body.kb-open .ng-assistant-inner { --chat-bottom: 6px; }
+          /* Шапка: одна строка «ИИ — Ассистент», версия мелко рядом, без описания */
+          .ng-assistant-inner .nx-assistant-title {
+            font-size: 20px !important; line-height: 1.2 !important;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           }
+          .nx-assistant-ver {
+            display: inline !important; margin-left: 6px;
+            font-family: 'NexaNumbers', 'Raleway', sans-serif; font-size: 11px; font-weight: 400; color: var(--muted-soft); letter-spacing: 0;
+          }
+          .ng-assistant-inner .nx-assistant-subtitle { display: none !important; }
+          .ng-hamburger { width: 40px; height: 40px; margin-left: -8px; }
+          /* Переписка вплотную к шапке и полю ввода; сообщения чуть плотнее */
+          .nx-chat-area { margin: 6px 0 0 !important; }
+          .nx-msg-col { gap: 14px !important; padding-bottom: 22px !important; }
+          /* Закреплённая область ввода: фон экрана и мягкий переход в переписку
+             сверху — последние строки не обрываются на краю. Переход не ловит
+             нажатия, а внизу переписки под него оставлен запас (padding выше) */
+          /* Подложка — на всю ширину экрана и вниз до самой нижней панели
+             (тот же запас --chat-bottom), чтобы не было краёв и полос */
+          .nx-chat-dock {
+            position: relative; gap: 4px !important;
+            margin: 0 -14px calc(-1 * var(--chat-bottom));
+            padding: 0 14px calc(2px + var(--chat-bottom)) !important;
+            background: var(--bg);
+          }
+          .nx-chat-dock::before {
+            content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 22px;
+            background: linear-gradient(to top, var(--bg), transparent);
+            pointer-events: none;
+          }
+          /* Сине-мятная обводка поля остаётся, внешнее свечение на телефоне убираем */
+          .nx-input-ring { box-shadow: none !important; }
+          .ng-disclaimer { font-size: 10.5px !important; }
+          /* Клавиатура открыта — подпись под полем убираем: место нужнее переписке */
+          body.kb-open .ng-disclaimer { display: none !important; }
 
           /* История — шторка слева на 85% ширины, поверх нижней панели.
              Высота — видимая область (над клавиатурой, когда пишем в поиск) */
@@ -11902,7 +11950,6 @@ export default function NexaApp() {
           }
           .nx-chips button { padding: 6px 11px !important; font-size: 12px !important; gap: 5px !important; }
           .ng-input-field { font-size: 16px !important; }
-          .nx-assistant-subtitle { font-size: 13px !important; margin-top: 4px !important; }
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
           .nx-user-bubble { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }
