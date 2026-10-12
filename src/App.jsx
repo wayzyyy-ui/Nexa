@@ -6,7 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import foldSvg from "./assets/fold.svg";
 import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -27,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.9.3";
+const VERSION = "0.9.4";
 
 
 const C = {
@@ -287,6 +287,12 @@ const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10Z" strokeLinejoin="round" />
       <path d="M10 18.5a2 2 0 0 0 4 0" strokeLinecap="round" />
+    </svg>
+  ),
+  // Быстрые действия: молния из двух острых граней
+  quick: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6L13.5 3Z" strokeLinejoin="round" />
     </svg>
   ),
   chat: (p) => (
@@ -2719,9 +2725,9 @@ function DeviceMessages({ d, link, flowOn = true }) {
 /* Окно «Отправить в NEXA»: из Настроек и из «Поделиться» Android.
    Текст (можно вставить скопированное), куда — устройства аккаунта в сети,
    потом настоящий статус: доставлено / не подтвердило / выключено */
-function FlowSendDialog({ initial, link, devices, flowOn, user, onLogin, onClose }) {
+function FlowSendDialog({ initial, initialTo = null, link, devices, flowOn, user, onLogin, onClose }) {
   const [text, setText] = useState(initial || "");
-  const [to, setTo] = useState(null);
+  const [to, setTo] = useState(initialTo); // устройство, выбранное заранее (панель быстрых действий)
   const [note, setNote] = useState(null);
   const [sentId, setSentId] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -3029,6 +3035,22 @@ const dayFromKey = (k) => { const [y, m, d] = k.split("-").map(Number); return n
 const sortSchedule = (list) => [...list].sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.time.localeCompare(b.time));
 // Дела на конкретный день
 const itemsOn = (list, key) => list.filter((it) => it.date === key);
+// Ближайшее дело, которое ещё не началось (старые дела без даты — сегодняшние)
+function nextScheduleItem(list, now = new Date()) {
+  const today = dayKey(now);
+  const hm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const ahead = list.map((it) => ({ ...it, date: it.date || today }))
+    .filter((it) => it.date > today || (it.date === today && (it.time || "") >= hm));
+  return sortSchedule(ahead)[0] || null;
+}
+// «Сегодня», «Завтра» или «14 окт.»
+function scheduleDayLabel(key) {
+  const t = new Date(); const tomorrow = new Date(t); tomorrow.setDate(t.getDate() + 1);
+  if (key === dayKey(t)) return "Сегодня";
+  if (key === dayKey(tomorrow)) return "Завтра";
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
 // Пример, который раньше сохранялся сам: те же дела в том же количестве
 const isOldExample = (list) => list.length === SCHEDULE.length &&
   SCHEDULE.every((x) => list.some((y) => y.time === x.time && y.title === x.title));
@@ -6762,8 +6784,171 @@ function ToastItem({ toast, onClose }) {
    файлам, папкам, диалогам ассистента и строкам настроек.
    Открывается по иконке поиска в верхней строке (или кнопке
    в настройках), закрывается по Esc или клику по затемнению. */
-function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate }) {
+/* ═══ ПАНЕЛЬ БЫСТРЫХ ДЕЙСТВИЙ ══════════════════════════════════
+   Открывается кнопкой-молнией в верхней строке, сочетанием Ctrl/⌘ + K
+   и событием QUICK_EVENT (так её откроет любой компонент, а в будущей
+   EXE-версии — глобальное сочетание через onDesktopQuickPanel в native.js).
+   Своих действий у панели нет: команды собирает NexaApp (quickCommands)
+   из уже существующих обработчиков. Команда — { id, title, sub, icon,
+   keywords, run } или вместо run — pick { title, placeholder, empty, items }:
+   выбор устройства или файла открывается тут же, внутри панели.
+   В панель попадают только команды, которые сейчас можно выполнить */
+const QUICK_EVENT = "nexa-quick-panel";
+const openQuickPanel = () => window.dispatchEvent(new Event(QUICK_EVENT));
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+const QUICK_KEYS = IS_MAC ? "⌘ K" : "Ctrl K";
+// Совпадает, если каждое слово запроса есть в названии, подписи или ключевых словах
+const quickNorm = (s) => String(s || "").toLowerCase().replace(/ё/g, "е");
+const quickMatch = (item, q) => {
+  const words = quickNorm(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = quickNorm([item.title, item.sub, ...(item.keywords || [])].join(" "));
+  return words.every((w) => hay.includes(w));
+};
+
+// Кнопка-молния в верхней строке
+function QuickBtn() {
+  return (
+    <button type="button" className="nx-icon-btn" onClick={openQuickPanel}
+      aria-label="Быстрые действия" title={`Быстрые действия · ${QUICK_KEYS}`} aria-haspopup="dialog"
+      style={{ ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {Icon.quick({ c: C.text, s: 18 })}
+    </button>
+  );
+}
+
+function QuickPanel({ commands, note, onClose, onSearch }) {
+  const mobile = useMediaQuery(PHONE_MQ);
   const [query, setQuery] = useState("");
+  const [path, setPath] = useState([]); // выбранные шаги: [id команды, id устройства, …]
+  const [sel, setSel] = useState(0);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  // Где мы сейчас: проходим по выбранным шагам. Список живой — устройство ушло
+  // из сети, пока панель открыта, — шаг пропадает, а не остаётся «призраком»
+  let items = commands, step = null, crumbs = [];
+  for (const id of path) {
+    const it = items.find((x) => x.id === id);
+    if (!it?.pick) break;
+    step = it.pick; crumbs.push(it.title); items = step.items;
+  }
+  const depth = crumbs.length;
+  const shown = items.filter((it) => quickMatch(it, query));
+  // В корне по любому запросу последней строкой — глобальный поиск с этим запросом
+  const q = query.trim();
+  const rows = !step && q ? [...shown, { id: "__search", title: `Искать «${q}» по всему NEXA`, sub: "Файлы, папки, диалоги, устройства, настройки", icon: Icon.search, run: () => onSearch(q) }] : shown;
+  const cur = Math.min(sel, Math.max(0, rows.length - 1));
+
+  // Фокус в поле сразу (на телефоне — нет: иначе выскочит клавиатура).
+  // Закрылись — фокус возвращается туда, где был
+  useEffect(() => {
+    const before = document.activeElement;
+    if (!mobile) inputRef.current?.focus();
+    return () => {
+      const a = document.activeElement;
+      if ((!a || a === document.body) && before?.isConnected) before.focus?.();
+    };
+  }, []);
+  useEffect(() => { setSel(0); }, [query, depth]);
+  // Выбранная строка всегда видна
+  useEffect(() => { document.getElementById(`nx-quick-opt-${cur}`)?.scrollIntoView({ block: "nearest" }); }, [cur, depth]);
+
+  const back = () => { setPath((p) => p.slice(0, depth - 1)); setQuery(""); };
+  // Esc (и «Назад» Android, который нажимает Esc): из шага — на шаг назад, из списка — закрыть
+  const stateRef = useRef(); stateRef.current = { depth, back, onClose };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      const s = stateRef.current;
+      if (s.depth) s.back(); else s.onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const choose = (it) => {
+    if (!it) return;
+    if (it.pick) { setPath([...path.slice(0, depth), it.id]); setQuery(""); if (!mobile) inputRef.current?.focus(); return; }
+    it.run();
+    onClose();
+  };
+  const onKeyDown = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setSel(rows.length ? (cur + 1) % rows.length : 0); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSel(rows.length ? (cur - 1 + rows.length) % rows.length : 0); }
+    else if (e.key === "Home") { e.preventDefault(); setSel(0); }
+    else if (e.key === "End") { e.preventDefault(); setSel(Math.max(0, rows.length - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(rows[cur]); }
+    else if (e.key === "Backspace" && !query && depth) { e.preventDefault(); back(); }
+  };
+
+  return createPortal(
+    <div className="nx-quick-overlay" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Быстрые действия" className="nx-quick-panel nx-pop" onClick={(e) => e.stopPropagation()}>
+        {/* Шаг выбора: назад и где мы */}
+        {depth > 0 && (
+          <div className="nx-quick-step">
+            <button type="button" className="nx-icon-btn" onClick={back} aria-label="Назад"
+              style={{ ...btnReset, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {Icon.arrowLeft({ c: C.muted, s: 15 })}
+            </button>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {crumbs.join(" → ")}{step?.title ? <span style={{ color: C.text }}> · {step.title}</span> : null}
+            </span>
+          </div>
+        )}
+        {/* Поле поиска команд */}
+        <div className="nx-quick-search">
+          {Icon.quick({ c: C.mint, s: 18 })}
+          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
+            placeholder={step?.placeholder || (mobile ? "Что сделать?" : "Что сделать? Например: файл, найти, диалог")}
+            role="combobox" aria-expanded="true" aria-controls="nx-quick-list" aria-autocomplete="list"
+            aria-activedescendant={rows.length ? `nx-quick-opt-${cur}` : undefined} aria-label={step?.placeholder || "Найти действие"}
+            enterKeyHint="go" autoComplete="off" spellCheck={false} />
+          {mobile ? (
+            <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть"
+              style={{ ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {Icon.close({ c: C.muted, s: 16 })}
+            </button>
+          ) : <kbd className="nx-quick-kbd">Esc</kbd>}
+        </div>
+        {/* Команды */}
+        <div ref={listRef} id="nx-quick-list" role="listbox" aria-label={step?.title || "Действия"} className="nx-quick-list nx-scroll">
+          {rows.map((it, i) => (
+            <div key={it.id} id={`nx-quick-opt-${i}`} role="option" aria-selected={i === cur}
+              className={`nx-quick-row${i === cur ? " is-sel" : ""}`}
+              onMouseMove={() => { if (i !== cur) setSel(i); }} onClick={() => choose(it)}>
+              <span className="nx-quick-ico">{it.thumb || it.icon?.({ c: i === cur ? C.mint : C.muted, s: 16 })}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="nx-quick-title">{it.title}</span>
+                {it.sub && <span className="nx-quick-sub">{it.sub}</span>}
+              </span>
+              {it.pick && Icon.chevron({ c: C.mutedSoft, s: 14 })}
+            </div>
+          ))}
+          {!rows.length && (
+            <div style={{ padding: "18px", fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>
+              {q ? `Нет действий по запросу «${q}»` : step?.empty || "Сейчас здесь пусто"}
+            </div>
+          )}
+          {!step && !q && note && <div className="nx-quick-note">{note}</div>}
+        </div>
+        {/* Подсказка по клавишам — только там, где есть клавиатура */}
+        {!mobile && (
+          <div className="nx-quick-foot">
+            <span>↑ ↓ выбрать · Enter выполнить · Esc {depth ? "назад" : "закрыть"}</span>
+            <span>{QUICK_KEYS} — открыть панель</span>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate, initialQuery = "" }) {
+  const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef(null);
   const q = query.trim().toLowerCase();
   const hasQuery = q.length > 0;
@@ -7774,6 +7959,17 @@ useEffect(() => {
   }, []);
 
   const newChat = () => { if (currentChatId) rememberInputPos(); setCurrentChatId(null); setInput(''); };
+  // «Новый диалог» из панели быстрых действий: чистый диалог и курсор в поле
+  // (на телефоне без фокуса — иначе сразу выскочит клавиатура)
+  const newChatRef = useRef(newChat); newChatRef.current = newChat;
+  useEffect(() => {
+    const onNew = () => {
+      newChatRef.current(); setIsHistoryOpen(false);
+      if (!window.matchMedia(PHONE_MQ).matches) setTimeout(() => document.querySelector(".ng-input-field")?.focus(), 0);
+    };
+    window.addEventListener("nexa-new-chat", onNew);
+    return () => window.removeEventListener("nexa-new-chat", onNew);
+  }, []);
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
   // Удаление (уже после подтверждения в меню диалога)
   const deleteChat = (id) => {
@@ -8062,6 +8258,7 @@ const menuBlock = (
       marginBottom: 8,
     }}>
       <TimeDate />
+      <QuickBtn />
       {bell}
       <IconBtn icon={Icon.user} />
     </div>
@@ -11295,6 +11492,102 @@ export default function NexaApp() {
     if (tab !== "files") setSearchFolder(null);
     if (tab !== "assistant") setSearchChatId(null);
   }, [tab]);
+
+  /* ── Панель быстрых действий (QuickPanel) ──
+     Открывается: молния в верхней строке, Ctrl/⌘ + K, событие QUICK_EVENT,
+     в будущей EXE-версии — глобальное сочетание (onDesktopQuickPanel).
+     Не открывается поверх другого окна, экрана входа и экрана «Обновите» */
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const openSearch = (q = "") => { setSearchQuery(q); setSearchOpen(true); };
+  const quickBlocked = useRef(false);
+  quickBlocked.current = !!appUpdate?.required || showGate || !!locked;
+  useEffect(() => {
+    const open = () => {
+      if (quickBlocked.current || document.querySelector('[role="dialog"]:not(.nx-hist-drawer), .nx-auth-gate')) return;
+      setQuickOpen(true);
+    };
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.code !== "KeyK") return;
+      e.preventDefault(); // в браузере Ctrl+K иначе прыгает в адресную строку
+      if (document.querySelector(".nx-quick-panel")) setQuickOpen(false); else open();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener(QUICK_EVENT, open);
+    const offDesktop = onDesktopQuickPanel(open);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener(QUICK_EVENT, open); offDesktop(); };
+  }, []);
+  // Отправить файл, который уже лежит в облаке аккаунта: тот же file.send, что и
+  // после загрузки (получатель открывает его по своей ссылке <uid>/<id>)
+  const sendStoredFile = async (d, f) => {
+    if (!uid || !f.path) return;
+    const name = safeFileName(f.name);
+    const ok = await link.emit("file.send", { id: f.id, to_device: d.device_id, name, size: fileBytes(f), mime: f.mime || "" });
+    if (!ok) { showToast({ title: "Файл не отправлен", text: "Нет связи — попробуйте ещё раз", kind: "error" }); return; }
+    showToast({ title: `Файл отправлен на «${d.name}»`, text: name, kind: "device" });
+    logActivity("sent", `Файл «${name}» отправлен на «${d.name}»`);
+  };
+  // Файл с этого устройства: обычный выбор файла, дальше — sendFileTo, как на экране устройства
+  const quickFileRef = useRef(null);
+  const quickFileTo = useRef(null);
+  const openActivity = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(true); };
+  const newChatQuick = () => {
+    setSearchChatId(null); goTab("assistant");
+    setTimeout(() => window.dispatchEvent(new Event("nexa-new-chat")), 60);
+  };
+  // Только то, что сейчас можно сделать; почему чего-то нет — одной строкой внизу
+  const quick = (() => {
+    const online = link.status === "online";
+    const live = devices.filter((d) => d.real && !d.isSelf && d.online);
+    const others = devices.some((d) => d.real && !d.isSelf);
+    const canLink = !!uid && online && live.length > 0;
+    const pickDevice = (title, run) => ({
+      title, placeholder: "Найти устройство…", empty: "Устройства больше не в сети",
+      items: live.map((d) => ({ id: d.id, title: d.name, sub: deviceStatus(d), icon: d.icon, run: () => run(d) })),
+    });
+    const next = nextScheduleItem(schedule);
+    const cloudFiles = sortByRecent(files.filter((f) => f.uploaded && f.path));
+    const syncText = syncLoading ? "Синхронизация: загружаем данные…" : syncError ? `Синхронизация: ${syncError}` : "Синхронизировано с облаком";
+    const list = [
+      { id: "chat", title: "Новый диалог с ассистентом", sub: "ИИ-ассистент NEXA", icon: Icon.sparkle,
+        keywords: ["ассистент", "ии", "чат", "диалог", "вопрос", "спросить"], run: newChatQuick },
+      canLink && flow.on && { id: "flow", title: "Передать текст или ссылку", sub: "NEXA Flow · на устройство в сети", icon: Icon.shareUp,
+        keywords: ["flow", "буфер", "текст", "ссылка", "передать", "отправить", "скопировать"],
+        pick: pickDevice("Куда передать?", (d) => setFlowSend({ text: "", to: d.id })) },
+      canLink && { id: "file", title: "Отправить файл", sub: "На устройство в сети", icon: Icon.send,
+        keywords: ["файл", "отправить", "передать", "документ", "фото"],
+        pick: { ...pickDevice("Куда отправить?", null), items: live.map((d) => ({
+          id: d.id, title: d.name, sub: deviceStatus(d), icon: d.icon,
+          pick: { title: "Какой файл?", placeholder: "Найти файл…", empty: "", items: [
+            { id: "__local", title: "Выбрать на этом устройстве…", sub: "До 50 МБ, загрузится в облако аккаунта", icon: Icon.plus,
+              run: () => { quickFileTo.current = d; quickFileRef.current?.click(); } },
+            ...cloudFiles.map((f) => ({ id: f.id, title: f.name, sub: fileMeta(f), keywords: [catOf(f)?.label],
+              thumb: <FileThumb file={f} w={34} h={34} iconSize={14} radius={0} />, run: () => sendStoredFile(d, f) })),
+          ] },
+        })) } },
+      { id: "files", title: "Открыть «Файлы»", sub: files.length ? `${files.length} ${plural(files.length, ["файл", "файла", "файлов"])}` : "Пока пусто — можно добавить",
+        icon: Icon.folder, keywords: ["файлы", "папки", "документы", "раздел"], run: () => goTab("files") },
+      canLink && { id: "find", title: "Найти устройство", sub: "Подать сигнал на устройство в сети", icon: Icon.signal,
+        keywords: ["найти", "поиск", "где", "телефон", "сигнал", "позвонить"],
+        pick: pickDevice("Какое устройство найти?", (d) => { findDevice(d); showDevice(d.id); }) },
+      { id: "next", title: "Ближайшее дело", icon: Icon.calendar,
+        sub: next ? `${scheduleDayLabel(next.date)}, ${next.time} · ${next.title}` : "Ближайших дел нет — открыть расписание",
+        keywords: ["расписание", "сегодня", "дело", "событие", "встреча", "календарь", "план"], run: () => goTab("today") },
+      uid && { id: "activity", title: "Активность и синхронизация", sub: syncText, icon: Icon.refresh,
+        keywords: ["активность", "лента", "события", "синхронизация", "облако", "статус"], run: openActivity },
+      uid && syncError && { id: "resync", title: "Повторить синхронизацию", sub: syncError, icon: Icon.refresh,
+        keywords: ["синхронизация", "облако", "повторить"], run: retrySync },
+      { id: "search", title: "Глобальный поиск", sub: "Файлы, папки, диалоги, устройства, настройки", icon: Icon.search,
+        keywords: ["поиск", "найти", "искать"], run: () => openSearch() },
+    ].filter(Boolean);
+    const note = !uid ? "Передача текста и файлов, поиск устройств и активность — после входа в аккаунт"
+      : !online ? "Нет связи — передача, отправка файлов и поиск устройств вернутся вместе со связью"
+      : !others ? "Подключите второе устройство — появятся передача, отправка файлов и поиск устройств"
+      : !live.length ? "Другие устройства не в сети — передача, файлы и поиск появятся, когда на них откроют NEXA"
+      : !flow.on ? "Передача текста выключена: Настройки → NEXA Flow" : null;
+    return { list, note };
+  })();
+
   return (
     <div style={{
       display: "flex",
@@ -11705,6 +11998,55 @@ export default function NexaApp() {
         /* ─── Глобальный поиск ─────────────────────────────── */
         .nx-search-row:hover { background-color: var(--hover) !important; }
         .nx-search-row:focus-visible { outline: 1px solid var(--mint); outline-offset: -2px; }
+        /* ─── Панель быстрых действий (QuickPanel) ─────────── */
+        .nx-quick-overlay {
+          position: fixed; inset: 0; z-index: 400; box-sizing: border-box;
+          display: flex; align-items: flex-start; justify-content: center; padding: 12vh 20px 20px;
+          background: color-mix(in srgb, var(--bg) 75%, transparent);
+        }
+        .nx-quick-panel {
+          width: min(560px, 100%); max-height: calc(100vh - 12vh - 20px); box-sizing: border-box;
+          display: flex; flex-direction: column; overflow: hidden; text-align: left;
+          background: var(--panel); border: 1px solid var(--border-strong); border-radius: 18px;
+        }
+        .nx-quick-step {
+          display: flex; align-items: center; gap: 8px; padding: 10px 14px 0 10px;
+          font-size: 12.5px; color: var(--muted);
+        }
+        .nx-quick-search { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+        .nx-quick-search input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font: inherit; font-size: 15px; padding: 0; }
+        .nx-quick-kbd { font-size: 10px; letter-spacing: 0.06em; color: var(--muted-soft); border: 1px solid var(--border); border-radius: 10px; padding: 2px 6px; font-family: inherit; }
+        .nx-quick-list { overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+        .nx-quick-row {
+          position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px;
+          padding: 7px 12px; border-radius: 14px; cursor: pointer; box-sizing: border-box;
+        }
+        /* Выбранное действие: подложка и мятная грань слева */
+        .nx-quick-row.is-sel { background: var(--hover); }
+        .nx-quick-row.is-sel::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; background: var(--mint); }
+        .nx-quick-row:active { background: var(--pressed); }
+        .nx-quick-ico {
+          width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+          border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+        }
+        .nx-quick-title { display: block; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-quick-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--muted-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-quick-note { margin: 6px 12px 8px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.5; color: var(--muted-soft); }
+        .nx-quick-foot {
+          display: flex; justify-content: space-between; gap: 12px; padding: 9px 16px;
+          border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted-soft);
+        }
+        /* Телефон: панель сверху на всю ширину, в пределах видимой области
+           (над клавиатурой), строки крупнее — под палец */
+        @media ${PHONE_MQ} {
+          .nx-quick-overlay { padding: calc(var(--vvt, 0px) + var(--sat) + 10px) 10px 10px; }
+          .nx-quick-panel { width: 100%; max-height: calc(var(--vvh, 100vh) - var(--sat) - 20px); }
+          .nx-quick-search { padding: 8px 8px 8px 16px; }
+          .nx-quick-search input { font-size: 16px; }
+          .nx-quick-row { min-height: 56px; padding: 8px 12px; }
+          .nx-quick-title { font-size: 15px; }
+          .nx-quick-sub { font-size: 12.5px; }
+        }
                 /* ─── Системные уведомления (тосты) ──────────────────
            Плашка сверху справа, как системное уведомление телефона:
            иконка NEXA, заголовок, текст, крестик закрытия. */
@@ -12175,7 +12517,7 @@ export default function NexaApp() {
           .ng-display.nx-page-title {
             font-size: 30px !important;
             margin: 12px 0 24px !important;
-            padding-right: 128px; /* место под колокольчик, поиск и профиль */
+            padding-right: 168px; /* место под молнию, колокольчик, поиск и профиль */
           }
           /* Панель уведомлений на телефоне — по ширине экрана */
           .nx-notes { position: fixed !important; top: 70px !important; left: 12px !important; right: 12px !important; width: auto !important; }
@@ -12446,8 +12788,9 @@ export default function NexaApp() {
         {tab !== "assistant" && (
           <TopBar>
             {tab === "settings" ? null : <TimeDate />}
+            <QuickBtn />
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />
-            <IconBtn icon={Icon.search} onClick={() => setSearchOpen(true)} label="Поиск" />
+            <IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" />
             <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
           </TopBar>
         )}
@@ -12540,11 +12883,9 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
         flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
           onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
-      {flowSend && <FlowSendDialog initial={flowSend.text} link={link} devices={devices} flowOn={flow.on} user={auth.user}
-        onLogin={() => { setFlowSend(null); setAuthOpen(true); }} onClose={() => setFlowSend(null)} />}
     </div>
   )}
 </div>
@@ -12620,8 +12961,20 @@ export default function NexaApp() {
           onOpenFolder={openFolderFromSearch}
           onOpenChat={openChatFromSearch}
           onNavigate={goTab}
+          initialQuery={searchQuery}
         />
       )}
+      {/* «Отправить в NEXA» — с любого экрана (Настройки, «Поделиться» Android, быстрые действия) */}
+      {flowSend && <FlowSendDialog initial={flowSend.text} initialTo={flowSend.to} link={link} devices={devices} flowOn={flow.on} user={auth.user}
+        onLogin={() => { setFlowSend(null); setAuthOpen(true); }} onClose={() => setFlowSend(null)} />}
+      {/* Панель быстрых действий */}
+      {quickOpen && <QuickPanel commands={quick.list} note={quick.note} onClose={() => setQuickOpen(false)} onSearch={openSearch} />}
+      {/* Быстрые действия → «Отправить файл» → «Выбрать на этом устройстве» */}
+      <input ref={quickFileRef} type="file" hidden onChange={(e) => {
+        const f = e.target.files?.[0], d = quickFileTo.current;
+        e.target.value = "";
+        if (f && d) { sendFileTo(d, f); showDevice(d.id); } // ход отправки виден на экране устройства
+      }} />
       {/* Выбор файлов по команде ассистента «загрузи файл» */}
       <input
         ref={uploadInputRef} type="file" multiple hidden

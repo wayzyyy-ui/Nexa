@@ -289,3 +289,18 @@ export function onSharedText(cb) {
   const handle = registerPlugin("NexaShare").addListener("sharedText", (e) => { if (typeof e?.text === "string" && e.text.trim()) cb(e.text); });
   return () => { Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
 }
+
+/* Панель быстрых действий из будущей EXE-версии (Windows).
+   Глобальное сочетание клавиш (работает, даже когда окно NEXA свёрнуто) браузер
+   дать не может — его зарегистрирует сама оболочка EXE. Договорённость: её
+   preload-скрипт кладёт в window.nexaDesktop функцию onQuickPanel(cb), которая
+   вызывает cb по сочетанию и возвращает отписку. На сайте и в Android такого
+   объекта нет — функция ничего не делает (там работает Ctrl/⌘ + K внутри страницы) */
+export function onDesktopQuickPanel(cb) {
+  const bridge = typeof window !== "undefined" ? window.nexaDesktop : null;
+  if (typeof bridge?.onQuickPanel !== "function") return () => {};
+  try {
+    const off = bridge.onQuickPanel(() => cb());
+    return typeof off === "function" ? off : () => {};
+  } catch { return () => {}; }
+}
