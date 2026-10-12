@@ -199,6 +199,23 @@ export async function fileUrl(file, scope, { download } = {}) {
   if (!download) urlCache.set(key, { url: data.signedUrl, until: Date.now() + (SIGNED_TTL_S - 60) * 1000 });
   return data.signedUrl;
 }
+/* Для ассистента (src/lib/attach.js): содержимое файла и подписанная ссылка на облако.
+   Байты: копия в этом браузере (IndexedDB), нет — скачиваем из своей корзины.
+   Ссылка — всегда настоящая облачная (на час), не ссылка на копию в браузере */
+export async function fileBlob(file, scope, signal) {
+  const local = await cacheGet(cacheKey(scope, file.id));
+  if (local) return local;
+  if (!file.path || !supabase || !scope || scope === "guest") return null;
+  const url = await signedFileUrl(file);
+  if (!url) return null;
+  const r = await fetch(url, { signal });
+  return r.ok ? r.blob() : null;
+}
+export async function signedFileUrl(file) {
+  if (!file.path || !supabase) return null;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(file.path, SIGNED_TTL_S);
+  return error ? null : data?.signedUrl || null;
+}
 // Забыть ссылку (файл удалён) — и освободить память
 export function forgetUrl(scope, id) {
   const key = cacheKey(scope, id);

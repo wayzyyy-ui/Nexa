@@ -25,9 +25,10 @@ import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceId
 import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
-  cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
+  cloudBytes, localBytes, CLOUD_QUOTA_BYTES, fileBlob, signedFileUrl,
 } from "./lib/files.js";
-const VERSION = "0.9.4";
+import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
+const VERSION = "0.9.5";
 
 
 const C = {
@@ -287,6 +288,18 @@ const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10Z" strokeLinejoin="round" />
       <path d="M10 18.5a2 2 0 0 0 4 0" strokeLinecap="round" />
+    </svg>
+  ),
+  // Вложение: скрепка из прямых отрезков со скруглёнными сгибами
+  clip: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M15.5 7v8.5a3.5 3.5 0 0 1-7 0V6a2.25 2.25 0 0 1 4.5 0v9a1 1 0 0 1-2 0V8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Остановить: квадрат
+  stop: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill={p.c}>
+      <rect x="7" y="7" width="10" height="10" rx="2" />
     </svg>
   ),
   // Быстрые действия: молния из двух острых граней
@@ -6817,7 +6830,10 @@ function QuickBtn() {
   );
 }
 
-function QuickPanel({ commands, note, onClose, onSearch }) {
+/* Та же панель служит выбором файла для ассистента: label — название окна,
+   placeholder — подсказка в поле, onSearch не передан — строки «Искать везде» нет,
+   keys — подсказка справа внизу. Строка с disabled видна, но не выбирается (в sub — почему) */
+function QuickPanel({ commands, note, onClose, onSearch, label = "Быстрые действия", placeholder, icon = Icon.quick, keys = `${QUICK_KEYS} — открыть панель` }) {
   const mobile = useMediaQuery(PHONE_MQ);
   const [query, setQuery] = useState("");
   const [path, setPath] = useState([]); // выбранные шаги: [id команды, id устройства, …]
@@ -6837,7 +6853,7 @@ function QuickPanel({ commands, note, onClose, onSearch }) {
   const shown = items.filter((it) => quickMatch(it, query));
   // В корне по любому запросу последней строкой — глобальный поиск с этим запросом
   const q = query.trim();
-  const rows = !step && q ? [...shown, { id: "__search", title: `Искать «${q}» по всему NEXA`, sub: "Файлы, папки, диалоги, устройства, настройки", icon: Icon.search, run: () => onSearch(q) }] : shown;
+  const rows = !step && q && onSearch ? [...shown, { id: "__search", title: `Искать «${q}» по всему NEXA`, sub: "Файлы, папки, диалоги, устройства, настройки", icon: Icon.search, run: () => onSearch(q) }] : shown;
   const cur = Math.min(sel, Math.max(0, rows.length - 1));
 
   // Фокус в поле сразу (на телефоне — нет: иначе выскочит клавиатура).
@@ -6869,7 +6885,7 @@ function QuickPanel({ commands, note, onClose, onSearch }) {
   }, []);
 
   const choose = (it) => {
-    if (!it) return;
+    if (!it || it.disabled) return;
     if (it.pick) { setPath([...path.slice(0, depth), it.id]); setQuery(""); if (!mobile) inputRef.current?.focus(); return; }
     it.run();
     onClose();
@@ -6885,7 +6901,7 @@ function QuickPanel({ commands, note, onClose, onSearch }) {
 
   return createPortal(
     <div className="nx-quick-overlay" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Быстрые действия" className="nx-quick-panel nx-pop" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={label} className="nx-quick-panel nx-pop" onClick={(e) => e.stopPropagation()}>
         {/* Шаг выбора: назад и где мы */}
         {depth > 0 && (
           <div className="nx-quick-step">
@@ -6900,11 +6916,11 @@ function QuickPanel({ commands, note, onClose, onSearch }) {
         )}
         {/* Поле поиска команд */}
         <div className="nx-quick-search">
-          {Icon.quick({ c: C.mint, s: 18 })}
+          {icon({ c: C.mint, s: 18 })}
           <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
-            placeholder={step?.placeholder || (mobile ? "Что сделать?" : "Что сделать? Например: файл, найти, диалог")}
+            placeholder={step?.placeholder || placeholder || (mobile ? "Что сделать?" : "Что сделать? Например: файл, найти, диалог")}
             role="combobox" aria-expanded="true" aria-controls="nx-quick-list" aria-autocomplete="list"
-            aria-activedescendant={rows.length ? `nx-quick-opt-${cur}` : undefined} aria-label={step?.placeholder || "Найти действие"}
+            aria-activedescendant={rows.length ? `nx-quick-opt-${cur}` : undefined} aria-label={step?.placeholder || placeholder || "Найти действие"}
             enterKeyHint="go" autoComplete="off" spellCheck={false} />
           {mobile ? (
             <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть"
@@ -6914,10 +6930,10 @@ function QuickPanel({ commands, note, onClose, onSearch }) {
           ) : <kbd className="nx-quick-kbd">Esc</kbd>}
         </div>
         {/* Команды */}
-        <div ref={listRef} id="nx-quick-list" role="listbox" aria-label={step?.title || "Действия"} className="nx-quick-list nx-scroll">
+        <div ref={listRef} id="nx-quick-list" role="listbox" aria-label={step?.title || label} className="nx-quick-list nx-scroll">
           {rows.map((it, i) => (
             <div key={it.id} id={`nx-quick-opt-${i}`} role="option" aria-selected={i === cur}
-              className={`nx-quick-row${i === cur ? " is-sel" : ""}`}
+              className={`nx-quick-row${i === cur ? " is-sel" : ""}${it.disabled ? " is-off" : ""}`} aria-disabled={it.disabled || undefined}
               onMouseMove={() => { if (i !== cur) setSel(i); }} onClick={() => choose(it)}>
               <span className="nx-quick-ico">{it.thumb || it.icon?.({ c: i === cur ? C.mint : C.muted, s: 16 })}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -6938,7 +6954,7 @@ function QuickPanel({ commands, note, onClose, onSearch }) {
         {!mobile && (
           <div className="nx-quick-foot">
             <span>↑ ↓ выбрать · Enter выполнить · Esc {depth ? "назад" : "закрыть"}</span>
-            <span>{QUICK_KEYS} — открыть панель</span>
+            {keys && <span>{keys}</span>}
           </div>
         )}
       </div>
@@ -7749,6 +7765,8 @@ const useLiveText = () => useSyncExternalStore(liveSubscribe, () => live.text);
 // Сохранённый на всякий случай кусок ответа (см. checkpoint в streamAnswer):
 // пока ответ печатается, в списке его не показываем — вместо него LiveAnswer
 const isPartial = (m) => m?.role === "ai" && m.partial;
+// Остановить идущий ответ (кнопка «Остановить» вместо «Отправить»)
+let liveAbort = null;
 
 // Пузырь печатающегося ответа: пока текста нет — «Печатает», потом сам ответ.
 // onGrow — текст подрос (прокрутить вниз, передвинуть ауру)
@@ -7759,7 +7777,47 @@ function LiveAnswer({ onGrow }) {
   return <MessageBubble role="ai" text={text} isLastAi disabled onRegenerate={() => {}} onEdit={() => {}} />;
 }
 
-function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync }) {
+/* Вложение у поля ввода: формат, имя, размер и что с ним сейчас.
+   onToFiles — для большого PDF с устройства: положить его в «Файлы» обычной загрузкой */
+function AttachChip({ att, onRemove, onToFiles }) {
+  const p = att.payload;
+  const meta = `${formatLabel(att.name)} · ${formatBytes(att.size)}`;
+  const status = att.status === "preparing" ? "Готовим файл…"
+    : att.status === "error" ? att.error
+    : [att.sent ? "В диалоге — уйдёт и со следующим вопросом" : "Готово — уйдёт ассистенту вместе с вопросом",
+       p?.truncated ? "прочитана первая часть (100 тыс. знаков)" : null, p?.resized ? "картинка уменьшена" : null].filter(Boolean).join(" · ");
+  return (
+    <div className="nx-attach nx-pop" role="status" style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 10px", boxSizing: "border-box",
+      border: `1px solid ${att.status === "error" ? C.red : C.borderStrong}`, borderRadius: 16, background: C.panel, textAlign: "left",
+    }}>
+      <span style={{
+        width: 38, height: 38, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 10, letterSpacing: "0.04em", color: C.mint, fontWeight: 600,
+      }}>
+        {att.status === "preparing" ? <Spinner s={14} /> : formatLabel(att.name).slice(0, 4)}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+        <span style={{ display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.4, color: att.status === "error" ? C.red : C.mutedSoft }}>
+          {att.status === "error" ? status : `${meta} · ${status}`}
+        </span>
+      </span>
+      {onToFiles && (
+        <button type="button" className="nx-ghost-btn" onClick={onToFiles} style={{ ...btnReset, flexShrink: 0, padding: "6px 12px", fontSize: 12.5, border: `1px solid ${C.borderStrong}`, color: C.text }}>
+          В «Файлы»
+        </button>
+      )}
+      <button type="button" className="nx-icon-btn" onClick={onRemove}
+        aria-label={att.status === "preparing" ? "Отменить" : "Убрать файл"} title={att.status === "preparing" ? "Отменить" : "Убрать файл"}
+        style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {Icon.close({ c: C.muted, s: 15 })}
+      </button>
+    </div>
+  );
+}
+
+function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -7778,6 +7836,49 @@ useEffect(() => {
 }, []);
   const [currentChatId, setCurrentChatId] = useState(initialChatId || null);
   const [input, setInput] = useState('');
+
+  /* ── Вложение к вопросу (src/lib/attach.js) ──
+     att = { key, name, size, status: "preparing" | "ready" | "error", error, payload, sent, file }
+     Подготовка только читает файл здесь, на устройстве. Содержимое уходит на сервер
+     только вместе с вопросом по «Отправить». После отправки файл остаётся в диалоге
+     (так и написано у поля) — следующий вопрос тоже уйдёт с ним, пока его не убрали */
+  const [att, setAtt] = useState(null);
+  const [pickOpen, setPickOpen] = useState(false);
+  const attCtl = useRef(null);
+  const attachInputRef = useRef(null);
+  const clearAtt = () => { attCtl.current?.abort(); attCtl.current = null; setAtt(null); };
+  const attach = (src, extra = {}) => {
+    attCtl.current?.abort();
+    const ctl = new AbortController(); attCtl.current = ctl;
+    const key = `${src.name}|${src.size}|${Date.now()}`;
+    setAtt({ key, name: src.name, size: src.size, status: "preparing", ...extra });
+    prepareAttachment(src, ctl.signal)
+      .then((payload) => { if (attCtl.current === ctl) setAtt((a) => (a?.key === key ? { ...a, status: "ready", payload } : a)); })
+      .catch((e) => {
+        if (e?.name === "AbortError" || attCtl.current !== ctl) return;
+        setAtt((a) => (a?.key === key ? { ...a, status: "error", error: e?.userText || "Не получилось прочитать файл — возможно, он повреждён" } : a));
+      });
+  };
+  // Файл из «Файлов» NEXA: байты — копия в браузере или своя облачная корзина
+  const attachStored = (f) => attach({
+    name: f.name, size: fileBytes(f), mime: f.mime || "", cloud: !!(uid && f.path),
+    getBlob: () => fileBlob(f, FILE_SCOPE, attCtl.current?.signal), signedUrl: () => signedFileUrl(f),
+  }, { from: "files" });
+  // Файл с устройства — ни в «Файлы», ни в облако он при этом не попадает
+  const attachDevice = (file) => attach({ name: file.name, size: file.size, mime: file.type || "", blob: file }, { from: "device", file });
+  // Выбор файла: первая строка — «С этого устройства», дальше файлы из «Файлов»
+  const pickItems = [
+    { id: "__device", title: "С этого устройства…", sub: `Подходят: ${SUPPORTED_HINT}`, icon: Icon.plus, keywords: ["устройство", "компьютер", "телефон"], run: () => attachInputRef.current?.click() },
+    ...sortByRecent(files.filter((f) => f.uploaded)).map((f) => {
+      const why = attachUnsupported(f.name, f.mime || "");
+      return { id: `f-${f.id}`, title: f.name, sub: why || `${formatLabel(f.name)} · ${formatBytes(fileBytes(f))}`, disabled: !!why,
+        keywords: [catOf(f)?.label], thumb: <FileThumb file={f} w={34} h={34} iconSize={14} radius={0} />, run: () => attachStored(f) };
+    }),
+  ];
+  const demoCount = files.filter((f) => !f.uploaded).length;
+  // Сменили диалог — вложение к нему больше не относится
+  useEffect(() => { if (att?.chatId && att.chatId !== currentChatId) clearAtt(); }, [currentChatId]);
+  useEffect(() => () => attCtl.current?.abort(), []);
   // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
   const liveChatId = useLiveChatId();
   const [cmdBusy, setCmdBusy] = useState(false);
@@ -7982,8 +8083,11 @@ useEffect(() => {
   // текста вписывает ответ в чат. Используется и при обычной отправке,
   // и при повторе ответа, и при редактировании сообщения.
   // previousMessages это сообщения чата ДО вопроса, text это сам вопрос.
-  const streamAnswer = async (chatId, previousMessages, text) => {
+  // attachment — подготовленное вложение (см. att), уходит только с этим вопросом
+  const streamAnswer = async (chatId, previousMessages, text, attachment = null) => {
     if (live.chatId) return; // уже печатается другой ответ — второй не начинаем
+    const ctl = new AbortController();
+    liveAbort = () => ctl.abort();
     liveSet({ chatId, text: "" });
     let fullText = '';
     let timer = 0;
@@ -8004,6 +8108,7 @@ useEffect(() => {
       removeEventListener('pagehide', checkpoint);
       document.removeEventListener('visibilitychange', checkpoint);
       flushSync(() => putAnswer({ role: 'ai', text: answerText, at: Date.now(), ...(isError ? { error: true } : {}) }));
+      liveAbort = null;
       liveSet({ chatId: null, text: "" });
     };
     // Страницу закрывают или сворачивают посреди ответа — сохраняем то, что
@@ -8022,14 +8127,16 @@ useEffect(() => {
         .filter(m => !m.error && !m.action) // команды и ошибки модели не нужны
         .map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
-          parts: [{ text: m.text }],
+          // Был файл — модель узнаёт только об этом, не о содержимом (его здесь уже нет)
+          parts: [{ text: m.file ? `[К этому сообщению был приложен файл «${m.file.name}»]\n${m.text}` : m.text }],
         }));
 
       // На сайте — /api/chat, в приложении — полный адрес (см. src/native.js)
       const res = await fetch(API_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, history, ...(attachment ? { attachment } : {}) }),
+        signal: ctl.signal,
       });
 
       if (!res.ok) {
@@ -8059,9 +8166,14 @@ useEffect(() => {
       if (!fullText.trim()) finish('Пустой ответ. Нажмите "повторить".', true);
       else finish(fullText);
     } catch (error) {
+      const stopped = error?.name === 'AbortError';
       if (fullText) {
-        // Ответ оборвался посередине: оставляем то, что успело прийти
-        finish(fullText + '\n\n(ответ оборвался, нажмите "повторить")', true);
+        // Ответ оборвался посередине (или его остановили): оставляем то, что успело прийти
+        finish(fullText + (stopped ? '\n\n(остановлено)' : '\n\n(ответ оборвался, нажмите "повторить")'), true);
+      } else if (stopped) {
+        finish('Отправка отменена — нажмите «повторить», чтобы спросить снова.', true);
+      } else if (!error.userMessage && navigator.onLine === false) {
+        finish(attachment ? 'Нет связи — вопрос с файлом не отправлен.' : 'Нет связи — вопрос не отправлен.', true);
       } else {
         finish(error.userMessage || 'Ошибка соединения с сервером.', true);
       }
@@ -8124,14 +8236,20 @@ useEffect(() => {
 
   // Отправка сообщения: из поля ввода или по нажатию на подсказку
   const sendMessage = async (preset) => {
-    const text = (typeof preset === "string" ? preset : input).trim();
+    // Вложение: пока готовится или с ошибкой — не отправляем; готово — уходит с вопросом.
+    // Без текста — просим краткое содержание
+    if (att && att.status !== "ready") return;
+    const withFile = att?.status === "ready" ? att : null;
+    const text = (typeof preset === "string" ? preset : input).trim() || (withFile ? "Кратко перескажи этот файл" : "");
     if (!text || isLoading) return;
 
-    // Сначала проверяем, не команда ли это
-    const cmd = parseCommand(text);
+    // Сначала проверяем, не команда ли это (с файлом — это всегда вопрос по файлу)
+    const cmd = withFile ? null : parseCommand(text);
     if (isEmpty) rememberInputPos();
     // at — когда написано (мс): по нему история делится на «Сегодня», «Вчера»…
-    const userMsg = { role: 'user', text, at: Date.now(), ...(cmd ? { action: true } : {}) };
+    // file — только сведения (имя, формат, размер), содержимое в историю не пишем
+    const fileInfo = withFile && { name: withFile.name, ext: extOf(withFile.name), size: withFile.size };
+    const userMsg = { role: 'user', text, at: Date.now(), ...(cmd ? { action: true } : {}), ...(fileInfo ? { file: fileInfo } : {}) };
     const before = currentChat?.messages || [];
     let chatId = currentChatId;
 
@@ -8139,7 +8257,7 @@ useEffect(() => {
       chatId = newId(); // uuid — такой же id будет у диалога в облаке
       setChats(prev => [{
         id: chatId,
-        title: text.length > 40 ? text.slice(0, 40) + '…' : text,
+        title: fileInfo && !input.trim() ? `Файл «${fileInfo.name.slice(0, 30)}»` : text.length > 40 ? text.slice(0, 40) + '…' : text,
         messages: [userMsg],
         createdAt: Date.now(),
       }, ...prev]);
@@ -8151,9 +8269,13 @@ useEffect(() => {
     }
 
     setInput('');
+    // Файл остаётся в этом диалоге — следующий вопрос тоже уйдёт с ним, пока его не убрали
+    if (withFile) setAtt((a) => (a?.key === withFile.key ? { ...a, sent: true, chatId } : a));
     if (cmd) await runCommand(chatId, cmd);
-    else await streamAnswer(chatId, before, text);
+    else await streamAnswer(chatId, before, text, withFile?.payload || null);
   };
+  // Вложение для повтора / правки: только если тот же файл ещё приложен
+  const fileFor = (m) => (m?.file && att?.status === "ready" && att.name === m.file.name && att.size === m.file.size ? att.payload : null);
 
   // ПОВТОРИТЬ: удаляет последний ответ и запрашивает новый на тот же вопрос
   const regenerate = () => {
@@ -8173,7 +8295,7 @@ useEffect(() => {
     setChats(prev => prev.map(c =>
       c.id === currentChatId ? { ...c, messages: messages.slice(0, lastUserIdx + 1) } : c
     ));
-    streamAnswer(currentChatId, previous, questionText);
+    streamAnswer(currentChatId, previous, questionText, fileFor(messages[lastUserIdx]));
   };
 
   // РЕДАКТИРОВАНИЕ: заменяет сообщение пользователя, всё, что было после него, удаляется,
@@ -8182,7 +8304,7 @@ useEffect(() => {
     if (isLoading || !currentChatId) return;
 
     const previous = messages.slice(0, index);
-    const cmd = parseCommand(newText);
+    const cmd = messages[index].file ? null : parseCommand(newText); // вопрос по файлу — не команда
     setChats(prev => prev.map(c => {
       if (c.id !== currentChatId) return c;
       return {
@@ -8191,11 +8313,11 @@ useEffect(() => {
         title: index === 0
           ? (newText.length > 40 ? newText.slice(0, 40) + '…' : newText)
           : c.title,
-        messages: [...previous, { role: 'user', text: newText, at: Date.now(), ...(cmd ? { action: true } : {}) }],
+        messages: [...previous, { role: 'user', text: newText, at: Date.now(), ...(cmd ? { action: true } : {}), ...(messages[index].file ? { file: messages[index].file } : {}) }],
       };
     }));
     if (cmd) runCommand(currentChatId, cmd);
-    else streamAnswer(currentChatId, previous, newText);
+    else streamAnswer(currentChatId, previous, newText, fileFor(messages[index]));
   };
   
   const onKeyDown = (e) => {
@@ -8265,9 +8387,37 @@ const menuBlock = (
   </div>
 );
 
+  // Отправить можно: не идёт ответ; есть текст или готовое вложение; вложение не готовится и без ошибки
+  const canSend = !isLoading && (att ? att.status === "ready" : !!input.trim());
+  const sendHint = att?.status === "preparing" ? "Файл ещё готовится" : att?.status === "error" ? "Сначала уберите файл с ошибкой" : "Отправить";
+  // Быстрые вопросы по приложенному файлу (поле пустое)
+  const fileAsks = [
+    ["Кратко перескажи", "Кратко перескажи этот файл"],
+    ["Главные пункты", "Выдели главные пункты файла списком"],
+    ["Объясни простыми словами", "Объясни содержимое файла простыми словами"],
+  ];
     const inputRow = (
+  <div style={{ width: "100%", maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
+  {att && (
+    <AttachChip att={att} onRemove={clearAtt}
+      onToFiles={uid && att.from === "device" && att.file && /«Файлы»/.test(att.error || "") ? () => { onAddFiles?.([att.file]); clearAtt(); } : null} />
+  )}
+  {att?.status === "ready" && !input.trim() && !isLoading && (
+    <div className="nx-file-asks nx-no-scrollbar" style={{ display: "flex", gap: 6, overflowX: "auto" }} data-no-swipe>
+      {fileAsks.map(([label, q]) => (
+        <button key={label} type="button" className="nx-ghost-btn" onClick={() => sendMessage(q)} style={{
+          ...btnReset, flexShrink: 0, whiteSpace: "nowrap", border: `1px solid ${C.borderStrong}`, borderRadius: 999,
+          padding: "6px 12px", fontSize: 12.5, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
+        }}>{label}</button>
+      ))}
+      <button type="button" className="nx-ghost-btn" onClick={() => { setInput("Найди в файле: "); setTimeout(() => taRef.current?.focus(), 0); }} style={{
+        ...btnReset, flexShrink: 0, whiteSpace: "nowrap", border: `1px solid ${C.borderStrong}`, borderRadius: 999,
+        padding: "6px 12px", fontSize: 12.5, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
+      }}>Найти в файле…</button>
+    </div>
+  )}
   <div className="nx-input-ring" style={{
-    width: "100%", maxWidth: 820,
+    width: "100%",
     padding: 1,
     // 25 = половина высоты однострочного поля: одна строка — «таблетка»,
     // несколько строк — прямоугольник со скруглёнными углами
@@ -8284,11 +8434,17 @@ const menuBlock = (
         style={{
           // flex-end: кнопка отправки остаётся внизу, когда текст в несколько строк
           width: "100%", display: "flex", alignItems: "flex-end", gap: 10,
-          padding: "8px 8px 8px 18px", borderRadius: 24,
+          padding: "8px 8px 8px 8px", borderRadius: 24,
           background: C.bg, boxSizing: "border-box",
           cursor: "text",
         }}
       >
+        {/* Скрепка: выбрать файл из «Файлов» NEXA или с устройства */}
+        <button type="button" className="nx-icon-btn" aria-label="Приложить файл" title="Приложить файл" aria-haspopup="dialog"
+          onClick={(e) => { e.stopPropagation(); setPickOpen(true); }}
+          style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {Icon.clip({ c: att ? C.mint : C.muted, s: 18 })}
+        </button>
         {/* Многострочное поле: длинный текст переносится, Enter — отправить,
             Shift+Enter — новая строка */}
         <textarea
@@ -8326,28 +8482,41 @@ const menuBlock = (
             overflowWrap: "anywhere",
           }}
         />
+        {/* Пока печатается ответ в этом диалоге — «Остановить» вместо «Отправить» */}
+        {streamingHere ? (
+          <button type="button" onClick={(e) => { e.stopPropagation(); liveAbort?.(); }} className="ng-input-send"
+            aria-label="Остановить ответ" title="Остановить ответ" style={{
+              width: 32, height: 32, borderRadius: "50%", background: C.text, border: "none", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+            }}>
+            {Icon.stop({ c: C.bg, s: 16 })}
+          </button>
+        ) : (
         <button
           onClick={() => sendMessage()}
-          disabled={isLoading || !input.trim()}
+          disabled={!canSend}
+          aria-label={sendHint} title={sendHint}
           className="ng-input-send"
           style={{
             width: 32,
             height: 32,
             borderRadius: "50%",
-            background: (isLoading || !input.trim()) ? C.chip : C.mint,
+            background: !canSend ? C.chip : C.mint,
             border: "none",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: (isLoading || !input.trim()) ? "default" : "pointer",
+            cursor: !canSend ? "default" : "pointer",
             transition: "background 140ms ease",
             flexShrink: 0,
           }}
         >
-          {Icon.up({ c: (isLoading || !input.trim()) ? C.muted : C.onAccent, s: 15 })}
+          {Icon.up({ c: !canSend ? C.muted : C.onAccent, s: 15 })}
         </button>
+        )}
       </div>
     </div>
+  </div>
   );
     const disclaimer = (
   <div className="ng-disclaimer" style={{ fontSize: 11, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
@@ -8395,6 +8564,16 @@ const menuBlock = (
     {/* Спектральный фон — под всем содержимым, нажатия и прокрутку не перехватывает */}
     <AssistantSpectrum busyRef={cmdBusyRef} />
     {menuBlock}
+    {/* Выбор файла для ассистента — та же панель, что у быстрых действий */}
+    {pickOpen && (
+      <QuickPanel commands={pickItems} label="Приложить файл" placeholder="Найти файл…" icon={Icon.clip} keys={null}
+        note={demoCount ? "Демо-файлы без содержимого — их ассистент прочитать не может" : null}
+        onClose={() => setPickOpen(false)} />
+    )}
+    <input ref={attachInputRef} type="file" hidden onChange={(e) => {
+      const f = e.target.files?.[0]; e.target.value = "";
+      if (f) attachDevice(f);
+    }} />
 
     {/* История — слева: на компьютере колонкой от бокового меню на всю высоту
         (скрыта — не рисуем), на телефоне — шторкой поверх (в body) */}
@@ -8429,7 +8608,7 @@ const menuBlock = (
             {/* Подсказки-команды: нажатие отправляет текст как сообщение.
                 На телефоне листаются вбок */}
             <div className="nx-chips nx-no-scrollbar nx-stagger" style={{
-              position: "relative", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 820,
+              position: "relative", display: att ? "none" : "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 820,
             }}>
               {assistantSuggestions().map((sg) => (
                 <button key={sg.text} type="button" className="nx-ghost-btn" onClick={() => sendMessage(sg.text)} style={{
@@ -8467,6 +8646,7 @@ const menuBlock = (
                     key={i}
                     role={m.role}
                     text={m.text}
+                    file={m.file}
                     error={m.error}
                     actionLabel={m.action && m.role === 'ai' ? m.actionLabel : null}
                     undone={m.undone}
@@ -8587,7 +8767,7 @@ function ActionBtn({ title, onClick, disabled, children }) {
 // error — ответ не получен (нет сети, ошибка сервера): пузырь в цветах ошибки
 // actionLabel — ответ на команду: под пузырём плашка с галочкой и названием действия;
 // undoable / undone / onUndo — кнопка «Отменить» на плашке и её состояние
-function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUndo, isLastAi, disabled, onRegenerate, onEdit }) {
+function MessageBubble({ role, text, file, error, actionLabel, undoable, undone, onUndo, isLastAi, disabled, onRegenerate, onEdit }) {
   const isUser = role === 'user';
   const [copied, setCopied] = useState(false);       // показываем галочку после копирования
   const [isEditing, setIsEditing] = useState(false); // включён ли режим редактирования
@@ -8670,6 +8850,18 @@ function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUnd
             </div>
           </div>
         ) : (
+          <>
+          {/* Файл, приложенный к вопросу: только имя, формат и размер (содержимое в историю не пишем) */}
+          {file && (
+            <div className="nx-msg-file" style={{
+              display: "flex", alignItems: "center", gap: 8, maxWidth: "72%", padding: "7px 12px", boxSizing: "border-box",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.panel, fontSize: 12.5, color: C.muted,
+            }}>
+              {Icon.clip({ c: C.mint, s: 14 })}
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{file.name}</span>
+              <span style={{ flexShrink: 0 }}>{(file.ext || "файл").toUpperCase()} · {formatBytes(file.size || 0)}</span>
+            </div>
+          )}
           <div className="nx-bubble-text nx-user-bubble" style={{
             maxWidth: "72%", padding: "12px 18px", borderRadius: 20, borderTopRightRadius: 4,
             background: C.blue, color: "#FFFFFF", fontSize: 16, lineHeight: 1.55,
@@ -8677,6 +8869,7 @@ function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUnd
           }}>
             <RichText>{text}</RichText>
           </div>
+          </>
         )}
 
         {!isEditing && (
@@ -12025,6 +12218,10 @@ export default function NexaApp() {
         .nx-quick-row.is-sel { background: var(--hover); }
         .nx-quick-row.is-sel::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; background: var(--mint); }
         .nx-quick-row:active { background: var(--pressed); }
+        /* Недоступная строка (например, формат файла не поддерживается) */
+        .nx-quick-row.is-off { cursor: default; }
+        .nx-quick-row.is-off .nx-quick-title, .nx-quick-row.is-off .nx-quick-ico { opacity: 0.5; }
+        .nx-quick-row.is-off:active { background: var(--hover); }
         .nx-quick-ico {
           width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
           border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
@@ -12651,6 +12848,8 @@ export default function NexaApp() {
           .ng-disclaimer { font-size: 10.5px !important; }
           /* Клавиатура открыта — подпись под полем убираем: место нужнее переписке */
           body.kb-open .ng-disclaimer { display: none !important; }
+          /* …и быстрые вопросы по файлу: при клавиатуре место нужнее переписке */
+          body.kb-open .nx-file-asks { display: none !important; }
 
           /* История — шторка слева на 85% ширины, поверх нижней панели.
              Высота — видимая область (над клавиатурой, когда пишем в поиск) */
@@ -12740,7 +12939,7 @@ export default function NexaApp() {
           .nx-chips button { padding: 6px 11px !important; font-size: 12px !important; gap: 5px !important; }
           .ng-input-field { font-size: 16px !important; }
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
-          .nx-user-bubble { max-width: 88% !important; }
+          .nx-user-bubble, .nx-msg-file { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }
           }
             /* Клавиатура открыта — панель прячется сразу, без анимации:
@@ -12844,6 +13043,9 @@ export default function NexaApp() {
       devices={devices}
       onAddDevice={onAddDevice}
       onUploadFiles={() => uploadInputRef.current?.click()}
+      files={files}
+      uid={uid}
+      onAddFiles={(list) => addFiles(list, null)}
       account={auth.user ? { email: auth.user.email || "" } : null}
       sync={{ loading: syncLoading, text: syncError, onRetry: retrySync }}
       bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />}
