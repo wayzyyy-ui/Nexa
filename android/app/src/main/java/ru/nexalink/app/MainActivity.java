@@ -12,6 +12,8 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Свой модуль: место на телефоне (см. NexaDiskPlugin). Регистрируем до super.onCreate
         registerPlugin(NexaDiskPlugin.class);
+        // Файлы: «Скачать» в «Загрузки» и «Открыть» другим приложением (см. NexaFilesPlugin)
+        registerPlugin(NexaFilesPlugin.class);
         // Виджеты рабочего стола: расписание и город из приложения (см. widgets/NexaWidgetsPlugin)
         registerPlugin(ru.nexalink.app.widgets.NexaWidgetsPlugin.class);
         super.onCreate(savedInstanceState);

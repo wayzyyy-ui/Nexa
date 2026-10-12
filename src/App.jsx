@@ -6,7 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import foldSvg from "./assets/fold.svg";
 import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -27,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.18";
+const VERSION = "0.9.0";
 
 
 const C = {
@@ -706,8 +706,9 @@ function useBackdropMotion(ref) {
 }
 
 // Слой фона: от боковой панели до правого края (на телефоне — весь экран)
+const NAV_W = 96; // ширина боковой панели (к ней привязаны фон и экран ассистента)
 const backdropLayer = {
-  position: "fixed", top: 0, right: 0, bottom: 0, left: 78,
+  position: "fixed", top: 0, right: 0, bottom: 0, left: NAV_W,
   zIndex: 0, pointerEvents: "none", overflow: "hidden",
 };
 // Мягко догоняет курсор, без рывков
@@ -807,8 +808,8 @@ const NAV = [
 function MobileTabBar({ active, onChange }) {
   // Главная — по центру (главный раздел), остальные по бокам
   const mobileNav = [
-    { id: "today",     label: "Сегодня",   icon: Icon.calendar },
     { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
+    { id: "today",     label: "Сегодня",   icon: Icon.calendar },
     { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "media",     label: "Медиа",     icon: Icon.image },
     { id: "files",     label: "Файлы",     icon: Icon.folder },
@@ -920,36 +921,60 @@ function MobileTabBar({ active, onChange }) {
     </div>
   );
 }
-// Боковая навигация слева. active — id текущего активного раздела,
-// onChange — функция, которая вызывается при клике (переключает экран).
+/* Значки бокового меню (компьютер) — из макета NEXA, рамка 56×56.
+   Рисуются тонкой линией цвета текста; у активного раздела — тёмные на мятном */
+const NAV_ICON_PATHS = {
+  home: ["M45.69 25.92 31.14 14.42a5.6 5.6 0 0 0-6.78 0L9.73 26.02", "M13.75 34.78v5.26a3.64 3.64 0 0 0 3.64 3.64h20.64a3.64 3.64 0 0 0 3.64-3.64v-5.26", "M22.8 39.23v-8.3a4.91 4.91 0 0 1 9.82 0v8.3"],
+  today: ["M17.57 12.66h20.27a3.36 3.36 0 0 1 3.36 3.36v23.37a3.36 3.36 0 0 1-3.36 3.36H17.57a3.36 3.36 0 0 1-3.36-3.36V16.02a3.36 3.36 0 0 1 3.36-3.36Z", "M22.23 21.8h10.96", "M22.23 27.65h10.96", "M22.23 33.62h10.96"],
+  media: ["M16.54 13.21h22.5a3.26 3.26 0 0 1 3.26 3.26v22.49a3.26 3.26 0 0 1-3.26 3.26h-22.5a3.26 3.26 0 0 1-3.26-3.26V16.47a3.26 3.26 0 0 1 3.26-3.26Z", "M13.74 33.94h7.12a3.95 3.95 0 0 0 3.17-1.62l4.44-6.17c1.69-2.35 5.4-1.15 5.4 1.75a2.98 2.98 0 0 0 2.98 2.98h5.18", "M23.1 21.8a2.16 2.16 0 1 1-4.32 0 2.16 2.16 0 0 1 4.32 0Z"],
+  files: ["M13.85 18.73a3.95 3.95 0 0 1 3.95-3.95h4.72a2.05 2.05 0 0 1 2.05 2.05 2.05 2.05 0 0 0 2.06 2.05h10.98a3.95 3.95 0 0 1 3.95 3.95v1.66H13.85v-5.76Z", "M14.46 24.53h26.51a.6.6 0 0 1 .6.6v11.56a3.3 3.3 0 0 1-3.3 3.3H17.15a3.3 3.3 0 0 1-3.3-3.3V25.14a.61.61 0 0 1 .61-.61Z"],
+  assistant: ["M30.83 22.55a3.06 3.06 0 0 0 1.97 1.98l8.44 3.14-8.44 3.15a3.06 3.06 0 0 0-1.97 1.98l-3.12 8.49-3.12-8.49a3.06 3.06 0 0 0-1.97-1.98l-8.44-3.15 8.44-3.14a3.06 3.06 0 0 0 1.97-1.98l3.12-8.5 3.12 8.5Z"],
+  settings: ["M26.48 14.95a1.67 1.67 0 0 1 2.46 0l2.84 3.47c.49.6 1.18.99 1.94 1.12l4.42.73a1.67 1.67 0 0 1 1.23 2.13l-1.58 4.19a3.18 3.18 0 0 0 0 2.24l1.58 4.2a1.67 1.67 0 0 1-1.23 2.13l-4.42.73a3.18 3.18 0 0 0-1.94 1.12l-2.84 3.46a1.67 1.67 0 0 1-2.46 0l-2.85-3.46a3.18 3.18 0 0 0-1.94-1.12l-4.42-.73a1.67 1.67 0 0 1-1.23-2.13l1.58-4.2a3.18 3.18 0 0 0 0-2.24l-1.58-4.19a1.67 1.67 0 0 1 1.23-2.13l4.42-.73a3.18 3.18 0 0 0 1.94-1.12l2.85-3.47Z", "M31.5 27.71a3.79 3.79 0 1 1-7.58 0 3.79 3.79 0 0 1 7.58 0Z"],
+};
+const NavIcon = ({ id, c, s = 48 }) => (
+  <svg viewBox="0 0 56 56" width={s} height={s} fill="none" stroke={c} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {(NAV_ICON_PATHS[id] || []).map((d) => <path key={d} d={d} />)}
+  </svg>
+);
+
+// Боковая навигация слева (компьютер), как в макете: значки в скруглённых
+// квадратах с лёгкой подложкой, активный — мятная плитка с тёмным значком,
+// напротив него на разделительной линии — мятная отметка.
+// active — id текущего раздела, onChange — переключить раздел
 function Sidebar({ active, onChange }) {
   return (
-      <div
+    <nav
+      aria-label="Разделы"
       className="ng-sidebar" style={{
-      width: 78, minWidth: 78, boxSizing: "border-box", background: C.bg, borderRight: `1px solid ${C.border}`,
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "24px 0",
+      width: NAV_W, minWidth: NAV_W, boxSizing: "border-box", background: C.bg, borderRight: `1px solid ${C.border}`,
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "28px 0",
     }}>
       {NAV.map((item) => {
         const isActive = item.id === active;
         return (
-          <button
-            key={item.id}
-            title={item.label}
-            onClick={() => onChange(item.id)}
-            style={{
-              width: 44, height: 44, borderRadius: 4, cursor: "pointer",
-              // Активная иконка заливается мятным, неактивная — тёмным фоном панели
-              background: isActive ? C.mint : C.panel,
-              border: `1px solid ${isActive ? C.mint : C.border}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "background 140ms ease, border-color 140ms ease",
-            }}
-          >
-            {item.icon({ c: isActive ? C.onAccent : C.text, s: 19 })}
-          </button>
+          <div key={item.id} style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
+            <button
+              type="button"
+              className="nx-nav-btn"
+              title={item.label}
+              aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => onChange(item.id)}
+              style={{
+                width: 48, height: 48, borderRadius: 12, cursor: "pointer", border: "none", padding: 0,
+                background: isActive ? C.mint : `color-mix(in srgb, ${C.text} 7%, transparent)`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 160ms ease",
+              }}
+            >
+              <NavIcon id={item.id} c={isActive ? C.onAccent : C.text} s={48} />
+            </button>
+            {/* Отметка активного раздела на разделительной линии */}
+            {isActive && <span aria-hidden="true" style={{ position: "absolute", right: -1, top: 0, bottom: 0, width: 2, background: C.mint }} />}
+          </div>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
@@ -1563,8 +1588,9 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
         <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40, position: "relative" }}>
           {/* Связи рисуются первыми — складка и карточки лежат поверх линий */}
           <DeviceLinks devices={devices} received={received} />
-          {/* Левая колонка: заголовок + список */}
-          <div>
+          {/* Левая колонка: заголовок + список. Список тянется до низа ряда —
+              его нижний край совпадает с карточкой ассистента справа */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{
               fontSize: 30, letterSpacing: "0.2em",
               color: C.text, marginBottom: 14,
@@ -1580,11 +1606,11 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
             {/* В приложении на планшете: баннер обновления над списком устройств */}
             {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateBanner update={update} /></div>}
 
-            <div className="nx-stagger" style={{ border: `1px solid ${C.border}`, borderRadius: 16 }}>
+            {/* Карточка «Устройства»: у каждого устройства своя плашка */}
+            <div className="nx-stagger nx-home-devices" style={{ flex: 1, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "4px 18px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{
                 display: "flex", justifyContent: "space-between",
-                alignItems: "center", padding: "16px 18px",
-                borderBottom: `1px solid ${C.border}`,
+                alignItems: "center", padding: "14px 0 6px",
               }}>
                 <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>
                 <span title="В сети" style={{
@@ -1599,35 +1625,35 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               {devices.map((d) => (
                 // Обёртка: «Найти» — отдельная кнопка рядом, а не внутри строки-кнопки
                 <div key={d.id} style={{ position: "relative" }}>
-                  <button data-link-id={d.id} type="button" className="nx-row-btn" onClick={() => onOpenDevice(d.id)}
-                    style={{ ...btnReset, display: "block", width: "100%" }}>
-                    <Row
-                      leftIcon={d.icon({ c: C.text, s: 19 })}
-                      title={d.name}
-                      subtitle={statusOf(d)}
-                      right={<>
-                        {received[d.id] && <ReceivedTag name={received[d.id].name} />}
-                        {findable(d) && <span style={{ width: 108 }} />}
-                        <Dot color={d.online ? C.green : C.red} />
-                      </>}
-                    />
+                  <button data-link-id={d.id} type="button" className="nx-row-btn nx-dev-plate" onClick={() => onOpenDevice(d.id)}
+                    style={{ ...btnReset, display: "flex", alignItems: "stretch", width: "100%", textAlign: "left", color: C.text }}>
+                    {/* Ячейка значка, отделённая тонкой линией */}
+                    <span className="nx-dev-plate-icon">{d.icon({ c: C.text, s: 24 })}</span>
+                    <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, padding: "12px 18px" }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.name}</span>
+                        <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statusOf(d)}</span>
+                      </span>
+                      {received[d.id] && <ReceivedTag name={received[d.id].name} />}
+                      {findable(d) && <span style={{ width: 108, flexShrink: 0 }} />}
+                      <Dot color={d.online ? C.green : C.red} />
+                    </span>
                   </button>
                   {findable(d) && (
                     <FindChip state={findState[d.device_id]} onClick={() => onFind(d)}
-                      style={{ position: "absolute", right: 40, top: "50%", transform: "translateY(-50%)" }} />
+                      style={{ position: "absolute", right: 36, top: "50%", transform: "translateY(-50%)" }} />
                   )}
                 </div>
               ))}
               {/* Последняя строка — "Добавить устройство" */}
               {devices.length > 0 && (
-                <button type="button" className="nx-row-btn" onClick={onAddDevice}
-                  style={{ ...btnReset, display: "block", width: "100%", borderRadius: "0 0 16px 16px" }}>
-                  <Row
-                    leftIcon={Icon.plus({ c: C.mint, s: 18 })}
-                    title="Добавить устройство"
-                    subtitle="Смартфон, планшет, часы и другие"
-                    accent={false}
-                  />
+                <button type="button" className="nx-row-btn nx-dev-plate is-add" onClick={onAddDevice}
+                  style={{ ...btnReset, display: "flex", alignItems: "stretch", width: "100%", textAlign: "left", color: C.text }}>
+                  <span className="nx-dev-plate-icon">{Icon.plus({ c: C.mint, s: 22 })}</span>
+                  <span style={{ flex: 1, minWidth: 0, padding: "12px 18px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <span style={{ fontSize: 16 }}>Добавить устройство</span>
+                    <span style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Смартфон, планшет, часы и другие</span>
+                  </span>
                 </button>
               )}
             </div>
@@ -1644,11 +1670,11 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
                 <HomeFold size={340} count={devices.length} />
               </div>
             </div>
-            <div
+            <button type="button" className="nx-row-btn"
               onClick={() => onNavigate("assistant")}
               style={{
-                marginTop: "auto",
-                border: `1px solid ${C.border}`, borderRadius: 16,
+                ...btnReset, width: "100%", textAlign: "left", color: C.text, marginTop: "auto",
+                border: `1px solid ${C.borderStrong}`, borderRadius: 14,
                 padding: "16px 18px",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
@@ -1675,7 +1701,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               }}>
                 {Icon.chevron({ c: C.text })}
               </div>
-            </div>
+            </button>
           </div>
         </div>
         {activityBlock && <div style={{ marginTop: 36 }}>{activityBlock}</div>}
@@ -3043,17 +3069,29 @@ const IP_SERVICES = [
   ["https://ipwho.is/", (d) => d.success !== false && [d.latitude, d.longitude]],
   ["https://get.geojs.io/v1/ip/geo.json", (d) => [parseFloat(d.latitude), parseFloat(d.longitude)]],
 ];
+const IP_SERVICE_MS = 4000; // один сервис ждём не дольше 4 секунд — потом следующий
+let ipFailedAt = 0;          // все сервисы не ответили — 10 минут не спрашиваем снова
 async function ipLocation(signal) {
+  if (Date.now() - ipFailedAt < 10 * 60 * 1000) return null;
   for (const [url, pick] of IP_SERVICES) {
+    // Свой «стоп» на каждый сервис: зависший сервис не держит очередь
+    const ctrl = new AbortController();
+    const stop = () => ctrl.abort();
+    const timer = setTimeout(stop, IP_SERVICE_MS);
+    signal?.addEventListener("abort", stop);
     try {
-      const res = await fetch(url, { signal });
+      const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) continue;
       const ll = pick(await res.json());
       if (ll && Number.isFinite(ll[0]) && Number.isFinite(ll[1])) return { lat: ll[0], lon: ll[1] };
-    } catch (e) {
-      if (e.name === "AbortError") return null;
+    } catch {
+      if (signal?.aborted) return null; // экран закрыли — дальше не спрашиваем
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
     }
   }
+  if (!signal?.aborted) ipFailedAt = Date.now();
   return null;
 }
 
@@ -3148,13 +3186,30 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 /* Хук местоположения. Возвращает { city, lat, lon, source },
    source — "geo" (геолокация), "ip" (по IP) или "default" (Казань). */
+/* Память на время работы страницы: экран «Сегодня» открывают много раз,
+   а город и погода за пару минут не меняются. Без неё каждый заход
+   заново спрашивал IP-сервис и сервис погоды */
+const AUTO_LOC_TTL = 30 * 60 * 1000; // город, определённый автоматически, — 30 минут
+let autoLocMemo = null;              // { loc, at }
+const weatherMemo = new Map();       // "lat,lon" → { at, data }
+const freshAutoLoc = () => (autoLocMemo && Date.now() - autoLocMemo.at < AUTO_LOC_TTL ? autoLocMemo.loc : null);
+
 function useLocation() {
   // Город, выбранный вручную, важнее автоматики
   const [manual, setManual] = useState(readManualCity);
-  const [loc, setLoc] = useState(DEFAULT_LOCATION);
+  const [loc, setLocState] = useState(() => freshAutoLoc() || DEFAULT_LOCATION);
+  // Найденный автоматически город запоминаем (см. autoLocMemo)
+  const setLoc = (l) => {
+    if (l && (l.source === "ip" || l.source === "geo")) autoLocMemo = { loc: l, at: Date.now() };
+    setLocState(l);
+  };
 
   useEffect(() => {
     if (manual) return; // выбран вручную — ничего не определяем
+    // Уже определили недавно точно (геолокация) — не спрашиваем снова.
+    // По IP — показываем сразу, но геолокацию всё равно пробуем: она точнее
+    const memo = freshAutoLoc();
+    if (memo?.source === "geo") return;
     let cancelled = false;   // экран закрыли — больше ничего не обновляем
     let geoWon = false;      // геолокация сработала — ответ по IP больше не нужен
     let graceOver = false;   // прошли ли 1,5 секунды ожидания геолокации
@@ -3170,7 +3225,8 @@ function useLocation() {
 
     // Способ 1: по IP (несколько сервисов по очереди). Название города
     // переспрашиваем по координатам — так оно по-русски
-    ipLocation(ctrl.signal)
+    // Город по IP уже запомнен — второй раз IP-сервис не спрашиваем
+    (memo ? Promise.resolve(null) : ipLocation(ctrl.signal))
       .then(async (ll) => {
         if (!ll) return;
         const lat = round2(ll.lat);
@@ -3279,7 +3335,13 @@ function CityPicker({ onPick, onAuto, onClose, isManual }) {
    удачные данные. Незаконченный запрос отменяется (AbortController),
    когда начинается новый или экран закрывается. */
 function useWeather(lat, lon) {
-  const [state, setState] = useState({ loading: true, error: null, now: null, tomorrow: null, days: null, updatedAt: null });
+  const memoKey = `${lat},${lon}`;
+  const memoOf = (k) => { const m = weatherMemo.get(k); return m && Date.now() - m.at < WEATHER_REFRESH_MS ? m : null; };
+  // Погода для этого места загружалась меньше 15 минут назад — показываем её сразу
+  const [state, setState] = useState(() => {
+    const m = memoOf(memoKey);
+    return m ? { loading: false, error: null, updatedAt: m.at, ...m.data } : { loading: true, error: null, now: null, tomorrow: null, days: null, updatedAt: null };
+  });
   const ctrlRef = useRef(null); // текущий запрос — чтобы отменить его при новом
 
   const load = () => {
@@ -3300,6 +3362,7 @@ function useWeather(lat, lon) {
         // Заодно кладём в общие данные — их читает ассистент
         TODAY.weather = w;
         TODAY.weatherAt = Date.now();
+        weatherMemo.set(`${lat},${lon}`, { at: Date.now(), data: w });
         setState({ loading: false, error: null, updatedAt: Date.now(), ...w });
       })
       .catch((err) => {
@@ -3317,12 +3380,19 @@ function useWeather(lat, lon) {
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => {
-    loadRef.current();
-    const id = setInterval(() => loadRef.current(), WEATHER_REFRESH_MS);
+    // Свежая погода уже есть (см. weatherMemo) — следующая загрузка, когда ей исполнится 15 минут
+    const m = memoOf(memoKey);
+    if (m) setState({ loading: false, error: null, updatedAt: m.at, ...m.data });
+    let id = 0;
+    const first = setTimeout(() => {
+      loadRef.current();
+      id = setInterval(() => loadRef.current(), WEATHER_REFRESH_MS);
+    }, m ? WEATHER_REFRESH_MS - (Date.now() - m.at) : 0);
     // Потянули экран вниз в приложении (событие "nexa-refresh") — тоже обновляем
     const onRefresh = () => loadRef.current();
     window.addEventListener("nexa-refresh", onRefresh);
     return () => {
+      clearTimeout(first);
       clearInterval(id);
       window.removeEventListener("nexa-refresh", onRefresh);
       ctrlRef.current?.abort();
@@ -5089,27 +5159,61 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
 /* «Открыть» и «Скачать» содержимое файла. Ссылка — из этого браузера (IndexedDB)
    или временная подписанная ссылка облака. В приложении — всегда ссылка облака:
    её откроет системный браузер */
+/* Открыть или скачать содержимое файла.
+   Сайт: «Открыть» — новая вкладка. Её открываем сразу по нажатию, а адрес
+   подставляем, когда он готов: иначе Safari и Firefox считают вкладку
+   навязчивым окном и блокируют. «Скачать» — ссылка с именем файла.
+   Приложение: встроенный браузер этого не умеет — через модуль NexaFiles
+   (сохранить в «Загрузки» или открыть другим приложением).
+   Ответ — true / false (не получилось — показать уведомление) */
+async function openFileContent(file, scope, download) {
+  const cloud = scope !== "guest" && !!file.path;
+  if (isNative) {
+    if (cloud) {
+      const url = await fileUrl({ ...file, id: `cloud-${file.id}` }, scope);
+      return !!url && nativeFile(download ? "save" : "open", { url, name: safeFileName(file.name), mime: file.mime });
+    }
+    const local = await fileUrl(file, scope);
+    if (!local) return false;
+    const blob = await (await fetch(local)).blob();
+    return nativeFile(download ? "save" : "open", { blob, name: safeFileName(file.name), mime: file.mime || blob.type });
+  }
+  if (download) {
+    const url = cloud ? await fileUrl(file, scope, { download: true }) : await fileUrl(file, scope);
+    if (!url) return false;
+    const a = document.createElement("a");
+    a.href = url; a.rel = "noopener noreferrer"; a.download = safeFileName(file.name);
+    document.body.appendChild(a); a.click(); a.remove();
+    return true;
+  }
+  const win = window.open("", "_blank"); // сразу — пока нажатие «свежее»
+  const url = await fileUrl(file, scope);
+  if (!url) { win?.close(); return false; }
+  if (win) { win.opener = null; win.location.href = url; return true; }
+  // Вкладку всё-таки не дали открыть — обычной ссылкой
+  const a = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+  document.body.appendChild(a); a.click(); a.remove();
+  return true;
+}
+
 function FileContentActions({ file, onToast }) {
   const [state, setState] = useState(null); // null | "open" | "download" — что сейчас готовим
-  const cloudOnly = isNative && FILE_SCOPE !== "guest";
   const go = async (download) => {
     setState(download ? "download" : "open");
     try {
-      const url = cloudOnly || download && FILE_SCOPE !== "guest" && file.path
-        ? await fileUrl({ ...file, id: cloudOnly ? `cloud-${file.id}` : file.id }, FILE_SCOPE, { download })
-        : await fileUrl(file, FILE_SCOPE);
-      if (!url) {
+      const ok = await openFileContent(file, FILE_SCOPE, download);
+      if (ok && download && isNative) onToast?.({ title: "Файл сохранён", text: `«${file.name}» — в папке «Загрузки»` });
+      if (!ok) {
         onToast?.({
-          title: "Содержимое недоступно",
-          text: navigator.onLine === false ? "Нет связи — файл ещё не скачан на это устройство" : "Файл добавили до появления хранилища — содержимое не сохранилось",
+          title: download ? "Не получилось скачать" : "Не получилось открыть",
+          text: navigator.onLine === false ? "Нет связи — файл ещё не скачан на это устройство"
+            : isNative && !download ? "Нет приложения, которое умеет открывать такие файлы, или файл недоступен"
+            : "Файл добавили до появления хранилища — содержимое не сохранилось",
         });
-        return;
       }
-      const a = document.createElement("a");
-      a.href = url;
-      a.rel = "noopener noreferrer";
-      if (download) a.download = safeFileName(file.name); else a.target = "_blank";
-      document.body.appendChild(a); a.click(); a.remove();
+    } catch {
+      onToast?.({ title: "Не получилось", text: "Попробуйте ещё раз" });
     } finally { setState(null); }
   };
   const btn = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text };
@@ -6004,8 +6108,20 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           На телефоне — одной колонкой */}
       <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
       <div data-keep>
-        {/* Заряд и память */}
-        <div style={{ padding: "20px 0 4px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Карточка «Состояние»: заряд, память, сеть и кнопки — как карточка справа */}
+        <div className="nx-dev-card" style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: 12.5, color: C.mutedSoft }}>Состояние</span>
+          {/* Когда сведения получены: у отключённого — последние достоверные */}
+          {d.real && (
+            <span style={{ fontSize: 12, color: C.mutedSoft, textAlign: "right" }}>
+              {sys?.at
+                ? `${d.online ? "Обновлено" : "Последние данные"} ${sysTime(sys.at)}`
+                : d.online ? "Сведений пока нет" : "Сведений не было"}
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {bars.map((b) => (
             <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
               <div style={{ width: 62, flexShrink: 0, color: C.mutedSoft }}>{b.label}</div>
@@ -6021,21 +6137,14 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
               <div style={{ minWidth: 96, flexShrink: 0, textAlign: "right", color: b.value === NO_DATA ? C.mutedSoft : C.muted, whiteSpace: "nowrap" }}>{b.value}</div>
             </div>
           ))}
-          {/* Когда сведения получены: у отключённого — последние достоверные */}
-          {d.real && (
-            <div style={{ fontSize: 12, color: C.mutedSoft, lineHeight: 1.45 }}>
-              {sys?.at
-                ? `${d.online ? "Обновлено" : "Последние данные"} ${sysTime(sys.at)}`
-                : d.online ? "Устройство пока не прислало сведения" : "Сведений от устройства пока не было"}
-            </div>
-          )}
         </div>
 
         {/* Действия: три кнопки-«таблетки» равной ширины.
             На узком экране третья переносится на новую строку */}
+        {/* Кнопки делят ширину поровну; «Подключить / Отключить» — на всю строку */}
         <div className="nx-device-actions" style={{
-          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(136px, 1fr))",
-          gap: 10, padding: "20px 0 4px",
+          display: "flex", flexWrap: "wrap",
+          gap: 10, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}`,
         }}>
           {/* Главная кнопка экрана — подключить / отключить, на всю ширину.
               У реального устройства «в сети» решает само устройство — кнопки нет */}
@@ -6044,12 +6153,13 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             labels={powerLabels}
             icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
             onClick={toggleOnline}
-            style={{ ...pillBtn, gridColumn: "1 / -1" }}
+            style={{ ...pillBtn, flex: "1 1 100%" }}
           >
             {d.online ? "Отключить устройство" : "Подключить устройство"}
           </StateButton>}
-          {/* Пока устройство звонит, кнопка в состоянии «загрузка» */}
-          <StateButton
+          {/* Пока устройство звонит, кнопка в состоянии «загрузка».
+              У реального устройства «Найти» — в быстрых действиях справа, здесь не повторяем */}
+          {!d.real && <StateButton
             variant="primary"
             state={d.real
               ? ({ ringing: "loading", found: "success", timeout: "error" }[findState] || "idle")
@@ -6058,15 +6168,16 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             icon={Icon.search({ c: C.onFold, s: 16 })}
             disabled={!d.online || power === "loading" || d.isSelf}
             onClick={d.real ? () => onFind?.(d) : find}
-            style={pillBtn}
+            style={{ ...pillBtn, flex: "1 1 136px" }}
           >
             Найти
-          </StateButton>
-          <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn }}>
+          </StateButton>}
+          <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn, flex: "1 1 136px" }}>
             {Icon.folder({ c: C.text, s: 16 })} Файлы · {fileCount}
           </button>
         </div>
-        {!d.online && power === "idle" && (
+        </div>
+        {!d.real && !d.online && power === "idle" && (
           <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
             Найти можно только устройство в сети
           </div>
@@ -7131,11 +7242,10 @@ function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, 
     >
       <div className="nx-hist-head">
         <span className="nx-hist-label">История</span>
-        {mobile && (
-          <button type="button" className="nx-hist-close" aria-label="Закрыть историю" onClick={onClose}>
-            {Icon.close({ c: C.text, s: 16 })}
-          </button>
-        )}
+        <button type="button" className="nx-hist-close" aria-label={mobile ? "Закрыть историю" : "Скрыть историю"}
+          title={mobile ? undefined : "Скрыть историю"} onClick={onClose}>
+          {Icon.close({ c: C.text, s: mobile ? 16 : 14 })}
+        </button>
       </div>
       <button type="button" className="nx-ghost-btn nx-hist-new" onClick={onNew}>
         {Icon.plus({ c: C.mint, s: 15 })} Новый диалог
@@ -7299,6 +7409,9 @@ useEffect(() => {
   const cmdBusyRef = useRef(false); cmdBusyRef.current = cmdBusy; // для спектрального фона
   const isLoading = cmdBusy || liveChatId !== null;
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // Компьютер: колонку истории можно скрыть крестиком (запоминаем в браузере)
+  const [histHidden, setHistHiddenState] = useState(() => { try { return localStorage.getItem("nexa-hist-hidden") === "1"; } catch { return false; } });
+  const setHistHidden = (v) => { setHistHiddenState(v); try { localStorage.setItem("nexa-hist-hidden", v ? "1" : "0"); } catch {} };
   // Свайп вправо на экране ассистента открывает историю (см. useTabSwipe в NexaApp)
   useEffect(() => {
     const open = () => setIsHistoryOpen(true);
@@ -7706,10 +7819,13 @@ useEffect(() => {
 
  const titleOnly = (
   <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
-    {/* Гамбургер — виден только на мобильном */}
+    {/* Кнопка истории: на телефоне открывает шторку, на компьютере
+        возвращает скрытую колонку (видна, только пока колонка скрыта) */}
     <button
-      className="ng-hamburger"
-      onClick={() => setIsHistoryOpen(true)}
+      type="button"
+      className={`ng-hamburger${!mobile && histHidden ? " is-shown" : ""}`}
+      title="История диалогов"
+      onClick={() => (mobile ? setIsHistoryOpen(true) : setHistHidden(false))}
       style={{
         background: "transparent", border: "none",
         cursor: "pointer", padding: 4, display: "none",
@@ -7860,7 +7976,7 @@ const menuBlock = (
       currentChatId={currentChatId}
       mobile={mobile}
       open={isHistoryOpen}
-      onClose={() => setIsHistoryOpen(false)}
+      onClose={() => (mobile ? setIsHistoryOpen(false) : setHistHidden(true))}
       onOpen={(id) => { openChat(id); setIsHistoryOpen(false); }}
       onNew={() => { newChat(); setIsHistoryOpen(false); }}
       onDelete={deleteChat}
@@ -7874,7 +7990,7 @@ const menuBlock = (
     // Высота и сдвиг — по видимой области экрана (см. эффект с visualViewport),
     // чтобы при открытой клавиатуре экран не уезжал вверх
     position: "fixed",
-    top: "var(--vvt, 0px)", left: 79, right: 0, height: "var(--vvh, 100%)",
+    top: "var(--vvt, 0px)", left: NAV_W + 1, right: 0, height: "var(--vvh, 100%)",
     background: C.bg, zIndex: 5, overflow: "hidden",
     display: "flex", flexDirection: "column",
   };
@@ -7893,9 +8009,11 @@ const menuBlock = (
     <AssistantSpectrum busyRef={cmdBusyRef} />
     {menuBlock}
 
+    {/* История — слева: на компьютере колонкой от бокового меню на всю высоту
+        (скрыта — не рисуем), на телефоне — шторкой поверх (в body) */}
+    <div style={{ position: "relative", zIndex: 1, flex: 1, minHeight: 0, display: "flex" }}>
+    {(mobile || !histHidden) && historyPanel}
     <div className="ng-assistant-inner" style={innerStyle}>
-      {/* История — слева: на компьютере колонкой, на телефоне шторкой поверх */}
-      {historyPanel}
       <div style={{
         flex: 1, display: "flex", flexDirection: "column",
         minWidth: 0, minHeight: 0,
@@ -7998,6 +8116,7 @@ const menuBlock = (
            </>
         )}
       </div>
+    </div>
     </div>
   </div>
   );
@@ -9767,7 +9886,7 @@ function useKeyboardViewport() {
    в 24 px от края экрана (там системный «Назад»), при открытой клавиатуре.
    getCtx() → { tab, sub } (sub — открыт экран устройства или «Активность»);
    onSwipe(dir) — dir: "next" (палец влево) | "prev" (палец вправо) */
-const SWIPE_ORDER = ["today", "assistant", "home", "media", "files"];
+const SWIPE_ORDER = ["assistant", "today", "home", "media", "files"];
 const SWIPE_MIN = 60, SWIPE_FLICK_MIN = 30, SWIPE_FLICK_SPEED = 0.5, SWIPE_FLICK_MS = 300, SWIPE_EDGE = 24, SWIPE_RATIO = 1.5;
 const SWIPE_SKIP = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe], [role="dialog"], [role="menu"], .nx-notes, .nx-viewer, .nx-hist-drawer';
 // Внутри горизонтально прокручиваемого блока свайп — это прокрутка блока
@@ -9780,12 +9899,33 @@ function inHorizontalScroll(el) {
   }
   return false;
 }
+/* Что сделает свайп в эту сторону: "tab" — сменит раздел, "history" —
+   откроет / закроет историю ассистента, "edge" — некуда (крайняя вкладка) */
+function swipePlan(tab, dir) {
+  if (tab === "assistant") {
+    if (document.querySelector(".nx-hist-drawer.is-open")) return "history";
+    if (dir === "prev") return "history";
+  }
+  const i = SWIPE_ORDER.indexOf(tab) + (dir === "next" ? 1 : -1);
+  return i < 0 || i >= SWIPE_ORDER.length ? "edge" : "tab";
+}
+// Текущий экран, который двигаем за пальцем
+const swipeScreen = () => document.querySelector(".ng-assistant-wrapper") || document.querySelector(".ng-screen-anim");
+const SWIPE_OUT_MS = 140; // старый экран уезжает
 function useTabSwipe(getCtx, onSwipe) {
   const ctx = useRef(getCtx); ctx.current = getCtx;
   const act = useRef(onSwipe); act.current = onSwipe;
   useEffect(() => {
     const mobile = window.matchMedia?.("(max-width: 768px)");
+    const still = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     let start = null;
+    // Вернуть экран на место (свайп не засчитан или это не смена раздела)
+    const settle = (el) => {
+      if (!el) return;
+      el.style.transition = "transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+      el.style.transform = "";
+      setTimeout(() => { el.style.transition = ""; }, 240);
+    };
     const down = (e) => {
       start = null;
       if (!mobile?.matches || e.touches.length !== 1) return;
@@ -9797,26 +9937,63 @@ function useTabSwipe(getCtx, onSwipe) {
       if (layer || el.closest(SWIPE_SKIP) || inHorizontalScroll(el)) return;
       const c = ctx.current();
       if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», Настройки
-      start = { x: t.clientX, y: t.clientY, at: performance.now() };
+      start = { x: t.clientX, y: t.clientY, at: performance.now(), tab: c.tab, locked: null, el: null };
+    };
+    // Палец движется: сначала решаем, жест горизонтальный или это прокрутка.
+    // Горизонтальный — экран идёт за пальцем (с сопротивлением; если сменить
+    // раздел нельзя — только чуть-чуть, как пружина)
+    const move = (e) => {
+      if (!start) return;
+      const t = e.touches[0];
+      const dx = t.clientX - start.x, dy = t.clientY - start.y;
+      if (start.locked === null) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        start.locked = Math.abs(dx) > SWIPE_RATIO * Math.abs(dy);
+        if (!start.locked) { start = null; return; } // вертикально — это прокрутка, не мешаем
+      }
+      if (still()) return;
+      const plan = swipePlan(start.tab, dx < 0 ? "next" : "prev");
+      if (plan === "history" && document.querySelector(".nx-hist-drawer.is-open")) return; // шторку тянет её свой жест
+      const el = start.el || (start.el = swipeScreen());
+      if (!el) return;
+      el.style.transition = "none";
+      el.style.transform = `translateX(${dx * (plan === "tab" ? 0.45 : 0.15)}px)`;
     };
     const up = (e) => {
       if (!start) return;
       const t = e.changedTouches[0];
       const dx = t.clientX - start.x, dy = t.clientY - start.y, dt = performance.now() - start.at;
+      const el = start.el, tab = start.tab, locked = start.locked;
       start = null;
-      if (Math.abs(dx) < SWIPE_RATIO * Math.abs(dy)) return; // больше вертикально — это прокрутка
-      const far = Math.abs(dx) >= SWIPE_MIN;
-      const flick = Math.abs(dx) >= SWIPE_FLICK_MIN && dt <= SWIPE_FLICK_MS && Math.abs(dx) / dt >= SWIPE_FLICK_SPEED;
-      if (!far && !flick) return;
-      if (window.getSelection?.().toString()) return; // выделяли текст
-      act.current(dx < 0 ? "next" : "prev");
+      const dir = dx < 0 ? "next" : "prev";
+      const ok = locked !== false && Math.abs(dx) >= SWIPE_RATIO * Math.abs(dy) && // больше вертикально — это прокрутка
+        (Math.abs(dx) >= SWIPE_MIN || (Math.abs(dx) >= SWIPE_FLICK_MIN && dt <= SWIPE_FLICK_MS && Math.abs(dx) / dt >= SWIPE_FLICK_SPEED)) &&
+        !window.getSelection?.().toString(); // выделяли текст — не свайп
+      const plan = swipePlan(tab, dir);
+      if (!ok || plan !== "tab" || still() || !el) {
+        settle(el);
+        if (ok) act.current(dir);
+        return;
+      }
+      // Раздел меняется: старый экран доезжает в сторону свайпа и тает, потом —
+      // новый раздел (он въезжает с той же стороны, см. nx-swipe-*)
+      el.style.transition = `transform ${SWIPE_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1), opacity ${SWIPE_OUT_MS}ms linear`;
+      el.style.transform = `translateX(${dir === "next" ? -72 : 72}px)`;
+      el.style.opacity = "0";
+      setTimeout(() => {
+        act.current(dir);
+        // Если тот же элемент остался на странице (раздел не сменился) — вернуть
+        requestAnimationFrame(() => { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; });
+      }, SWIPE_OUT_MS);
     };
-    const cancel = () => { start = null; };
+    const cancel = () => { if (start?.el) settle(start.el); start = null; };
     document.addEventListener("touchstart", down, { passive: true });
+    document.addEventListener("touchmove", move, { passive: true });
     document.addEventListener("touchend", up, { passive: true });
     document.addEventListener("touchcancel", cancel, { passive: true });
     return () => {
       document.removeEventListener("touchstart", down);
+      document.removeEventListener("touchmove", move);
       document.removeEventListener("touchend", up);
       document.removeEventListener("touchcancel", cancel);
     };
@@ -10457,9 +10634,8 @@ export default function NexaApp() {
     document.body.appendChild(a); a.click(); a.remove();
   };
   const openReceivedFile = async (p) => {
-    const url = await fileUrl({ id: p.id, path: `${uid}/${p.id}`, name: p.name }, uid);
-    if (url) openUrl(url);
-    else showToast({ title: "Файл недоступен", text: "Нет связи или файл уже удалили", kind: "error" });
+    const ok = await openFileContent({ id: p.id, path: `${uid}/${p.id}`, name: p.name, mime: p.mime }, uid, false).catch(() => false);
+    if (!ok) showToast({ title: "Файл недоступен", text: "Нет связи или файл уже удалили", kind: "error" });
   };
 
   /* ── Найти устройство ── */
@@ -10596,8 +10772,8 @@ export default function NexaApp() {
       }
       const i = SWIPE_ORDER.indexOf(tab) + (dir === "next" ? 1 : -1);
       if (i < 0 || i >= SWIPE_ORDER.length) return; // крайняя вкладка — дальше некуда
-      setSwipeDir(dir);
-      goTab(SWIPE_ORDER[i]);
+      // Новый экран рисуется «переходом» (по кусочкам) — анимация не дёргается
+      startTransition(() => { setSwipeDir(dir); goTab(SWIPE_ORDER[i]); });
     },
   );
   // Направление — пометка у body (до отрисовки нового экрана): по ней CSS
@@ -10995,6 +11171,14 @@ export default function NexaApp() {
         /* ─── Десктопные показы ─────────────────────────────── */
         .ng-mobile-tabbar { display: none; }
         .ng-hamburger { display: none; }
+        /* Главная (компьютер): плашка устройства — рамка 1px, скругление 10px,
+           слева ячейка значка, отделённая линией (как в макете) */
+        .nx-dev-plate { border: 1px solid var(--border-strong) !important; border-radius: 10px !important; background: var(--panel) !important; min-height: 66px; transition: border-color 160ms ease; }
+        .nx-dev-plate:hover { border-color: var(--mint) !important; }
+        .nx-dev-plate.is-add { border-style: dashed !important; background: transparent !important; }
+        .nx-dev-plate-icon { width: 66px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--border-strong); }
+        /* Компьютер, история скрыта: кнопка, которая возвращает колонку */
+        .ng-hamburger.is-shown { display: flex !important; }
         .nx-assistant-ver { display: none; }
         .ng-devices-list { display: block; }
         .ng-devices-mobile { display: none; }
@@ -11038,11 +11222,14 @@ export default function NexaApp() {
         /* ─── История диалогов (ChatHistory) ───────────────────
            Компьютер: постоянная колонка слева от чата */
         .nx-hist {
-          width: 264px; flex-shrink: 0; min-height: 0; box-sizing: border-box;
+          width: 272px; flex-shrink: 0; min-height: 0; box-sizing: border-box;
           display: flex; flex-direction: column; gap: 10px;
-          padding-right: 20px; margin-right: 28px; border-right: 1px solid var(--border);
+          padding: 28px 16px 18px; border-right: 1px solid var(--border);
+          background: color-mix(in srgb, var(--bg) 72%, transparent);
         }
-        @media (max-width: 1100px) { .nx-hist { width: 228px; padding-right: 14px; margin-right: 20px; } }
+        @media (max-width: 1100px) { .nx-hist { width: 232px; padding: 28px 12px 16px; } }
+        /* Крестик на компьютере — маленький круг */
+        @media (min-width: 769px) { .nx-hist-close { width: 28px !important; height: 28px !important; } }
         .nx-hist-head { display: flex; align-items: center; justify-content: space-between; min-height: 18px; }
         .nx-hist-label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted-soft); padding-left: 4px; }
         .nx-hist-new {
@@ -11156,10 +11343,13 @@ export default function NexaApp() {
 }
   /* Переход свайпом: новый раздел коротко въезжает сбоку (200 мс).
      next — пришёл справа (листали влево), prev — слева */
-  body[data-swipe="next"] .ng-screen-anim, body[data-swipe="next"] .ng-assistant-anim { animation: nx-swipe-next 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-  body[data-swipe="prev"] .ng-screen-anim, body[data-swipe="prev"] .ng-assistant-anim { animation: nx-swipe-prev 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-  @keyframes nx-swipe-next { from { opacity: 0.35; transform: translateX(28px); } to { opacity: 1; transform: none; } }
-  @keyframes nx-swipe-prev { from { opacity: 0.35; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+  body[data-swipe="next"] .ng-screen-anim, body[data-swipe="next"] .ng-assistant-anim { animation: nx-swipe-next 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  body[data-swipe="prev"] .ng-screen-anim, body[data-swipe="prev"] .ng-assistant-anim { animation: nx-swipe-prev 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  /* Телефон: горизонтальное движение пальца браузер отдаёт нам (вертикальная
+     прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
+  @media (max-width: 768px) { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
+  @keyframes nx-swipe-next { from { opacity: 0; transform: translateX(56px); } to { opacity: 1; transform: none; } }
+  @keyframes nx-swipe-prev { from { opacity: 0; transform: translateX(-56px); } to { opacity: 1; transform: none; } }
   /* Без движения — экран просто меняется */
   @media (prefers-reduced-motion: reduce) {
     body[data-swipe] .ng-screen-anim, body[data-swipe] .ng-assistant-anim { animation: none; }
@@ -11503,7 +11693,10 @@ export default function NexaApp() {
         /* Колонки не раздвигаются длинным текстом — он переносится или обрезается */
         .nx-link-grid > * { min-width: 0; }
         /* Строка синхронизации аккаунта: на компьютере — внизу слева, у боковой панели */
-        .nx-sync-status { left: 98px; bottom: 20px; }
+        .nx-sync-status { left: ${NAV_W + 20}px; bottom: 20px; }
+        /* Боковое меню: подсветка при наведении и заметный фокус с клавиатуры */
+        .nx-nav-btn:not([aria-current]):hover { background: color-mix(in srgb, var(--text) 12%, transparent) !important; }
+        .nx-nav-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }

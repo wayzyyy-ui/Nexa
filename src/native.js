@@ -228,3 +228,25 @@ export function onWidgetTab(cb) {
   const handle = NexaWidgets.addListener("openTab", (e) => { if (e?.tab === "today" || e?.tab === "home") cb(e.tab); });
   return () => { Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
 }
+
+/* ─── Файлы в приложении: «Скачать» и «Открыть» (модуль NexaFiles, Java) ───
+   Встроенный браузер приложения сам не скачивает файлы и не открывает их
+   в других приложениях. src — { url } (подписанная ссылка облака) или
+   { blob } (файл гостя из браузерного хранилища). Ответ — true / false. */
+const NexaFiles = registerPlugin("NexaFiles");
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(",")[1] || "");
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+export async function nativeFile(action, { url, blob, name, mime }) {
+  if (!isNative) return false;
+  const data = url ? { url } : { base64: await blobToBase64(blob) };
+  try {
+    await NexaFiles[action === "save" ? "save" : "open"]({ ...data, name, mime: mime || "" });
+    return true;
+  } catch {
+    return false;
+  }
+}
