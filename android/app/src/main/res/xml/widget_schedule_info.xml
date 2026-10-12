@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «NEXA · Расписание»: 4 × 2 ячейки. updatePeriodMillis — страховка (система
+     не чаще раза в 30 минут); прошедшие дела виджет убирает сам по будильнику -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_schedule_desc"
+    android:initialLayout="@layout/widget_schedule"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:previewImage="@drawable/widget_preview_schedule"
+    android:previewLayout="@layout/widget_schedule_preview"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

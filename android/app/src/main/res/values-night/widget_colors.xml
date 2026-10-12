@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Цвета виджетов NEXA — тёмная тема системы (:root[data-theme="dark"] на сайте) -->
+<resources>
+    <color name="widget_bg">#01090F</color>
+    <color name="widget_border">#3A3E46</color>
+    <color name="widget_text">#FFFFFF</color>
+    <color name="widget_muted">#92A2AF</color>
+    <color name="widget_accent">#00FFDF</color>
+    <color name="widget_blue">#4A6FFF</color>
+</resources>

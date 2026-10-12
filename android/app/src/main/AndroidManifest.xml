@@ -28,6 +28,29 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Виджеты рабочего стола (папка widgets): расписание и погода -->
+        <receiver
+            android:name=".widgets.ScheduleWidget"
+            android:label="@string/widget_schedule_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <!-- Сменили время или часовой пояс — пересчитать «сегодня» -->
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_schedule_info" />
+        </receiver>
+        <receiver
+            android:name=".widgets.WeatherWidget"
+            android:label="@string/widget_weather_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_weather_info" />
+        </receiver>
+
         <!-- Сканер QR (Google Code Scanner): модуль сканирования подгружается сам -->
         <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
     </application>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Цвета виджетов NEXA — светлая тема (тёмная — в values-night).
+     Те же значения, что в токенах сайта (App.jsx, :root[data-theme="light"]) -->
+<resources>
+    <color name="widget_bg">#F8FAFC</color>       <!-- panel на сайте -->
+    <color name="widget_border">#C2CAD5</color>   <!-- тонкая обводка 1dp -->
+    <color name="widget_text">#111933</color>     <!-- text на сайте -->
+    <color name="widget_muted">#667085</color>    <!-- muted-soft на сайте -->
+    <color name="widget_accent">#10BFA8</color>   <!-- мятный: время дел, солнце -->
+    <color name="widget_blue">#4A6FFF</color>     <!-- синий NEXA: грань складки -->
+</resources>

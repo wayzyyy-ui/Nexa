@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Тексты виджетов рабочего стола -->
+<resources>
+    <string name="widget_schedule_name">NEXA · Расписание</string>
+    <string name="widget_schedule_desc">Три ближайших дела на сегодня — как на экране «Сегодня» в NEXA</string>
+    <string name="widget_schedule_title">Сегодня</string>
+    <string name="widget_schedule_free">Сегодня свободно</string>
+    <string name="widget_schedule_done">На сегодня дел больше нет</string>
+    <string name="widget_schedule_open_app">Откройте NEXA, чтобы виджет увидел расписание</string>
+
+    <string name="widget_weather_name">NEXA · Погода</string>
+    <string name="widget_weather_desc">Погода в городе из настроек NEXA (по умолчанию Казань). Данные: Open-Meteo.com</string>
+    <string name="widget_weather_loading">Загружаем погоду…</string>
+    <string name="widget_weather_need_net">Нужен интернет</string>
+</resources>

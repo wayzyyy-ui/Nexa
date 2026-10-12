@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Превью «Расписания» для Android 11 и ниже: схема виджета (шапка и три дела) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp" android:height="110dp"
+    android:viewportWidth="250" android:viewportHeight="110">
+    <path android:fillColor="@color/widget_bg" android:strokeColor="@color/widget_border" android:strokeWidth="1"
+        android:pathData="M0.5,0.5 H249.5 V109.5 H0.5 Z" />
+    <path android:fillColor="@color/widget_blue" android:pathData="M228,0 L250,0 L250,22 Z" />
+    <path android:fillColor="@color/widget_accent" android:pathData="M238,0 L250,0 L250,12 Z" />
+    <path android:fillColor="@color/widget_text" android:pathData="M14,14 H66 V22 H14 Z" />
+    <path android:fillColor="@color/widget_muted" android:pathData="M74,15 H150 V21 H74 Z" />
+    <path android:fillColor="@color/widget_border" android:pathData="M14,32 H236 V33 H14 Z" />
+    <path android:fillColor="@color/widget_accent" android:pathData="M14,44 H44 V52 H14 Z M14,66 H44 V74 H14 Z M14,88 H44 V96 H14 Z" />
+    <path android:fillColor="@color/widget_text" android:pathData="M56,44 H190 V52 H56 Z M56,66 H170 V74 H56 Z M56,88 H200 V96 H56 Z" />
+</vector>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Превью «Погоды» для Android 11 и ниже: схема виджета 2 × 2 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="110dp" android:height="110dp"
+    android:viewportWidth="110" android:viewportHeight="110">
+    <path android:fillColor="@color/widget_bg" android:strokeColor="@color/widget_border" android:strokeWidth="1"
+        android:pathData="M0.5,0.5 H109.5 V109.5 H0.5 Z" />
+    <path android:fillColor="@color/widget_blue" android:pathData="M92,0 L110,0 L110,18 Z" />
+    <path android:fillColor="@color/widget_accent" android:pathData="M100,0 L110,0 L110,10 Z" />
+    <path android:fillColor="@color/widget_muted" android:pathData="M12,12 H50 V18 H12 Z" />
+    <path android:fillColor="@color/widget_text" android:pathData="M12,36 H52 V58 H12 Z" />
+    <path android:fillColor="@color/widget_accent" android:pathData="M84,36 L94,46 L84,56 L74,46 Z" />
+    <path android:fillColor="@color/widget_text" android:pathData="M12,70 H80 V76 H12 Z" />
+    <path android:fillColor="@color/widget_muted" android:pathData="M12,84 H66 V89 H12 Z M12,95 H58 V99 H12 Z" />
+</vector>

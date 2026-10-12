@@ -5,7 +5,7 @@ import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -26,7 +26,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.13";
+const VERSION = "0.8.14";
 
 
 /* =========================================================================
@@ -3151,6 +3151,7 @@ function useLocation() {
       if (c) localStorage.setItem(CITY_KEY, JSON.stringify({ city: c.city, lat: c.lat, lon: c.lon }));
       else localStorage.removeItem(CITY_KEY);
     } catch {}
+    widgetsSetCity(c); // виджет погоды на рабочем столе (только в приложении)
     if (!c) setLoc(DEFAULT_LOCATION);
     setManual(c ? { city: c.city, lat: c.lat, lon: c.lon, source: "manual" } : null);
   };
@@ -9828,6 +9829,16 @@ export default function NexaApp() {
   const [schedule, setSchedule] = useSharedState(SCHEDULE_KEY, loadSchedule);
   // Ассистент, превью часов и сводка «что у меня сегодня» видят только сегодняшние дела
   TODAY.schedule = itemsOn(schedule, dayKey());
+  /* Виджеты рабочего стола (только приложение): то же расписание — при запуске
+     и при каждом изменении; при уходе в фон — ещё раз и перерисовать виджеты.
+     Город для виджета погоды — выбранный в NEXA (не выбран — Казань) */
+  useEffect(() => { widgetsSetSchedule(schedule); }, [schedule]);
+  useEffect(() => {
+    widgetsSetCity(readManualCity());
+    const away = () => { if (document.visibilityState === "hidden") widgetsFlush(); };
+    document.addEventListener("visibilitychange", away);
+    return () => document.removeEventListener("visibilitychange", away);
+  }, []);
   const dayLabel = (k) => (k === dayKey() ? "" : `${dayFromKey(k).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}, `);
   const addScheduleItem = (it) => {
     setSchedule((list) => sortSchedule([...list, { id: `s${Date.now()}`, ...it }]));
@@ -10408,6 +10419,9 @@ export default function NexaApp() {
 
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setTab(t); };
+  // Нажали на виджет рабочего стола: «Расписание» → «Сегодня», «Погода» → Главная
+  const goTabRef = useRef(goTab); goTabRef.current = goTab;
+  useEffect(() => onWidgetTab((t) => goTabRef.current(t)), []);
 
   // Аккаунт: кто вошёл (Supabase) — см. начало NexaApp. Гостевой режим и окно входа
   const [guest, setGuest] = useState(readGuest);

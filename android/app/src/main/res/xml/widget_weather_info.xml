@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «NEXA · Погода»: 2 × 2, растягивается до 4 × 2 (широкая раскладка).
+     Погоду обновляет WeatherWorker (WorkManager), а не updatePeriodMillis -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_weather_desc"
+    android:initialLayout="@layout/widget_weather_small"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="330dp"
+    android:previewImage="@drawable/widget_preview_weather"
+    android:previewLayout="@layout/widget_weather_preview"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

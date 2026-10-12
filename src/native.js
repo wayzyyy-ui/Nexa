@@ -1,7 +1,7 @@
 /* Связка NEXA с Android-приложением (Capacitor).
    Всё здесь срабатывает только внутри приложения — на сайте функции
    ничего не делают, и сайт работает как раньше. */
-import { Capacitor, SystemBars, SystemBarsStyle } from "@capacitor/core";
+import { Capacitor, SystemBars, SystemBarsStyle, registerPlugin } from "@capacitor/core";
 
 // Запущены ли мы внутри Android-приложения (а не в браузере)
 export const isNative = Capacitor.isNativePlatform();
@@ -182,4 +182,49 @@ if (isNative) {
   setTimeout(() => {
     if (!document.documentElement.classList.contains("nx-boot-go")) startIntro();
   }, 4000);
+}
+
+/* ─── Виджеты рабочего стола (плагин NexaWidgets, android/…/widgets) ───
+   Виджеты читают данные из памяти Android (SharedPreferences), поэтому
+   работают и при закрытом приложении. Приложение передаёт туда:
+   - расписание — то же, что на экране «Сегодня» (только сегодня и дальше, без описаний);
+   - город, выбранный в NEXA (не выбран — виджет погоды берёт Казань).
+   На сайте и в старых версиях приложения без плагина ничего не делают. */
+const NexaWidgets = registerPlugin("NexaWidgets");
+let widgetSchedule = null;   // последнее расписание (для отправки при уходе в фон)
+let widgetSent = "";         // что уже отправлено — одинаковое не шлём повторно
+const dayKeyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export function widgetsSetSchedule(list, force = false) {
+  if (!isNative || !Array.isArray(list)) return;
+  widgetSchedule = list;
+  const today = dayKeyOf(new Date());
+  const items = list
+    .filter((it) => it && typeof it.date === "string" && it.date >= today && typeof it.time === "string" && it.title)
+    .slice(0, 200)
+    .map((it) => ({ date: it.date, time: it.time, title: String(it.title).slice(0, 120) }));
+  const json = JSON.stringify(items);
+  if (!force && json === widgetSent) return;
+  widgetSent = json;
+  NexaWidgets.setSchedule({ items }).catch(() => {});
+}
+
+// Город из настроек NEXA: { city, lat, lon } или null (не выбран — Казань)
+export function widgetsSetCity(c) {
+  if (!isNative) return;
+  NexaWidgets.setCity(c ? { city: c.city, lat: c.lat, lon: c.lon } : { city: null }).catch(() => {});
+}
+
+// Приложение уходит в фон: ещё раз отдать расписание и перерисовать виджеты
+export function widgetsFlush() {
+  if (!isNative) return;
+  if (widgetSchedule) widgetsSetSchedule(widgetSchedule, true);
+  NexaWidgets.refresh().catch(() => {});
+}
+
+// Нажали на виджет: cb("today" | "home"). Возвращает функцию отписки
+export function onWidgetTab(cb) {
+  if (!isNative) return () => {};
+  const handle = NexaWidgets.addListener("openTab", (e) => { if (e?.tab === "today" || e?.tab === "home") cb(e.tab); });
+  return () => { Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
 }
