@@ -250,3 +250,42 @@ export async function nativeFile(action, { url, blob, name, mime }) {
     return false;
   }
 }
+
+/* ─── NEXA Flow: буфер обмена ───
+   Только по действию человека: читаем буфер, когда нажали «Вставить
+   скопированное», пишем — когда нажали «Копировать» (или включено
+   «Сразу копировать полученное»). Сами в фоне ничего не читаем.
+   Приложение: модуль @capacitor/clipboard (встроенный браузер Android
+   не даёт сайту читать буфер). Сайт: navigator.clipboard — чтение спросит
+   разрешение у браузера, на старых браузерах и без https его нет.
+   Будущая версия для Windows подставит свой модуль сюда же. */
+export async function clipboardRead() {
+  try {
+    if (isNative) {
+      const { Clipboard } = await import("@capacitor/clipboard");
+      const r = await Clipboard.read();
+      return { text: typeof r?.value === "string" && /text/i.test(r.type || "text") ? r.value : "" };
+    }
+    if (!navigator.clipboard?.readText) return { error: "Этот браузер не даёт читать буфер — вставьте текст сами (долгое нажатие → «Вставить»)" };
+    return { text: await navigator.clipboard.readText() };
+  } catch {
+    return { error: "Нет доступа к буферу — разрешите его в браузере или вставьте текст сами" };
+  }
+}
+export async function clipboardWrite(text) {
+  try {
+    if (isNative) {
+      const { Clipboard } = await import("@capacitor/clipboard");
+      await Clipboard.write({ string: text });
+      return true;
+    }
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch { return false; }
+}
+// Текст из «Поделиться» другого приложения (только Android): cb(text). Возвращает отписку
+export function onSharedText(cb) {
+  if (!isNative) return () => {};
+  const handle = registerPlugin("NexaShare").addListener("sharedText", (e) => { if (typeof e?.text === "string" && e.text.trim()) cb(e.text); });
+  return () => { Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
+}

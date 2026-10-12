@@ -1,7 +1,7 @@
 {
   "name": "nexa",
   "private": true,
-  "version": "0.9.2",
+  "version": "0.9.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "@capacitor-mlkit/barcode-scanning": "^8.2.1",
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
+    "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.3",
     "@capacitor/device": "^8.0.3",
     "@capacitor/haptics": "^8.0.2",

@@ -6,7 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import foldSvg from "./assets/fold.svg";
 import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -27,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.9.2";
+const VERSION = "0.9.3";
 
 
 const C = {
@@ -2533,88 +2533,153 @@ const LinkEmpty = ({ children }) => (
   </div>
 );
 
-// Одно входящее: от кого, текст (только как текст), «Копировать» и «Открыть» для ссылок
-function InboxItem({ item, onRemove }) {
+/* ─── NEXA Flow: общий буфер между устройствами аккаунта ───
+   Работает поверх существующей связи (useDeviceLink): текст уходит событием
+   text.send, получатель отвечает text.ack. Буфер обмена читается только по
+   нажатию «Вставить скопированное», пишется — по «Копировать» (или сам, если
+   включено «Сразу копировать полученное»). Пароли и ключи в историю не пишутся */
+const FLOW_DEFAULT = { on: true, autoCopy: false };
+const loadFlow = (key) => { try { return { ...FLOW_DEFAULT, ...(JSON.parse(localStorage.getItem(key)) || {}) }; } catch { return FLOW_DEFAULT; } };
+// Подпись статуса отправленного и его цвет
+const FLOW_STATUS = {
+  sending: ["Отправляем…", "muted"],
+  sent: ["Ждём подтверждения…", "muted"],
+  delivered: ["Доставлено", "green"],
+  off: ["На устройстве выключен NEXA Flow", "red"],
+  unconfirmed: ["Не подтвердило — возможно, NEXA там свёрнута", "muted"],
+  error: ["Не отправилось — нет связи", "red"],
+};
+// Полученное и отправленное одним списком, новые сверху. who — только с этими устройствами
+function flowHistory(link, who) {
+  const mine = (id) => !who || who.includes(id);
+  return [
+    ...link.inbox.filter((x) => mine(x.from_device)).map((x) => ({ ...x, dir: "in" })),
+    ...(link.sent || []).filter((x) => !who || mine(x.to_device)).map((x) => ({ ...x, dir: "out" })),
+  ].sort((a, b) => b.ts - a.ts);
+}
+
+// Одна запись истории: направление и участники, тип, время, текст, статус, «Копировать» / «Открыть»
+function FlowItem({ item, link, selfName }) {
   const [copied, setCopied] = useState(false);
-  const url = safeUrl(item.text);
+  const hidden = item.text == null; // секрет из прошлого запуска: текст не сохраняли
+  const url = !hidden && safeUrl(item.text);
   const small = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", fontSize: 12, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, textDecoration: "none" };
+  const who = item.dir === "in"
+    ? `«${item.from_name}» → «${selfName}»`
+    : `«${selfName}» → «${item.to_name || "все устройства"}»`;
+  const st = item.dir === "out" && FLOW_STATUS[item.status];
   return (
     <div className="nx-pop nx-inbox-item" style={{ padding: "12px 0", borderTop: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <SkewTag active={!!url}>{url ? "Ссылка" : "Текст"}</SkewTag>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {item.from_name} · {inboxTime(item.ts)}
+        <SkewTag active={!!url}>{hidden || item.sensitive ? "Скрыто" : url ? "Ссылка" : "Текст"}</SkewTag>
+        {/* Откуда → куда и время; на узком экране переносится на вторую строку */}
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.mutedSoft, lineHeight: 1.35, overflowWrap: "anywhere" }} title={who}>
+          {item.dir === "in" ? "Получено" : "Отправлено"} · {who} · {inboxTime(item.ts)}
         </span>
-        <button type="button" className="nx-icon-btn" onClick={() => onRemove(item.id)} aria-label="Убрать из входящих" style={{
+        <button type="button" className="nx-icon-btn" onClick={() => (item.dir === "in" ? link.removeInbox(item.id) : link.removeSent(item.id))} aria-label="Убрать из истории" style={{
           ...btnReset, width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {Icon.close({ c: C.mutedSoft, s: 13 })}
         </button>
       </div>
-      {/* Текст выводим только как текст — React сам экранирует всё, HTML не вставляется */}
+      {/* Текст выводим только как текст — React сам экранирует всё, HTML не вставляется.
+          Похожее на пароль или ключ — скрыто точками, в историю не сохраняется */}
       <div className="nx-scroll" style={{
         fontSize: 14, lineHeight: 1.45, marginTop: 8, whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 132, overflowY: "auto",
-        color: url ? C.mint : C.text,
+        color: hidden || item.sensitive ? C.mutedSoft : url ? C.mint : C.text,
       }}>
-        {item.text}
+        {hidden ? "Скрыто: похоже на пароль или ключ — такое в истории не храним"
+          : item.sensitive ? "•".repeat(Math.min(24, item.text.length)) + "  (похоже на пароль или ключ — в историю не сохранится)"
+          : item.text}
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <button type="button" className="nx-ghost-btn" onClick={async () => { if (await copyText(item.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={small}>
-          {copied ? Icon.check({ c: C.green, s: 13 }) : Icon.copy({ c: C.text, s: 13 })} {copied ? "Скопировано" : "Копировать"}
-        </button>
-        {url && (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="nx-ghost-btn" style={small}>
-            {Icon.shareUp({ c: C.text, s: 13 })} Открыть
-          </a>
-        )}
-      </div>
+      {st && <div style={{ fontSize: 12, marginTop: 6, color: st[1] === "green" ? C.green : st[1] === "red" ? C.red : C.mutedSoft }}>{st[0]}</div>}
+      {!hidden && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <button type="button" className="nx-ghost-btn" onClick={async () => { if (await clipboardWrite(item.text) || await copyText(item.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={small}>
+            {copied ? Icon.check({ c: C.green, s: 13 }) : Icon.copy({ c: C.text, s: 13 })} {copied ? "Скопировано" : "Копировать"}
+          </button>
+          {url && (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="nx-ghost-btn" style={small}>
+              {Icon.shareUp({ c: C.text, s: 13 })} Открыть
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
+// Поле «текст или ссылка» с кнопкой «Вставить скопированное» (буфер читаем только по нажатию)
+function FlowTextField({ value, onChange, label, onNote }) {
+  const [busy, setBusy] = useState(false);
+  const paste = async () => {
+    setBusy(true);
+    const r = await clipboardRead();
+    setBusy(false);
+    if (r.error) return onNote?.(r.error);
+    if (!r.text.trim()) return onNote?.("В буфере обмена нет текста");
+    onChange(r.text.slice(0, TEXT_MAX));
+    onNote?.(null);
+  };
+  return (
+    <>
+      <textarea
+        className="nx-input" value={value} rows={3} maxLength={TEXT_MAX}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Текст или ссылка"
+        aria-label={label}
+        style={{
+          display: "block", width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 84,
+          background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`, color: C.text, fontSize: 15, fontFamily: "inherit", lineHeight: 1.45,
+          border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "11px 13px", outline: "none",
+        }}
+      />
+      <button type="button" className="nx-ghost-btn" onClick={paste} disabled={busy} style={{
+        ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, padding: "6px 14px", fontSize: 12.5,
+        borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text,
+      }}>
+        {busy ? <Spinner s={12} /> : Icon.copy({ c: C.mint, s: 13 })} Вставить скопированное
+      </button>
+    </>
+  );
+}
+
 /* Связь с реальным устройством — на его экране (DeviceScreen).
-   Чужое устройство: «Передать» текст или ссылку и «Входящее» от него.
-   Это устройство: всё, что сюда пришло. link — результат useDeviceLink */
-function DeviceMessages({ d, link }) {
+   Чужое устройство: «Передать» текст или ссылку и история передач с ним.
+   Это устройство: вся история передач. link — результат useDeviceLink,
+   flowOn — включён ли NEXA Flow здесь */
+function DeviceMessages({ d, link, flowOn = true }) {
   const [text, setText] = useState("");
   const [sendState, setSendState] = useState("idle"); // idle | loading | success | error
   const [note, setNote] = useState(null);
   const online = link.status === "online";
-  const items = d.isSelf ? link.inbox : link.inbox.filter((it) => it.from_device === d.device_id);
-  const canSend = online && d.online && !d.isSelf;
+  // У склеенного устройства (сайт + приложение) — переписка с обеими записями
+  const ids = d.parts ? d.parts.map((p) => p.device_id) : [d.device_id];
+  const items = d.isSelf ? flowHistory(link) : flowHistory(link, ids);
+  const canSend = flowOn && online && d.online && !d.isSelf;
 
   const send = async () => {
     if (sendState === "loading" || !canSend) return;
     setSendState("loading"); setNote(null);
-    const res = await link.send(text, d.device_id);
+    const res = await link.send(text, d.device_id, d.name);
     if (res.ok) { setText(""); setSendState("success"); setTimeout(() => setSendState("idle"), 1500); }
     else { setNote(res.error); setSendState("error"); setTimeout(() => setSendState("idle"), 1800); }
   };
 
-  const card = { border: `1px solid ${C.border}`, borderRadius: 18, background: C.bg, overflow: "hidden", textAlign: "left" };
+  const card = { border: `1px solid ${C.border}`, borderRadius: 20, background: C.bg, overflow: "hidden", textAlign: "left" };
   return (
-    <section aria-label="Связь с устройством" className="nx-msg-grid" style={{ ...card, marginTop: 24 }}>
+    <section aria-label="NEXA Flow — передача текста и ссылок" className="nx-msg-grid" style={{ ...card, marginTop: 24 }}>
       {!d.isSelf && (
-        <form className="nx-link-col" onSubmit={(e) => { e.preventDefault(); send(); }}>
+        <form className="nx-link-col" onSubmit={(e) => { e.preventDefault(); send(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}>
           <LinkColHead title={`Передать на «${d.name}»`} right={text.length > TEXT_MAX - 300 && (
             <span style={{ fontSize: 12, color: text.length > TEXT_MAX ? C.red : C.mutedSoft }}>{text.length}/{TEXT_MAX}</span>
           )} />
           <div style={{ padding: "16px 18px 18px" }}>
-            <textarea
-              className="nx-input" value={text} rows={3} maxLength={TEXT_MAX}
-              onChange={(e) => { setText(e.target.value); setNote(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
-              placeholder="Текст или ссылка"
-              aria-label={`Текст или ссылка для «${d.name}»`}
-              style={{
-                display: "block", width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 84,
-                background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`, color: C.text, fontSize: 15, fontFamily: "inherit", lineHeight: 1.45,
-                border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "11px 13px", outline: "none",
-              }}
-            />
+            <FlowTextField value={text} onChange={(v) => { setText(v); setNote(null); }} label={`Текст или ссылка для «${d.name}»`} onNote={setNote} />
             {!canSend && (
               <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10 }}>
-                {!online ? "Нет связи — отправить не получится" : "Устройство не в сети — отправить можно, когда на нём откроют NEXA"}
+                {!flowOn ? "NEXA Flow выключен в Настройках" : !online ? "Нет связи — отправить не получится" : "Устройство не в сети — отправить можно, когда на нём откроют NEXA"}
               </div>
             )}
             {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10 }}>{note}</div>}
@@ -2632,22 +2697,135 @@ function DeviceMessages({ d, link }) {
         </form>
       )}
       <div className="nx-link-col">
-        <LinkColHead title={d.isSelf ? "Пришло на это устройство" : `Входящее от «${d.name}»`} right={items.length > 0 && (
+        <LinkColHead title={d.isSelf ? "История передач" : `История с «${d.name}»`} right={items.length > 0 && (
           <span style={{ fontSize: 13, color: C.muted }}>{items.length}</span>
         )} />
         <div style={{ padding: "4px 18px 14px" }}>
           {items.length === 0 ? (
             <div style={{ paddingTop: 8 }}>
-              <LinkEmpty>{d.isSelf ? "Пока ничего не пришло. Отправьте текст или ссылку с другого своего устройства." : "Пока ничего не приходило с этого устройства."}</LinkEmpty>
+              <LinkEmpty>{d.isSelf ? "Пока ничего не передавали. Отправьте текст или ссылку с другого своего устройства." : "Пока ничего не передавали с этим устройством."}</LinkEmpty>
             </div>
           ) : (
             <div className="nx-scroll nx-inbox-list" style={{ maxHeight: 420, overflowY: "auto" }}>
-              {items.map((it) => <InboxItem key={it.id} item={it} onRemove={link.removeInbox} />)}
+              {items.map((it) => <FlowItem key={it.dir + it.id} item={it} link={link} selfName={link.self?.name || "Это устройство"} />)}
             </div>
           )}
         </div>
       </div>
     </section>
+  );
+}
+
+/* Окно «Отправить в NEXA»: из Настроек и из «Поделиться» Android.
+   Текст (можно вставить скопированное), куда — устройства аккаунта в сети,
+   потом настоящий статус: доставлено / не подтвердило / выключено */
+function FlowSendDialog({ initial, link, devices, flowOn, user, onLogin, onClose }) {
+  const [text, setText] = useState(initial || "");
+  const [to, setTo] = useState(null);
+  const [note, setNote] = useState(null);
+  const [sentId, setSentId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const targets = devices.filter((x) => x.real && !x.isSelf);
+  const live = targets.filter((x) => x.online);
+  const pick = to && live.find((x) => x.id === to) ? to : live[0]?.id || null;
+  const target = live.find((x) => x.id === pick);
+  const rec = sentId && link.sent.find((x) => x.id === sentId);
+  const st = rec && FLOW_STATUS[rec.status];
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const send = async () => {
+    if (!target || busy) return;
+    setBusy(true); setNote(null);
+    const res = await link.send(text, target.device_id, target.name);
+    setBusy(false);
+    if (res.ok) { setSentId(res.id); setText(""); } else setNote(res.error);
+  };
+  const why = !user ? "Войдите в аккаунт — передавать можно только между своими устройствами"
+    : !flowOn ? "NEXA Flow выключен — включите его в Настройках"
+    : link.status !== "online" ? "Нет связи — отправить не получится"
+    : !targets.length ? "Других устройств нет. Подключите второе устройство кнопкой «Добавить устройство» на Главной"
+    : !live.length ? "Ни одно устройство не в сети — откройте NEXA на нужном устройстве" : null;
+  return createPortal(
+    <div className="nx-viewer" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--scrim)" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-flow-title" onClick={(e) => e.stopPropagation()} className="nx-pop nx-scroll" style={{
+        width: "min(460px, 100%)", maxHeight: "calc(100% - 32px)", overflowY: "auto", boxSizing: "border-box",
+        background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 20, padding: 20, textAlign: "left",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div id="nx-flow-title" className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>Отправить в NEXA</div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{ ...btnReset, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {Icon.close({ c: C.muted, s: 16 })}
+          </button>
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>Текст или ссылка уйдёт на выбранное устройство вашего аккаунта</div>
+        <div style={{ marginTop: 16 }}>
+          <FlowTextField value={text} onChange={(v) => { setText(v); setNote(null); }} label="Текст или ссылка" onNote={setNote} />
+        </div>
+        {live.length > 0 && (
+          <div role="radiogroup" aria-label="Куда отправить" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+            {live.map((x) => (
+              <button key={x.id} type="button" role="radio" aria-checked={x.id === pick} onClick={() => setTo(x.id)} className="nx-ghost-btn" style={{
+                ...btnReset, display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", fontSize: 13, borderRadius: 999,
+                border: `1px solid ${x.id === pick ? C.mint : C.borderStrong}`, color: C.text,
+                background: x.id === pick ? `color-mix(in srgb, ${C.mint} 12%, transparent)` : "transparent",
+              }}>
+                {x.icon({ c: x.id === pick ? C.mint : C.text, s: 15 })} {x.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {why && <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 14, lineHeight: 1.45 }}>{why}</div>}
+        {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10 }}>{note}</div>}
+        {st && <div role="status" style={{ fontSize: 12.5, marginTop: 10, color: st[1] === "green" ? C.green : st[1] === "red" ? C.red : C.muted }}>«{rec.to_name}»: {st[0]}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+          {!user ? (
+            <StateButton variant="primary" onClick={onLogin} style={{ flex: 1, borderRadius: 999, padding: "11px 16px" }}>Войти</StateButton>
+          ) : (
+            <StateButton variant="primary" state={busy ? "loading" : "idle"} labels={{ loading: "Отправляем…" }}
+              icon={Icon.send({ c: C.onFold, s: 14 })} disabled={!!why || !text.trim()} onClick={send}
+              style={{ flex: 1, borderRadius: 999, padding: "11px 16px" }}>
+              {target ? `Отправить на «${target.name}»` : "Отправить"}
+            </StateButton>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* Настройки NEXA Flow (только у вошедшего): включение, автокопирование,
+   окно «Отправить в NEXA» и очистка истории передач на этом устройстве */
+function FlowSettings({ flow, setFlow, count, onSend, onClear }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <>
+      <SectionTitle>NEXA Flow</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow icon={Icon.send({ c: C.mint, s: 18 })} title="Передача текста и ссылок"
+          subtitle={flow.on ? "Между вашими устройствами. Буфер обмена читаем только по нажатию «Вставить скопированное»" : "Выключено — это устройство не отправляет и не принимает"}
+          right={<Toggle on={flow.on} label="Передача текста и ссылок" onClick={() => setFlow((f) => ({ ...f, on: !f.on }))} />} />
+        <SettingsRow icon={Icon.copy({ c: C.text, s: 18 })} title="Сразу копировать полученное"
+          subtitle={isNative ? "Пришедший текст сам попадёт в буфер обмена телефона" : "Браузер разрешает это, только пока вкладка NEXA открыта и активна"}
+          right={<Toggle on={flow.on && flow.autoCopy} disabled={!flow.on} label="Сразу копировать полученное" onClick={() => setFlow((f) => ({ ...f, autoCopy: !f.autoCopy }))} />} />
+        <SettingsRow icon={Icon.shareUp({ c: C.text, s: 18 })} title="Отправить в NEXA"
+          subtitle={isNative ? "Или из любого приложения: «Поделиться» → «Отправить в NEXA»" : "Текст или ссылку — на другое ваше устройство"}
+          right={<button type="button" className="nx-ghost-btn" disabled={!flow.on} onClick={onSend} style={{ ...btnReset, padding: "7px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text }}>Открыть</button>} />
+        <SettingsRow last icon={Icon.trash({ c: C.text, s: 18 })} title="История передач"
+          subtitle={confirm ? "Удалить историю на этом устройстве? На других она останется" : count ? `${count} ${plural(count, ["запись", "записи", "записей"])} на этом устройстве. Пароли и ключи не сохраняются` : "Пусто. Пароли и ключи в историю не сохраняются"}
+          right={confirm ? (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" className="nx-ghost-btn" onClick={() => setConfirm(false)} style={{ ...btnReset, padding: "7px 12px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text }}>Отмена</button>
+              <button type="button" className="nx-ghost-btn" onClick={() => { onClear(); setConfirm(false); }} style={{ ...btnReset, padding: "7px 12px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.red}`, color: C.red }}>Очистить</button>
+            </div>
+          ) : (
+            <button type="button" className="nx-ghost-btn" disabled={!count} onClick={() => setConfirm(true)} style={{ ...btnReset, padding: "7px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: count ? C.text : C.mutedSoft }}>Очистить</button>
+          )} />
+      </SettingsGroup>
+    </>
   );
 }
 
@@ -5882,7 +6060,7 @@ function RealDeviceInfo({ d, onRename, actions }) {
   );
 }
 
-function DeviceScreen({ device: d, fileCount, devices, files, folders, received, demo = true, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast, onFind, findState, onRename, link, realActions }) {
+function DeviceScreen({ device: d, fileCount, devices, files, folders, received, demo = true, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast, onFind, findState, onRename, link, realActions, flowOn = true }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const delRef = useRef(null);
@@ -6257,7 +6435,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       </div>
       </div>
       {/* Реальное устройство: передать текст / ссылку и что от него пришло */}
-      {d.real && link && <DeviceMessages d={d} link={link} />}
+      {d.real && link && <DeviceMessages d={d} link={link} flowOn={flowOn} />}
     </div>
   );
 }
@@ -8463,12 +8641,14 @@ function SkeletonLine({ width }) {
 // Переключатель вкл/выкл.
 // on — включён сейчас или нет (true/false)
 // onClick — функция, которая сработает при клике
-function Toggle({ on, onClick }) {
+function Toggle({ on, onClick, label, disabled }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}          // при клике вызываем переданную функцию
-      role="switch" aria-checked={on}
+      role="switch" aria-checked={on} aria-label={label} disabled={disabled}
       style={{
+        border: "none", opacity: disabled ? 0.45 : 1,
         width: 42, height: 24, borderRadius: 999, padding: 3, boxSizing: "border-box",
         // включён: градиент, выключен: нейтральный фон
         background: on ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : C.chip,
@@ -8483,7 +8663,7 @@ function Toggle({ on, onClick }) {
         // Пружинистая кривая: кружок чуть проскакивает и встаёт на место
         transition: "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }} />
-    </div>
+    </button>
   );
 }
 function SectionTitle({ children }) {
@@ -9709,7 +9889,7 @@ function ThisDeviceSettings({ sys }) {
   );
 }
 
-function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys }) {
+function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock }) {
   // Список уведомлений хранится в состоянии (useState),
   // потому что он меняется при кликах
   const [notifs, setNotifs] = useState([
@@ -9825,6 +10005,8 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
           />
         ))}
       </SettingsGroup>
+
+      {flowBlock}
 
       <ThisDeviceSettings sys={sys} />
 
@@ -10123,13 +10305,22 @@ export default function NexaApp() {
      Пришёл текст — короткое уведомление (только как текст); остальные события
      (подключение, сцены, поиск) разбирает handleLinkEvent ниже */
   const uid = auth.user?.id || null;
+  /* NEXA Flow на этом устройстве: { on, autoCopy } (у каждого аккаунта своё) */
+  const [flow, setFlow] = useSharedState("nexa-flow" + scope, loadFlow);
+  const flowRef = useRef(flow); flowRef.current = flow;
+  const [flowSend, setFlowSend] = useState(null); // открыто окно «Отправить в NEXA»: { text }
   const link = useDeviceLink(uid, {
+    flowOn: () => flowRef.current.on,
     onText: (item) => {
-      showToast({
-        title: `Пришло с устройства «${item.from_name}»`,
-        text: item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
+      // Похожее на пароль или ключ — в уведомление не выводим и сами не копируем
+      const show = (copied) => showToast({
+        title: `Пришло с устройства «${item.from_name}»${copied ? " · скопировано" : ""}`,
+        text: item.sensitive ? "Скрытое содержимое — похоже на пароль или ключ" : item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
         kind: "device",
+        ...(!copied && !item.sensitive ? { action: { label: "Копировать", onClick: () => clipboardWrite(item.text).then((ok) => ok || copyText(item.text)) }, duration: 9000 } : {}),
       });
+      if (flowRef.current.autoCopy && !item.sensitive && document.visibilityState === "visible") clipboardWrite(item.text).then(show);
+      else show(false);
       // В ленту — без содержимого сообщения
       onTextActivity.current?.(item);
     },
@@ -10843,6 +11034,8 @@ export default function NexaApp() {
 
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setTab(t); };
+  // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
+  useEffect(() => onSharedText((text) => setFlowSend({ text })), []);
   // Нажали на виджет рабочего стола: «Расписание» → «Сегодня», «Погода» → Главная
   const goTabRef = useRef(goTab); goTabRef.current = goTab;
   /* Свайп между разделами. Ассистент: вправо — открыть историю диалогов
@@ -12289,6 +12482,7 @@ export default function NexaApp() {
         findState={openDevice.real ? findState[openDevice.device_id] : undefined}
         onRename={(name) => renameDevice(openDevice.id, name)}
         link={link}
+        flowOn={flow.on}
         realActions={openDevice.real && (
           <RealDeviceActions d={openDevice} linkOnline={link.status === "online"}
             st={{ find: findState[openDevice.device_id], lock: lockState[openDevice.device_id], send: sendState[openDevice.device_id] }}
@@ -12346,7 +12540,11 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys} />}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+        flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
+          onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
+      {flowSend && <FlowSendDialog initial={flowSend.text} link={link} devices={devices} flowOn={flow.on} user={auth.user}
+        onLogin={() => { setFlowSend(null); setAuthOpen(true); }} onClose={() => setFlowSend(null)} />}
     </div>
   )}
 </div>

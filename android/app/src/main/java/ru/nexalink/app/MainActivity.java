@@ -14,6 +14,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NexaDiskPlugin.class);
         // Файлы: «Скачать» в «Загрузки» и «Открыть» другим приложением (см. NexaFilesPlugin)
         registerPlugin(NexaFilesPlugin.class);
+        // NEXA Flow: текст из «Поделиться» другого приложения (см. NexaSharePlugin)
+        registerPlugin(NexaSharePlugin.class);
         // Виджеты рабочего стола: расписание и город из приложения (см. widgets/NexaWidgetsPlugin)
         registerPlugin(ru.nexalink.app.widgets.NexaWidgetsPlugin.class);
         super.onCreate(savedInstanceState);

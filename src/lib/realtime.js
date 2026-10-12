@@ -24,6 +24,33 @@ const SYS_GAP_MS = 30000;        // сведения об устройстве �
 export const INBOX_MAX = 20;     // сколько входящих помним
 const DEVICE_ID_KEY = "nexa-device-id";
 const inboxKey = (uid) => `nexa-inbox@${uid}`;
+const sentKey = (uid) => `nexa-flow-sent@${uid}`; // NEXA Flow: что отправили с этого устройства
+const ACK_WAIT_MS = 8000; // столько ждём подтверждения от устройства-получателя
+
+/* NEXA Flow: похоже ли на пароль, ключ или токен. Такое можно передать,
+   но в историю (localStorage) текст не пишем — только пометку «скрыто».
+   Проверка простая и осторожная: лучше лишний раз скрыть, чем сохранить секрет */
+const SENSITIVE_RE = [
+  /(пароль|password|passwd|pwd|pin|пин-?код|секрет|secret|token|токен|api[_ -]?key|ключ api)\s*[:=]/i,
+  /-----BEGIN [A-Z ]*(PRIVATE KEY|CERTIFICATE)-----/,          // ключи и сертификаты
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}/, // JWT
+  /\b(sk|pk|rk)[-_](live|test|proj)?[-_]?[A-Za-z0-9]{16,}/,     // ключи сервисов
+  /\bsb_(secret|publishable)_[A-Za-z0-9_-]{10,}/,               // ключи Supabase
+  /\b(ghp|gho|github_pat|glpat|xox[abp])[-_][A-Za-z0-9_-]{16,}/, // ключи Git и чатов
+  /\bAKIA[0-9A-Z]{16}\b/,                                       // ключи облаков
+  /\bAIza[0-9A-Za-z_-]{30,}/,
+];
+export function isSensitive(text) {
+  const t = String(text || "");
+  if (SENSITIVE_RE.some((re) => re.test(t))) return true;
+  // Одно «слово» без пробелов, длинное и пёстрое (буквы разного регистра + цифры) — похоже на пароль или токен
+  const one = t.trim();
+  if (one.length >= 10 && one.length <= 200 && !/\s/.test(one) && !safeUrl(one) &&
+      /[a-z]/.test(one) && /[A-Z]/.test(one) && /\d/.test(one)) return true;
+  return false;
+}
+// Для истории: секрет не сохраняем, только пометку
+const forStorage = (x) => (x.sensitive ? { ...x, text: null } : x);
 
 // Код подключения: 6 символов без похожих (нет 0, O, 1, I, L)
 export const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -90,6 +117,9 @@ const SCHEMAS = {
     && typeof p.text === "string" && p.text.trim().length > 0 && p.text.length <= TEXT_MAX
     && (p.to_device == null || isId(p.to_device)),
   // Подключаемое устройство предъявляет код
+  // NEXA Flow: получатель подтверждает, что текст пришёл (ok) или что передача
+  // у него выключена (off). На подтверждение не отвечают — круга не бывает
+  "text.ack": (p) => base(p) && isId(p.id) && isId(p.to_device) && (p.status === "ok" || p.status === "off"),
   "pair.claim": (p) => base(p) && typeof p.code === "string" && PAIR_CODE_RE.test(p.code)
     && isId(p.device_id) && p.device_id === p.from_device && isName(p.name) && isKind(p.kind) && isPlatform(p.platform),
   // Ответ устройства с кодом: подключено / не вышло
@@ -153,16 +183,21 @@ function flattenPresence(state) {
   return list.sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)));
 }
 
-function loadInbox(uid) {
+// Сохранённая история: текст или (у скрытых) null
+function loadList(key) {
   try {
-    const v = JSON.parse(localStorage.getItem(inboxKey(uid)));
-    return Array.isArray(v) ? v.filter((x) => x && isId(x.id) && typeof x.text === "string" && isTs(x.ts)).slice(0, INBOX_MAX) : [];
+    const v = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(v) ? v.filter((x) => x && isId(x.id) && (typeof x.text === "string" || x.sensitive) && isTs(x.ts)).slice(0, INBOX_MAX) : [];
   } catch { return []; }
 }
+const loadInbox = (uid) => loadList(inboxKey(uid));
+// Отправленное: «отправляем» после перезагрузки уже не изменится — пишем «не подтвердило»
+const loadSent = (uid) => loadList(sentKey(uid)).map((x) => (x.status === "sending" || x.status === "sent" ? { ...x, status: "unconfirmed" } : x));
 
 /* Хук связи устройств.
    uid — id вошедшего (null — гость: ничего не подключаем);
-   handlers — { onText(item), onEvent(event, payload) }: что делать с пришедшим.
+   handlers — { onText(item), onEvent(event, payload), flowOn() }: что делать с пришедшим;
+   flowOn() — включена ли передача текста (NEXA Flow) на этом устройстве.
    Возвращает: status ("off" | "connecting" | "online" | "offline" | "denied"),
    self (это устройство), peers (кто онлайн, вместе с этим), inbox,
    send (текст), emit (любое событие протокола), removeInbox, clearInbox */
@@ -170,6 +205,12 @@ export function useDeviceLink(uid, handlers) {
   const [status, setStatus] = useState("off");
   const [peers, setPeers] = useState([]);
   const [inbox, setInbox] = useState(() => (uid ? loadInbox(uid) : []));
+  const [sent, setSent] = useState(() => (uid ? loadSent(uid) : [])); // NEXA Flow: отправленное
+  const ackTimers = useRef({}); // id отправленного → таймер «не подтвердило»
+  // Какие сообщения уже приняли (id) — повтор того же события не дублирует запись
+  // и не показывает уведомление второй раз. Проверяем сразу, а не внутри
+  // обновления состояния: React выполняет его не всегда в тот же момент
+  const seenIds = useRef(new Set(inbox.map((x) => x.id)));
   // Это устройство: определяем сразу, чтобы интерфейс мог показать его имя
   const self = useRef(null);
   if (!self.current) self.current = deviceIdentity();
@@ -188,9 +229,21 @@ export function useDeviceLink(uid, handlers) {
   const sysTimer = useRef(null);
   const presence = () => ({ ...self.current, joined_at: joinedAt.current || new Date().toISOString(), ...(sysRef.current ? { sys: sysRef.current } : {}) });
 
-  // Входящее у каждого аккаунта своё
-  useEffect(() => { setInbox(uid ? loadInbox(uid) : []); }, [uid]);
-  const saveInbox = (list) => { if (uid) try { localStorage.setItem(inboxKey(uid), JSON.stringify(list)); } catch {} };
+  // Входящее и отправленное у каждого аккаунта своё
+  useEffect(() => {
+    const list = uid ? loadInbox(uid) : [];
+    seenIds.current = new Set(list.map((x) => x.id));
+    setInbox(list); setSent(uid ? loadSent(uid) : []);
+  }, [uid]);
+  const saveInbox = (list) => { if (uid) try { localStorage.setItem(inboxKey(uid), JSON.stringify(list.map(forStorage))); } catch {} };
+  const saveSent = (list) => { if (uid) try { localStorage.setItem(sentKey(uid), JSON.stringify(list.map(forStorage))); } catch {} };
+  const patchSent = (id, patch) => setSent((list) => {
+    if (!list.some((x) => x.id === id)) return list;
+    const next = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
+    saveSent(next);
+    return next;
+  });
+  useEffect(() => () => Object.values(ackTimers.current).forEach(clearTimeout), []);
 
   useEffect(() => {
     if (!uid || !supabase) { setStatus("off"); setPeers([]); return; }
@@ -204,23 +257,42 @@ export function useDeviceLink(uid, handlers) {
       const ok = SCHEMAS[event];
       if (!ok || !ok(payload)) return;
       if (payload.from_device === me.device_id) return;
+      // Подтверждение получения — отметка у отправленного (без ограничения частоты:
+      // это ответ на наше же сообщение, а не поток от устройства)
+      if (event === "text.ack") {
+        if (payload.to_device !== me.device_id) return;
+        clearTimeout(ackTimers.current[payload.id]);
+        patchSent(payload.id, { status: payload.status === "ok" ? "delivered" : "off" });
+        return;
+      }
       const now = Date.now();
       if (now - (lastFrom.current[payload.from_device] || 0) < RECEIVE_GAP_MS) return;
       lastFrom.current[payload.from_device] = now;
 
       if (event === "text.send") {
         if (payload.to_device && payload.to_device !== me.device_id) return; // не нам
+        // Передача выключена на этом устройстве — не принимаем и честно говорим об этом
+        if (h.current?.flowOn && !h.current.flowOn()) {
+          if (payload.to_device) emitRef.current?.("text.ack", { id: payload.id, to_device: payload.from_device, status: "off" });
+          return;
+        }
         const item = {
           id: payload.id, text: payload.text, from_device: payload.from_device,
           from_name: payload.from_name || "Устройство", ts: payload.ts, to_device: payload.to_device ?? null,
+          sensitive: isSensitive(payload.text),
         };
-        setInbox((list) => {
+        // То же сообщение второй раз — не дублируем (но подтверждаем ещё раз ниже)
+        const fresh = !seenIds.current.has(item.id);
+        seenIds.current.add(item.id);
+        if (fresh) setInbox((list) => {
           if (list.some((x) => x.id === item.id)) return list;
           const next = [item, ...list].slice(0, INBOX_MAX);
-          try { localStorage.setItem(inboxKey(uid), JSON.stringify(next)); } catch {}
+          try { localStorage.setItem(inboxKey(uid), JSON.stringify(next.map(forStorage))); } catch {}
           return next;
         });
-        h.current?.onText?.(item);
+        // Подтверждаем получение (только адресное — «всем» подтверждать некому)
+        if (payload.to_device) emitRef.current?.("text.ack", { id: payload.id, to_device: payload.from_device, status: "ok" });
+        if (fresh) h.current?.onText?.(item);
         return;
       }
       h.current?.onEvent?.(event, payload);
@@ -301,19 +373,42 @@ export function useDeviceLink(uid, handlers) {
     } catch { return false; }
   };
 
-  // Отправить текст или ссылку на устройство to (device_id). Возвращает { ok } или { error }
-  const send = async (text, to) => {
+  const emitRef = useRef(null);
+  emitRef.current = emit;
+
+  /* Отправить текст или ссылку на устройство to (device_id; toName — для истории).
+     Возвращает { ok, id } или { error }. Дальше статус в истории (sent):
+     sending → sent (дошло до сервера) → delivered (устройство подтвердило) |
+     off (там выключено) | unconfirmed (за 8 с подтверждения не пришло) | error */
+  const send = async (text, to, toName) => {
     const t = String(text || "").trim();
     if (!t) return { error: "Напишите текст или вставьте ссылку" };
     if (t.length > TEXT_MAX) return { error: `Слишком длинно — до ${TEXT_MAX} символов` };
     if (!channelRef.current || status !== "online") return { error: "Нет связи — отправить не получилось" };
     if (Date.now() - lastSent.current < SEND_GAP_MS) return { error: "Чуть помедленнее — подождите секунду" };
-    const ok = await emit(EVENT_TEXT, { id: newId(), text: t, to_device: to || null });
-    return ok ? { ok: true } : { error: "Не дошло — попробуйте ещё раз" };
+    const id = newId();
+    const rec = { id, text: t, to_device: to || null, to_name: toName || null, ts: Date.now(), status: "sending", sensitive: isSensitive(t) };
+    setSent((list) => { const next = [rec, ...list].slice(0, INBOX_MAX); saveSent(next); return next; });
+    const ok = await emit(EVENT_TEXT, { id, text: t, to_device: to || null });
+    if (!ok) { patchSent(id, { status: "error" }); return { error: "Не дошло — попробуйте ещё раз" }; }
+    patchSent(id, { status: "sent" });
+    if (to) {
+      ackTimers.current[id] = setTimeout(() => setSent((list) => {
+        const x = list.find((y) => y.id === id);
+        if (!x || x.status !== "sent") return list;
+        const next = list.map((y) => (y.id === id ? { ...y, status: "unconfirmed" } : y));
+        saveSent(next);
+        return next;
+      }), ACK_WAIT_MS);
+    }
+    return { ok: true, id };
   };
 
   const removeInbox = (id) => setInbox((list) => { const next = list.filter((x) => x.id !== id); saveInbox(next); return next; });
+  const removeSent = (id) => setSent((list) => { const next = list.filter((x) => x.id !== id); saveSent(next); return next; });
   const clearInbox = () => { setInbox([]); saveInbox([]); };
+  // Очистить всю историю передач на этом устройстве (полученное и отправленное)
+  const clearFlow = () => { setInbox([]); saveInbox([]); setSent([]); saveSent([]); };
 
   /* Новые сведения об этом устройстве (заряд, сеть, место). Сразу запоминаем;
      в Presence уходят не чаще раза в SYS_GAP_MS — если раньше, отправка
@@ -332,5 +427,5 @@ export function useDeviceLink(uid, handlers) {
   };
   useEffect(() => () => clearTimeout(sysTimer.current), []);
 
-  return { status, self: self.current, peers, inbox, send, emit, removeInbox, clearInbox, shareSys };
+  return { status, self: self.current, peers, inbox, sent, send, emit, removeInbox, removeSent, clearInbox, clearFlow, shareSys };
 }

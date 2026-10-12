@@ -18,6 +18,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- NEXA Flow: «Поделиться» → «NEXA» из любого приложения (текст и ссылки) -->
+            <intent-filter android:label="@string/share_to_nexa">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <provider

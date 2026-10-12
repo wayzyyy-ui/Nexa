@@ -4,4 +4,5 @@
     <string name="title_activity_main">NEXA</string>
     <string name="package_name">ru.nexalink.app</string>
     <string name="custom_url_scheme">ru.nexalink.app</string>
+    <string name="share_to_nexa">Отправить в NEXA</string>
 </resources>
