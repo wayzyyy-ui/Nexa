@@ -27,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 
 const C = {
@@ -11683,9 +11683,10 @@ export default function NexaApp() {
         html.nx-native { overscroll-behavior-y: contain; }
         /* Дни над расписанием: скруглённые плашки (не «таблетки»), подсветка при наведении */
         .nx-day-chip { transition: border-color 160ms ease; }
-        /* Полоса дней листается пальцем — полоса прокрутки под ней не нужна */
-        .nx-day-strip { scrollbar-width: none; }
-        .nx-day-strip::-webkit-scrollbar { display: none; }
+        /* Полоса дней листается пальцем — полоса прокрутки под ней не нужна.
+           Двойной класс: общее правило .nx-scroll (тонкая полоса) стоит ниже и иначе перебивает */
+        .nx-day-strip.nx-scroll { scrollbar-width: none; }
+        .nx-day-strip.nx-scroll::-webkit-scrollbar { display: none; }
         .nx-day-chip[aria-selected="false"]:hover { border-color: var(--mint) !important; }
         /* Колонки разделены тонкой линией, как строки в списке устройств */
         .nx-link-col + .nx-link-col { border-left: 1px solid ${C.border}; }
