@@ -24,7 +24,7 @@ import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
 } from "./lib/files.js";
-const VERSION = "0.8.8";
+const VERSION = "0.8.9";
 
 
 /* =========================================================================
@@ -741,13 +741,15 @@ const NAV = [
   { id: "settings", label: "Настройки", icon: Icon.gear },
 ];
 function MobileTabBar({ active, onChange }) {
+  // Главная — по центру (главный раздел), остальные по бокам
   const mobileNav = [
-    { id: "home",      label: "Главная",   icon: Icon.home },
-    { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
     { id: "today",     label: "Сегодня",   icon: Icon.calendar },
+    { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
+    { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "media",     label: "Медиа",     icon: Icon.image },
     { id: "files",     label: "Файлы",     icon: Icon.folder },
   ];
+  const homeIndex = mobileNav.findIndex((i) => i.main);
 
   // Ширина одной ячейки в процентах (при пяти вкладках это 20%)
   const slotWidth = 100 / mobileNav.length;
@@ -759,7 +761,7 @@ function MobileTabBar({ active, onChange }) {
 
   // Запоминаем последнюю вкладку из панели, чтобы подсветка не прыгала в начало,
   // когда открыт раздел вне панели
-  const lastPos = useRef(Math.max(pos, 0));
+  const lastPos = useRef(pos >= 0 ? pos : homeIndex);
   useEffect(() => { if (pos >= 0) lastPos.current = pos; }, [pos]);
 
   // Если раздел сменился не нажатием на панель (например, через карточку
@@ -818,7 +820,9 @@ function MobileTabBar({ active, onChange }) {
               boxSizing: "border-box",
               borderRadius: 14,
               background: C.chip,
-              border: `1px solid ${C.borderStrong}`,
+              // На Главной рамка подсветки мятная
+              border: `1px solid ${shownIndex === homeIndex ? `color-mix(in srgb, ${C.mint} 55%, transparent)` : C.borderStrong}`,
+              transition: "border-color 300ms ease",
             }} />
           </div>
 
@@ -843,7 +847,8 @@ function MobileTabBar({ active, onChange }) {
                 color: C.text,
               }}
             >
-              {item.icon({ c: "currentColor", s: 22 })}
+              {/* Главная чуть заметнее: мятный значок крупнее остальных */}
+              {item.main ? item.icon({ c: C.mint, s: 25 }) : item.icon({ c: "currentColor", s: 22 })}
             </button>
           ))}
         </div>
@@ -6878,43 +6883,6 @@ useEffect(() => {
     if (el) flipFrom.current = { top: el.getBoundingClientRect().top, focused: document.activeElement === taRef.current };
   };
 
-    // Определяем клавиатуру через visualViewport — работает надёжнее, чем focus/blur,
-  // особенно на iOS. Если высота видимой области уменьшилась больше чем на 150px —
-  // значит открылась клавиатура.
-    // Определяем клавиатуру по уменьшению visualViewport.
-  // Порог снижен до 80px, чтобы ловить и панель AutoFill iOS.
- useEffect(() => {
-    // Клавиатура открыта = поле в фокусе И экран заметно ниже обычного.
-    // fullH — самая большая высота экрана, которую видели (без клавиатуры)
-    let fullH = window.innerHeight;
-    let timer = 0;
-    const update = () => {
-      const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      fullH = Math.max(fullH, window.innerHeight, h);
-      const a = document.activeElement;
-      const focused = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
-      const shrunk = fullH - h > 120;
-      // На компьютере высота не меняется — там достаточно фокуса
-      const touch = window.matchMedia?.('(pointer: coarse)').matches;
-      document.body.classList.toggle('kb-open', !!focused && (!touch || shrunk));
-    };
-    // После смены фокуса и изменения размера — с небольшой задержкой:
-    // клавиатура выезжает не мгновенно
-    const later = () => { clearTimeout(timer); timer = setTimeout(update, 150); };
-    document.addEventListener('focusin', later);
-    document.addEventListener('focusout', later);
-    window.visualViewport?.addEventListener('resize', later);
-    window.addEventListener('resize', later);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('focusin', later);
-      document.removeEventListener('focusout', later);
-      window.visualViewport?.removeEventListener('resize', later);
-      window.removeEventListener('resize', later);
-      document.body.classList.remove('kb-open');
-    };
-  }, []);
-
   const currentChat = chats.find(c => c.id === currentChatId);
   const messages = currentChat?.messages || [];
   const isEmpty = messages.length === 0 && !isLoading;
@@ -6982,30 +6950,29 @@ useEffect(() => {
   }, [messages.length, messages[messages.length - 1]?.text, isLoading]);
 
   // Клавиатура как в мессенджерах. Экран ассистента всегда ровно по видимой
-  // области над клавиатурой: шапка стоит на месте, поле ввода сидит прямо
-  // на клавиатуре, сжимается только список сообщений. Размер видимой области
-  // кладём в CSS-переменные --vvh (высота) и --vvt (сдвиг сверху).
+  // области над клавиатурой (--vvh и --vvt ставит useKeyboardViewport в NexaApp):
+  // шапка стоит на месте, поле ввода сидит прямо на клавиатуре, сжимается
+  // только список сообщений. Если человек был в самом низу переписки —
+  // при сжатии списка (клавиатура, поле выросло на строку) остаётся внизу.
+  // Если листал историю выше — не дёргаем его вниз.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    let atBottom = true;
+    const onScroll = () => { atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48; };
+    const ro = new ResizeObserver(() => { if (atBottom) list.scrollTop = list.scrollHeight; });
+    list.addEventListener('scroll', onScroll, { passive: true });
+    ro.observe(list);
+    return () => { list.removeEventListener('scroll', onScroll); ro.disconnect(); };
+  }, [isEmpty, currentChatId]);
+  // Браузер любит сдвигать страницу к полю ввода — возвращаем её на место
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-    const root = document.documentElement;
-    const sync = () => {
-      root.style.setProperty('--vvh', `${vv.height}px`);
-      root.style.setProperty('--vvt', `${vv.offsetTop}px`);
-      // Браузер любит сдвигать страницу к полю ввода — возвращаем её на место
-      if (window.scrollY !== 0) window.scrollTo(0, 0);
-      // Последнее сообщение остаётся видно над клавиатурой
-      scrollToBottom();
-    };
-    sync();
-    vv.addEventListener('resize', sync);
-    vv.addEventListener('scroll', sync);
-    return () => {
-      vv.removeEventListener('resize', sync);
-      vv.removeEventListener('scroll', sync);
-      root.style.removeProperty('--vvh');
-      root.style.removeProperty('--vvt');
-    };
+    const back = () => { if (window.scrollY !== 0) window.scrollTo(0, 0); };
+    vv.addEventListener('resize', back);
+    vv.addEventListener('scroll', back);
+    return () => { vv.removeEventListener('resize', back); vv.removeEventListener('scroll', back); };
   }, []);
 
   const newChat = () => { if (currentChatId) rememberInputPos(); setCurrentChatId(null); setInput(''); };
@@ -9373,26 +9340,78 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
   );
 }
 
+/* Экранная клавиатура — для всего приложения сразу.
+   Размер видимой области кладём в CSS-переменные --vvh (высота) и --vvt
+   (сдвиг сверху), а пока клавиатура открыта, у body есть класс kb-open:
+   по нему прячется нижняя панель и убирается отступ под неё.
+   Всё ставится в тот же момент, когда меняется размер экрана, — без задержки.
+   Раньше признак ставился через 150 мс: экран уже сжался, а панель ещё
+   стояла на клавиатуре и поджимала поле ввода, потом всё прыгало вниз.
+   Клавиатура открыта = в фокусе поле ввода И экран заметно ниже обычного.
+   «Обычная» высота — самая большая для текущей ширины экрана
+   (после поворота телефона считается заново). */
+function useKeyboardViewport() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const root = document.documentElement;
+    const NOT_TEXT = ["checkbox", "radio", "button", "submit", "reset", "range", "file", "color"];
+    const isField = (a) => !!a && (a.tagName === "TEXTAREA" || a.isContentEditable ||
+      (a.tagName === "INPUT" && !NOT_TEXT.includes(a.type)));
+    let baseW = 0, baseH = 0;
+    const sync = () => {
+      const h = vv ? vv.height : window.innerHeight;
+      const field = isField(document.activeElement);
+      if (window.innerWidth !== baseW) { baseW = window.innerWidth; baseH = 0; }
+      // Без поля в фокусе клавиатуры нет — эта высота и есть обычная
+      baseH = field ? Math.max(baseH, h) : h;
+      root.style.setProperty("--vvh", `${h}px`);
+      root.style.setProperty("--vvt", `${vv ? vv.offsetTop : 0}px`);
+      document.body.classList.toggle("kb-open", field && baseH - h > 120);
+    };
+    // Фокус уходит — activeElement меняется чуть позже, проверяем в следующем кадре
+    const syncSoon = () => requestAnimationFrame(sync);
+    sync();
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    document.addEventListener("focusin", sync);
+    document.addEventListener("focusout", syncSoon);
+    return () => {
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", syncSoon);
+      document.body.classList.remove("kb-open");
+    };
+  }, []);
+}
+
 /* ---------- 6. APP — корневой компонент ----------
    tab хранит id текущего открытого раздела (по умолчанию "home").
    setTab меняется при клике по иконке в Sidebar — от этого зависит,
    какой из шести экранов показывается ниже. */
 export default function NexaApp() {
-  // Ленивая инициализация: берём сохранённый экран из localStorage,
-  // если его нет — начинаем с Главной.
+  // Каждый новый запуск NEXA начинается с Главной. Раздел помним только
+  // внутри текущего запуска (sessionStorage живёт, пока открыты вкладка
+  // браузера или приложение): перезагрузка страницы вернёт туда же,
+  // а полный перезапуск — на Главную.
   const [tab, setTab] = useState(() => {
     try {
-      const saved = localStorage.getItem('nexa-tab');
-      return saved || 'home';
-    } catch { return 'home'; }
+      localStorage.removeItem("nexa-tab"); // раньше раздел помнился навсегда — старый ключ не нужен
+      return sessionStorage.getItem("nexa-tab") || "home";
+    } catch { return "home"; }
   });
 
-  // Каждый раз, когда экран меняется — сохраняем его id
+  // Каждый раз, когда экран меняется — запоминаем его id до конца запуска
   useEffect(() => {
-    if (tab !== 'assistant') {
-  try { localStorage.setItem('nexa-tab', tab); } catch {}
-}
+    if (tab !== "assistant") {
+      try { sessionStorage.setItem("nexa-tab", tab); } catch {}
+    }
   }, [tab]);
+
+  // Экранная клавиатура: размер видимой области и признак kb-open
+  useKeyboardViewport();
 
   // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
   const auth = useAuth();
@@ -10064,9 +10083,6 @@ export default function NexaApp() {
   const onDeviceFile = (d) => (f) => f.device === d.name || f.device === d.alias;
 
   // Переход по меню всегда открывает "Файлы" без фильтра
-  // Ушли с экрана — признак «клавиатура открыта» снимаем, иначе нижняя
-  // панель может остаться спрятанной
-  useEffect(() => { document.body.classList.remove("kb-open"); }, [tab, openDeviceId]);
 
   // Плавная прокрутка колёсиком — на всех экранах, кроме ассистента
   useSmoothScroll(tab !== "assistant");
@@ -11108,7 +11124,8 @@ export default function NexaApp() {
             padding: 24px 16px 76px 16px !important;
           }
           /* Когда клавиатура открыта — уменьшаем нижний отступ */
-          body.kb-open .ng-assistant-inner {
+          body.kb-open .ng-assistant-inner,
+          body.kb-open .ng-history-panel {
             padding-bottom: 16px !important;
           }
 
@@ -11118,12 +11135,15 @@ export default function NexaApp() {
             top: 0 !important;
             left: 0 !important;
             right: 0 !important;
-            bottom: 60px !important;
+            bottom: 0 !important;
             width: 100% !important;
             margin-left: 0 !important;
             background: var(--bg) !important;
             z-index: 150 !important;
-            padding: 24px 16px !important;
+            /* До самого низа экрана; снизу отступ под нижнюю панель
+               (раньше панель обрывалась на 60px, и при открытой клавиатуре
+               в щели проглядывало поле ввода чата) */
+            padding: 24px 16px calc(84px + var(--sab)) !important;
             border-left: none !important;
             border-right: none !important;
             transform: translateX(-100%);
@@ -11220,14 +11240,18 @@ export default function NexaApp() {
   }
 
     /* Убираем скроллбар страницы, когда открыт Ассистент.
-     Внутренние блоки всё равно скроллятся, если нужно. */
+     Внутренние блоки всё равно скроллятся, если нужно.
+     Высота — ровно видимое окно (100%), а не 100vh: 100vh на телефоне
+     не уменьшается от клавиатуры и адресной строки, да ещё прибавлялись
+     отступы под системные полосы — страница выходила длиннее экрана,
+     и браузер «подтягивал» её к полю ввода, сдвигая всё вверх. */
   body:has(.ng-assistant-wrapper) {
     overflow: hidden !important;
-    height: 100vh;
+    height: 100%; min-height: 0; box-sizing: border-box;
   }
   html:has(.ng-assistant-wrapper) {
     overflow: hidden !important;
-    height: 100vh;
+    height: 100%; min-height: 0;
   }
       /* Приветствие, подзаголовок и сообщения в чате на телефоне */
           .ng-assistant-inner .ng-greeting { font-size: 24px !important; }
@@ -11250,10 +11274,13 @@ export default function NexaApp() {
           .nx-user-bubble { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }
           }
+            /* Клавиатура открыта — панель прячется сразу, без анимации:
+               иначе она мелькает поверх клавиатуры. Появляется — плавно */
             body.kb-open .ng-mobile-tabbar {
             transform: translateY(120%);
             opacity: 0;
             pointer-events: none;
+            transition: none;
           }
             .ng-mobile-tabbar {
             transition: transform 220ms ease, opacity 220ms ease;
