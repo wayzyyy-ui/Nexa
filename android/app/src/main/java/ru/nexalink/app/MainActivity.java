@@ -10,6 +10,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Свой модуль: место на телефоне (см. NexaDiskPlugin). Регистрируем до super.onCreate
+        registerPlugin(NexaDiskPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Ползунок прокрутки страницы в приложении рисует сам Android, а не

@@ -80,6 +80,43 @@ export async function cacheClearScope(scope) {
   urlCache.clear();
 }
 
+/* ─── Сколько места занято ─── */
+// Лимит облачного хранилища на аккаунт — тот же, что в правиле files-storage.sql (2147483648 байт)
+export const CLOUD_QUOTA_BYTES = 2 * 1024 * 1024 * 1024;
+// Аккаунт: сколько занимают его файлы в корзине — считает сама база
+// (nexa_storage_used: сумма размеров объектов Storage, не записей). null — не удалось
+export async function cloudBytes() {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc("nexa_storage_used");
+    if (error) return null;
+    const n = Number(data);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch { return null; }
+}
+// Гость: какие файлы реально лежат в IndexedDB этого браузера и сколько весят.
+// Map id (строкой: у гостя id бывают числами) → байты, только из списка ids. null — IndexedDB недоступна
+export async function localBytes(scope, ids) {
+  const db = await idb();
+  if (!db) return null;
+  const want = new Set(ids.map(String));
+  const prefix = `${scope || "guest"}:`;
+  return new Promise((resolve) => {
+    const sizes = new Map();
+    const t = db.transaction("blobs", "readonly");
+    const req = t.objectStore("blobs").openCursor(IDBKeyRange.bound(prefix, `${prefix}￿`));
+    req.onsuccess = () => {
+      const c = req.result;
+      if (!c) return;
+      const id = String(c.key).slice(prefix.length);
+      if (want.has(id) && typeof c.value?.size === "number") sizes.set(id, c.value.size);
+      c.continue();
+    };
+    t.oncomplete = () => resolve(sizes);
+    t.onerror = t.onabort = () => resolve(null);
+  });
+}
+
 /* ─── Загрузка в облако с прогрессом и отменой ─── */
 // Через XMLHttpRequest: только он сообщает, сколько уже отправлено.
 // Возвращает { promise, abort }. promise → { path } или ошибка { kind, text }

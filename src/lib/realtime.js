@@ -3,7 +3,9 @@
    У каждого вошедшего свой закрытый канал «nexa:<id пользователя>» (private:
    доступ проверяют правила из supabase/realtime-policies.sql).
    - Presence — кто сейчас онлайн: каждое устройство сообщает о себе
-     { device_id, name, kind, platform, joined_at }.
+     { device_id, name, kind, platform, joined_at, sys }. sys — настоящие
+     сведения (заряд, сеть, место; см. src/lib/deviceInfo.js), обновляются
+     не чаще раза в 30 секунд и только когда что-то изменилось.
    - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
      pair.fail, find.ring, find.stop, lock.on, lock.off, file.send, link.open,
      devices.changed, sync.changed.
@@ -18,6 +20,7 @@ export const EVENT_TEXT = "text.send";
 export const TEXT_MAX = 2000;    // самое длинное сообщение
 export const SEND_GAP_MS = 300;  // отправляем не чаще одного сообщения в 300 мс
 const RECEIVE_GAP_MS = 250;      // принимаем с одного устройства не чаще (запас на задержки сети)
+const SYS_GAP_MS = 30000;        // сведения об устройстве в Presence — не чаще раза в 30 секунд
 export const INBOX_MAX = 20;     // сколько входящих помним
 const DEVICE_ID_KEY = "nexa-device-id";
 const inboxKey = (uid) => `nexa-inbox@${uid}`;
@@ -90,6 +93,27 @@ const SCHEMAS = {
 };
 export const LINK_EVENTS = Object.keys(SCHEMAS);
 
+/* Сведения об устройстве из Presence: только известные поля и разумные значения.
+   Чужое (или испорченное) — молча отбрасываем, как и неверные события */
+const okNum = (v, max) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max);
+const NETS = ["wifi", "cellular", "ethernet", "none"];
+export function cleanSys(x) {
+  if (!x || typeof x !== "object") return null;
+  const out = {
+    battery: Number.isInteger(x.battery) && x.battery >= 0 && x.battery <= 100 ? x.battery : null,
+    charging: typeof x.charging === "boolean" ? x.charging : null,
+    ac: x.ac === true,
+    net: NETS.includes(x.net) ? x.net : null,
+    diskFree: null, diskTotal: null,
+    at: isTs(x.at) ? x.at : null,
+  };
+  // Место — только парой и только если свободное не больше общего (до 1 ПБ)
+  if (okNum(x.diskFree, 1e15) && okNum(x.diskTotal, 1e15) && x.diskTotal > 0 && x.diskFree <= x.diskTotal) {
+    out.diskFree = x.diskFree; out.diskTotal = x.diskTotal;
+  }
+  return out.at ? out : null;
+}
+
 // Из состояния Presence — список устройств (по одному на device_id)
 function flattenPresence(state) {
   const list = [];
@@ -102,6 +126,7 @@ function flattenPresence(state) {
       kind: m.kind === "app" ? "app" : "web",
       platform: m.platform === "mobile" ? "mobile" : "desktop",
       joined_at: m.joined_at,
+      sys: cleanSys(m.sys),
     });
   }
   return list.sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)));
@@ -134,6 +159,13 @@ export function useDeviceLink(uid, handlers) {
   const lastFrom = useRef({});   // device_id → когда пришло последнее (защита от шквала)
   const h = useRef(handlers);
   h.current = handlers;
+  // Что сообщаем о себе в Presence: время входа (не меняется при обновлении сведений)
+  // и сведения об устройстве. Обновление — не чаще раза в SYS_GAP_MS
+  const joinedAt = useRef(null);
+  const sysRef = useRef(null);
+  const sysSentAt = useRef(0);
+  const sysTimer = useRef(null);
+  const presence = () => ({ ...self.current, joined_at: joinedAt.current || new Date().toISOString(), ...(sysRef.current ? { sys: sysRef.current } : {}) });
 
   // Входящее у каждого аккаунта своё
   useEffect(() => { setInbox(uid ? loadInbox(uid) : []); }, [uid]);
@@ -188,7 +220,9 @@ export function useDeviceLink(uid, handlers) {
         if (closed) return;
         if (st === "SUBSCRIBED") {
           setStatus("online");
-          try { await channel.track({ ...me, joined_at: new Date().toISOString() }); } catch {}
+          joinedAt.current = new Date().toISOString();
+          sysSentAt.current = Date.now();
+          try { await channel.track(presence()); } catch {}
         } else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT" || st === "CLOSED") {
           // Нет прав на канал (правила не вставлены) — отдельная подпись
           setStatus(/unauthori|permission/i.test(String(err?.message || "")) ? "denied" : "offline");
@@ -205,7 +239,7 @@ export function useDeviceLink(uid, handlers) {
       if (channel && channel.state === "joined") {
         setStatus("online");
         setPeers(flattenPresence(channel.presenceState()));
-        channel.track({ ...me, joined_at: new Date().toISOString() }).catch(() => {});
+        channel.track(presence()).catch(() => {});
       } else {
         setStatus((s) => (s === "offline" ? "connecting" : s));
       }
@@ -260,5 +294,22 @@ export function useDeviceLink(uid, handlers) {
   const removeInbox = (id) => setInbox((list) => { const next = list.filter((x) => x.id !== id); saveInbox(next); return next; });
   const clearInbox = () => { setInbox([]); saveInbox([]); };
 
-  return { status, self: self.current, peers, inbox, send, emit, removeInbox, clearInbox };
+  /* Новые сведения об этом устройстве (заряд, сеть, место). Сразу запоминаем;
+     в Presence уходят не чаще раза в SYS_GAP_MS — если раньше, отправка
+     откладывается до конца паузы и уходит одна, самая свежая */
+  const shareSys = (sys) => {
+    sysRef.current = cleanSys(sys);
+    clearTimeout(sysTimer.current);
+    const push = () => {
+      const ch = channelRef.current;
+      if (!ch || statusRef.current !== "online") return; // при подключении уйдёт вместе с track
+      sysSentAt.current = Date.now();
+      ch.track(presence()).catch(() => {});
+    };
+    const wait = SYS_GAP_MS - (Date.now() - sysSentAt.current);
+    if (wait <= 0) push(); else sysTimer.current = setTimeout(push, wait);
+  };
+  useEffect(() => () => clearTimeout(sysTimer.current), []);
+
+  return { status, self: self.current, peers, inbox, send, emit, removeInbox, clearInbox, shareSys };
 }

@@ -17,14 +17,16 @@ import { supabase, authAvailable } from "./lib/supabase.js";
 import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
 // Синхронизация устройств и чатов аккаунта с облаком
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine, isLocalPin } from "./lib/sync.js";
+import { useThisDeviceSys, thisDeviceKind, KIND_LABEL, formatBytes, batteryText, netText, diskText, sysShort, sameSys, NO_DATA } from "./lib/deviceInfo.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
-import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
+import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity, cleanSys } from "./lib/realtime.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
 import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
+  cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.11";
+const VERSION = "0.8.12";
 
 
 /* =========================================================================
@@ -482,6 +484,12 @@ const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
       <rect x="3" y="7.5" width="16" height="9" rx="1" />
       <path d="M21 10.5v3M6 10.5v3" strokeLinecap="round" />
+    </svg>
+  ),
+  // Сеть: три столбика по возрастанию — уровень сигнала
+  signal: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6" strokeLinejoin="round">
+      <path d="M4 19v-3h3v3zM10.5 19v-7h3v7zM17 19V7h3v12z" />
     </svg>
   ),
   // Не беспокоить: круг с чертой
@@ -1308,9 +1316,11 @@ function devicesFromList(list, prev) {
   };
 }
 
-// Подпись статуса: "Онлайн • 92%", "Онлайн" или "Не в сети"
-const deviceStatus = (d) =>
-  !d.online ? "Не в сети" : d.battery != null ? `Онлайн • ${d.battery}%` : "Онлайн";
+// Подпись статуса: "Онлайн • 92%", "Онлайн" или "Не в сети".
+// Реальное устройство: онлайн — по Presence, заряд и сеть — только настоящие (d.sys)
+const deviceStatus = (d) => d.real
+  ? [realStatus(d), d.online ? sysShort(d.sys) : ""].filter(Boolean).join(" • ")
+  : !d.online ? "Не в сети" : d.battery != null ? `Онлайн • ${d.battery}%` : "Онлайн";
 
 // Сколько ГБ занимают файлы на устройстве.
 // Демо — по выдуманным цифрам хранилища, аккаунт — по своим файлам
@@ -1465,7 +1475,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
   // Подпись под устройством: статус и «это устройство»
-  const statusOf = (d) => [d.real ? realStatus(d) : deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ");
+  const statusOf = (d) => [deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ");
   // «Найти» — только у реального устройства в сети и не у себя
   const findable = (d) => d.real && d.online && !d.isSelf && onFind;
 
@@ -1773,6 +1783,15 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
 
 /* ═══ ЖИВЫЕ ПОДПИСИ «КОГДА БЫЛ В СЕТИ» ═════════════════════════ */
 // ms — когда устройство последний раз было активно (state.seenAt, миллисекунды)
+// Когда получены сведения: «в 14:05», «вчера в 14:05», «3 окт. в 14:05»
+function sysTime(ms, now = Date.now()) {
+  const d = new Date(ms), t = new Date(now);
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === t.toDateString()) return `в ${hm}`;
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return `вчера в ${hm}`;
+  return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
+}
 function lastSeenText(ms, now = Date.now()) {
   if (typeof ms !== "number" || !ms) return "Не в сети";
   const diff = Math.max(0, now - ms);
@@ -3722,7 +3741,6 @@ const MEDIA_CATS = [
     flex: 1.1, clip: "polygon(0 96%, 14% 0, 100% 12%, 94% 88%)", top: "12%", h: "80%", labelX: "26%", facet: "128deg",
     devices: [["Ноутбук", 6], ["Облако", 4]] },
 ];
-const STORAGE_TOTAL = 512; // объём хранилища в ГБ
 
 // Папки. parent — id родительской папки (null — лежит в корне).
 const FOLDERS = [
@@ -3838,11 +3856,11 @@ function plural(n, forms) {
   return forms[2];
 }
 
-// Размер: 0.4 → "400 КБ", 5.5 → "5.5 МБ", 1240 → "1.2 ГБ"
+// Размер файла в байтах: настоящий (size), у демо-файлов — из выдуманных мегабайт
+const fileBytes = (f) => (typeof f.size === "number" ? f.size : Math.round((f.mb || 0) * 1e6));
+// Размер по-русски: «812 Б», «400 КБ», «5,5 МБ», «1,2 ГБ» (см. formatBytes)
 function formatSize(mb) {
-  if (mb < 1) return `${Math.round(mb * 1000)} КБ`;
-  if (mb < 1000) return `${Math.round(mb * 10) / 10} МБ`;
-  return `${(mb / 1000).toFixed(1)} ГБ`;
+  return formatBytes(Math.round(mb * 1e6));
 }
 
 // Дата: "Сегодня 08:42", "Вчера 20:14" или "3 окт."
@@ -3863,7 +3881,7 @@ function sortByRecent(list) {
 }
 
 const catOf = (f) => MEDIA_CATS.find((c) => c.id === f.cat);
-const fileMeta = (f) => `${catOf(f).label} · ${formatWhen(f)} · ${formatSize(f.mb)}`;
+const fileMeta = (f) => `${catOf(f).label} · ${formatWhen(f)} · ${formatBytes(fileBytes(f))}`;
 
 // Сброс стандартного вида кнопки: убираем рамку, фон и системный шрифт,
 // чтобы кнопка выглядела как обычный блок, но нажималась и с клавиатуры
@@ -3995,7 +4013,7 @@ function StorageFolds({ cats, selected, onSelect }) {
           const dimmed = selected !== null && selected !== c.id;
           return (
             <g key={c.id} className="nx-seg-btn nx-sf" role="button" tabIndex={0} aria-pressed={selected === c.id}
-              aria-label={`${c.label}: ${c.gb} ГБ`}
+              aria-label={`${c.label}: ${formatBytes(c.bytes)}`}
               onClick={() => onSelect(c.id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(c.id); } }}
               style={{ cursor: "pointer", opacity: dimmed ? 0.35 : 1, transition: "opacity 200ms ease, filter 160ms ease" }}>
@@ -4018,9 +4036,9 @@ function StorageFolds({ cats, selected, onSelect }) {
             opacity: dimmed ? 0.45 : 1, transition: "opacity 200ms ease",
           }}>
             <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>{c.label}</span>
-            <span style={{ display: "block", fontSize: 12 }}>{c.gb} ГБ</span>
+            <span style={{ display: "block", fontSize: 12 }}>{formatBytes(c.bytes)}</span>
             {/* Пустая категория — без «0%» */}
-            {c.gb > 0 && <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{c.pct}%</span>}
+            {c.bytes > 0 && <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{c.pct}%</span>}
           </div>
         );
       })}
@@ -4034,34 +4052,64 @@ function StorageFolds({ cats, selected, onSelect }) {
 // onOpenCategory переводит на экран "Файлы" с фильтром по категории
 // (null — без фильтра).
 // onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
-// demo — гость: к своим файлам прибавляются выдуманные цифры хранилища
-function ScreenMedia({ files, demo = true, onOpenFile, onOpenCategory, onTransfer }) {
+// uid — вошедший (null — гость).
+// Хранилище — только настоящие файлы: у аккаунта — сколько занято в облаке
+// (считает база, nexa_storage_used) из лимита CLOUD_QUOTA_BYTES; у гостя —
+// сколько реально лежит в этом браузере (IndexedDB), лимита у NEXA нет.
+// Демо-файлы без содержимого в объём не входят
+function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer }) {
   // Какой сегмент хранилища выбран (id категории или null)
   const [selected, setSelected] = useState(null);
-  // Добавленные пользователем файлы прибавляем к объёму своей категории
-  const round1 = (n) => Math.round(n * 10) / 10;
-  const addedMb = (id) => files.filter((f) => f.uploaded && (!id || f.cat === id)).reduce((s, f) => s + f.mb, 0);
-  const cats0 = MEDIA_CATS.map((c) => ({ ...c, gb: round1((demo ? c.gb : 0) + addedMb(c.id) / 1000) }));
-  // У аккаунта доли и «где хранится» считаем по его настоящим файлам, а не по выдуманным цифрам
-  const ownTotal = cats0.reduce((sum, c) => sum + c.gb, 0);
-  const cats = demo ? cats0 : cats0.map((c) => {
+  const real = files.filter((f) => f.uploaded);
+  const sig = real.map((f) => `${f.id}:${f.size ?? f.mb}`).join(",");
+  // Сколько занято: { used — байты | null, sizes — Map id → байты у гостя, ready }
+  const [store, setStore] = useState({ used: null, sizes: null, ready: false });
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      if (uid) {
+        const used = await cloudBytes();
+        // База не ответила (нет связи, не запущена миграция) — сумма размеров
+        // загруженных файлов: это размеры самого содержимого, записанные при загрузке
+        if (!off) setStore({ used: used ?? real.reduce((n, f) => n + fileBytes(f), 0), sizes: null, ready: true });
+      } else {
+        const sizes = await localBytes("guest", real.map((f) => f.id));
+        if (!off) setStore({ used: sizes ? [...sizes.values()].reduce((n, b) => n + b, 0) : null, sizes, ready: true });
+      }
+    })();
+    return () => { off = true; };
+  }, [uid, sig]);
+  // Размер файла для разбивки: у гостя — только то, что правда лежит в браузере
+  const sizeOf = (f) => (uid ? fileBytes(f) : store.sizes?.get(String(f.id)) || 0);
+  const bytesOf = (id) => real.filter((f) => !id || f.cat === id).reduce((n, f) => n + sizeOf(f), 0);
+  const total = bytesOf(null);
+  const cats = MEDIA_CATS.map((c) => {
+    const bytes = bytesOf(c.id);
     const byDevice = {};
-    files.filter((f) => f.cat === c.id).forEach((f) => { byDevice[f.device || "Это устройство"] = (byDevice[f.device || "Это устройство"] || 0) + f.mb / 1000; });
+    real.filter((f) => f.cat === c.id).forEach((f) => { const n = f.device || "Это устройство"; byDevice[n] = (byDevice[n] || 0) + sizeOf(f); });
     return {
-      ...c,
-      pct: ownTotal > 0 ? Math.round((c.gb / ownTotal) * 100) : 0,
-      devices: Object.entries(byDevice).map(([n, gb]) => [n, round1(gb)]).filter(([, gb]) => gb > 0),
+      ...c, bytes,
+      pct: total > 0 ? Math.round((bytes / total) * 100) : 0,
+      devices: Object.entries(byDevice).filter(([, b]) => b > 0),
     };
   });
   const sel = cats.find((c) => c.id === selected);
-  const ownMb = addedMb(null);
-  const used = round1((demo ? MEDIA_CATS.reduce((sum, c) => sum + c.gb, 0) : 0) + ownMb / 1000);
-  // Подпись под объёмом: сколько места заняли файлы, добавленные вами
-  const ownNote = demo && ownMb > 0 && (
-    <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35, whiteSpace: "nowrap" }}>
-      <div style={{ color: C.mint }}>+ {formatSize(ownMb)}</div>
-      <div style={{ color: C.mutedSoft }}>ваши файлы</div>
-    </div>
+  const quota = uid ? CLOUD_QUOTA_BYTES : null;
+  // «12,4 МБ из 2 ГБ» / «12,4 МБ в этом браузере» / «Нет данных»
+  const usedLabel = !store.ready ? "Считаем…"
+    : store.used == null ? "Нет данных"
+    : quota ? `${formatBytes(store.used)} из ${formatBytes(quota)}` : `${formatBytes(store.used)} в этом браузере`;
+  const usedPct = quota && store.used != null ? Math.min(100, (store.used / quota) * 100) : null;
+  // Пояснение под объёмом
+  const storeNote = uid
+    ? "Облачное хранилище аккаунта"
+    : store.ready && store.used == null
+      ? "Браузер не дал доступ к хранилищу — объём неизвестен"
+      : "Файлы гостя живут только в этом браузере, общий объём задаёт сам браузер";
+  const usedBar = (wide) => usedPct != null && (
+    <span className={wide ? "nx-sys-bar nx-sys-bar-wide" : "nx-sys-bar"} role="meter" aria-label="Занято в хранилище" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(usedPct)}>
+      <span style={{ width: `${Math.max(usedPct, store.used > 0 ? 1 : 0)}%`, background: usedPct > 90 ? C.red : `linear-gradient(90deg, ${C.blue}, ${C.mint})` }} />
+    </span>
   );
   const countOf = (id) => files.filter((f) => f.cat === id).length;
   const recent = sortByRecent(files).slice(0, 4);
@@ -4073,17 +4121,24 @@ function ScreenMedia({ files, demo = true, onOpenFile, onOpenCategory, onTransfe
       {/* Только на телефоне: заголовок хранилища над карточкой, как в макете */}
       <div className="nx-only-mobile nx-storage-head" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
         <div className="ng-display" style={{ fontSize: 22, fontWeight: 400 }}>Хранилище</div>
-        <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>{used} ГБ / {STORAGE_TOTAL} ГБ{ownNote}</div>
+        <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>{usedLabel}</div>
+      </div>
+      {/* Телефон: полоска заполнения и пояснение — под заголовком */}
+      <div className="nx-only-mobile" style={{ flexDirection: "column", margin: "-4px 0 14px" }}>
+        {usedBar(true)}
+        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6, lineHeight: 1.4 }}>{storeNote}</div>
       </div>
 
       <div className="nx-storage-box" style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", marginBottom: 34 }}>
         <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
           <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 150 }}>
             {Icon.drive({ c: C.text, s: 24 })}
-            <div>
+            {/* Колонка узкая: полоска и пояснение — в её ширину, на складки не заходят */}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14 }}>Хранилище</div>
-              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{used} ГБ / {STORAGE_TOTAL} ГБ</div>
-              {ownNote}
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{usedLabel}</div>
+              {usedBar(true)}
+              <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 6, lineHeight: 1.4 }}>{storeNote}</div>
             </div>
           </div>
           {/* Собираем диаграмму из массива MEDIA_CATS — чтобы поменять пропорции
@@ -4100,8 +4155,8 @@ function ScreenMedia({ files, demo = true, onOpenFile, onOpenCategory, onTransfe
             display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start",
           }}>
             <div style={{ minWidth: 140 }}>
-              <div className="ng-display" style={{ fontSize: 26, fontWeight: 400 }}>{sel.gb} ГБ</div>
-              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{sel.label}{sel.gb > 0 ? ` · ${sel.pct}% занятого места` : " · пока пусто"}</div>
+              <div className="ng-display" style={{ fontSize: 26, fontWeight: 400 }}>{formatBytes(sel.bytes)}</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{sel.label}{sel.bytes > 0 ? ` · ${sel.pct}% занятого места` : " · пока пусто"}</div>
               <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>
                 {countOf(sel.id)} {plural(countOf(sel.id), ["файл", "файла", "файлов"])} в списке
               </div>
@@ -4112,17 +4167,17 @@ function ScreenMedia({ files, demo = true, onOpenFile, onOpenCategory, onTransfe
               {sel.devices.length === 0 && (
                 <div style={{ fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>Здесь пока ничего нет. Добавьте файлы в «Файлах» — покажем, на каком устройстве они лежат.</div>
               )}
-              {sel.devices.map(([name, gb]) => (
+              {sel.devices.map(([name, bytes]) => (
                 <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, fontSize: 12.5 }}>
                   <div style={{ width: 76, flexShrink: 0 }}>{name}</div>
                   <div style={{ flex: 1, height: 6, background: C.chip, overflow: "hidden" }}>
                     {/* Полоска "вырастает" слева направо — показывает долю устройства */}
                     <div className="nx-bar" style={{
-                      width: `${(gb / sel.gb) * 100}%`, height: "100%",
+                      width: `${(bytes / sel.bytes) * 100}%`, height: "100%",
                       background: `linear-gradient(90deg, ${sel.from}, ${sel.to})`,
                     }} />
                   </div>
-                  <div style={{ width: 48, textAlign: "right", color: C.muted }}>{gb} ГБ</div>
+                  <div style={{ minWidth: 56, textAlign: "right", color: C.muted, whiteSpace: "nowrap" }}>{formatBytes(bytes)}</div>
                 </div>
               ))}
             </div>
@@ -4798,7 +4853,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
 
   const info = [
     ["Тип", cat.label],
-    ["Размер", formatSize(file.mb)],
+    ["Размер", formatBytes(fileBytes(file))],
     ["Изменён", formatWhen(file)],
     ["Устройство", file.device],
     ["Папка", folderName(folders, file.folder)],
@@ -5785,8 +5840,18 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
     : { loading: "Отключение…", success: "Отключено" };
 
   // Полоски заряда и памяти. Мало заряда — полоска красная.
-  // У отключённого устройства полоски серые: данные на момент отключения
-  const bars = [
+  // У отключённого устройства полоски серые: данные на момент отключения.
+  // Реальное устройство — только то, что оно само сообщило (d.sys), иначе «Нет данных»
+  const sys = d.sys;
+  const bars = d.real ? [
+    { label: "Заряд", value: batteryText(sys), pct: sys?.battery ?? (sys?.ac ? 100 : 0), low: sys?.battery != null && sys.battery < 20 },
+    {
+      label: "Память",
+      value: sys?.diskTotal ? `${formatBytes(sys.diskTotal - sys.diskFree)} из ${formatBytes(sys.diskTotal)}` : NO_DATA,
+      pct: sys?.diskTotal ? ((sys.diskTotal - sys.diskFree) / sys.diskTotal) * 100 : 0,
+    },
+    { label: "Сеть", value: netText(sys), noBar: true },
+  ] : [
     {
       label: "Заряд",
       value: d.battery == null ? "от сети" : `${d.battery}%`,
@@ -5794,8 +5859,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       low: d.battery != null && d.battery < 20,
     },
     { label: "Память", value: `${used} из ${d.memory} ГБ`, pct: Math.min(100, (used / d.memory) * 100) },
-  // Заряд настоящего устройства нам неизвестен — не выдумываем, показываем только память
-  ].filter((b) => !(d.real && b.label === "Заряд"));
+  ];
   // Кнопки окна устройства — «таблетки», как в макете
   const pillBtn = { borderRadius: 999, minHeight: 46, padding: "10px 16px", justifyContent: "center", whiteSpace: "nowrap" };
 
@@ -5816,7 +5880,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         <div className="ng-display nx-device-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{d.name}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted, paddingBottom: 6 }}>
           <Dot color={d.online ? C.green : C.red} />
-          {d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
+          {d.real || d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
           {received && <ReceivedTag name={received.name} />}
         </div>
       </div>
@@ -5891,16 +5955,26 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           {bars.map((b) => (
             <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
               <div style={{ width: 62, flexShrink: 0, color: C.mutedSoft }}>{b.label}</div>
-              {/* Полоска-«таблетка»: толстая, со скруглёнными краями */}
-              <div style={{ flex: 1, height: 8, borderRadius: 999, background: `color-mix(in srgb, ${C.text} 10%, transparent)`, overflow: "hidden" }}>
-                <div className="nx-bar" style={{
-                  width: `${b.pct}%`, height: "100%", borderRadius: 999,
-                  background: !d.online ? C.muted : b.low ? C.red : `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
-                }} />
-              </div>
-              <div style={{ width: 96, flexShrink: 0, textAlign: "right", color: C.muted }}>{b.value}</div>
+              {/* Полоска-«таблетка»: толстая, со скруглёнными краями. У «Сети» полоски нет */}
+              {b.noBar ? <div style={{ flex: 1 }} /> : (
+                <div style={{ flex: 1, height: 8, borderRadius: 999, background: `color-mix(in srgb, ${C.text} 10%, transparent)`, overflow: "hidden" }}>
+                  <div className="nx-bar" style={{
+                    width: `${b.pct}%`, height: "100%", borderRadius: 999,
+                    background: !d.online ? C.muted : b.low ? C.red : `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+                  }} />
+                </div>
+              )}
+              <div style={{ minWidth: 96, flexShrink: 0, textAlign: "right", color: b.value === NO_DATA ? C.mutedSoft : C.muted, whiteSpace: "nowrap" }}>{b.value}</div>
             </div>
           ))}
+          {/* Когда сведения получены: у отключённого — последние достоверные */}
+          {d.real && (
+            <div style={{ fontSize: 12, color: C.mutedSoft, lineHeight: 1.45 }}>
+              {sys?.at
+                ? `${d.online ? "Обновлено" : "Последние данные"} ${sysTime(sys.at)}`
+                : d.online ? "Устройство пока не прислало сведения" : "Сведений от устройства пока не было"}
+            </div>
+          )}
         </div>
 
         {/* Действия: три кнопки-«таблетки» равной ширины.
@@ -9322,7 +9396,41 @@ function SyncStatus({ loading, text, onRetry }) {
 }
 
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
-function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin }) {
+/* «Это устройство» в Настройках: только настоящие сведения (src/lib/deviceInfo.js).
+   Чего платформа не отдаёт — «Нет данных» и коротко почему */
+function ThisDeviceSettings({ sys }) {
+  const kind = thisDeviceKind();
+  const kindIcon = { phone: Icon.phone, tablet: Icon.tablet, computer: Icon.laptop }[kind];
+  const why = isNative
+    ? { battery: "система не сообщила заряд", net: "система не сообщила тип сети", disk: "система не сообщила объём" }
+    : { battery: "этот браузер не сообщает заряд", net: "браузер не сообщает тип подключения", disk: "браузер не показывает память устройства" };
+  const line = (value, reason) => (value === NO_DATA ? `${NO_DATA} — ${reason}` : value);
+  const used = sys?.diskTotal ? (sys.diskTotal - sys.diskFree) / sys.diskTotal : null;
+  return (
+    <>
+      <SectionTitle>Это устройство</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow icon={kindIcon({ c: C.mint, s: 18 })} title={KIND_LABEL[kind]}
+          subtitle={sys ? `Обновлено ${sysTime(sys.at)} · сведения раз в 30 секунд` : "Читаем сведения…"} />
+        <SettingsRow icon={Icon.battery({ c: C.text, s: 18 })} title="Заряд" subtitle={sys ? line(batteryText(sys), why.battery) : "…"} />
+        <SettingsRow icon={Icon.signal({ c: C.text, s: 18 })} title="Сеть" subtitle={sys ? line(netText(sys), why.net) : "…"} />
+        <SettingsRow last icon={Icon.drive({ c: C.text, s: 18 })} title="Место на устройстве"
+          subtitle={sys ? (
+            used == null ? line(NO_DATA, why.disk) : (
+              <>
+                {diskText(sys)}
+                <span className="nx-sys-bar" aria-hidden="true">
+                  <span style={{ width: `${Math.round(used * 100)}%`, background: used > 0.9 ? C.red : `linear-gradient(90deg, ${C.blue}, ${C.mint})` }} />
+                </span>
+              </>
+            )
+          ) : "…"} />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys }) {
   // Список уведомлений хранится в состоянии (useState),
   // потому что он меняется при кликах
   const [notifs, setNotifs] = useState([
@@ -9438,6 +9546,8 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
           />
         ))}
       </SettingsGroup>
+
+      <ThisDeviceSettings sys={sys} />
 
       <InstallSettings />
 
@@ -9595,6 +9705,17 @@ export default function NexaApp() {
     onEvent: (event, payload) => handleLinkEvent(event, payload),
   });
   const peerIds = new Set(link.peers.map((d) => d.device_id));
+  const peerById = new Map(link.peers.map((p) => [p.device_id, p]));
+  // Последние сведения от каждого устройства (обновляются с каждым Presence):
+  // когда устройство пропадёт, сохраним именно их, а не снимок на момент подключения
+  const lastPeerSys = useRef({});
+  link.peers.forEach((p) => { if (p.sys) lastPeerSys.current[p.device_id] = p.sys; });
+  /* Настоящие сведения об этом устройстве (заряд, сеть, место) — для Настроек
+     и карточки «это устройство»; вошедший делится ими через Presence
+     (не чаще раза в 30 секунд и только когда изменились — см. useDeviceLink) */
+  const thisSys = useThisDeviceSys();
+  const thisSysRef = useRef(thisSys); thisSysRef.current = thisSys;
+  useEffect(() => { if (uid && thisSys) link.shareSys(thisSys); }, [thisSys, uid]);
   const onTextActivity = useRef(null); // ставится ниже, когда готова лента
 
   // Тост — и сразу запись в центр уведомлений, чтобы не исчезал бесследно
@@ -9620,7 +9741,13 @@ export default function NexaApp() {
     ...deviceStore.added.map((d) => ({ ...d, icon: deviceType(d.type).icon })),
   ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }))
     // Реальные устройства (подключены по коду): «в сети» — по Presence
-    .map((d) => (d.real ? { ...d, online: peerIds.has(d.device_id), isSelf: d.device_id === link.self?.device_id } : d));
+    // Сведения: своё — прямо с устройства; онлайн — из Presence; не в сети — последние сохранённые
+    .map((d) => {
+      if (!d.real) return d;
+      const isSelf = d.device_id === link.self?.device_id, online = peerIds.has(d.device_id);
+      const saved = cleanSys(d.sys);
+      return { ...d, online, isSelf, sys: (isSelf && thisSys) || (online && peerById.get(d.device_id)?.sys) || saved };
+    });
   // Названия реальных устройств по device_id — для блока «Связь устройств»
   const realNames = Object.fromEntries(devices.filter((d) => d.real).map((d) => [d.device_id, d.name]));
   const patchDevice = (id, patch) => setDeviceStore((s) => ({
@@ -9979,12 +10106,24 @@ export default function NexaApp() {
     seenAt.current[row.id] = at;
     patchDevice(row.id, { seenAt: at });
   };
+  // Последние достоверные сведения (заряд, сеть, место) — в state.sys строки устройства,
+  // чтобы их было видно, когда оно не в сети. Пишем, только если они отличаются от сохранённых
+  const keepSys = (row, sys) => {
+    if (!row || !sys) return;
+    if (sameSys(cleanSys(deviceStore.state[row.id]?.sys), sys) && deviceStore.state[row.id]?.sys?.at) return;
+    patchDevice(row.id, { sys });
+  };
   const selfRow = devices.find((d) => d.real && d.isSelf);
   const selfRowRef = useRef(selfRow); selfRowRef.current = selfRow;
   useEffect(() => {
     if (!uid) return;
     const active = () => { if (document.visibilityState !== "hidden") markSeen(selfRowRef.current); };
-    const away = () => { if (document.visibilityState === "hidden") { seenAt.current = {}; markSeen(selfRowRef.current); } };
+    const away = () => {
+      if (document.visibilityState !== "hidden") return;
+      seenAt.current = {};
+      markSeen(selfRowRef.current);
+      keepSys(selfRowRef.current, thisSysRef.current); // ушли в фон — сохраняем свои сведения
+    };
     active();
     window.addEventListener("pointerdown", active, { passive: true });
     window.addEventListener("keydown", active);
@@ -10015,7 +10154,9 @@ export default function NexaApp() {
     for (const [id, peer] of prevPeers.current) {
       if (id === self || now.has(id)) continue;
       logActivity("disconnect", `«${realNames[id] || peer.name}» отключилось`);
-      markSeen(devices.find((d) => d.real && d.device_id === id));
+      const row = devices.find((d) => d.real && d.device_id === id);
+      markSeen(row);
+      keepSys(row, lastPeerSys.current[id] || peer.sys); // последние сведения, которые устройство успело прислать
     }
     prevPeers.current = now;
   }, [peerKey, link.status]);
@@ -10592,6 +10733,15 @@ export default function NexaApp() {
         .ng-hamburger { display: none; }
         .ng-devices-list { display: block; }
         .ng-devices-mobile { display: none; }
+
+        /* Полоска заполнения (место на устройстве, хранилище) — тонкая, 4px */
+        .nx-sys-bar {
+          display: block; width: 200px; max-width: 100%; height: 4px; margin-top: 8px; overflow: hidden;
+          border-radius: 4px; background: color-mix(in srgb, var(--text) 10%, transparent);
+        }
+        .nx-sys-bar > span { display: block; height: 100%; }
+        .nx-sys-bar-wide { width: 100%; }
+        .nx-storage-head + .nx-only-mobile .nx-sys-bar-wide { margin-top: 0; }
 
         /* ─── История диалогов (ChatHistory) ───────────────────
            Компьютер: постоянная колонка слева от чата */
@@ -11559,7 +11709,7 @@ export default function NexaApp() {
         />
       )}
       {tab === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} />}
-      {tab === "media" && <ScreenMedia files={files} demo={demo} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
+      {tab === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
       {tab === "files" && (
         <ScreenFiles
           key={`files-${searchFolder || "root"}`}
@@ -11577,7 +11727,7 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} />}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => setSearchOpen(true)} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys} />}
     </div>
   )}
 </div>
