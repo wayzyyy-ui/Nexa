@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, startTransition, useSyncExternalStore } from "react";
 // flushSync нужен для плавной смены темы: React обновляет экран сразу,
 // пока браузер делает снимок для анимации
 import { flushSync, createPortal } from "react-dom";
@@ -26,7 +26,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.12";
+const VERSION = "0.8.13";
 
 
 /* =========================================================================
@@ -7180,6 +7180,33 @@ function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, 
   return <>{panel}{menuEl}</>;
 }
 
+/* ---------- Ответ, который сейчас печатается ----------
+   Один на всё приложение и живёт отдельно от истории чатов. Каждый кусок
+   потока меняет только этот маленький объект и перерисовывает только пузырь
+   ответа (LiveAnswer) — не всё приложение. В историю (localStorage, другие
+   вкладки, облако) ответ попадает один раз, целиком, когда поток закончился.
+   Хранилище вне компонента: если уйти с экрана ассистента и вернуться,
+   ответ продолжит печататься. */
+const STREAM_FLUSH_MS = 40;  // показываем новый текст пачками — примерно 25 раз в секунду
+const live = { chatId: null, text: "" };
+const liveSubs = new Set();
+const liveSet = (patch) => { Object.assign(live, patch); liveSubs.forEach((f) => f()); };
+const liveSubscribe = (f) => { liveSubs.add(f); return () => liveSubs.delete(f); };
+const useLiveChatId = () => useSyncExternalStore(liveSubscribe, () => live.chatId);
+const useLiveText = () => useSyncExternalStore(liveSubscribe, () => live.text);
+// Сохранённый на всякий случай кусок ответа (см. checkpoint в streamAnswer):
+// пока ответ печатается, в списке его не показываем — вместо него LiveAnswer
+const isPartial = (m) => m?.role === "ai" && m.partial;
+
+// Пузырь печатающегося ответа: пока текста нет — «Печатает», потом сам ответ.
+// onGrow — текст подрос (прокрутить вниз, передвинуть ауру)
+function LiveAnswer({ onGrow }) {
+  const text = useLiveText();
+  useLayoutEffect(() => { onGrow?.(); }, [text]);
+  if (!text) return <AssistantSkeleton />;
+  return <MessageBubble role="ai" text={text} isLastAi disabled onRegenerate={() => {}} onEdit={() => {}} />;
+}
+
 function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync }) {
   const greetings = [
   "Что сегодня в повестке дня?",
@@ -7199,7 +7226,10 @@ useEffect(() => {
 }, []);
   const [currentChatId, setCurrentChatId] = useState(initialChatId || null);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
+  const liveChatId = useLiveChatId();
+  const [cmdBusy, setCmdBusy] = useState(false);
+  const isLoading = cmdBusy || liveChatId !== null;
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const bottomRef = useRef(null);
   // Окно со списком сообщений: прокручиваем вниз только его, а не всю страницу
@@ -7260,8 +7290,12 @@ useEffect(() => {
   };
 
   const currentChat = chats.find(c => c.id === currentChatId);
-  const messages = currentChat?.messages || [];
-  const isEmpty = messages.length === 0 && !isLoading;
+  // Пока ответ в этом диалоге печатается, сохранённый на всякий случай кусок
+  // не показываем — его место занимает LiveAnswer
+  const streamingHere = liveChatId !== null && liveChatId === currentChatId;
+  const messages = (currentChat?.messages || []).filter((m, i, all) => !(streamingHere && i === all.length - 1 && isPartial(m)));
+  // Новый диалог — приветствие по центру, даже если в другом диалоге ещё печатается ответ
+  const isEmpty = messages.length === 0 && !cmdBusy && !streamingHere;
 
   // Где аура: за последним сообщением в чате (это «печатает…» или ответ).
   // Двигаем внешний слой напрямую, без перерисовки, не чаще раза за кадр
@@ -7365,21 +7399,38 @@ useEffect(() => {
   // и при повторе ответа, и при редактировании сообщения.
   // previousMessages это сообщения чата ДО вопроса, text это сам вопрос.
   const streamAnswer = async (chatId, previousMessages, text) => {
-    setIsLoading(true);
+    if (live.chatId) return; // уже печатается другой ответ — второй не начинаем
+    liveSet({ chatId, text: "" });
     let fullText = '';
+    let timer = 0;
 
-    // Записывает текст в последний ответ ИИ. Если ответа ещё нет, создаёт его.
-    // Именно тут появляется пузырь, а вместе с ним пропадает "Печатает".
-    const writeAnswer = (answerText, isError = false) => {
-      setChats(prev => prev.map(c => {
-        if (c.id !== chatId) return c;
-        const msgs = [...c.messages];
-        const answer = { role: 'ai', text: answerText, at: Date.now(), ...(isError ? { error: true } : {}) };
-        if (msgs[msgs.length - 1]?.role === 'ai') msgs[msgs.length - 1] = { ...answer, at: msgs[msgs.length - 1].at || answer.at };
-        else msgs.push(answer);
-        return { ...c, messages: msgs };
-      }));
+    // Ответ в историю чата: последний сохранённый «на всякий случай» кусок
+    // заменяем, иначе добавляем новое сообщение. Так ответ не задваивается
+    const putAnswer = (answer) => setChats(prev => prev.map(c => {
+      if (c.id !== chatId) return c;
+      const msgs = [...c.messages];
+      if (isPartial(msgs[msgs.length - 1])) msgs[msgs.length - 1] = { ...answer, at: msgs[msgs.length - 1].at || answer.at };
+      else msgs.push(answer);
+      return { ...c, messages: msgs };
+    }));
+    // Конец: ответ — в историю один раз, целиком. flushSync — чтобы пузырь
+    // LiveAnswer и сохранённый ответ сменили друг друга в одном кадре, без мигания
+    const finish = (answerText, isError = false) => {
+      clearTimeout(timer);
+      removeEventListener('pagehide', checkpoint);
+      document.removeEventListener('visibilitychange', checkpoint);
+      flushSync(() => putAnswer({ role: 'ai', text: answerText, at: Date.now(), ...(isError ? { error: true } : {}) }));
+      liveSet({ chatId: null, text: "" });
     };
+    // Страницу закрывают или сворачивают посреди ответа — сохраняем то, что
+    // успело прийти, с пометкой. Допишется — заменим целым ответом
+    const checkpoint = () => {
+      if (document.visibilityState !== 'hidden' || !fullText) return;
+      // flushSync: в историю (и в localStorage) — сразу, страница может закрыться в любой момент
+      flushSync(() => putAnswer({ role: 'ai', text: fullText + '\n\n(ответ прервался, нажмите "повторить")', at: Date.now(), error: true, partial: true }));
+    };
+    addEventListener('pagehide', checkpoint);
+    document.addEventListener('visibilitychange', checkpoint);
 
     try {
       // История для модели: сообщения с ошибками в неё не берём
@@ -7406,26 +7457,30 @@ useEffect(() => {
         throw err;
       }
 
-      // Читаем ответ кусками и сразу показываем
+      // Читаем ответ кусками. Показываем пачками раз в STREAM_FLUSH_MS:
+      // первый кусок — сразу, следующие собираются и выводятся вместе
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      const show = () => { timer = 0; liveSet({ text: fullText }); };
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         fullText += decoder.decode(value, { stream: true });
-        if (fullText) writeAnswer(fullText);
+        if (!fullText) continue;
+        if (!live.text) show();
+        else if (!timer) timer = setTimeout(show, STREAM_FLUSH_MS);
       }
+      fullText += decoder.decode();
 
-      if (!fullText.trim()) writeAnswer('Пустой ответ. Нажмите "повторить".', true);
+      if (!fullText.trim()) finish('Пустой ответ. Нажмите "повторить".', true);
+      else finish(fullText);
     } catch (error) {
       if (fullText) {
         // Ответ оборвался посередине: оставляем то, что успело прийти
-        writeAnswer(fullText + '\n\n(ответ оборвался, нажмите "повторить")', true);
+        finish(fullText + '\n\n(ответ оборвался, нажмите "повторить")', true);
       } else {
-        writeAnswer(error.userMessage || 'Ошибка соединения с сервером.', true);
+        finish(error.userMessage || 'Ошибка соединения с сервером.', true);
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -7459,9 +7514,9 @@ useEffect(() => {
       return;
     }
     if (action === "summary") {
-      setIsLoading(true); // пока собираем погоду — «печатает»
+      setCmdBusy(true); // пока собираем погоду — «печатает»
       const text = await buildTodaySummary();
-      setIsLoading(false);
+      setCmdBusy(false);
       return say(text, { actionLabel: "Сводка на сегодня" });
     }
     if (action === "devices") return say(buildDevicesSummary(devices), { actionLabel: "Устройства" });
@@ -7829,7 +7884,9 @@ const menuBlock = (
                     onEdit={(newText) => editMessage(i, newText)}
                   />
                 ))}
-                {isLoading && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
+                {cmdBusy && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
+                {/* Ответ, который сейчас печатается (только в своём диалоге) */}
+                {streamingHere && <LiveAnswer onGrow={() => { scrollToBottom(); if (replyAura) placeReplyAura(); }} />}
                 <div ref={bottomRef} />
               </div>
             </div>
