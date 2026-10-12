@@ -52,10 +52,52 @@ async function fetchRows(table) {
   if (error) throw error;
   return data || [];
 }
+/* Необязательные колонки: появляются после ручной миграции (например,
+   chats.pinned — supabase/chats-pinned.sql). Пока миграцию не запустили,
+   облако отвечает «нет такой колонки» — тогда шлём строки без неё
+   (до перезапуска приложения), а значение живёт только в браузере. */
+const OPTIONAL_COLUMNS = { chats: ["pinned"] };
+const missingColumns = new Set(); // "chats.pinned" — колонки в базе нет
+const withoutMissing = (table, rows) => {
+  const drop = (OPTIONAL_COLUMNS[table] || []).filter((c) => missingColumns.has(`${table}.${c}`));
+  if (!drop.length) return rows;
+  return rows.map((r) => { const o = { ...r }; drop.forEach((c) => delete o[c]); return o; });
+};
+// Ошибка «не найдена колонка X» — какую из необязательных колонок она называет
+const missingOptional = (table, e) => {
+  const msg = String(e?.message || "");
+  if (String(e?.code) !== "PGRST204" && !/column/i.test(msg)) return null;
+  return (OPTIONAL_COLUMNS[table] || []).find((c) => msg.includes(`'${c}'`) || msg.includes(`"${c}"`)) || null;
+};
+
+/* Закреплённые здесь, пока колонки pinned в базе не было (только id, без текста).
+   После миграции облако отдаст по ним pinned = false — по этому списку
+   приложение вернёт закрепление и отправит его в облако (см. NexaApp) */
+const LOCAL_PINS_KEY = "nexa-pins-local";
+const readLocalPins = () => { try { return JSON.parse(localStorage.getItem(LOCAL_PINS_KEY)) || []; } catch { return []; } };
+const writeLocalPins = (ids) => { try { ids.length ? localStorage.setItem(LOCAL_PINS_KEY, JSON.stringify(ids)) : localStorage.removeItem(LOCAL_PINS_KEY); } catch {} };
+export const isLocalPin = (id) => readLocalPins().includes(id);
+function noteLocalPins(rows, sentWithColumn) {
+  const pins = new Set(readLocalPins());
+  if (!pins.size && sentWithColumn) return;
+  for (const r of rows) {
+    // Ушло в облако вместе с pinned — облако знает правду, помнить больше не нужно
+    if (sentWithColumn || !r.pinned) pins.delete(r.id);
+    else pins.add(r.id);
+  }
+  writeLocalPins([...pins]);
+}
+
 async function pushRows(table, upserts, deletes) {
   if (upserts.length) {
-    const { error } = await supabase.from(table).upsert(upserts);
+    let { error } = await supabase.from(table).upsert(withoutMissing(table, upserts));
+    const col = error && missingOptional(table, error);
+    if (col) {
+      missingColumns.add(`${table}.${col}`);
+      ({ error } = await supabase.from(table).upsert(withoutMissing(table, upserts)));
+    }
     if (error) throw error;
+    if (table === "chats") noteLocalPins(upserts, !missingColumns.has("chats.pinned"));
   }
   if (deletes.length) {
     const { error } = await supabase.from(table).delete().in("id", deletes);
@@ -84,11 +126,29 @@ async function removeAllStorage(uid) {
   }
 }
 
+/* По времени сообщений (at) история делится на «Сегодня», «Вчера»…
+   У старых диалогов времени в сообщениях нет, и в облаке updated_at
+   станет «сейчас» при любой отправке (например, при переносе гостевых
+   диалогов) — диалог переехал бы в «Сегодня». Поэтому перед отправкой
+   последнему сообщению без времени ставим время прежнего изменения диалога */
+function withLastAt(c) {
+  const msgs = c.messages || [];
+  if (!msgs.length || msgs.some((m) => m?.at)) return msgs;
+  const at = c.updatedAt || c.createdAt || Date.now();
+  return msgs.map((m, i) => (i === msgs.length - 1 ? { ...m, at } : m));
+}
+
 /* ─── Как строки таблиц выглядят в приложении ───
    Элемент списка: { id, createdAt, updatedAt, ...поля } — время в миллисекундах */
 export const CHAT_ROWS = {
-  toRow: (c) => ({ id: c.id, title: c.title || "", messages: c.messages || [], created_at: toIso(c.createdAt) }),
-  fromRow: (r) => ({ id: r.id, title: r.title || "", messages: r.messages || [], createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at) }),
+  // pinned — «Закреплено». Шлём всегда целиком (true/false), поэтому значение
+  // в облаке не затирается; без колонки в базе см. OPTIONAL_COLUMNS выше
+  toRow: (c) => ({ id: c.id, title: c.title || "", messages: withLastAt(c), pinned: !!c.pinned, created_at: toIso(c.createdAt) }),
+  fromRow: (r) => ({
+    id: r.id, title: r.title || "", messages: r.messages || [], createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at),
+    // Колонки ещё нет — поля нет вовсе: приложение оставит закрепление из браузера
+    ...(r.pinned === undefined ? {} : { pinned: !!r.pinned }),
+  }),
   // Новые диалоги сверху
   sort: (list) => [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
 };

@@ -16,7 +16,7 @@ import "lenis/dist/lenis.css";
 import { supabase, authAvailable } from "./lib/supabase.js";
 import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
 // Синхронизация устройств и чатов аккаунта с облаком
-import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine } from "./lib/sync.js";
+import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine, isLocalPin } from "./lib/sync.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity } from "./lib/realtime.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
@@ -24,7 +24,7 @@ import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
 } from "./lib/files.js";
-const VERSION = "0.8.9";
+const VERSION = "0.8.11";
 
 
 /* =========================================================================
@@ -6798,7 +6798,315 @@ const assistantSuggestions = () => [
 // onAddDevice — открыть окно добавления устройства, onUploadFiles — выбор файлов
 // bell — колокольчик уведомлений (у ассистента своя верхняя строка)
 // chats / setChats — диалоги из App: там они сохраняются в браузере и в облаке аккаунта
-function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell }) {
+/* ---------- История диалогов ассистента ----------
+   Компьютер — постоянная колонка слева. Телефон — шторка слева на 85% ширины
+   с затемнением: закрывается нажатием мимо, крестиком, свайпом влево, Esc и «Назад». */
+
+// Когда в диалоге последний раз писали (мс). У сообщений есть время at;
+// у старых диалогов (до появления at) — время последнего изменения
+function chatLastAt(c) {
+  const msgs = c.messages || [];
+  for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i]?.at) return msgs[i].at;
+  return c.updatedAt || c.createdAt || 0;
+}
+// Закрепление и переименование меняют updatedAt. Чтобы старый диалог без
+// времени у сообщений не переехал от этого в «Сегодня», запоминаем прежнее
+// время в последнем сообщении
+function keepLastAt(c) {
+  const msgs = c.messages || [];
+  if (!msgs.length || msgs.some((m) => m?.at)) return c;
+  const at = chatLastAt(c);
+  return { ...c, messages: msgs.map((m, i) => (i === msgs.length - 1 ? { ...m, at } : m)) };
+}
+const HISTORY_GROUPS = [
+  ["pinned", "Закреплено"], ["today", "Сегодня"], ["yesterday", "Вчера"],
+  ["week", "За 7 дней"], ["month", "За 30 дней"], ["older", "Раньше"],
+];
+// Раздел по календарным дням (полночь по времени телефона), а не по «24 часам назад»
+function historyGroup(c, now) {
+  if (c.pinned) return "pinned";
+  const day = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const days = Math.round((day(now) - day(chatLastAt(c))) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days <= 7) return "week";
+  if (days <= 30) return "month";
+  return "older";
+}
+// Подходит ли экран под условие (например, телефонная ширина) — и следим за поворотом
+function useMediaQuery(query) {
+  const [match, setMatch] = useState(() => !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setMatch(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return match;
+}
+
+function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, mobile, open, onClose, account, sync, onSettings }) {
+  const [query, setQuery] = useState("");
+  const [menu, setMenu] = useState(null);         // меню диалога: { id, top | bottom, right, confirm }
+  const [renaming, setRenaming] = useState(null); // { id, text } — строка превратилась в поле
+  const listRef = useRef(null);
+  // Свайп влево: насколько панель ушла за пальцем (px, ≤ 0)
+  const [dx, setDx] = useState(0);
+  const drag = useRef(null);
+
+  // Шторка закрылась — закрываем и меню, и переименование
+  useEffect(() => { if (mobile && !open) { setMenu(null); setRenaming(null); } }, [mobile, open]);
+
+  // Esc (и «Назад» на Android): переименование → меню → шторка
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (renaming) return setRenaming(null);
+      if (menu) return setMenu(null);
+      if (mobile && open) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [renaming, menu, mobile, open]);
+
+  // Меню закрывается нажатием мимо него, прокруткой списка и сменой размера
+  useEffect(() => {
+    if (!menu) return;
+    const off = (e) => { if (!e.target.closest?.(".nx-hist-menu, .nx-hist-more")) setMenu(null); };
+    const close = () => setMenu(null);
+    const list = listRef.current;
+    document.addEventListener("pointerdown", off, true);
+    list?.addEventListener("scroll", close, { passive: true });
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", off, true);
+      list?.removeEventListener("scroll", close);
+      window.removeEventListener("resize", close);
+    };
+  }, [menu?.id]);
+
+  // Поиск по названию и по тексту сообщений
+  const q = query.trim().toLowerCase();
+  const found = !q ? chats : chats.filter((c) =>
+    (c.title || "").toLowerCase().includes(q) ||
+    (c.messages || []).some((m) => typeof m.text === "string" && m.text.toLowerCase().includes(q)));
+  const now = new Date();
+  const groups = HISTORY_GROUPS
+    .map(([id, label]) => ({
+      id, label,
+      items: found.filter((c) => historyGroup(c, now) === id).sort((a, b) => chatLastAt(b) - chatLastAt(a)),
+    }))
+    .filter((g) => g.items.length);
+
+  // Меню рисуется поверх всего (в body), рядом с кнопкой «⋯»; у низа экрана — над ней
+  const openMenu = (id, btn) => {
+    if (menu?.id === id) return setMenu(null);
+    const r = btn.getBoundingClientRect();
+    const h = window.visualViewport?.height || window.innerHeight;
+    const up = r.bottom + 170 > h;
+    setMenu({ id, right: Math.max(8, window.innerWidth - r.right), confirm: false,
+      ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+  };
+  const menuChat = menu && chats.find((c) => c.id === menu.id);
+  const togglePin = (id) => {
+    setChats((prev) => prev.map((c) => (c.id === id ? { ...keepLastAt(c), pinned: !c.pinned } : c)));
+    setMenu(null);
+  };
+  const startRename = (c) => { setMenu(null); setRenaming({ id: c.id, text: c.title || "" }); };
+  const saveRename = () => {
+    if (!renaming) return;
+    const t = renaming.text.replace(/\s+/g, " ").trim().slice(0, 120);
+    if (t) setChats((prev) => prev.map((c) => (c.id === renaming.id && c.title !== t ? { ...keepLastAt(c), title: t } : c)));
+    setRenaming(null);
+  };
+
+  // Свайп влево по шторке — закрыть. Вертикальное движение — обычная прокрутка списка
+  const touch = mobile ? {
+    onTouchStart: (e) => { const t = e.touches[0]; drag.current = { x: t.clientX, y: t.clientY, on: null, dx: 0 }; },
+    onTouchMove: (e) => {
+      const d = drag.current;
+      if (!d) return;
+      const t = e.touches[0], mx = t.clientX - d.x, my = t.clientY - d.y;
+      if (d.on === null) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        d.on = Math.abs(mx) > Math.abs(my) && mx < 0;
+      }
+      if (d.on) { d.dx = Math.min(0, mx); setDx(d.dx); }
+    },
+    onTouchEnd: () => {
+      const d = drag.current;
+      drag.current = null;
+      if (d?.on && d.dx < -60) onClose();
+      setDx(0);
+    },
+  } : {};
+
+  const row = (chat) => {
+    const active = chat.id === currentChatId;
+    if (renaming?.id === chat.id) {
+      return (
+        <div key={chat.id} className="nx-hist-row is-active">
+          <input
+            autoFocus
+            className="nx-hist-rename"
+            aria-label="Новое название диалога"
+            value={renaming.text}
+            maxLength={120}
+            onChange={(e) => setRenaming({ ...renaming, text: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveRename(); } }}
+            onBlur={saveRename}
+            onFocus={(e) => e.target.select()}
+          />
+        </div>
+      );
+    }
+    return (
+      <div key={chat.id} className={`nx-hist-row${active ? " is-active" : ""}`}>
+        <button type="button" className="nx-hist-open" aria-current={active ? "true" : undefined}
+          onClick={() => onOpen(chat.id)} title={chat.title}>
+          {chat.title || "Без названия"}
+        </button>
+        <button type="button" className="nx-hist-more" aria-label={`Действия с диалогом «${chat.title}»`}
+          aria-haspopup="menu" aria-expanded={menu?.id === chat.id}
+          onClick={(e) => openMenu(chat.id, e.currentTarget)}>
+          {Icon.dots({ c: "currentColor", s: 16 })}
+        </button>
+      </div>
+    );
+  };
+
+  const panel = (
+    <aside
+      className={`nx-hist${mobile ? " nx-hist-drawer" : ""}${open ? " is-open" : ""}${dx ? " is-dragging" : ""}`}
+      // На телефоне открытая шторка — окно: «Назад» закроет её через Esc
+      role={mobile && open ? "dialog" : undefined}
+      aria-modal={mobile && open ? "true" : undefined}
+      aria-label="История диалогов"
+      aria-hidden={mobile && !open ? "true" : undefined}
+      style={mobile && open && dx ? { transform: `translateX(${dx}px)` } : undefined}
+      {...touch}
+    >
+      <div className="nx-hist-head">
+        <span className="nx-hist-label">История</span>
+        {mobile && (
+          <button type="button" className="nx-hist-close" aria-label="Закрыть историю" onClick={onClose}>
+            {Icon.close({ c: C.text, s: 16 })}
+          </button>
+        )}
+      </div>
+      <button type="button" className="nx-ghost-btn nx-hist-new" onClick={onNew}>
+        {Icon.plus({ c: C.mint, s: 15 })} Новый диалог
+      </button>
+      <label className="nx-hist-search">
+        {Icon.search({ c: C.mutedSoft, s: 14 })}
+        <input value={query} onChange={(e) => setQuery(e.target.value)}
+          placeholder="Поиск по диалогам" aria-label="Поиск по диалогам" enterKeyHint="search" />
+        {query && (
+          <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" style={{ ...btnReset, display: "flex", padding: 2 }}>
+            {Icon.close({ c: C.mutedSoft, s: 12 })}
+          </button>
+        )}
+      </label>
+
+      <div ref={listRef} className="nx-scroll nx-hist-list">
+        {chats.length === 0 ? (
+          <div className="nx-hist-empty">Здесь появятся ваши диалоги</div>
+        ) : groups.length === 0 ? (
+          <div className="nx-hist-empty">Ничего не нашлось</div>
+        ) : groups.map((g) => (
+          <section key={g.id} aria-label={g.label} className="nx-hist-section">
+            <div className="nx-hist-group">
+              {g.id === "pinned" && Icon.pin({ c: C.mint, s: 11 })}
+              {g.label}
+            </div>
+            {g.items.map(row)}
+          </section>
+        ))}
+      </div>
+
+      {/* Синхронизация аккаунта — строкой над аккаунтом, список не перекрывает */}
+      {(sync?.loading || sync?.text) && (
+        <div className="nx-hist-sync" role="status">
+          {sync.loading ? <Spinner s={11} /> : <Dot color={C.red} />}
+          <span>{sync.loading ? "Загружаем данные аккаунта…" : sync.text}</span>
+          {!sync.loading && sync.onRetry && (
+            <button type="button" onClick={sync.onRetry} style={{ ...btnReset, color: C.mint, fontSize: 12, textDecoration: "underline", textUnderlineOffset: 3 }}>
+              Повторить
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Аккаунт: почта или «Гость» и переход в настройки */}
+      <button type="button" className="nx-hist-account" onClick={onSettings} aria-label="Открыть настройки">
+        <span className="nx-hist-avatar">{Icon.user({ c: account ? C.mint : C.muted, s: 15 })}</span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+          <span className="nx-hist-email">{account ? account.email || "Аккаунт" : "Гость"}</span>
+          <span className="nx-hist-sub">{account ? "Диалоги в облаке" : "Диалоги только в этом браузере"}</span>
+        </span>
+        {Icon.gear({ c: C.muted, s: 16 })}
+      </button>
+    </aside>
+  );
+
+  const menuEl = menu && menuChat && createPortal(
+    <div className="nx-hist-menu nx-pop" role="menu" aria-label={`Диалог «${menuChat.title}»`}
+      style={{ position: "fixed", top: menu.top, bottom: menu.bottom, right: menu.right }}>
+      {menu.confirm ? (
+        <div style={{ padding: "6px 6px 4px", maxWidth: 220 }}>
+          <div style={{ fontSize: 13, color: C.text, lineHeight: 1.4, marginBottom: 10 }}>
+            Удалить диалог «{menuChat.title}»? Его не получится вернуть.
+          </div>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button type="button" role="menuitem" className="nx-ghost-btn" autoFocus onClick={() => setMenu(null)}
+              style={{ ...btnReset, padding: "6px 12px", fontSize: 12.5, border: `1px solid ${C.borderStrong}`, color: C.text }}>
+              Отмена
+            </button>
+            <button type="button" role="menuitem" className="nx-ghost-btn" onClick={() => { setMenu(null); onDelete(menuChat.id); }}
+              style={{ ...btnReset, padding: "6px 12px", fontSize: 12.5, border: `1px solid color-mix(in srgb, ${C.red} 60%, transparent)`, color: C.red }}>
+              Удалить
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button type="button" role="menuitem" autoFocus onClick={() => togglePin(menuChat.id)}>
+            {Icon.pin({ c: C.mint, s: 14 })} {menuChat.pinned ? "Открепить" : "Закрепить"}
+          </button>
+          <button type="button" role="menuitem" onClick={() => startRename(menuChat)}>
+            {Icon.edit({ c: C.text, s: 14 })} Переименовать
+          </button>
+          <button type="button" role="menuitem" className="is-danger" onClick={() => setMenu({ ...menu, confirm: true })}>
+            {Icon.trash({ c: C.red, s: 14 })} Удалить
+          </button>
+        </>
+      )}
+    </div>,
+    document.body,
+  );
+
+  // Телефон: шторка и затемнение — в body, поверх нижней панели.
+  // Высота — видимая область (над клавиатурой, когда ищем)
+  if (mobile) {
+    return (
+      <>
+        {createPortal(
+          <>
+            <div className={`nx-hist-scrim${open ? " is-open" : ""}`} onClick={onClose} aria-hidden="true" />
+            {panel}
+          </>,
+          document.body,
+        )}
+        {menuEl}
+      </>
+    );
+  }
+  return <>{panel}{menuEl}</>;
+}
+
+function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -6826,14 +7134,8 @@ useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   };
-  const [searchQuery, setSearchQuery] = useState('');
-  // Esc (и кнопка «Назад» на Android) закрывает панель истории
-  useEffect(() => {
-    if (!isHistoryOpen) return;
-    const onKey = (e) => { if (e.key === "Escape") setIsHistoryOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [isHistoryOpen]);
+  // Телефонная ширина: история — шторка; шире — постоянная колонка слева
+  const mobile = useMediaQuery("(max-width: 768px)");
 
   // Аура за ответом: появляется, когда ассистент начинает думать,
   // и исчезает через REPLY_AURA_HOLD после ответа
@@ -6977,8 +7279,8 @@ useEffect(() => {
 
   const newChat = () => { if (currentChatId) rememberInputPos(); setCurrentChatId(null); setInput(''); };
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
-  const deleteChat = (id, e) => {
-    e.stopPropagation();
+  // Удаление (уже после подтверждения в меню диалога)
+  const deleteChat = (id) => {
     setChats(prev => prev.filter(c => c.id !== id));
     if (id === currentChatId) setCurrentChatId(null);
     onToast?.({ title: "Диалог удалён" });
@@ -6998,8 +7300,8 @@ useEffect(() => {
       setChats(prev => prev.map(c => {
         if (c.id !== chatId) return c;
         const msgs = [...c.messages];
-        const answer = { role: 'ai', text: answerText, ...(isError ? { error: true } : {}) };
-        if (msgs[msgs.length - 1]?.role === 'ai') msgs[msgs.length - 1] = answer;
+        const answer = { role: 'ai', text: answerText, at: Date.now(), ...(isError ? { error: true } : {}) };
+        if (msgs[msgs.length - 1]?.role === 'ai') msgs[msgs.length - 1] = { ...answer, at: msgs[msgs.length - 1].at || answer.at };
         else msgs.push(answer);
         return { ...c, messages: msgs };
       }));
@@ -7055,7 +7357,7 @@ useEffect(() => {
 
   // Добавить сообщение в конец чата / поменять сообщение по id
   const pushMsg = (chatId, msg) => setChats(prev => prev.map(c =>
-    c.id === chatId ? { ...c, messages: [...c.messages, msg] } : c));
+    c.id === chatId ? { ...c, messages: [...c.messages, { at: Date.now(), ...msg }] } : c));
   const patchMsg = (chatId, id, patch) => setChats(prev => prev.map(c =>
     c.id === chatId ? { ...c, messages: c.messages.map(m => (m.id === id ? { ...m, ...patch } : m)) } : c));
 
@@ -7115,7 +7417,8 @@ useEffect(() => {
     // Сначала проверяем, не команда ли это
     const cmd = parseCommand(text);
     if (isEmpty) rememberInputPos();
-    const userMsg = { role: 'user', text, ...(cmd ? { action: true } : {}) };
+    // at — когда написано (мс): по нему история делится на «Сегодня», «Вчера»…
+    const userMsg = { role: 'user', text, at: Date.now(), ...(cmd ? { action: true } : {}) };
     const before = currentChat?.messages || [];
     let chatId = currentChatId;
 
@@ -7175,7 +7478,7 @@ useEffect(() => {
         title: index === 0
           ? (newText.length > 40 ? newText.slice(0, 40) + '…' : newText)
           : c.title,
-        messages: [...previous, { role: 'user', text: newText, ...(cmd ? { action: true } : {}) }],
+        messages: [...previous, { role: 'user', text: newText, at: Date.now(), ...(cmd ? { action: true } : {}) }],
       };
     }));
     if (cmd) runCommand(currentChatId, cmd);
@@ -7186,39 +7489,20 @@ useEffect(() => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-    const rightItems = [
-    { label: "Новый диалог", icon: Icon.plus, onClick: newChat },
-    {
-      label: "Поиск",
-      icon: Icon.search,
-      onClick: () => {
-        setIsHistoryOpen(true);
-        // сбрасываем поиск при новом открытии
-        setSearchQuery('');
-      },
-      active: isHistoryOpen,
-    },
-    {
-      label: "История",
-      icon: Icon.list,
-      onClick: () => setIsHistoryOpen(v => !v),
-      active: isHistoryOpen,
-    },
-  ];
-
 
  const titleOnly = (
   <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
     {/* Гамбургер — виден только на мобильном */}
     <button
       className="ng-hamburger"
-      onClick={() => setIsHistoryOpen(v => !v)}
+      onClick={() => setIsHistoryOpen(true)}
       style={{
         background: "transparent", border: "none",
         cursor: "pointer", padding: 4, display: "none",
         alignItems: "center", justifyContent: "center",
       }}
-      aria-label="Меню"
+      aria-label="История диалогов"
+      aria-expanded={isHistoryOpen}
     >
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke={C.text} strokeWidth="2">
         <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
@@ -7235,32 +7519,9 @@ useEffect(() => {
   </div>
 );
 
-const menuBlock = isHistoryOpen ? (
-  // Когда открыта история — показываем только крестик закрытия
-  <div className="ng-menu-block" style={{
-    position: "fixed",
-    top: 24,
-    right: 40,
-    zIndex: 200,
-  }}>
-    <button
-      onClick={() => setIsHistoryOpen(false)}
-      title="Закрыть историю"
-      style={{
-        width: 40, height: 40, borderRadius: "50%",
-        border: `1px solid ${C.border}`,
-        background: C.panel,
-        color: C.text,
-        cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 20, lineHeight: 1,
-      }}
-    >
-      ×
-    </button>
-  </div>
-) : (
-  // Обычное меню — когда история закрыта
+const menuBlock = (
+  // Справа сверху (только компьютер): время, уведомления, профиль.
+  // «Новый диалог» и поиск — в колонке истории слева
   <div className="ng-menu-block" style={{
     position: "fixed",
     top: 24,
@@ -7282,30 +7543,6 @@ const menuBlock = isHistoryOpen ? (
       {bell}
       <IconBtn icon={Icon.user} />
     </div>
-
-    {/* Меню: Новый диалог / Поиск / История */}
-    {rightItems.map((it) => (
-      <div
-        key={it.label}
-        onClick={it.onClick}
-        style={{
-          display: "flex", alignItems: "center", gap: 10,
-          fontSize: 14,
-          cursor: it.onClick ? "pointer" : "default",
-        }}
-      >
-        {it.label}
-        <div style={{
-          width: 30, height: 30, borderRadius: "50%",
-          border: `1px solid ${it.active ? C.mint : C.border}`,
-          background: it.active ? C.mintDark : "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "border-color 140ms ease, background 140ms ease",
-        }}>
-          {it.icon({ c: it.active ? C.mint : C.text, s: 15 })}
-        </div>
-      </div>
-    ))}
   </div>
 );
 
@@ -7399,150 +7636,22 @@ const menuBlock = isHistoryOpen ? (
   </div>
 );
 
-  // ─── ПАНЕЛЬ ИСТОРИИ (справа) ─────────────────────────────
-    const historyPanel = (
-    <div
-      className={`ng-history-panel${isHistoryOpen ? " is-open" : ""}`}
-      style={{
-        width: isHistoryOpen ? 240 : 0,
-        marginLeft: isHistoryOpen ? 24 : 0,
-        flexShrink: 0,
-        overflow: "hidden",
-        opacity: isHistoryOpen ? 1 : 0,
-        transition:
-          "width 320ms cubic-bezier(0.4, 0, 0.2, 1), " +
-          "margin-left 320ms cubic-bezier(0.4, 0, 0.2, 1), " +
-          "opacity 220ms ease",
-      }}
-    >
-      <div
-        className="nx-scroll"
-        style={{
-          width: 240,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          borderLeft: `1px solid ${C.border}`,
-          paddingLeft: 20,
-          paddingRight: 4,
-          boxSizing: "border-box",
-          overflowY: "auto",
-        }}
-      >
-        {/* Шапка с крестиком — только на мобильном (CSS покажет) */}
-        <div className="ng-history-header">
-          <div style={{ fontSize: 11, letterSpacing: "0.15em", color: C.mutedSoft, textTransform: "uppercase" }}>
-            История
-          </div>
-          <button
-            onClick={() => setIsHistoryOpen(false)}
-            style={{ background: "transparent", border: "none", cursor: "pointer", color: C.text, fontSize: 24, lineHeight: 1, padding: 0 }}
-            aria-label="Закрыть"
-          >
-            ×
-          </button>
-        </div>
-
-                {/* Кнопки действий — только на мобильном (CSS покажет) */}
-        <div className="ng-history-actions">
-          <button
-            onClick={() => { newChat(); setIsHistoryOpen(false); }}
-            style={{ flex: 1, padding: "12px 16px", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 999, color: C.text, fontSize: 14, cursor: "pointer" }}
-          >
-            + Новый диалог
-          </button>
-        </div>
-        {/* Заголовок "История" — только на десктопе */}
-        <div className="ng-history-title-desktop" style={{
-          fontSize: 11, letterSpacing: "0.15em", color: C.mutedSoft,
-          textTransform: "uppercase", paddingLeft: 4, marginBottom: 4,
-        }}>
-          История
-        </div>
-
-                {/* Поле поиска */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "8px 12px", marginBottom: 4,
-          border: `1px solid ${C.border}`, borderRadius: 8,
-          background: C.panel,
-        }}>
-          {Icon.search({ c: C.mutedSoft, s: 14 })}
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск по диалогам..."
-            style={{
-              flex: 1, background: "transparent", border: "none",
-              outline: "none", color: C.text, fontSize: 13, minWidth: 0,
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                background: "transparent", border: "none",
-                color: C.mutedSoft, cursor: "pointer", padding: 0,
-                fontSize: 14, lineHeight: 1,
-              }}
-              title="Очистить"
-            >
-              ×
-            </button>
-          )}
-        </div>
-
-        {chats.length === 0 ? (
-          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "4px", lineHeight: 1.5 }}>
-            Здесь появятся ваши диалоги
-          </div>
-        ) : chats.filter(c =>
-            c.title.toLowerCase().includes(searchQuery.toLowerCase().trim())
-          ).length === 0 ? (
-          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "4px", lineHeight: 1.5 }}>
-            Ничего не найдено
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {chats
-              .filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase().trim()))
-              .map((chat) => (
-                <div
-                  key={chat.id}
-                  onClick={() => { openChat(chat.id); setIsHistoryOpen(false); }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-                    background: chat.id === currentChatId ? C.panel : "transparent",
-                    border: `1px solid ${chat.id === currentChatId ? C.border : "transparent"}`,
-                    transition: "background 140ms ease",
-                  }}
-                >
-                  <div style={{
-                    flex: 1, minWidth: 0, fontSize: 13, color: C.text,
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  }}>
-                    {chat.title}
-                  </div>
-                  <button
-                    onClick={(e) => deleteChat(chat.id, e)}
-                    title="Удалить"
-                    style={{
-                      background: "transparent", border: "none",
-                      color: C.mutedSoft, cursor: "pointer",
-                      fontSize: 14, padding: 2, lineHeight: 1,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}
-                  >
-                    ×
-                  </button>
-                   </div>
-              ))}
-          </div>
-        )}
-      </div>
-    </div>
+  // ─── ПАНЕЛЬ ИСТОРИИ (см. ChatHistory) ─────────────────────
+  const historyPanel = (
+    <ChatHistory
+      chats={chats}
+      setChats={setChats}
+      currentChatId={currentChatId}
+      mobile={mobile}
+      open={isHistoryOpen}
+      onClose={() => setIsHistoryOpen(false)}
+      onOpen={(id) => { openChat(id); setIsHistoryOpen(false); }}
+      onNew={() => { newChat(); setIsHistoryOpen(false); }}
+      onDelete={deleteChat}
+      account={account}
+      sync={sync}
+      onSettings={() => { setIsHistoryOpen(false); setTab?.("settings"); }}
+    />
   );
 
   const wrapperStyle = {
@@ -7566,6 +7675,8 @@ const menuBlock = isHistoryOpen ? (
     {menuBlock}
 
     <div className="ng-assistant-inner" style={innerStyle}>
+      {/* История — слева: на компьютере колонкой, на телефоне шторкой поверх */}
+      {historyPanel}
       <div style={{
         flex: 1, display: "flex", flexDirection: "column",
         minWidth: 0, minHeight: 0,
@@ -7665,8 +7776,6 @@ const menuBlock = isHistoryOpen ? (
            </>
         )}
       </div>
-
-      {historyPanel}
     </div>
   </div>
   );
@@ -9580,7 +9689,19 @@ export default function NexaApp() {
   const chatsSync = useCloudList({
     uid, table: "chats", value: chats, setValue: setChatsStore,
     toList: (list) => list.map((c) => ({ ...c, updatedAt: c.updatedAt || c.createdAt || 0 })),
-    fromList: (list) => list, rows: CHAT_ROWS,
+    // Облако не прислало pinned (миграция chats-pinned.sql ещё не запущена) —
+    // оставляем закрепление, которое было в браузере. Миграцию только что
+    // запустили (в облаке pinned = false), а закрепили здесь до неё —
+    // возвращаем закрепление и отправляем в облако (новое время → уйдёт само)
+    fromList: (list, prev) => {
+      const was = new Map((prev || []).map((c) => [c.id, c]));
+      return list.map((c) => {
+        if (!was.get(c.id)?.pinned || c.pinned) return c;
+        if (c.pinned === undefined) return { ...c, pinned: true };
+        return isLocalPin(c.id) ? { ...c, pinned: true, updatedAt: Date.now() } : c;
+      });
+    },
+    rows: CHAT_ROWS,
     // Первый вход: в облаке пусто, а в браузере есть гостевые диалоги — переносим один раз
     migrate: {
       ...chatMigration(uid),
@@ -10154,7 +10275,7 @@ export default function NexaApp() {
       if (gate && !gate.querySelector(".nx-auth-step")) { CapApp.minimizeApp(); return; }
       // 1) Открыто окно, меню, уведомления или история чатов — закрываем его.
       //    У всех них закрытие уже работает по Esc — нажимаем его за пользователя
-      const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes, .ng-history-panel.is-open');
+      const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes');
       if (layer) {
         const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
         target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -10341,7 +10462,6 @@ export default function NexaApp() {
         @media (max-width: 768px) {
           .nx-native .ng-assistant-inner { padding-bottom: calc(76px + var(--sab)) !important; }
           .nx-native body.kb-open .ng-assistant-inner { padding-bottom: 16px !important; }
-          .nx-native .ng-history-panel { padding-top: var(--sat) !important; box-sizing: border-box; }
         }
         /* Шрифты лежат в public/fonts — так они одинаковые на любом устройстве,
            даже если у человека они не установлены (раньше Raleway брался
@@ -10421,6 +10541,7 @@ export default function NexaApp() {
           --hover: rgba(255, 255, 255, 0.05);  --pressed: rgba(255, 255, 255, 0.10);
           --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
           --border-strong: rgba(255, 255, 255, 0.28);
+          --scrim: rgba(0, 0, 0, 0.6);
           --on-fold: #FFFFFF;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
@@ -10444,6 +10565,7 @@ export default function NexaApp() {
           --hover: rgba(24, 32, 58, 0.06);  --pressed: rgba(24, 32, 58, 0.12);
           --input-glow: none;
           --border-strong: rgba(24, 32, 58, 0.24);
+          --scrim: rgba(10, 16, 36, 0.38);
           --on-fold: #FFFFFF;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
@@ -10470,9 +10592,106 @@ export default function NexaApp() {
         .ng-hamburger { display: none; }
         .ng-devices-list { display: block; }
         .ng-devices-mobile { display: none; }
-        .ng-history-header { display: none; }
-        .ng-history-actions { display: none; }
-        .ng-history-title-desktop { display: block; }
+
+        /* ─── История диалогов (ChatHistory) ───────────────────
+           Компьютер: постоянная колонка слева от чата */
+        .nx-hist {
+          width: 264px; flex-shrink: 0; min-height: 0; box-sizing: border-box;
+          display: flex; flex-direction: column; gap: 10px;
+          padding-right: 20px; margin-right: 28px; border-right: 1px solid var(--border);
+        }
+        @media (max-width: 1100px) { .nx-hist { width: 228px; padding-right: 14px; margin-right: 20px; } }
+        .nx-hist-head { display: flex; align-items: center; justify-content: space-between; min-height: 18px; }
+        .nx-hist-label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted-soft); padding-left: 4px; }
+        .nx-hist-new {
+          display: flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0;
+          padding: 10px 14px; border: 1px solid var(--border-strong); background: var(--panel);
+          color: var(--text); font: inherit; font-size: 14px; cursor: pointer;
+        }
+        .nx-hist-search {
+          display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 8px 10px;
+          border: 1px solid var(--border); border-radius: 4px; background: var(--panel); cursor: text;
+        }
+        .nx-hist-search:focus-within { border-color: var(--border-strong); }
+        .nx-hist-search input {
+          flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+          color: var(--text); font: inherit; font-size: 13px; padding: 0;
+        }
+        .nx-hist-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px 4px; }
+        .nx-hist-section + .nx-hist-section { margin-top: 10px; }
+        .nx-hist-group {
+          display: flex; align-items: center; gap: 6px; padding: 6px 10px 3px;
+          font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-soft);
+        }
+        .nx-hist-row {
+          position: relative; display: flex; align-items: center;
+          border: 1px solid transparent; border-radius: 4px;
+        }
+        .nx-hist-row:hover { background: var(--hover); }
+        .nx-hist-row.is-active { background: var(--panel); border-color: var(--border); }
+        /* Открытый диалог — тонкая мятная грань слева */
+        .nx-hist-row.is-active::before {
+          content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 2px; background: var(--mint);
+        }
+        .nx-hist-open {
+          flex: 1; min-width: 0; padding: 7px 4px 7px 10px; text-align: left;
+          background: transparent; border: none; color: var(--text); font: inherit; font-size: 13.5px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+        }
+        .nx-hist-more {
+          flex-shrink: 0; width: 28px; height: 28px; margin-right: 2px; padding: 0;
+          display: flex; align-items: center; justify-content: center;
+          border: none; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; opacity: 0;
+        }
+        /* «⋯» видно при наведении, у открытого диалога и на сенсорных экранах */
+        .nx-hist-row:hover .nx-hist-more, .nx-hist-row.is-active .nx-hist-more,
+        .nx-hist-more:focus-visible, .nx-hist-more[aria-expanded="true"] { opacity: 1; }
+        @media (hover: none) { .nx-hist-more { opacity: 1; } }
+        .nx-hist-more:hover, .nx-hist-more[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+        .nx-hist-rename {
+          flex: 1; min-width: 0; margin: 2px; padding: 5px 8px; outline: none;
+          border: 1px solid var(--mint); border-radius: 4px; background: var(--bg); color: var(--text);
+          font: inherit; font-size: 13.5px;
+        }
+        .nx-hist-empty { padding: 6px 10px; font-size: 13px; line-height: 1.5; color: var(--muted-soft); }
+        .nx-hist-sync {
+          display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex-shrink: 0;
+          padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--muted);
+        }
+        .nx-hist-account {
+          display: flex; align-items: center; gap: 10px; width: 100%; flex-shrink: 0; box-sizing: border-box;
+          padding: 9px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel);
+          color: var(--text); font: inherit; text-align: left; cursor: pointer;
+        }
+        .nx-hist-account:hover { border-color: var(--border-strong); }
+        .nx-hist-avatar {
+          width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+          border: 1px solid var(--border-strong); border-radius: 10px;
+        }
+        .nx-hist-email { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-hist-sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* Крестик шторки — круглая кнопка-значок */
+        .nx-hist-close {
+          width: 36px; height: 36px; padding: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+          border: 1px solid var(--border-strong); border-radius: 50%; background: transparent; cursor: pointer;
+        }
+        .nx-hist-close:active { background: var(--pressed); }
+        .nx-hist-scrim { display: none; }
+        /* Меню диалога: «Закрепить», «Переименовать», «Удалить» */
+        .nx-hist-menu {
+          z-index: 400; min-width: 184px; padding: 4px; box-sizing: border-box;
+          background: var(--panel); border: 1px solid var(--border-strong); border-radius: 4px;
+        }
+        .nx-hist-menu > button {
+          display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
+          background: transparent; border: none; border-radius: 4px; color: var(--text);
+          font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+        }
+        .nx-hist-menu > button:hover, .nx-hist-menu > button:focus-visible { background: var(--hover); outline: none; }
+        .nx-hist-menu > button.is-danger { color: var(--red); }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-hist-drawer, .nx-hist-drawer.is-open, .nx-hist-scrim { transition: none !important; }
+        }
         
         
         @keyframes ng-screen-in {
@@ -11124,91 +11343,37 @@ export default function NexaApp() {
             padding: 24px 16px 76px 16px !important;
           }
           /* Когда клавиатура открыта — уменьшаем нижний отступ */
-          body.kb-open .ng-assistant-inner,
-          body.kb-open .ng-history-panel {
+          body.kb-open .ng-assistant-inner {
             padding-bottom: 16px !important;
           }
 
-          /* Панель истории на весь экран */
-          .ng-history-panel {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100% !important;
-            margin-left: 0 !important;
-            background: var(--bg) !important;
-            z-index: 150 !important;
-            /* До самого низа экрана; снизу отступ под нижнюю панель
-               (раньше панель обрывалась на 60px, и при открытой клавиатуре
-               в щели проглядывало поле ввода чата) */
-            padding: 24px 16px calc(84px + var(--sab)) !important;
-            border-left: none !important;
-            border-right: none !important;
-            transform: translateX(-100%);
-            transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease !important;
-            opacity: 0;
-            box-sizing: border-box !important;
+          /* История — шторка слева на 85% ширины, поверх нижней панели.
+             Высота — видимая область (над клавиатурой, когда пишем в поиск) */
+          .nx-hist-drawer {
+            position: fixed; top: var(--vvt, 0px); left: 0; height: var(--vvh, 100%);
+            width: 85%; max-width: 380px; margin: 0; z-index: 310;
+            padding: calc(var(--sat) + 18px) 14px calc(var(--sab) + 12px);
+            background: var(--bg); border-right: 1px solid var(--border-strong);
+            transform: translateX(-102%); visibility: hidden;
+            transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 280ms;
           }
-             .ng-history-panel .nx-scroll > div:last-child > div > div {
-    padding: 14px 14px !important;
-    border-radius: 10px !important;
-  }
-  .ng-history-panel .nx-scroll > div:last-child > div > div > div:first-child {
-    font-size: 14.5px !important;
-  }
-          .ng-history-panel.is-open {
-            transform: translateX(0) !important;
-            opacity: 1 !important;
-            width: 100% !important;
-            overflow-y: auto !important;
+          .nx-hist-drawer.is-open {
+            transform: translateX(0); visibility: visible;
+            transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
           }
-          .ng-history-panel > div {
-            width: 100% !important;
-            height: auto !important;
-            border-left: none !important;
-            padding-left: 0 !important;
+          /* Панель идёт за пальцем — без плавности */
+          .nx-hist-drawer.is-dragging { transition: none; }
+          .nx-hist-scrim {
+            display: block; position: fixed; inset: 0; z-index: 305; background: var(--scrim);
+            opacity: 0; pointer-events: none; transition: opacity 240ms ease;
           }
-
-            .ng-history-header {
-    display: flex !important;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 4px 16px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 16px;
-  }
-  .ng-history-header > div {
-    font-size: 13px !important;
-    letter-spacing: 0.2em !important;
-    color: var(--muted) !important;
-    font-weight: 500 !important;
-  }
-  .ng-history-header button {
-    width: 36px !important;
-    height: 36px !important;
-    border-radius: 50% !important;
-    background: var(--hover) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 20px !important;
-            }
-
-          .ng-history-actions {
-    display: flex !important;
-    gap: 10px !important;
-    margin-bottom: 20px !important;
-  }
-  .ng-history-actions button {
-    padding: 14px 16px !important;
-    border-radius: 12px !important;
-    font-size: 14px !important;
-    font-weight: 500 !important;
-    background: var(--panel) !important;
-  }
-          .ng-history-title-desktop { display: none !important; }
+          .nx-hist-scrim.is-open { opacity: 1; pointer-events: auto; }
+          .nx-hist-head { padding-left: 2px; min-height: 36px; }
+          .nx-hist-open { font-size: 15px; padding: 10px 4px 10px 10px; }
+          .nx-hist-more { width: 34px; height: 34px; }
+          /* 16px — чтобы iPhone не приближал страницу при вводе */
+          .nx-hist-search input, .nx-hist-rename { font-size: 16px; }
+          .nx-hist-new { padding: 12px 14px; }
 
           /* Футер на мобильном скрываем */
           .ng-footer { display: none !important; }
@@ -11294,7 +11459,8 @@ export default function NexaApp() {
       {/* Приложение: «потяните, чтобы обновить» */}
       <PullIndicator pull={pull.pull} busy={pull.busy} />
       {/* Синхронизация аккаунта: «Загружаем…» или «Нет связи, работаем локально» */}
-      <SyncStatus loading={syncLoading} text={syncError} onRetry={retrySync} />
+      {/* На экране ассистента строка живёт внутри панели истории — не перекрывает чат */}
+      {tab !== "assistant" && <SyncStatus loading={syncLoading} text={syncError} onRetry={retrySync} />}
       {/* Первый запуск: войти или продолжить без аккаунта */}
       {showGate && <AuthGate onGuest={() => { saveGuest(true); setGuest(true); }} />}
       {authOpen && !auth.user && <AuthModal onClose={() => { setAuthOpen(false); setPendingPair(null); setPendingLogin(null); }}
@@ -11372,6 +11538,8 @@ export default function NexaApp() {
       devices={devices}
       onAddDevice={onAddDevice}
       onUploadFiles={() => uploadInputRef.current?.click()}
+      account={auth.user ? { email: auth.user.email || "" } : null}
+      sync={{ loading: syncLoading, text: syncError, onRetry: retrySync }}
       bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />}
     />
   ) : (
