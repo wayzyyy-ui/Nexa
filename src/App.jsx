@@ -17,17 +17,17 @@ import "lenis/dist/lenis.css";
 import { supabase, authAvailable } from "./lib/supabase.js";
 import { isAllowedEmail, looksLikeEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "./lib/allowedEmailDomains.js";
 // Синхронизация устройств и чатов аккаунта с облаком
-import { useCloudList, CHAT_ROWS, DEVICE_ROWS, newId, deleteAllMine, isLocalPin } from "./lib/sync.js";
+import { useCloudList, CHAT_ROWS, DEVICE_ROWS, SCHEDULE_ROWS, newId, deleteAllMine, isLocalPin, isMissingTable } from "./lib/sync.js";
 import { useThisDeviceSys, thisDeviceKind, KIND_LABEL, formatBytes, batteryText, netText, diskText, sysShort, sameSys, NO_DATA } from "./lib/deviceInfo.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
-import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity, cleanSys } from "./lib/realtime.js";
+import { useDeviceLink, safeUrl, TEXT_MAX, PAIR_ALPHABET, PAIR_CODE_RE, deviceIdentity, cleanSys, isHw } from "./lib/realtime.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
 import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 
 const C = {
@@ -706,6 +706,12 @@ function useBackdropMotion(ref) {
 }
 
 // Слой фона: от боковой панели до правого края (на телефоне — весь экран)
+/* «Это телефон»: узкий экран ИЛИ сенсорный экран высотой до 500 px —
+   так и повёрнутый горизонтально телефон остаётся в мобильном виде
+   (раньше в ширину 844 px открывалась компьютерная версия). Планшеты
+   и компьютеры выше 500 px — как раньше. DESKTOP_MQ — всё остальное */
+const PHONE_MQ = "(max-width: 768px), (pointer: coarse) and (max-height: 500px)";
+const DESKTOP_MQ = "(min-width: 769px) and (min-height: 501px), (min-width: 769px) and (pointer: fine)";
 const NAV_W = 96; // ширина боковой панели (к ней привязаны фон и экран ассистента)
 const backdropLayer = {
   position: "fixed", top: 0, right: 0, bottom: 0, left: NAV_W,
@@ -883,7 +889,7 @@ function MobileTabBar({ active, onChange }) {
               width: 52,
               height: 42,
               boxSizing: "border-box",
-              borderRadius: 14,
+              borderRadius: 18,
               background: C.chip,
               // На Главной рамка подсветки мятная
               border: `1px solid ${shownIndex === homeIndex ? `color-mix(in srgb, ${C.mint} 55%, transparent)` : C.borderStrong}`,
@@ -961,7 +967,7 @@ function Sidebar({ active, onChange }) {
               aria-current={isActive ? "page" : undefined}
               onClick={() => onChange(item.id)}
               style={{
-                width: 48, height: 48, borderRadius: 12, cursor: "pointer", border: "none", padding: 0,
+                width: 48, height: 48, borderRadius: 14, cursor: "pointer", border: "none", padding: 0,
                 background: isActive ? C.mint : `color-mix(in srgb, ${C.text} 7%, transparent)`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 transition: "background 160ms ease",
@@ -1070,7 +1076,7 @@ function NotificationBell({ notes, onSeen, onClear }) {
     <div ref={ref} style={{ position: "relative" }}>
       <button type="button" className="nx-icon-btn" onClick={toggle} aria-label={unread ? `Уведомления: новых ${unread}` : "Уведомления"}
         aria-expanded={open} style={{
-          ...btnReset, width: 34, height: 34, borderRadius: 4, position: "relative",
+          ...btnReset, width: 34, height: 34, borderRadius: 10, position: "relative",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
         {Icon.bell({ c: C.text, s: 18 })}
@@ -1078,7 +1084,7 @@ function NotificationBell({ notes, onSeen, onClear }) {
         {unread > 0 && (
           <span key={unread} className="nx-pop" style={{
             position: "absolute", top: 2, right: 1, minWidth: 15, height: 15, padding: "0 4px", boxSizing: "border-box",
-            borderRadius: 8, background: C.mint, color: C.onAccent, fontSize: 9.5, fontWeight: 600,
+            borderRadius: 14, background: C.mint, color: C.onAccent, fontSize: 9.5, fontWeight: 600,
             display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1,
           }}>
             {unread > 9 ? "9+" : unread}
@@ -1091,7 +1097,7 @@ function NotificationBell({ notes, onSeen, onClear }) {
       {open && createPortal(
         <div ref={panelRef} role="dialog" aria-label="Уведомления" className="nx-pop nx-notes" style={{
           position: "fixed", top: pos.top, right: pos.right, width: 340, zIndex: 600, textAlign: "left",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 8, overflow: "hidden",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, overflow: "hidden",
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.border}` }}>
             <span style={{ fontSize: 14 }}>Уведомления</span>
@@ -1109,7 +1115,7 @@ function NotificationBell({ notes, onSeen, onClear }) {
               {notes.items.map((n) => (
                 <div key={n.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: `1px solid ${C.border}` }}>
                   <span style={{
-                    width: 28, height: 28, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.border}`,
+                    width: 28, height: 28, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`,
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
                     {noteIcon(n)({ c: C.mint, s: 14 })}
@@ -1244,7 +1250,7 @@ function Row({ leftIcon, title, subtitle, right, accent }) {
       <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
         {leftIcon && (
           <div style={{
-            width: 42, height: 42, borderRadius: 4, border: `1px solid ${C.border}`,
+            width: 42, height: 42, borderRadius: 10, border: `1px solid ${C.border}`,
             display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}>
             {leftIcon}
@@ -1284,7 +1290,7 @@ function DeviceCard({ device }) {
     <div style={{
       position: "relative",
       border: `1px solid ${C.border}`,
-      borderRadius: 14,
+      borderRadius: 18,
       padding: "16px 16px 14px",
       display: "flex",
       flexDirection: "column",
@@ -1607,7 +1613,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
             {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateBanner update={update} /></div>}
 
             {/* Карточка «Устройства»: у каждого устройства своя плашка */}
-            <div className="nx-stagger nx-home-devices" style={{ flex: 1, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "4px 18px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="nx-stagger nx-home-devices" style={{ flex: 1, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "4px 18px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{
                 display: "flex", justifyContent: "space-between",
                 alignItems: "center", padding: "14px 0 6px",
@@ -1674,7 +1680,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               onClick={() => onNavigate("assistant")}
               style={{
                 ...btnReset, width: "100%", textAlign: "left", color: C.text, marginTop: "auto",
-                border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+                border: `1px solid ${C.borderStrong}`, borderRadius: 18,
                 padding: "16px 18px",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
@@ -1758,7 +1764,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               <Dot color={C.green} />
             </div>
           </div>
-          {empty && <div style={{ border: `1px solid ${C.border}`, borderRadius: 14 }}>{empty}</div>}
+          {empty && <div style={{ border: `1px solid ${C.border}`, borderRadius: 18 }}>{empty}</div>}
           <div className="nx-stagger" style={{
             display: "grid",
             // minmax(0, 1fr) — длинное название не раздвигает колонку
@@ -1775,7 +1781,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
                 onClick={() => onOpenDevice(d.id)}
                 style={{
                   ...btnReset,
-                  border: `1px solid ${C.border}`, borderRadius: 14,
+                  border: `1px solid ${C.border}`, borderRadius: 18,
                   padding: 14, cursor: "pointer", position: "relative",
                   display: "flex", flexDirection: "column", gap: 10,
                   minHeight: 96, minWidth: 0, flex: 1,
@@ -1809,7 +1815,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
                 onClick={onAddDevice}
                 style={{
                   ...btnReset,
-                  border: `1px dashed ${C.borderStrong}`, borderRadius: 14,
+                  border: `1px dashed ${C.borderStrong}`, borderRadius: 18,
                   padding: 14, display: "flex", flexDirection: "column", gap: 10,
                   minHeight: 96, minWidth: 0,
                 }}
@@ -1828,7 +1834,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
           onClick={() => onNavigate("assistant")}
           style={{
             marginTop: 20,
-            border: `1px solid ${C.border}`, borderRadius: 16,
+            border: `1px solid ${C.border}`, borderRadius: 20,
             padding: "14px 16px",
             display: "flex", alignItems: "center", gap: 14,
             background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
@@ -1930,7 +1936,7 @@ function ActivityList({ items, limit }) {
         const tone = it.kind === "disconnect" ? C.mutedSoft : it.kind === "connect" ? C.green : C.mint;
         return (
           <div key={it.id} className={i === 0 ? "nx-pop" : undefined} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
-            <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {(ACTIVITY_ICON[it.kind] || ACTIVITY_ICON.sent)(tone)}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -1948,7 +1954,7 @@ function ActivityList({ items, limit }) {
 // Компактный блок на Главной: последние 4 события и «Вся активность»
 function ActivityBlock({ items, onOpen }) {
   return (
-    <section aria-label="Активность" style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px 6px", background: C.bg, textAlign: "left" }}>
+    <section aria-label="Активность" style={{ border: `1px solid ${C.border}`, borderRadius: 18, padding: "14px 18px 6px", background: C.bg, textAlign: "left" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
         <span style={{ fontSize: 16, fontWeight: 500 }}>Активность</span>
         <button type="button" className="nx-link-btn" onClick={onOpen} style={{
@@ -1988,7 +1994,7 @@ function ScreenActivity({ items, onBack, onClear }) {
       </div>
       {confirm && (
         <div role="alert" className="nx-pop" style={{
-          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", marginBottom: 16, borderRadius: 4,
+          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", marginBottom: 16, borderRadius: 10,
           border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, background: `color-mix(in srgb, ${C.red} 8%, transparent)`,
         }}>
           <span style={{ flex: "1 1 200px", fontSize: 13.5 }}>Очистить всю ленту на этом устройстве? Вернуть не получится.</span>
@@ -1996,7 +2002,7 @@ function ScreenActivity({ items, onBack, onClear }) {
           <button type="button" className="nx-ghost-btn" onClick={() => { onClear(); setConfirm(false); }} style={{ ...ghost, borderColor: C.red, color: C.red }}>Очистить</button>
         </div>
       )}
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: "4px 18px", background: C.bg }}>
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 18, padding: "4px 18px", background: C.bg }}>
         {items.length === 0
           ? <div style={{ fontSize: 13.5, color: C.mutedSoft, padding: "18px 0" }}>Пока пусто. Подключите устройство по коду — его события появятся здесь.</div>
           : <ActivityList items={items} />}
@@ -2015,7 +2021,7 @@ function LockOverlay({ from, onUnlock }) {
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
       padding: "calc(var(--sat) + 24px) 24px calc(var(--sab) + 24px)",
     }}>
-      <span className="nx-pop" style={{ width: 64, height: 64, borderRadius: 4, border: `1px solid ${C.borderStrong}`, transform: "rotate(45deg)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 30 }}>
+      <span className="nx-pop" style={{ width: 64, height: 64, borderRadius: 10, border: `1px solid ${C.borderStrong}`, transform: "rotate(45deg)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 30 }}>
         <span style={{ transform: "rotate(-45deg)", display: "flex" }}>{Icon.lock({ c: C.mint, s: 26 })}</span>
       </span>
       <div id="nx-lock-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>NEXA заблокирована</div>
@@ -2090,7 +2096,7 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
       <form onSubmit={goLink} style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input className="nx-input" value={url} onChange={(e) => { setUrl(e.target.value); setUrlNote(null); }} disabled={!!why}
           type="url" inputMode="url" placeholder="https://…" aria-label="Ссылка, которую открыть на устройстве"
-          style={{ flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 14, fontFamily: "inherit", border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "8px 12px", outline: "none" }} />
+          style={{ flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 14, fontFamily: "inherit", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "8px 12px", outline: "none" }} />
         <button type="submit" className="nx-ghost-btn" disabled={!!why || !url.trim()} style={off(pill)}>
           {Icon.shareUp({ c: why ? C.mutedSoft : C.text, s: 14 })} Открыть на устройстве
         </button>
@@ -2211,11 +2217,11 @@ function FindOverlay({ from, onFound, onTimeout }) {
       <div aria-hidden="true" style={{ position: "relative", width: 150, height: 150, marginBottom: 36 }}>
         {[0, 1, 2].map((i) => (
           <span key={i} className="nx-find-wave" style={{
-            position: "absolute", inset: 0, border: `1px solid ${C.mint}`, borderRadius: 4,
+            position: "absolute", inset: 0, border: `1px solid ${C.mint}`, borderRadius: 10,
             transform: "rotate(45deg)", animationDelay: `${i * 600}ms`,
           }} />
         ))}
-        <span style={{ position: "absolute", inset: 46, border: `1px solid ${C.mint}`, borderRadius: 4, transform: "rotate(45deg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ position: "absolute", inset: 46, border: `1px solid ${C.mint}`, borderRadius: 10, transform: "rotate(45deg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span style={{ transform: "rotate(-45deg)", display: "flex" }}>{Icon.search({ c: C.mint, s: 24 })}</span>
         </span>
       </div>
@@ -2288,7 +2294,7 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
   const locked = session && session.lockedUntil > now;
   const step = (n, text) => (
     <li style={{ display: "flex", gap: 10, fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
-      <span style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.borderStrong}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.text, marginTop: 1 }}>{n}</span>
+      <span style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.borderStrong}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.text, marginTop: 1 }}>{n}</span>
       <span>{text}</span>
     </li>
   );
@@ -2304,7 +2310,7 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18,
           boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
         }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -2366,7 +2372,7 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
                 {(session?.code || "").split("").map((ch, i) => (
                   <span key={i} style={{
                     width: 34, height: 46, flexShrink: 0, boxSizing: "border-box",
-                    border: `1px solid ${expired || locked ? C.border : C.borderStrong}`, borderRadius: 4,
+                    border: `1px solid ${expired || locked ? C.border : C.borderStrong}`, borderRadius: 10,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     fontFamily: fontDisplay, fontSize: 22, color: expired || locked ? C.mutedSoft : C.text,
                     background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`,
@@ -2432,9 +2438,9 @@ function PairStatusDialog({ claim, onClose }) {
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
     }}>
       <div role="dialog" aria-modal="true" aria-labelledby="nx-claim-title" className="nx-viewer-panel nx-pop" onClick={(e) => e.stopPropagation()}
-        style={{ width: "min(380px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "22px 22px 20px", boxSizing: "border-box", textAlign: "center" }}>
+        style={{ width: "min(380px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "22px 22px 20px", boxSizing: "border-box", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-          <span style={{ width: 48, height: 48, borderRadius: 4, transform: "rotate(45deg)", border: `1px solid ${ok ? C.green : waiting ? C.mint : C.red}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: 48, height: 48, borderRadius: 10, transform: "rotate(45deg)", border: `1px solid ${ok ? C.green : waiting ? C.mint : C.red}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ transform: "rotate(-45deg)", display: "flex" }}>
               {waiting ? <Spinner s={18} /> : ok ? Icon.check({ c: C.green, s: 20 }) : Icon.alert({ c: C.red, s: 20 })}
             </span>
@@ -2469,7 +2475,7 @@ function PairCodeForm({ onClaim }) {
           style={{
             flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: fontDisplay, fontSize: 19,
             letterSpacing: "0.32em", textAlign: "center", textTransform: "uppercase",
-            border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "8px 10px", outline: "none",
+            border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "8px 10px", outline: "none",
           }} />
         <button type="submit" className={clean.length === 6 ? "nx-primary" : "nx-ghost-btn"} disabled={clean.length !== 6} style={{
           ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999, fontWeight: 500,
@@ -2488,7 +2494,7 @@ function PairCodeForm({ onClaim }) {
    Блок на Главной: кто из устройств аккаунта онлайн, «Передать» текст или
    ссылку и «Входящее». Демо-устройства тут ни при чём — это настоящие окна
    и приложения, где выполнен вход в тот же аккаунт */
-const peerLabel = (d) => `${d.kind === "app" ? "Приложение" : "Сайт"} · ${d.platform === "mobile" ? "телефон" : "компьютер"}`;
+const peerLabel = (d) => `${d.kind === "both" ? "Сайт и приложение" : d.kind === "app" ? "Приложение" : "Сайт"} · ${d.platform === "mobile" ? "телефон" : "компьютер"}`;
 const LINK_STATUS = {
   online: "На связи", connecting: "Подключаемся…", offline: "Нет связи", denied: "Канал не настроен", off: "",
 };
@@ -2585,7 +2591,7 @@ function DeviceMessages({ d, link }) {
     else { setNote(res.error); setSendState("error"); setTimeout(() => setSendState("idle"), 1800); }
   };
 
-  const card = { border: `1px solid ${C.border}`, borderRadius: 14, background: C.bg, overflow: "hidden", textAlign: "left" };
+  const card = { border: `1px solid ${C.border}`, borderRadius: 18, background: C.bg, overflow: "hidden", textAlign: "left" };
   return (
     <section aria-label="Связь с устройством" className="nx-msg-grid" style={{ ...card, marginTop: 24 }}>
       {!d.isSelf && (
@@ -2603,7 +2609,7 @@ function DeviceMessages({ d, link }) {
               style={{
                 display: "block", width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 84,
                 background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`, color: C.text, fontSize: 15, fontFamily: "inherit", lineHeight: 1.45,
-                border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "11px 13px", outline: "none",
+                border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "11px 13px", outline: "none",
               }}
             />
             {!canSend && (
@@ -2716,7 +2722,7 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
   return (
     <div className="nx-weather" style={{
       position: "relative", overflow: "hidden",
-      border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "22px 24px",
+      border: `1px solid ${C.borderStrong}`, borderRadius: 16, padding: "22px 24px",
       display: "flex", flexDirection: "column", boxSizing: "border-box",
       ...(grow ? { flex: 1 } : {}),
     }}>
@@ -2850,9 +2856,15 @@ const isOldExample = (list) => list.length === SCHEDULE.length &&
   SCHEDULE.every((x) => list.some((y) => y.time === x.time && y.title === x.title));
 // По умолчанию расписание пустое. Если в браузере остался старый пример — тоже пустое.
 // Старые дела без даты считаем сегодняшними
-const loadSchedule = () => {
+const SCHEDULE_MIGRATED_KEY = "nexa-schedule-migrated"; // кому уже перенесли дела этого браузера в облако
+const scheduleMigrated = () => { try { return JSON.parse(localStorage.getItem(SCHEDULE_MIGRATED_KEY) || "[]"); } catch { return []; } };
+const loadSchedule = (key = SCHEDULE_KEY) => {
   try {
-    const v = JSON.parse(localStorage.getItem(SCHEDULE_KEY));
+    // Аккаунт впервые на этом устройстве: берём дела, что уже есть в браузере
+    // (раньше расписание было общим) — иначе они бы пропали с экрана
+    const uid = key.startsWith(SCHEDULE_KEY + "@") ? key.slice(SCHEDULE_KEY.length + 1) : null;
+    if (uid && localStorage.getItem(key) === null && !scheduleMigrated().includes(uid)) return loadSchedule(SCHEDULE_KEY);
+    const v = JSON.parse(localStorage.getItem(key));
     if (Array.isArray(v)) return isOldExample(v) ? [] : sortSchedule(v.map((it) => (it.date ? it : { ...it, date: dayKey() })));
   } catch {}
   return [];
@@ -3296,7 +3308,7 @@ function CityPicker({ onPick, onAuto, onClose, isManual }) {
         <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Введите город"
           aria-label="Поиск города" style={{
             flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit", fontSize: 16,
-            border: "1px solid " + C.borderStrong, borderRadius: 4, padding: "8px 10px", outline: "none", boxSizing: "border-box",
+            border: "1px solid " + C.borderStrong, borderRadius: 10, padding: "8px 10px", outline: "none", boxSizing: "border-box",
           }} />
         <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Отмена" style={{
           ...btnReset, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
@@ -3428,7 +3440,7 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
         text={error ? `Не удалось загрузить: ${error}.` : "Данных о погоде ещё нет."}
         action={
           <button type="button" className="nx-ghost-btn" onClick={onRetry} style={{
-            ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "8px 14px", fontSize: 13,
+            ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 12, padding: "8px 14px", fontSize: 13,
           }}>
             Повторить
           </button>
@@ -3465,7 +3477,7 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
 
   if (!aside) {
     return (
-      <div id={id} className="nx-pop" style={{ marginTop: 10, border: `1px solid ${C.borderStrong}`, borderRadius: 8 }}>
+      <div id={id} className="nx-pop" style={{ marginTop: 10, border: `1px solid ${C.borderStrong}`, borderRadius: 14 }}>
         {body}
       </div>
     );
@@ -3474,13 +3486,13 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
   return (
     <div id={id} role="region" aria-label="Прогноз на 2 недели" className="nx-fc-slide" style={{
       height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column",
-      background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 10, overflow: "hidden",
+      background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 16, overflow: "hidden",
     }}>
       {/* Шапка панели: заголовок и «закрыть» */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 12px 16px", borderBottom: `1px solid ${C.border}` }}>
         <div style={{ flex: 1, fontFamily: fontDisplay, fontSize: 17 }}>Прогноз на 2 недели</div>
         <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть прогноз" style={{
-          ...btnReset, width: 30, height: 30, borderRadius: 4,
+          ...btnReset, width: 30, height: 30, borderRadius: 10,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {Icon.close({ c: C.muted, s: 16 })}
@@ -3531,7 +3543,7 @@ function ScheduleForm({ existing, day, onSave, onCancel }) {
   return (
     <form className="nx-pop nx-sched-form" onSubmit={(e) => { e.preventDefault(); save(); }}
       onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
-      style={{ border: `1px solid color-mix(in srgb, ${C.mint} 45%, transparent)`, borderRadius: 14, padding: 14, marginBottom: 20, display: "grid", gap: 10 }}>
+      style={{ border: `1px solid color-mix(in srgb, ${C.mint} 45%, transparent)`, borderRadius: 18, padding: 14, marginBottom: 20, display: "grid", gap: 10 }}>
       <div className="nx-sched-form-row" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 124px", gap: 10 }}>
         <input type="date" required value={date} min={today} onChange={(e) => setDate(e.target.value)} className="nx-input" aria-label="Дата" style={field} />
         <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="nx-input" aria-label="Время" style={field} />
@@ -3568,7 +3580,7 @@ function DayStrip({ value, onChange, all }) {
         const top = i === 0 ? "Сегодня" : i === 1 ? "Завтра" : d.toLocaleDateString("ru-RU", { weekday: "short" });
         return (
           <button key={key} type="button" role="tab" aria-selected={on} onClick={() => onChange(key)} className="nx-day-chip" style={{
-            ...btnReset, flexShrink: 0, minWidth: 64, padding: "8px 14px 7px", borderRadius: 14, textAlign: "center",
+            ...btnReset, flexShrink: 0, minWidth: 64, padding: "8px 14px 7px", borderRadius: 18, textAlign: "center",
             border: `1px solid ${on ? "transparent" : C.borderStrong}`,
             background: on ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})` : "transparent",
             color: on ? C.onFold : C.text,
@@ -3649,7 +3661,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
         gap: "18px 44px", alignItems: "start",
       }}>
         {/* alignSelf: stretch — рамка расписания всегда по высоте правой колонки */}
-        <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "26px 28px 30px" }}>
+        <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "26px 28px 30px" }}>
           <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 10 }}>
             {Icon.calendar({ c: C.text, s: 24 })} Расписание
             {/* Своё дело: открывает форму над таймлайном */}
@@ -3708,7 +3720,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
                 }} />
                 <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6, color: isNext ? C.mint : C.text }}>{it.time}</div>
                 <div className="nx-sched-box" style={{
-                  gridArea: "box", borderRadius: 14, padding: "9px 10px 9px 16px",
+                  gridArea: "box", borderRadius: 18, padding: "9px 10px 9px 16px",
                   border: `1px solid ${isNext ? `color-mix(in srgb, ${C.mint} 70%, transparent)` : C.borderStrong}`,
                   background: isNext ? `color-mix(in srgb, ${C.mint} 6%, transparent)` : "transparent",
                   display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
@@ -3721,7 +3733,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {isNext && <span style={{ fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>скоро</span>}
                     <button type="button" className="nx-icon-btn nx-sched-del" onClick={() => onRemoveItem?.(it)} aria-label={`Удалить «${it.title}»`} title="Удалить" style={{
-                      ...btnReset, width: 30, height: 30, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                      ...btnReset, width: 30, height: 30, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {Icon.trash({ c: C.muted, s: 15 })}
                     </button>
@@ -3766,7 +3778,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
               aria-label="Обновить погоду"
               title="Обновить погоду"
               style={{
-                ...btnReset, width: 26, height: 26, borderRadius: 4,
+                ...btnReset, width: 26, height: 26, borderRadius: 10,
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}
             >
@@ -3799,7 +3811,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
             aria-expanded={forecastOpen} aria-controls="nx-forecast nx-forecast-side"
             style={{
               ...btnReset, width: "100%", boxSizing: "border-box",
-              border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "6px 14px",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "6px 14px",
               display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
             }}>
             <span />
@@ -4066,7 +4078,7 @@ function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6, fit = "cov
 // Миниатюра папки
 function FolderThumb() {
   return (
-    <div style={{ width: 52, height: 34, borderRadius: 6, flexShrink: 0, background: C.chip, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ width: 52, height: 34, borderRadius: 12, flexShrink: 0, background: C.chip, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {Icon.folder({ c: C.muted, s: 18 })}
     </div>
   );
@@ -4256,7 +4268,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
         <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6, lineHeight: 1.4 }}>{storeNote}</div>
       </div>
 
-      <div className="nx-storage-box" style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", marginBottom: 34 }}>
+      <div className="nx-storage-box" style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", marginBottom: 34 }}>
         <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
           <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 150 }}>
             {Icon.drive({ c: C.text, s: 24 })}
@@ -4309,7 +4321,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
               ))}
             </div>
             <button type="button" className="nx-ghost-btn" onClick={() => onOpenCategory(sel.id)} style={{
-              ...btnReset, fontSize: 12.5, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+              ...btnReset, fontSize: 12.5, border: `1px solid ${C.borderStrong}`, borderRadius: 12,
               padding: "8px 14px", alignSelf: "flex-end", whiteSpace: "nowrap",
             }}>
               Открыть в файлах →
@@ -4335,7 +4347,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
           const n = countOf(cat.id);
           return (
             <button type="button" key={cat.id} className="nx-cat-card" onClick={() => onOpenCategory(cat.id)} style={{
-              ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+              ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 16,
               background: `linear-gradient(160deg, ${C.panel2}, ${C.bg})`,
               padding: "12px 14px", height: 122, boxSizing: "border-box",
               display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -4361,7 +4373,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
       <div className="ng-display" style={{ fontSize: 24, fontWeight: 400, marginBottom: 16 }}>Недавние файлы</div>
       {/* Файлов ещё нет (новый аккаунт) — подсказка вместо пустой ленты */}
       {recent.length === 0 && (
-        <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 10, padding: "18px 20px", fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+        <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
           Пока пусто. Добавьте файлы в разделе{" "}
           <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{ ...btnReset, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
             «Файлы»
@@ -4377,10 +4389,10 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
             {/* Карточка файла: нажатие открывает файл, справа — «Передать на…» */}
             <div data-transfer-card style={{
               display: "flex", alignItems: "center", gap: 8, paddingRight: 10,
-              border: `1px solid ${C.borderStrong}`, borderRadius: 8,
+              border: `1px solid ${C.borderStrong}`, borderRadius: 14,
             }}>
               <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{
-                ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 8, padding: "7px 8px",
+                ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 14, padding: "7px 8px",
                 display: "flex", alignItems: "center", gap: 14,
               }}>
                 <FileThumb file={f} />
@@ -4689,12 +4701,12 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
       {dragging && (
         <div className="nx-drop-zone" aria-hidden="true" style={{
           position: "fixed", inset: 12, zIndex: 250, pointerEvents: "none",
-          border: `1px dashed ${C.mint}`, borderRadius: 4,
+          border: `1px dashed ${C.mint}`, borderRadius: 10,
           background: `color-mix(in srgb, ${C.bg} 82%, transparent)`,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
         }}>
           <div style={{
-            width: 56, height: 56, border: `1px solid ${C.mint}`, borderRadius: 4,
+            width: 56, height: 56, border: `1px solid ${C.mint}`, borderRadius: 10,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             {Icon.up({ c: C.mint, s: 26 })}
@@ -4726,20 +4738,20 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
                 onKeyDown={(e) => { if (e.key === "Escape") setNewFolder(null); }}
                 style={{
                   width: "100%", boxSizing: "border-box", background: "transparent", color: C.text,
-                  fontFamily: "inherit", fontSize: 16, padding: "6px 10px", borderRadius: 4, outline: "none",
+                  fontFamily: "inherit", fontSize: 16, padding: "6px 10px", borderRadius: 10, outline: "none",
                   border: `1px solid ${nfError ? C.red : C.borderStrong}`,
                 }}
               />
               {nfError && <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>{nfError}</div>}
             </div>
             <button type="submit" className="nx-icon-btn" aria-label="Создать папку" disabled={!nfName || !!nfError} style={{
-              ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+              ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               {Icon.check({ c: C.green, s: 18 })}
             </button>
             <button type="button" className="nx-icon-btn" aria-label="Отменить" onClick={() => setNewFolder(null)} style={{
-              ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+              ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               {Icon.close({ c: C.muted, s: 16 })}
@@ -4784,7 +4796,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
               text={`По запросу «${query.trim()}» здесь ничего нет. Попробуйте другое слово.`}
               action={
                 <button type="button" className="nx-ghost-btn" onClick={() => setQuery("")} style={{
-                  ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "8px 14px", fontSize: 13,
+                  ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 12, padding: "8px 14px", fontSize: 13,
                 }}>
                   Очистить поиск
                 </button>
@@ -4825,7 +4837,7 @@ function Spinner({ s = 14, c = C.mint }) {
 function StateButton({ state = "idle", variant = "ghost", icon, children, labels = {}, onClick, disabled, style }) {
   const primary = variant === "primary" && (state === "idle" || state === "loading");
   const base = {
-    ...btnReset, borderRadius: 6, padding: "10px 14px", fontSize: 13,
+    ...btnReset, borderRadius: 12, padding: "10px 14px", fontSize: 13,
     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
     border: `1px solid ${C.borderStrong}`,
   };
@@ -4864,7 +4876,7 @@ function StateNote({ kind = "error", children }) {
   return (
     <div role={kind === "error" ? "alert" : "status"} className="nx-pop" style={{
       display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px",
-      border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`, borderRadius: 4,
+      border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`, borderRadius: 10,
       background: `color-mix(in srgb, ${color} 8%, transparent)`, fontSize: 12.5, lineHeight: 1.45,
     }}>
       <span style={{ display: "flex", marginTop: 1 }}>
@@ -4878,12 +4890,12 @@ function StateNote({ kind = "error", children }) {
 // Пустое состояние: контурная складка, заголовок, подсказка и, если нужно, кнопка
 // Заготовка списка устройств, пока они грузятся: серые плашки без анимации
 function DevicesSkeleton() {
-  const bar = (w, h = 10) => <div style={{ width: w, height: h, borderRadius: 4, background: C.panel2 }} />;
+  const bar = (w, h = 10) => <div style={{ width: w, height: h, borderRadius: 10, background: C.panel2 }} />;
   return (
     <div role="status" aria-label="Загружаем устройства" style={{ padding: "18px", display: "flex", flexDirection: "column", gap: 12 }}>
       {[0, 1].map((i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `1px solid ${C.border}`, borderRadius: 14 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: C.panel2, flexShrink: 0 }} />
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `1px solid ${C.border}`, borderRadius: 18 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 16, background: C.panel2, flexShrink: 0 }} />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
             {bar(i ? "46%" : "60%", 11)}
             {bar(i ? "28%" : "34%", 9)}
@@ -5004,7 +5016,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 16,
           boxSizing: "border-box", textAlign: "left",
         }}
       >
@@ -5029,12 +5041,12 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
                   aria-invalid={!!draftError}
                   style={{
                     flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit",
-                    fontSize: 16, padding: "6px 10px", borderRadius: 4, outline: "none",
+                    fontSize: 16, padding: "6px 10px", borderRadius: 10, outline: "none",
                     border: `1px solid ${draftError ? C.red : C.borderStrong}`,
                   }}
                 />
                 <button type="submit" className="nx-icon-btn" aria-label="Сохранить имя" disabled={!!draftError} style={{
-                  ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+                  ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
                   {Icon.check({ c: C.green, s: 18 })}
@@ -5044,7 +5056,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
                 <button type="button" className="nx-icon-btn" onClick={startRename} aria-label="Переименовать" title="Переименовать" style={{
-                  ...btnReset, width: 28, height: 28, borderRadius: 4, flexShrink: 0,
+                  ...btnReset, width: 28, height: 28, borderRadius: 10, flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
                   {Icon.edit({ c: C.muted, s: 15 })}
@@ -5056,7 +5068,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
             </div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
-            ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+            ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             {Icon.close({ c: C.muted, s: 18 })}
@@ -5086,7 +5098,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
         <div style={{ padding: "16px 18px 18px" }}>
           {confirmDel ? (
             // Подтверждение удаления заменяет ряд кнопок
-            <div className="nx-pop" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 4, padding: 14 }}>
+            <div className="nx-pop" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 10, padding: 14 }}>
               <div style={{ fontSize: 13.5, marginBottom: 4 }}>Удалить файл?</div>
               <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
                 «{file.name}» пропадёт из всех папок и списков.
@@ -5246,7 +5258,7 @@ function ReceivedTag({ name, compact }) {
     <span className="nx-pop" title={name ? `Получен файл: ${name}` : undefined} style={{
       display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
       fontSize: compact ? 10.5 : 11, color: C.mint, lineHeight: 1.2,
-      border: `1px solid color-mix(in srgb, ${C.mint} 55%, transparent)`, borderRadius: 4,
+      border: `1px solid color-mix(in srgb, ${C.mint} 55%, transparent)`, borderRadius: 10,
       padding: compact ? "1px 5px" : "2px 6px",
     }}>
       {Icon.check({ c: C.mint, s: 11 })} Получен файл
@@ -5308,7 +5320,7 @@ function TransferMenu({ anchor, file, devices, sendingId, onPick, onClose }) {
   return (
     <div ref={ref} role="menu" aria-label="Передать на устройство" tabIndex={-1} className="nx-pop" style={{
       position: "fixed", left, top, width: W, zIndex: 320, boxSizing: "border-box", textAlign: "left", outline: "none",
-      background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: 6,
+      background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: 6,
     }}>
       <div style={{ padding: "6px 8px 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
         <div style={{ fontSize: 12, color: C.muted }}>Передать на…</div>
@@ -5323,10 +5335,10 @@ function TransferMenu({ anchor, file, devices, sendingId, onPick, onClose }) {
           <button key={d.id} type="button" role="menuitem" className="nx-row-btn"
             disabled={!d.online || (busy && !sending)}
             onClick={(e) => !busy && onPick(d, e.currentTarget.querySelector("[data-target]"))}
-            style={{ ...btnReset, width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "7px 8px", borderRadius: 4, boxSizing: "border-box" }}>
+            style={{ ...btnReset, width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "7px 8px", borderRadius: 10, boxSizing: "border-box" }}>
             {/* Сюда прилетит карточка файла */}
             <span data-target style={{
-              width: 34, height: 34, flexShrink: 0, borderRadius: 4, boxSizing: "border-box",
+              width: 34, height: 34, flexShrink: 0, borderRadius: 10, boxSizing: "border-box",
               border: `1px solid ${sending ? C.mint : C.border}`,
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "border-color 200ms ease",
@@ -5390,7 +5402,7 @@ function FoldFlight({ file, from: row, to, onDone }) {
       {/* Лицевая сторона: та же карточка файла */}
       <div ref={base} style={{
         position: "absolute", inset: 0, boxSizing: "border-box", background: C.panel,
-        border: `1px solid ${C.borderStrong}`, borderRadius: 4,
+        border: `1px solid ${C.borderStrong}`, borderRadius: 10,
         display: "flex", alignItems: "center", gap: 14, padding: "0 12px", overflow: "hidden",
       }}>
         <FileThumb file={file} />
@@ -5631,7 +5643,7 @@ function BudsPanel({ files, battery, online }) {
   const track = tracks.length ? tracks[ti % tracks.length] : null;
   const b = battery ?? 80;
   const charge = [["Л", b], ["П", Math.max(5, b - 4)], ["Кейс", 54]];
-  const iconBtn = { ...btnReset, width: 28, height: 28, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center" };
+  const iconBtn = { ...btnReset, width: 28, height: 28, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" };
   return (
     <div style={{ height: "100%", display: "flex", alignItems: "center", gap: 28, textAlign: "left" }}>
       {/* Схема: два наушника тонкой линией */}
@@ -5643,10 +5655,10 @@ function BudsPanel({ files, battery, online }) {
         <circle cx="112" cy="102" r="11" stroke={online ? C.mint : C.muted} />
         <path d="M100 125 96 186a8 8 0 0 0 16 1l2-62" />
       </svg>
-      <div style={{ width: 300, border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "14px 16px", background: C.panel, boxSizing: "border-box" }}>
+      <div style={{ width: 300, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "14px 16px", background: C.panel, boxSizing: "border-box" }}>
         {/* Мини-плеер */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {track ? <FileThumb file={track} w={38} h={38} iconSize={15} radius={4} /> : <div style={{ width: 38, height: 38, background: C.chip, borderRadius: 4 }} />}
+          {track ? <FileThumb file={track} w={38} h={38} iconSize={15} radius={4} /> : <div style={{ width: 38, height: 38, background: C.chip, borderRadius: 10 }} />}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track ? track.name.replace(/\.[^.]+$/, "") : "Нет треков"}</div>
             <div style={{ fontSize: 9.5, color: C.muted, marginTop: 2 }}>{playing ? "Играет" : "На паузе"} · Музыка</div>
@@ -5678,7 +5690,7 @@ function BudsPanel({ files, battery, online }) {
         </div>
 
         {/* Режим: три кнопки-сегмента */}
-        <div role="radiogroup" aria-label="Режим наушников" style={{ display: "flex", marginTop: 14, border: `1px solid ${C.borderStrong}`, borderRadius: 4, overflow: "hidden" }}>
+        <div role="radiogroup" aria-label="Режим наушников" style={{ display: "flex", marginTop: 14, border: `1px solid ${C.borderStrong}`, borderRadius: 10, overflow: "hidden" }}>
           {BUDS_MODES.map(([id, label], i) => (
             <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} style={{
               ...btnReset, flex: 1, textAlign: "center", fontSize: 9.5, padding: "6px 4px",
@@ -5709,7 +5721,7 @@ function DevicePreview({ device, devices, files, folders }) {
       <div style={{ height: "100%", opacity: device.online ? 1 : 0.3, filter: device.online ? "none" : "grayscale(1)", transition: "opacity 300ms ease" }}>{node}</div>
       {!device.online && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 10, padding: "4px 10px", border: `1px solid ${C.red}`, color: C.red, borderRadius: 4, background: C.bg }}>Нет связи</span>
+          <span style={{ fontSize: 10, padding: "4px 10px", border: `1px solid ${C.red}`, color: C.red, borderRadius: 10, background: C.bg }}>Нет связи</span>
         </div>
       )}
     </>
@@ -5733,7 +5745,7 @@ function DevicePreview({ device, devices, files, folders }) {
   );
   if (type === "tablet") return (
     <div style={{ width: 420, height: 290, border: line, borderRadius: 18, padding: 11, boxSizing: "border-box", background: C.panel }}>
-      <div style={{ ...screen, height: "100%", borderRadius: 8 }}>{content(<MiniFiles files={files} folders={folders} />)}</div>
+      <div style={{ ...screen, height: "100%", borderRadius: 14 }}>{content(<MiniFiles files={files} folders={folders} />)}</div>
     </div>
   );
   if (type === "watch") return (
@@ -5774,7 +5786,7 @@ function DevicePreview({ device, devices, files, folders }) {
   );
   if (type === "tv") return (
     <div style={{ width: 490, display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div style={{ width: 490, height: 280, border: line, borderRadius: 4, padding: 6, boxSizing: "border-box", background: C.panel }}>
+      <div style={{ width: 490, height: 280, border: line, borderRadius: 10, padding: 6, boxSizing: "border-box", background: C.panel }}>
         <div style={{ ...screen, height: "100%", borderRadius: 2 }}>{content(<TvScreen files={files} />)}</div>
       </div>
       {/* Подставка: ножка и основание */}
@@ -5845,13 +5857,13 @@ function RealDeviceInfo({ d, onRename, actions }) {
   const clean = name.trim().slice(0, 40);
   const changed = clean && clean !== d.name;
   return (
-    <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px" }}>
+    <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px" }}>
       <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
         <label htmlFor="nx-real-name" style={{ fontSize: 12.5, color: C.mutedSoft }}>Название</label>
         <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
           <input id="nx-real-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
             flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
-            border: `1px solid ${C.borderStrong}`, borderRadius: 4, padding: "9px 12px", outline: "none",
+            border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", outline: "none",
           }} />
           <button type="submit" className="nx-ghost-btn" disabled={!changed} style={{
             ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999,
@@ -6022,7 +6034,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   const pillBtn = { borderRadius: 999, minHeight: 46, padding: "10px 16px", justifyContent: "center", whiteSpace: "nowrap" };
 
   const ghostBtn = {
-    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 12,
     padding: "10px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 8,
   };
 
@@ -6048,7 +6060,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           Во время поиска от устройства расходятся волны сигнала */}
       <div>
           <div ref={stageRef} className="nx-device-stage" style={{
-            position: "relative", height: 440, borderRadius: 10, overflow: "hidden",
+            position: "relative", height: 440, borderRadius: 16, overflow: "hidden",
             border: `1px solid ${C.borderStrong}`,
             background: `color-mix(in srgb, ${C.text} 4%, ${C.bg})`,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -6109,7 +6121,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
       <div data-keep>
         {/* Карточка «Состояние»: заряд, память, сеть и кнопки — как карточка справа */}
-        <div className="nx-dev-card" style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+        <div className="nx-dev-card" style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
           <span style={{ fontSize: 12.5, color: C.mutedSoft }}>Состояние</span>
           {/* Когда сведения получены: у отключённого — последние достоверные */}
@@ -6193,7 +6205,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         {/* Реальное устройство: имя и что это за устройство. Выдуманных переключателей нет */}
         {d.real && <RealDeviceInfo d={d} onRename={onRename} actions={realActions} />}
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
-        {!d.real && <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 12 }}>
+        {!d.real && <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
             <div key={s.key} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
@@ -6214,7 +6226,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           {confirmDel ? (
             <div role="alert" className="nx-pop" style={{
               display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12,
-              padding: "12px 14px", borderRadius: 12,
+              padding: "12px 14px", borderRadius: 16,
               border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`,
               background: `color-mix(in srgb, ${C.red} 8%, transparent)`,
             }}>
@@ -6328,7 +6340,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
   // Сцена с устройством — для поиска, найденного и финала
   const stage = (
     <div style={{
-      position: "relative", height: 170, borderRadius: 4, overflow: "hidden",
+      position: "relative", height: 170, borderRadius: 10, overflow: "hidden",
       // Подключено — сцена окрашивается в цвета бренда: это и есть "связь есть"
       background: step === "done"
         ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})`
@@ -6350,7 +6362,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
   );
 
   const ghostBtn = {
-    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 6,
+    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 12,
     padding: "10px 16px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
   };
   const footer = { display: "flex", gap: 10, marginTop: 20 };
@@ -6370,7 +6382,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(460px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18,
           boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
         }}
       >
@@ -6385,7 +6397,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
             </div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
-            ...btnReset, width: 34, height: 34, borderRadius: 4, flexShrink: 0,
+            ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             {Icon.close({ c: C.muted, s: 18 })}
@@ -6411,7 +6423,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
             <div className="nx-add-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
               {DEVICE_TYPES.map((dt) => (
                 <button key={dt.type} type="button" className="nx-cat-card" onClick={() => pickType(dt.type)} style={{
-                  ...btnReset, border: `1px solid ${C.border}`, borderRadius: 4,
+                  ...btnReset, border: `1px solid ${C.border}`, borderRadius: 10,
                   padding: "18px 8px 14px", display: "flex", flexDirection: "column",
                   alignItems: "center", gap: 10, textAlign: "center",
                 }}>
@@ -6474,7 +6486,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
                 style={{
                   display: "block", width: "100%", boxSizing: "border-box", marginTop: 8,
                   background: "transparent", color: C.text, fontSize: 16, fontFamily: "inherit",
-                  border: `1px solid ${nameError ? C.red : C.borderStrong}`, borderRadius: 4,
+                  border: `1px solid ${nameError ? C.red : C.borderStrong}`, borderRadius: 10,
                   padding: "12px 14px", outline: "none",
                 }}
               />
@@ -6624,7 +6636,7 @@ function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, device
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(640px, 100%)", maxHeight: "calc(100vh - 10vh - 20px)",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 10,
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 16,
           display: "flex", flexDirection: "column", overflow: "hidden", boxSizing: "border-box",
         }}
       >
@@ -6646,7 +6658,7 @@ function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, device
           />
           <kbd style={{
             fontSize: 10, letterSpacing: "0.06em", color: C.mutedSoft,
-            border: `1px solid ${C.border}`, borderRadius: 4, padding: "2px 6px", fontFamily: "inherit",
+            border: `1px solid ${C.border}`, borderRadius: 10, padding: "2px 6px", fontFamily: "inherit",
           }}>Esc</kbd>
         </div>
 
@@ -7426,7 +7438,7 @@ useEffect(() => {
     if (el) el.scrollTop = el.scrollHeight;
   };
   // Телефонная ширина: история — шторка; шире — постоянная колонка слева
-  const mobile = useMediaQuery("(max-width: 768px)");
+  const mobile = useMediaQuery(PHONE_MQ);
 
   // Аура за ответом: появляется, когда ассистент начинает думать,
   // и исчезает через REPLY_AURA_HOLD после ответа
@@ -8146,7 +8158,7 @@ function renderRich(text) {
           fontFamily: "'Space Grotesk', monospace",
           background: "color-mix(in srgb, var(--mint) 10%, transparent)",
           border: "1px solid color-mix(in srgb, var(--mint) 25%, transparent)",
-          borderRadius: 6,
+          borderRadius: 12,
           padding: "1px 6px",
           fontSize: "0.92em",
           color: C.mint,
@@ -8182,7 +8194,7 @@ function ActionBtn({ title, onClick, disabled, children }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: 28, height: 28, borderRadius: 4,
+        width: 28, height: 28, borderRadius: 10,
         border: "1px solid transparent", background: "transparent",
         color: C.muted, display: "flex", alignItems: "center", justifyContent: "center",
         cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.35 : 1,
@@ -8252,7 +8264,7 @@ function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUnd
         {isEditing ? (
           <div style={{
             width: "72%", display: "flex", flexDirection: "column", gap: 8,
-            padding: 12, borderRadius: 16, borderTopRightRadius: 4,
+            padding: 12, borderRadius: 20, borderTopRightRadius: 4,
             border: `1px solid ${C.blue}`, background: C.panel, boxSizing: "border-box",
           }}>
             <textarea
@@ -8284,7 +8296,7 @@ function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUnd
           </div>
         ) : (
           <div className="nx-bubble-text nx-user-bubble" style={{
-            maxWidth: "72%", padding: "12px 18px", borderRadius: 16, borderTopRightRadius: 4,
+            maxWidth: "72%", padding: "12px 18px", borderRadius: 20, borderTopRightRadius: 4,
             background: C.blue, color: "#FFFFFF", fontSize: 16, lineHeight: 1.55,
             whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left",
           }}>
@@ -8331,7 +8343,7 @@ function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUnd
         </div>
 
         <div className="nx-bubble-text" style={{
-          padding: "14px 18px", borderRadius: 16, borderTopLeftRadius: 4,
+          padding: "14px 18px", borderRadius: 20, borderTopLeftRadius: 4,
           background: error
             ? `color-mix(in srgb, ${C.red} 7%, ${C.panel})`
             : `linear-gradient(135deg, ${C.panel} 0%, ${C.panel2} 100%)`,
@@ -8355,7 +8367,7 @@ function MessageBubble({ role, text, error, actionLabel, undoable, undone, onUnd
           <div className="nx-pop" style={{
             alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8,
             border: `1px solid ${undone ? C.border : `color-mix(in srgb, ${C.mint} 45%, transparent)`}`,
-            borderRadius: 4, padding: "5px 10px", fontSize: 12, color: undone ? C.mutedSoft : C.text,
+            borderRadius: 10, padding: "5px 10px", fontSize: 12, color: undone ? C.mutedSoft : C.text,
           }}>
             {undone ? Icon.refresh({ c: C.mutedSoft, s: 13 }) : Icon.check({ c: C.mint, s: 13 })}
             <span style={{ textDecoration: undone ? "line-through" : "none" }}>{actionLabel}</span>
@@ -8413,7 +8425,7 @@ function AssistantSkeleton() {
 
         {/* Пузырь по форме как настоящий, только вместо текста — серые полоски */}
         <div className="nx-bubble-text" style={{
-          padding: "14px 18px", borderRadius: 16, borderTopLeftRadius: 4,
+          padding: "14px 18px", borderRadius: 20, borderTopLeftRadius: 4,
           background: `linear-gradient(135deg, ${C.panel} 0%, ${C.panel2} 100%)`,
           border: `1px solid ${C.border}`,
           position: "relative", overflow: "hidden",
@@ -8442,7 +8454,7 @@ function SkeletonLine({ width }) {
     <div style={{
       height: 12,
       width,
-      borderRadius: 4,
+      borderRadius: 10,
       background: C.chip,
       animation: "nx-skeleton-pulse 1.4s ease-in-out infinite",
     }} />
@@ -8525,7 +8537,7 @@ function InstallSteps({ steps }) {
       {steps.map((st, i) => (
         <li key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, lineHeight: 1.35 }}>
           <span style={{
-            width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: `1px solid ${C.borderStrong}`,
+            width: 18, height: 18, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.borderStrong}`,
             display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.text,
           }}>{i + 1}</span>
           <span>{st}</span>
@@ -8639,7 +8651,7 @@ function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
       onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) onClosed?.(); }}>
     <div className="nx-pop nx-banner" role="region" aria-label={label} style={{
       display: "flex", alignItems: "center", gap: 10, padding: onClose || onClosed ? "10px 8px 10px 12px" : "10px 12px",
-      border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.bg,
+      border: `1px solid ${C.borderStrong}`, borderRadius: 18, background: C.bg,
     }}>
       <span style={{ display: "flex", flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
@@ -8788,7 +8800,7 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
     >
       <div className="nx-set-main" style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
         <div className="nx-set-icon" style={{
-          width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, flexShrink: 0,
+          width: 40, height: 40, borderRadius: 16, border: `1px solid ${C.border}`, flexShrink: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {icon}
@@ -8809,7 +8821,7 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
 function SettingsGroup({ children }) {
   return (
     // Фон страницы — карточка лежит на сетке-чертеже как плашка, линии не идут сквозь текст
-    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 28, background: C.bg }}>
+    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 18, overflow: "hidden", marginBottom: 28, background: C.bg }}>
       {children}
     </div>
   );
@@ -9039,7 +9051,7 @@ function CodeCells({ code = "", dim }) {
       {code.split("").map((ch, i) => (
         <span key={i} style={{
           width: 34, height: 46, flexShrink: 0, boxSizing: "border-box",
-          border: `1px solid ${dim ? C.border : C.borderStrong}`, borderRadius: 4,
+          border: `1px solid ${dim ? C.border : C.borderStrong}`, borderRadius: 10,
           display: "inline-flex", alignItems: "center", justifyContent: "center",
           fontFamily: fontDisplay, fontSize: 22, color: dim ? C.mutedSoft : C.text,
           background: `color-mix(in srgb, ${C.panel2} 60%, transparent)`,
@@ -9200,7 +9212,7 @@ function ApproveLoginModal({ initialCode, onClose, onScan }) {
       display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
     }}>
       <div role="dialog" aria-modal="true" aria-labelledby="nx-approve-title" className="nx-viewer-panel nx-pop" onClick={(e) => e.stopPropagation()}
-        style={{ width: "min(420px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "20px 22px 22px", boxSizing: "border-box", textAlign: "left" }}>
+        style={{ width: "min(420px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "20px 22px 22px", boxSizing: "border-box", textAlign: "left" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div id="nx-approve-title" style={{ fontFamily: fontDisplay, fontSize: 22, lineHeight: 1.2 }}>
@@ -9231,7 +9243,7 @@ function ApproveLoginModal({ initialCode, onClose, onScan }) {
                 style={{
                   flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: fontDisplay, fontSize: 19,
                   letterSpacing: "0.32em", textAlign: "center", textTransform: "uppercase",
-                  border: `1px solid ${error ? C.red : C.borderStrong}`, borderRadius: 4, padding: "8px 10px", outline: "none",
+                  border: `1px solid ${error ? C.red : C.borderStrong}`, borderRadius: 10, padding: "8px 10px", outline: "none",
                 }} />
               <button type="submit" disabled={clean.length !== 6 || st.phase === "checking"} style={clean.length === 6 ? primary : { ...ghost, color: C.mutedSoft }}>
                 {st.phase === "checking" ? <Spinner s={13} c={C.onFold} /> : "Дальше"}
@@ -9242,8 +9254,8 @@ function ApproveLoginModal({ initialCode, onClose, onScan }) {
 
         {(st.phase === "confirm" || st.phase === "approving") && (
           <div style={{ marginTop: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `1px solid ${C.border}`, borderRadius: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `1px solid ${C.border}`, borderRadius: 16 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 16, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 {(/телефон/i.test(st.label || "") ? Icon.phone : Icon.laptop)({ c: C.text, s: 17 })}
               </div>
               <div style={{ minWidth: 0 }}>
@@ -9273,7 +9285,7 @@ function ApproveLoginModal({ initialCode, onClose, onScan }) {
 const authField = (invalid) => ({
   display: "block", width: "100%", boxSizing: "border-box", marginTop: 8,
   background: "transparent", color: C.text, fontSize: 16, fontFamily: "inherit",
-  border: `1px solid ${invalid ? C.red : C.borderStrong}`, borderRadius: 4,
+  border: `1px solid ${invalid ? C.red : C.borderStrong}`, borderRadius: 10,
   padding: "12px 14px", outline: "none",
 });
 // Кнопка-ссылка: «Отправить ещё раз», «Изменить почту»
@@ -9445,7 +9457,7 @@ function AuthGate({ onGuest }) {
           Войдите по почте — без пароля, по коду из письма. Или загляните без аккаунта.
         </div>
         {open ? (
-          <div className="nx-pop" style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 18px 20px", background: C.panel }}>
+          <div className="nx-pop" style={{ border: `1px solid ${C.border}`, borderRadius: 18, padding: "18px 18px 20px", background: C.panel }}>
             {/* Esc / «Назад» на шаге почты: на телефоне сворачиваем, на сайте — назад к выбору */}
             <AuthPanel onEscape={() => (isNative ? CapApp.minimizeApp() : setOpen(false))} />
           </div>
@@ -9491,7 +9503,7 @@ function AuthModal({ onClose, hint }) {
         className="nx-viewer-panel nx-pop nx-scroll" onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(420px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14,
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18,
           boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
         }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
@@ -9619,7 +9631,7 @@ function DeleteDataDialog({ onConfirm, onClose }) {
     }}>
       <div role="dialog" aria-modal="true" aria-labelledby="nx-del-title" className="nx-viewer-panel nx-pop"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "min(400px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "20px 22px 22px", boxSizing: "border-box", textAlign: "left" }}>
+        style={{ width: "min(400px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "20px 22px 22px", boxSizing: "border-box", textAlign: "left" }}>
         <div id="nx-del-title" style={{ fontFamily: fontDisplay, fontSize: 22, lineHeight: 1.2 }}>Удалить мои данные?</div>
         <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginTop: 10 }}>
           Устройства и чаты аккаунта удалятся из облака и с этого устройства. Вернуть их не получится. Аккаунт останется — войти можно будет снова.
@@ -9648,7 +9660,7 @@ function SyncStatus({ loading, text, onRetry }) {
   return (
     <div className="nx-sync-status nx-pop" role="status" style={{
       position: "fixed", zIndex: 60, display: "flex", alignItems: "center", gap: 10,
-      padding: "8px 12px", border: `1px solid ${C.borderStrong}`, borderRadius: 4, background: C.panel,
+      padding: "8px 12px", border: `1px solid ${C.borderStrong}`, borderRadius: 10, background: C.panel,
       fontSize: 12.5, color: C.muted, maxWidth: "calc(100vw - 32px)", boxSizing: "border-box",
     }}>
       {loading ? <Spinner s={12} /> : <Dot color={C.red} />}
@@ -9916,7 +9928,7 @@ function useTabSwipe(getCtx, onSwipe) {
   const ctx = useRef(getCtx); ctx.current = getCtx;
   const act = useRef(onSwipe); act.current = onSwipe;
   useEffect(() => {
-    const mobile = window.matchMedia?.("(max-width: 768px)");
+    const mobile = window.matchMedia?.(PHONE_MQ);
     const still = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     let start = null;
     // Вернуть экран на место (свайп не засчитан или это не смена раздела)
@@ -9998,6 +10010,31 @@ function useTabSwipe(getCtx, onSwipe) {
       document.removeEventListener("touchcancel", cancel);
     };
   }, []);
+}
+
+/* Сайт и приложение на одном телефоне — одно устройство в списке.
+   Записи реальных устройств с одинаковым «отпечатком» (state.hw, см.
+   phoneSignature в realtime.js) склеиваются: имя и id — главной записи
+   (приложения), в сети — если в сети хоть одна; действия («Найти», файл,
+   ссылка) идут туда, что сейчас в сети (приложение важнее).
+   members — id всех записей (для удаления и переименования) */
+function mergeSamePhone(list, d) {
+  if (!d.real || !isHw(d.hw)) return [...list, d];
+  const i = list.findIndex((x) => x.real && x.hw === d.hw);
+  if (i < 0) return [...list, d];
+  const a = list[i];
+  const all = [...(a.parts || [a]), d];
+  const main = all.find((x) => x.kind === "app") || all[0];
+  const live = all.find((x) => x.online && x.kind === "app") || all.find((x) => x.online);
+  const merged = {
+    ...main, parts: all, members: all.map((x) => x.id),
+    kind: all.some((x) => x.kind === "app") && all.some((x) => x.kind !== "app") ? "both" : main.kind,
+    online: !!live, isSelf: all.some((x) => x.isSelf),
+    device_id: (live || main).device_id,
+    sys: (live || main).sys || all.find((x) => x.sys)?.sys,
+    seenAt: Math.max(...all.map((x) => x.seenAt || 0)) || main.seenAt,
+  };
+  return list.map((x, j) => (j === i ? merged : x));
 }
 
 /* ---------- 6. APP — корневой компонент ----------
@@ -10141,7 +10178,8 @@ export default function NexaApp() {
       const isSelf = d.device_id === link.self?.device_id, online = peerIds.has(d.device_id);
       const saved = cleanSys(d.sys);
       return { ...d, online, isSelf, sys: (isSelf && thisSys) || (online && peerById.get(d.device_id)?.sys) || saved };
-    });
+    })
+    .reduce(mergeSamePhone, []);
   // Названия реальных устройств по device_id — для блока «Связь устройств»
   const realNames = Object.fromEntries(devices.filter((d) => d.real).map((d) => [d.device_id, d.name]));
   const patchDevice = (id, patch) => setDeviceStore((s) => ({
@@ -10162,7 +10200,15 @@ export default function NexaApp() {
   /* Расписание на сегодня: можно добавлять свои дела и удалять.
      Хранится в браузере (общее для вкладок), по умолчанию — пример.
      TODAY.schedule — то же самое для ассистента и превью часов */
-  const [schedule, setSchedule] = useSharedState(SCHEDULE_KEY, loadSchedule);
+  // У аккаунта своё расписание (nexa-schedule@id) и копия в облаке — общая
+  // для сайта и приложения (таблица schedule). У гостя — только этот браузер.
+  // setSchedule ставит updatedAt изменённым делам: по нему решается, что новее
+  const [schedule, setScheduleStore] = useSharedState(SCHEDULE_KEY + scope, loadSchedule);
+  const setSchedule = (upd) => setScheduleStore((prev) => {
+    const next = typeof upd === "function" ? upd(prev) : upd;
+    const old = new Map(prev.map((it) => [it.id, it]));
+    return next.map((it) => (old.get(it.id) === it ? it : { ...it, updatedAt: Date.now(), createdAt: it.createdAt || Date.now() }));
+  });
   // Ассистент, превью часов и сводка «что у меня сегодня» видят только сегодняшние дела
   TODAY.schedule = itemsOn(schedule, dayKey());
   /* Виджеты рабочего стола (только приложение): то же расписание — при запуске
@@ -10177,7 +10223,7 @@ export default function NexaApp() {
   }, []);
   const dayLabel = (k) => (k === dayKey() ? "" : `${dayFromKey(k).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}, `);
   const addScheduleItem = (it) => {
-    setSchedule((list) => sortSchedule([...list, { id: `s${Date.now()}`, ...it }]));
+    setSchedule((list) => sortSchedule([...list, { id: newId(), ...it }]));
     showToast({ title: "Дело добавлено", text: `${dayLabel(it.date)}${it.time} · ${it.title}`, kind: "schedule" });
   };
   const removeScheduleItem = (it) => {
@@ -10186,7 +10232,9 @@ export default function NexaApp() {
   };
   // Удаление нескольких устройств сразу. Исходные запоминаем в removed,
   // добавленные просто убираем; их настройки тоже стираем
-  const removeDevices = (ids) => {
+  const removeDevices = (ids0) => {
+    // У склеенного устройства (сайт + приложение одного телефона) удаляем все его записи
+    const ids = [...new Set(ids0.flatMap((id) => devices.find((d) => d.id === id)?.members || [id]))];
     setDeviceStore((s) => {
       const state = { ...s.state };
       ids.forEach((id) => delete state[id]);
@@ -10268,6 +10316,28 @@ export default function NexaApp() {
     onStatus: (st) => setSyncState((s) => ({ ...s, folders: st })),
     onPushed: () => link.emit("sync.changed", { table: "file_folders" }),
   });
+  /* Расписание аккаунта — в облако (таблица schedule). Пока schedule.sql не
+     запущен, облака нет — тихо работаем локально, без строки «не настроено».
+     Первый вход: в облаке пусто, а в браузере есть расписание без входа —
+     копируем один раз (nexa-schedule-migrated) */
+  const scheduleSync = useCloudList({
+    uid, table: "schedule", value: schedule, setValue: setScheduleStore,
+    toList: (list) => list.map((it) => ({ ...it, createdAt: it.createdAt || 0, updatedAt: it.updatedAt || it.createdAt || 0 })),
+    fromList: (list) => sortSchedule(list),
+    rows: SCHEDULE_ROWS,
+    migrate: {
+      // Один раз на аккаунт: дела этого браузера (уже взятые в loadSchedule)
+      // уходят в облако вместе со сводкой. Пустой список — тоже «перенос сделан»
+      prepare: (local, cloudRows) => {
+        if (!uid || scheduleMigrated().includes(uid)) return null;
+        if (local.length || cloudRows.length) return local;
+        return loadSchedule(SCHEDULE_KEY).map((it) => ({ ...it, id: newId(), createdAt: Date.now(), updatedAt: Date.now() }));
+      },
+      migrated: () => { try { localStorage.setItem(SCHEDULE_MIGRATED_KEY, JSON.stringify([...new Set([...scheduleMigrated(), uid])])); } catch {} },
+    },
+    onStatus: (st) => setSyncState((s) => ({ ...s, schedule: st.error && isMissingTable(st.error) ? { ok: true } : st })),
+    onPushed: () => link.emit("sync.changed", { table: "schedule" }),
+  });
   // Удаления из хранилища, которые не прошли без сети, — повторяем при входе и когда связь вернулась
   useEffect(() => {
     if (!uid) return;
@@ -10279,7 +10349,7 @@ export default function NexaApp() {
 
   const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
-  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); };
+  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); };
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
   const pullRefresh = async () => {
@@ -10338,7 +10408,7 @@ export default function NexaApp() {
   const refreshTimers = useRef({});
   const refreshTableSoon = (table) => {
     clearTimeout(refreshTimers.current[table]);
-    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync }[table] || devicesSync;
+    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync }[table] || devicesSync;
     refreshTimers.current[table] = setTimeout(() => hook.retry(), 400);
   };
 
@@ -10359,7 +10429,7 @@ export default function NexaApp() {
   const addRealDevice = (p) => setDeviceStore((s) => {
     const now = Date.now();
     const old = s.added.find((d) => s.state[d.id]?.device_id === p.device_id);
-    const info = { real: true, device_id: p.device_id, kind: p.kind, platform: p.platform };
+    const info = { real: true, device_id: p.device_id, kind: p.kind, platform: p.platform, ...(isHw(p.hw) ? { hw: p.hw } : {}) };
     if (old) return { ...s, state: { ...s.state, [old.id]: { ...s.state[old.id], ...info } }, updated: { ...s.updated, [old.id]: now } };
     const type = p.platform === "mobile" ? "phone" : "laptop";
     const d = {
@@ -10404,7 +10474,7 @@ export default function NexaApp() {
     if (link.status !== "online") return setClaim({ phase: "error", text: "Нет связи — подключиться не получится. Проверьте интернет и попробуйте снова." });
     setClaim({ phase: "waiting" });
     const me = link.self;
-    const sent = await link.emit("pair.claim", { code, device_id: me.device_id, name: me.name, kind: me.kind, platform: me.platform });
+    const sent = await link.emit("pair.claim", { code, device_id: me.device_id, name: me.name, kind: me.kind, platform: me.platform, ...(me.hw ? { hw: me.hw } : {}) });
     if (!sent) return setClaim({ phase: "error", text: "Не отправилось — попробуйте ещё раз." });
     clearTimeout(claimTimer.current);
     claimTimer.current = setTimeout(() => setClaim((c) => (c?.phase === "waiting"
@@ -10517,7 +10587,22 @@ export default function NexaApp() {
     if (sameSys(cleanSys(deviceStore.state[row.id]?.sys), sys) && deviceStore.state[row.id]?.sys?.at) return;
     patchDevice(row.id, { sys });
   };
-  const selfRow = devices.find((d) => d.real && d.isSelf);
+  // Записи реальных устройств «как есть» (без склейки сайта и приложения):
+  // время «был в сети», сведения и отпечаток пишутся в свою запись
+  const realRowOf = (deviceId) => deviceStore.added.find((d) => deviceStore.state[d.id]?.real && deviceStore.state[d.id]?.device_id === deviceId);
+  const selfRow = realRowOf(link.self?.device_id);
+  /* Отпечаток телефона (state.hw) — в запись каждого устройства в сети и своего:
+     так склеиваются сайт и приложение, подключённые ещё до появления отпечатка */
+  const hwKey = link.peers.map((p) => `${p.device_id}:${p.hw || ""}`).join(",") + "|" + (link.self?.hw || "");
+  useEffect(() => {
+    if (!uid) return;
+    const known = [...link.peers.map((p) => [p.device_id, p.hw]), [link.self?.device_id, link.self?.hw]];
+    for (const [id, hw] of known) {
+      if (!id || !isHw(hw)) continue;
+      const row = realRowOf(id);
+      if (row && deviceStore.state[row.id]?.hw !== hw) patchDevice(row.id, { hw });
+    }
+  }, [hwKey, uid, deviceStore.added.length]);
   const selfRowRef = useRef(selfRow); selfRowRef.current = selfRow;
   useEffect(() => {
     if (!uid) return;
@@ -10558,7 +10643,7 @@ export default function NexaApp() {
     for (const [id, peer] of prevPeers.current) {
       if (id === self || now.has(id)) continue;
       logActivity("disconnect", `«${realNames[id] || peer.name}» отключилось`);
-      const row = devices.find((d) => d.real && d.device_id === id);
+      const row = realRowOf(id);
       markSeen(row);
       keepSys(row, lastPeerSys.current[id] || peer.sys); // последние сведения, которые устройство успело прислать
     }
@@ -10675,7 +10760,11 @@ export default function NexaApp() {
   };
   // Переименовать реальное устройство
   const renameDevice = (id, name) => {
-    setDeviceStore((s) => ({ ...s, added: s.added.map((d) => (d.id === id ? { ...d, name } : d)), updated: { ...s.updated, [id]: Date.now() } }));
+    const ids = devices.find((d) => d.id === id)?.members || [id]; // склеенное — все записи
+    setDeviceStore((s) => ({
+      ...s, added: s.added.map((d) => (ids.includes(d.id) ? { ...d, name } : d)),
+      updated: { ...s.updated, ...Object.fromEntries(ids.map((x) => [x, Date.now()])) },
+    }));
     showToast({ title: "Название сохранено", text: name, kind: "device" });
     setTimeout(() => link.emit("devices.changed", {}), 2000);
   };
@@ -11038,7 +11127,7 @@ export default function NexaApp() {
         /* Экран начинается с самого верха, а под статус-бар — отступ: так сплошной фон
            закрывает и полосу статус-бара, и линии фона страницы там не торчат обрывками */
         .nx-native .ng-assistant-wrapper { top: var(--vvt, 0px) !important; height: var(--vvh, 100%) !important; padding-top: var(--sat); box-sizing: border-box; }
-        @media (max-width: 768px) {
+        @media ${PHONE_MQ} {
         }
         /* Шрифты лежат в public/fonts — так они одинаковые на любом устройстве,
            даже если у человека они не установлены (раньше Raleway брался
@@ -11173,7 +11262,7 @@ export default function NexaApp() {
         .ng-hamburger { display: none; }
         /* Главная (компьютер): плашка устройства — рамка 1px, скругление 10px,
            слева ячейка значка, отделённая линией (как в макете) */
-        .nx-dev-plate { border: 1px solid var(--border-strong) !important; border-radius: 10px !important; background: var(--panel) !important; min-height: 66px; transition: border-color 160ms ease; }
+        .nx-dev-plate { border: 1px solid var(--border-strong) !important; border-radius: 16px !important; background: var(--panel) !important; min-height: 66px; transition: border-color 160ms ease; }
         .nx-dev-plate:hover { border-color: var(--mint) !important; }
         .nx-dev-plate.is-add { border-style: dashed !important; background: transparent !important; }
         .nx-dev-plate-icon { width: 66px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--border-strong); }
@@ -11213,7 +11302,7 @@ export default function NexaApp() {
         /* Полоска заполнения (место на устройстве, хранилище) — тонкая, 4px */
         .nx-sys-bar {
           display: block; width: 200px; max-width: 100%; height: 4px; margin-top: 8px; overflow: hidden;
-          border-radius: 4px; background: color-mix(in srgb, var(--text) 10%, transparent);
+          border-radius: 10px; background: color-mix(in srgb, var(--text) 10%, transparent);
         }
         .nx-sys-bar > span { display: block; height: 100%; }
         .nx-sys-bar-wide { width: 100%; }
@@ -11229,7 +11318,7 @@ export default function NexaApp() {
         }
         @media (max-width: 1100px) { .nx-hist { width: 232px; padding: 28px 12px 16px; } }
         /* Крестик на компьютере — маленький круг */
-        @media (min-width: 769px) { .nx-hist-close { width: 28px !important; height: 28px !important; } }
+        @media ${DESKTOP_MQ} { .nx-hist-close { width: 28px !important; height: 28px !important; } }
         .nx-hist-head { display: flex; align-items: center; justify-content: space-between; min-height: 18px; }
         .nx-hist-label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted-soft); padding-left: 4px; }
         .nx-hist-new {
@@ -11239,7 +11328,7 @@ export default function NexaApp() {
         }
         .nx-hist-search {
           display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 8px 10px;
-          border: 1px solid var(--border); border-radius: 4px; background: var(--panel); cursor: text;
+          border: 1px solid var(--border); border-radius: 10px; background: var(--panel); cursor: text;
         }
         .nx-hist-search:focus-within { border-color: var(--border-strong); }
         .nx-hist-search input {
@@ -11254,7 +11343,7 @@ export default function NexaApp() {
         }
         .nx-hist-row {
           position: relative; display: flex; align-items: center;
-          border: 1px solid transparent; border-radius: 4px;
+          border: 1px solid transparent; border-radius: 10px;
         }
         .nx-hist-row:hover { background: var(--hover); }
         .nx-hist-row.is-active { background: var(--panel); border-color: var(--border); }
@@ -11279,23 +11368,23 @@ export default function NexaApp() {
         .nx-hist-more:hover, .nx-hist-more[aria-expanded="true"] { background: var(--hover); color: var(--text); }
         .nx-hist-rename {
           flex: 1; min-width: 0; margin: 2px; padding: 5px 8px; outline: none;
-          border: 1px solid var(--mint); border-radius: 4px; background: var(--bg); color: var(--text);
+          border: 1px solid var(--mint); border-radius: 10px; background: var(--bg); color: var(--text);
           font: inherit; font-size: 13.5px;
         }
         .nx-hist-empty { padding: 6px 10px; font-size: 13px; line-height: 1.5; color: var(--muted-soft); }
         .nx-hist-sync {
           display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex-shrink: 0;
-          padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--muted);
+          padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--muted);
         }
         .nx-hist-account {
           display: flex; align-items: center; gap: 10px; width: 100%; flex-shrink: 0; box-sizing: border-box;
-          padding: 9px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel);
+          padding: 9px 10px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel);
           color: var(--text); font: inherit; text-align: left; cursor: pointer;
         }
         .nx-hist-account:hover { border-color: var(--border-strong); }
         .nx-hist-avatar {
           width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-          border: 1px solid var(--border-strong); border-radius: 10px;
+          border: 1px solid var(--border-strong); border-radius: 16px;
         }
         .nx-hist-email { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .nx-hist-sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -11309,11 +11398,11 @@ export default function NexaApp() {
         /* Меню диалога: «Закрепить», «Переименовать», «Удалить» */
         .nx-hist-menu {
           z-index: 400; min-width: 184px; padding: 4px; box-sizing: border-box;
-          background: var(--panel); border: 1px solid var(--border-strong); border-radius: 4px;
+          background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px;
         }
         .nx-hist-menu > button {
           display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
-          background: transparent; border: none; border-radius: 4px; color: var(--text);
+          background: transparent; border: none; border-radius: 10px; color: var(--text);
           font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
         }
         .nx-hist-menu > button:hover, .nx-hist-menu > button:focus-visible { background: var(--hover); outline: none; }
@@ -11347,7 +11436,7 @@ export default function NexaApp() {
   body[data-swipe="prev"] .ng-screen-anim, body[data-swipe="prev"] .ng-assistant-anim { animation: nx-swipe-prev 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
   /* Телефон: горизонтальное движение пальца браузер отдаёт нам (вертикальная
      прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
-  @media (max-width: 768px) { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
+  @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
   @keyframes nx-swipe-next { from { opacity: 0; transform: translateX(56px); } to { opacity: 1; transform: none; } }
   @keyframes nx-swipe-prev { from { opacity: 0; transform: translateX(-56px); } to { opacity: 1; transform: none; } }
   /* Без движения — экран просто меняется */
@@ -11440,7 +11529,7 @@ export default function NexaApp() {
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           border: 1px solid var(--glass-border);
-          border-radius: 14px;
+          border-radius: 18px;
           padding: 12px 12px 12px 14px;
           display: flex; align-items: flex-start; gap: 12px;
           box-shadow: var(--glass-shadow);
@@ -11464,13 +11553,13 @@ export default function NexaApp() {
           cursor: pointer; flex-shrink: 0; display: flex; color: var(--muted);
           align-self: center;
         }
-        @media (max-width: 768px) {
+        @media ${PHONE_MQ} {
           .nx-toast-host {
             top: calc(var(--sat) + 10px);
             left: 10px; right: 10px; width: auto;
           }
         }
-        @media (max-width: 768px) {
+        @media ${PHONE_MQ} {
           .nx-search-overlay { padding: 6vh 12px 12px !important; }
           .nx-search-panel input { font-size: 16px !important; }
         }
@@ -11484,7 +11573,7 @@ export default function NexaApp() {
         .nx-pop { animation: nx-pop-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* Ассистент на компьютере: справа закреплено меню (Новый диалог / Поиск /
            История) — сообщения пользователя не должны заезжать под него */
-        @media (min-width: 769px) { .nx-msg-list { padding-right: 170px !important; } }
+        @media ${DESKTOP_MQ} { .nx-msg-list { padding-right: 170px !important; } }
         /* «Раскрытие складкой»: элементы списка появляются по очереди —
            каждый чуть повёрнут от верхнего края и разворачивается к нам.
            Работает один раз при появлении (не повторяется).
@@ -11578,7 +11667,7 @@ export default function NexaApp() {
           to   { opacity: 1; transform: none; }
         }
         .nx-reply-aura-in { transform-origin: 47% 56%; animation: nx-reply-aura-in 800ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
-        @media (max-width: 768px) { .nx-reply-aura { width: 440px; height: 300px; left: -220px; top: -150px; } }
+        @media ${PHONE_MQ} { .nx-reply-aura { width: 440px; height: 300px; left: -220px; top: -150px; } }
         @media (prefers-reduced-motion: reduce) {
           .nx-reply-aura-in { animation: none !important; }
           .nx-reply-aura { transition: opacity 300ms ease !important; }
@@ -11587,7 +11676,7 @@ export default function NexaApp() {
         }
         /* Размытие граней (исключение из правил, см. CLAUDE.md) */
         .nx-aura-blur { filter: blur(34px); }
-        @media (max-width: 768px) { .nx-aura { width: 520px; height: 400px; top: var(--aura-y, 50%) !important; } .nx-aura-blur { filter: blur(24px); } }
+        @media ${PHONE_MQ} { .nx-aura { width: 520px; height: 400px; top: var(--aura-y, 50%) !important; } .nx-aura-blur { filter: blur(24px); } }
         @media (prefers-reduced-motion: reduce) {
           .nx-aura-facet { animation: none !important; }
           .nx-aura { transition: none !important; }
@@ -11614,7 +11703,7 @@ export default function NexaApp() {
         .nx-ping {
           position: absolute; left: 50%; top: 50%;
           width: 76px; height: 76px; margin: -38px 0 0 -38px;
-          box-sizing: border-box; border: 1.5px solid var(--mint); border-radius: 4px;
+          box-sizing: border-box; border: 1.5px solid var(--mint); border-radius: 10px;
           opacity: 0; pointer-events: none;
           animation: nx-ping 1200ms cubic-bezier(0.16, 1, 0.3, 1) 2 both;
         }
@@ -11727,7 +11816,7 @@ export default function NexaApp() {
         .nx-no-scrollbar { scrollbar-width: none; }
         /* Блоки только для телефона (на телефоне становятся flex-строкой) */
         .nx-only-mobile { display: none; }
-        @media (max-width: 768px) { .nx-only-mobile { display: flex !important; } }
+        @media ${PHONE_MQ} { .nx-only-mobile { display: flex !important; } }
         .nx-no-scrollbar::-webkit-scrollbar { display: none; }
         /* Складка справа на "Медиа" и "Файлах" — только на широком экране */
         /* На средних экранах складки уже — подписи на них чуть мельче */
@@ -11800,7 +11889,7 @@ export default function NexaApp() {
         }
 
         /* ─── Мобильный ────────────────────────────────────── */
-                @media (max-width: 768px) {
+                @media ${PHONE_MQ} {
           /* Навигация */
           .ng-sidebar { display: none !important; }
           .ng-home-desktop { display: none !important; }

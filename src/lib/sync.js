@@ -108,14 +108,15 @@ async function pushRows(table, upserts, deletes) {
 export async function deleteAllMine(uid) {
   // Сначала содержимое файлов в хранилище (папка <id аккаунта>/), потом записи
   await removeAllStorage(uid);
-  for (const table of ["devices", "chats", "files", "file_folders"]) {
+  for (const table of ["devices", "chats", "files", "file_folders", "schedule"]) {
     const { error } = await supabase.from(table).delete().eq("user_id", uid);
-    // Таблиц файлов может ещё не быть (не запущен files-storage.sql) — это не ошибка
-    if (error && !(table.startsWith("file") && isMissingTable(error))) throw error;
+    // Таблиц файлов и расписания может ещё не быть (не запущены files-storage.sql,
+    // schedule.sql) — это не ошибка
+    if (error && !((table.startsWith("file") || table === "schedule") && isMissingTable(error))) throw error;
   }
   clearMeta(uid);
 }
-const isMissingTable = (e) => ["42P01", "PGRST205"].includes(String(e?.code)) || /does not exist|could not find the table/i.test(String(e?.message));
+export const isMissingTable = (e) => ["42P01", "PGRST205"].includes(String(e?.code)) || /does not exist|could not find the table/i.test(String(e?.message));
 // Все объекты аккаунта в корзине файлов — пачками по 100
 async function removeAllStorage(uid) {
   for (let i = 0; i < 50; i++) {
@@ -140,6 +141,14 @@ function withLastAt(c) {
 
 /* ─── Как строки таблиц выглядят в приложении ───
    Элемент списка: { id, createdAt, updatedAt, ...поля } — время в миллисекундах */
+/* Расписание (таблица schedule, supabase/schedule.sql). В приложении поле даты
+   называется date, в базе — day (слово date в SQL служебное) */
+export const SCHEDULE_ROWS = {
+  toRow: (it) => ({ id: it.id, day: it.date, time: it.time, title: it.title || "", place: it.place || "", created_at: toIso(it.createdAt) }),
+  fromRow: (r) => ({ id: r.id, date: r.day, time: r.time, title: r.title, place: r.place || "", createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at) }),
+  sort: (list) => [...list].sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || "")),
+};
+
 export const CHAT_ROWS = {
   // pinned — «Закреплено». Шлём всегда целиком (true/false), поэтому значение
   // в облаке не затирается; без колонки в базе см. OPTIONAL_COLUMNS выше

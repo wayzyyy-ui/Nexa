@@ -29,8 +29,28 @@ const inboxKey = (uid) => `nexa-inbox@${uid}`;
 export const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const PAIR_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 
+/* «Отпечаток телефона» — чтобы сайт и приложение на одном телефоне считались
+   одним устройством. У них разное хранилище (браузер и приложение не видят
+   данные друг друга), поэтому общего device_id быть не может. Зато экран,
+   плотность пикселей, число ядер, объём памяти и часовой пояс у них общие.
+   Это не секрет и не точный номер: два одинаковых телефона одной модели
+   в одном аккаунте могут склеиться в одно устройство. Только для телефонов */
+function phoneSignature() {
+  const s = window.screen || {};
+  const parts = [
+    Math.min(s.width || 0, s.height || 0), Math.max(s.width || 0, s.height || 0),
+    window.devicePixelRatio || 1, navigator.hardwareConcurrency || 0, navigator.deviceMemory || 0,
+    (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })(),
+  ].join("|");
+  let h = 0x811c9dc5; // FNV-1a: короткая сводка, по ней нельзя восстановить данные
+  for (let i = 0; i < parts.length; i++) { h ^= parts.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+export const isHw = (v) => typeof v === "string" && /^[0-9a-f]{8}$/.test(v);
+
 /* Кто это устройство. device_id создаётся один раз и живёт в localStorage,
-   имя — по типу: приложение, сайт на телефоне или на компьютере */
+   имя — по типу: приложение, сайт на телефоне или на компьютере.
+   hw — «отпечаток телефона» (см. phoneSignature), у компьютера — нет */
 export function deviceIdentity() {
   let id = null;
   try { id = localStorage.getItem(DEVICE_ID_KEY); } catch {}
@@ -42,7 +62,7 @@ export function deviceIdentity() {
   const mobile = window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth <= 768;
   const platform = mobile ? "mobile" : "desktop";
   const name = kind === "app" ? "Приложение" : mobile ? "Сайт на телефоне" : "Сайт на компьютере";
-  return { device_id: id, name, kind, platform };
+  return { device_id: id, name, kind, platform, ...(mobile ? { hw: phoneSignature() } : {}) };
 }
 
 // Ссылка, которую можно открыть: только http и https (javascript: и прочее — нет)
@@ -89,7 +109,7 @@ const SCHEMAS = {
   // Список устройств аккаунта изменился — перечитать из облака
   "devices.changed": (p) => base(p),
   // В облаке новое (устройства или чаты) — перечитать эту таблицу сразу
-  "sync.changed": (p) => base(p) && ["devices", "chats", "files", "file_folders"].includes(p.table),
+  "sync.changed": (p) => base(p) && ["devices", "chats", "files", "file_folders", "schedule"].includes(p.table),
 };
 export const LINK_EVENTS = Object.keys(SCHEMAS);
 
@@ -127,6 +147,7 @@ function flattenPresence(state) {
       platform: m.platform === "mobile" ? "mobile" : "desktop",
       joined_at: m.joined_at,
       sys: cleanSys(m.sys),
+      hw: isHw(m.hw) ? m.hw : null,
     });
   }
   return list.sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)));
