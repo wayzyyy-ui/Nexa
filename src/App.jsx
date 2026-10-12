@@ -27,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.15";
+const VERSION = "0.8.16";
 
 
 /* =========================================================================
@@ -7328,6 +7328,12 @@ useEffect(() => {
   const cmdBusyRef = useRef(false); cmdBusyRef.current = cmdBusy; // для спектрального фона
   const isLoading = cmdBusy || liveChatId !== null;
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // Свайп вправо на экране ассистента открывает историю (см. useTabSwipe в NexaApp)
+  useEffect(() => {
+    const open = () => setIsHistoryOpen(true);
+    window.addEventListener("nexa-open-history", open);
+    return () => window.removeEventListener("nexa-open-history", open);
+  }, []);
   const bottomRef = useRef(null);
   // Окно со списком сообщений: прокручиваем вниз только его, а не всю страницу
   const listRef = useRef(null);
@@ -8400,7 +8406,7 @@ function QrCode({ text, size = 120, radius = 10, label = "QR-код: адрес 
   let path = "";
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (d[y * n + x]) path += `M${x + pad} ${y + pad}h1v1h-1z`;
   return (
-    <svg viewBox={`0 0 ${n + pad * 2} ${n + pad * 2}`} width={size} height={size} role="img" aria-label={label}
+    <svg viewBox={`0 0 ${n + pad * 2} ${n + pad * 2}`} width={size} height={size} role="img" aria-label={label} data-no-swipe
       shapeRendering="crispEdges" style={{ display: "block", borderRadius: radius }}>
       <rect width="100%" height="100%" style={{ fill: C.onFold }} />
       <path d={path} style={{ fill: C.foldDeep }} />
@@ -9763,6 +9769,75 @@ function useKeyboardViewport() {
   }, []);
 }
 
+/* ---------- Свайпы между разделами (только телефон) ----------
+   Порядок как в нижней панели: Сегодня → Ассистент → Главная → Медиа → Файлы,
+   без зацикливания. Жест только наблюдаем (passive) — вертикальная прокрутка
+   и системные жесты не блокируются. На компьютере касаний нет — мышь и
+   колёсико не затронуты.
+   Свайп засчитываем, если по горизонтали палец прошёл явно больше, чем по
+   вертикали (в 1,5 раза), и либо не меньше 60 px, либо это быстрый флик
+   (от 30 px со скоростью от 0,5 px/мс за до 300 мс).
+   Не реагируем, если жест начался: в поле ввода, на ползунке, в QR-коде,
+   в горизонтально прокручиваемом блоке, в открытом окне / меню / шторке,
+   в 24 px от края экрана (там системный «Назад»), при открытой клавиатуре.
+   getCtx() → { tab, sub } (sub — открыт экран устройства или «Активность»);
+   onSwipe(dir) — dir: "next" (палец влево) | "prev" (палец вправо) */
+const SWIPE_ORDER = ["today", "assistant", "home", "media", "files"];
+const SWIPE_MIN = 60, SWIPE_FLICK_MIN = 30, SWIPE_FLICK_SPEED = 0.5, SWIPE_FLICK_MS = 300, SWIPE_EDGE = 24, SWIPE_RATIO = 1.5;
+const SWIPE_SKIP = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe], [role="dialog"], [role="menu"], .nx-notes, .nx-viewer, .nx-hist-drawer';
+// Внутри горизонтально прокручиваемого блока свайп — это прокрутка блока
+function inHorizontalScroll(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    if (n.scrollWidth > n.clientWidth + 2) {
+      const ox = getComputedStyle(n).overflowX;
+      if (ox === "auto" || ox === "scroll") return true;
+    }
+  }
+  return false;
+}
+function useTabSwipe(getCtx, onSwipe) {
+  const ctx = useRef(getCtx); ctx.current = getCtx;
+  const act = useRef(onSwipe); act.current = onSwipe;
+  useEffect(() => {
+    const mobile = window.matchMedia?.("(max-width: 768px)");
+    let start = null;
+    const down = (e) => {
+      start = null;
+      if (!mobile?.matches || e.touches.length !== 1) return;
+      const t = e.touches[0], el = e.target instanceof Element ? e.target : null;
+      if (!el || t.clientX < SWIPE_EDGE || t.clientX > window.innerWidth - SWIPE_EDGE) return;
+      if (document.body.classList.contains("kb-open")) return;
+      // Открыто окно, меню или шторка — жесты у них свои (шторку истории — см. ниже)
+      const layer = document.querySelector('[role="dialog"]:not(.nx-hist-drawer), [role="menu"], .nx-notes, .nx-viewer');
+      if (layer || el.closest(SWIPE_SKIP) || inHorizontalScroll(el)) return;
+      const c = ctx.current();
+      if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», Настройки
+      start = { x: t.clientX, y: t.clientY, at: performance.now() };
+    };
+    const up = (e) => {
+      if (!start) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - start.x, dy = t.clientY - start.y, dt = performance.now() - start.at;
+      start = null;
+      if (Math.abs(dx) < SWIPE_RATIO * Math.abs(dy)) return; // больше вертикально — это прокрутка
+      const far = Math.abs(dx) >= SWIPE_MIN;
+      const flick = Math.abs(dx) >= SWIPE_FLICK_MIN && dt <= SWIPE_FLICK_MS && Math.abs(dx) / dt >= SWIPE_FLICK_SPEED;
+      if (!far && !flick) return;
+      if (window.getSelection?.().toString()) return; // выделяли текст
+      act.current(dx < 0 ? "next" : "prev");
+    };
+    const cancel = () => { start = null; };
+    document.addEventListener("touchstart", down, { passive: true });
+    document.addEventListener("touchend", up, { passive: true });
+    document.addEventListener("touchcancel", cancel, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", down);
+      document.removeEventListener("touchend", up);
+      document.removeEventListener("touchcancel", cancel);
+    };
+  }, []);
+}
+
 /* ---------- 6. APP — корневой компонент ----------
    tab хранит id текущего открытого раздела (по умолчанию "home").
    setTab меняется при клике по иконке в Sidebar — от этого зависит,
@@ -10520,6 +10595,38 @@ export default function NexaApp() {
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setTab(t); };
   // Нажали на виджет рабочего стола: «Расписание» → «Сегодня», «Погода» → Главная
   const goTabRef = useRef(goTab); goTabRef.current = goTab;
+  /* Свайп между разделами. Ассистент: вправо — открыть историю диалогов
+     (а не «Сегодня»), влево — Главная. Открытую шторку истории закрывает
+     свайп влево (по самой шторке — её собственный жест, по затемнению — здесь) */
+  const [swipeDir, setSwipeDir] = useState(null); // откуда въезжает новый экран: "next" | "prev"
+  useTabSwipe(
+    () => ({ tab, sub: !!openDeviceId || activityOpen }),
+    (dir) => {
+      if (tab === "assistant") {
+        if (document.querySelector(".nx-hist-drawer.is-open")) {
+          if (dir === "next") window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+          return; // при открытой истории разделы не переключаем
+        }
+        if (dir === "prev") { window.dispatchEvent(new Event("nexa-open-history")); return; }
+      }
+      const i = SWIPE_ORDER.indexOf(tab) + (dir === "next" ? 1 : -1);
+      if (i < 0 || i >= SWIPE_ORDER.length) return; // крайняя вкладка — дальше некуда
+      setSwipeDir(dir);
+      goTab(SWIPE_ORDER[i]);
+    },
+  );
+  // Направление — пометка у body (до отрисовки нового экрана): по ней CSS
+  // выбирает въезд сбоку вместо обычного появления
+  useLayoutEffect(() => {
+    if (swipeDir) document.body.dataset.swipe = swipeDir;
+    else delete document.body.dataset.swipe;
+  }, [swipeDir]);
+  // Направление нужно только для въезда нового экрана — потом сбрасываем
+  useEffect(() => {
+    if (!swipeDir) return;
+    const t = setTimeout(() => setSwipeDir(null), 260);
+    return () => clearTimeout(t);
+  }, [swipeDir, tab]);
   useEffect(() => onWidgetTab((t) => goTabRef.current(t)), []);
 
   // Аккаунт: кто вошёл (Supabase) — см. начало NexaApp. Гостевой режим и окно входа
@@ -11063,6 +11170,16 @@ export default function NexaApp() {
   .ng-assistant-anim {
   animation: ng-screen-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+  /* Переход свайпом: новый раздел коротко въезжает сбоку (200 мс).
+     next — пришёл справа (листали влево), prev — слева */
+  body[data-swipe="next"] .ng-screen-anim, body[data-swipe="next"] .ng-assistant-anim { animation: nx-swipe-next 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  body[data-swipe="prev"] .ng-screen-anim, body[data-swipe="prev"] .ng-assistant-anim { animation: nx-swipe-prev 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  @keyframes nx-swipe-next { from { opacity: 0.35; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+  @keyframes nx-swipe-prev { from { opacity: 0.35; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+  /* Без движения — экран просто меняется */
+  @media (prefers-reduced-motion: reduce) {
+    body[data-swipe] .ng-screen-anim, body[data-swipe] .ng-assistant-anim { animation: none; }
+  }
           /* Приветствие: всплывает, цвет перетекает от синего к мятному */
         @keyframes nx-greet-in {
           0%   { opacity: 0; transform: translateY(14px); filter: blur(6px); }
