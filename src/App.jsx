@@ -1,9 +1,10 @@
-import { useState, useEffect, useLayoutEffect, useRef, startTransition, useSyncExternalStore } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useId, startTransition, useSyncExternalStore } from "react";
 // flushSync нужен для плавной смены темы: React обновляет экран сразу,
 // пока браузер делает снимок для анимации
 import { flushSync, createPortal } from "react-dom";
 // Подключаем свой логотип из папки assets
 import foldSvg from "./assets/fold.svg";
+import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
 import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
@@ -26,7 +27,7 @@ import {
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES,
 } from "./lib/files.js";
-const VERSION = "0.8.14";
+const VERSION = "0.8.15";
 
 
 /* =========================================================================
@@ -521,6 +522,87 @@ function FoldHero({ size = 340 }) {
       alt="NEXA"
       style={{ width: size, height: size, display: "block" }}
     />
+  );
+}
+
+/* Складка Главной: раскрывается при первом открытии Главной за сессию
+   (~1,2 с), при подключении нового устройства коротко «вздыхает» гранями,
+   слегка смещается за курсором / наклоном и при прокрутке.
+   Анимируются только transform и opacity граней — без размытия и фильтров.
+   Как устроено: в покое — та же картинка fold.svg (с тенями). На время
+   движения поверх неё — те же три грани отдельными SVG-путями без теней;
+   в конце они плавно уступают место картинке.
+   При «уменьшении движения» — сразу неподвижная картинка.
+   count — сколько устройств (выросло — значит подключили новое) */
+const FOLD_INTRO_KEY = "nexa-fold-intro"; // в sessionStorage: раскрытие уже было
+const HOME_FACETS = [
+  { cls: "f-c", d: "M279 376.606L511.939 146.071L605.813 434.474L372.371 663.466L279 376.606Z", g: 2, o: 0.4 },
+  { cls: "f-b", d: "M681.341 243.604L739.811 634.399L372.137 489.638L681.341 243.604Z", g: 1, o: 0.39 },
+  { cls: "f-a", d: "M691.785 720.578L600.477 440.055L372.353 663.411L691.785 720.578Z", g: 0, o: 0.4 },
+];
+// Градиенты граней — как в fold.svg (картинка-источник складки)
+const HOME_FACET_GRADS = [
+  { x1: 496.742, y1: 548.079, x2: 691.785, y2: 720.578, from: "var(--fold-hf-a1)", to: "var(--fold-hf-a2)" },
+  { x1: 681.341, y1: 243.604, x2: 609.363, y2: 582.509, from: "var(--fold-hf-b1)", to: "var(--fold-hf-b2)" },
+  { x1: 513.592, y1: 151.148, x2: 370.686, y2: 658.289, from: "var(--fold-hf-c1)", to: "var(--fold-hf-c2)" },
+];
+const reducedMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+function HomeFold({ size, count = 0 }) {
+  const ref = useRef(null);
+  useBackdropMotion(ref); // --px / --py (курсор, наклон) и --sy (прокрутка)
+  const uid = useId().replace(/:/g, "");
+  // "intro" — раскрытие, "pulse" — «вздох», "settle" — грани уступают картинке, null — покой
+  const [phase, setPhase] = useState(() => {
+    try { return !reducedMotion() && !sessionStorage.getItem(FOLD_INTRO_KEY) ? "intro" : null; } catch { return null; }
+  });
+  useEffect(() => { if (phase === "intro") try { sessionStorage.setItem(FOLD_INTRO_KEY, "1"); } catch {} }, []);
+  // Подключили новое устройство — короткое движение граней
+  const prevCount = useRef(count);
+  useEffect(() => {
+    if (count > prevCount.current && !reducedMotion()) setPhase((p) => (p === "intro" ? p : "pulse"));
+    prevCount.current = count;
+  }, [count]);
+  // Смена фаз — по таймеру длительности, а не по концу CSS-анимации:
+  // у скрытой складки (вторая раскладка Главной) анимация не идёт и конца не сообщает
+  useEffect(() => {
+    if (!phase) return;
+    const next = phase === "settle" ? null : "settle";
+    const t = setTimeout(() => setPhase(next), { intro: 1200, pulse: 760, settle: 320 }[phase]);
+    return () => clearTimeout(t);
+  }, [phase]);
+  const moving = phase === "intro" || phase === "pulse";
+  return (
+    <div ref={ref} style={{ width: size, height: size, position: "relative" }}>
+      {/* Лёгкий параллакс: за курсором / наклоном и чуть вверх при прокрутке */}
+      <div style={{
+        position: "absolute", inset: 0, transition: BACKDROP_EASE,
+        transform: "translate(calc(var(--px, 0) * 6px), calc(var(--py, 0) * 5px - var(--sy, 0) * 12px))",
+      }}>
+        <img src={foldSvg} alt="NEXA" style={{
+          width: size, height: size, display: "block",
+          opacity: moving ? 0 : 1, transition: moving ? "none" : "opacity 300ms ease",
+        }} />
+        {phase && (
+          <svg viewBox="0 0 829 861" preserveAspectRatio="none" aria-hidden="true"
+            className={`nx-homefold is-${phase}`}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+            <defs>
+              {HOME_FACET_GRADS.map((g, i) => (
+                <linearGradient key={i} id={`${uid}g${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} gradientUnits="userSpaceOnUse">
+                  <stop style={{ stopColor: g.from }} />
+                  <stop offset="1" style={{ stopColor: g.to }} />
+                </linearGradient>
+              ))}
+            </defs>
+            <g style={{ mixBlendMode: "screen" }}>
+              {HOME_FACETS.map((f) => (
+                <path key={f.cls} className={f.cls} d={f.d} fill={`url(#${uid}g${f.g})`} fillOpacity={f.o} />
+              ))}
+            </g>
+          </svg>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1585,7 +1667,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
                 Края картинки прозрачные, так что на соседей она не «наезжает» */}
             <div style={{ display: "flex", justifyContent: "center", pointerEvents: "none" }}>
               <div data-link-hub style={{ transform: "scale(1.4)", transformOrigin: "center" }}>
-                <FoldHero size={340} />
+                <HomeFold size={340} count={devices.length} />
               </div>
             </div>
             <div
@@ -1650,7 +1732,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
           </div>
           {/* Складка крупнее и чуть выше — вровень с заголовком */}
           <div style={{ flexShrink: 0, alignSelf: "flex-start", margin: "-34px -14px 0 -10px" }}>
-            <FoldHero size={168} />
+            <HomeFold size={168} count={devices.length} />
           </div>
         </div>
 
@@ -6810,6 +6892,19 @@ const AURA_FACETS = [
   { clip: `polygon(28% 96%, 6% 32%, ${AURA_C})`,  from: C.foldDeep, to: C.foldMint, depth: 0.9, delay: 360 },
 ];
 
+/* Спектральный фон экрана ассистента (src/lib/spectrum.js): мягкое цветное
+   поле на холсте под всем экраном. Состояние читает сам, каждый кадр:
+   думает — пока нет текста ответа, отвечает — пока текст растёт.
+   React ради этого не перерисовывается */
+function AssistantSpectrum({ busyRef }) {
+  const ref = useRef(null);
+  useEffect(() => runSpectrum(ref.current, () => ({
+    busy: live.chatId !== null || !!busyRef.current,
+    len: live.text.length,
+  })), []);
+  return <canvas ref={ref} className="nx-spectrum" aria-hidden="true" />;
+}
+
 function AssistantAura({ active }) {
   const ref = useRef(null);
   useBackdropMotion(ref); // --px / --py от курсора (на телефоне — от наклона)
@@ -7230,6 +7325,7 @@ useEffect(() => {
   // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
   const liveChatId = useLiveChatId();
   const [cmdBusy, setCmdBusy] = useState(false);
+  const cmdBusyRef = useRef(false); cmdBusyRef.current = cmdBusy; // для спектрального фона
   const isLoading = cmdBusy || liveChatId !== null;
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const bottomRef = useRef(null);
@@ -7794,6 +7890,7 @@ const menuBlock = (
   };
 
   const innerStyle = {
+  position: "relative", zIndex: 1, // над спектральным фоном
   flex: 1, display: "flex", flexDirection: "row",
   width: "100%", maxWidth: 1440, margin: "0 auto",
   padding: "66px 40px 20px 40px",
@@ -7802,6 +7899,8 @@ const menuBlock = (
 };
   return (
   <div className="ng-assistant-wrapper ng-assistant-anim" style={wrapperStyle}>
+    {/* Спектральный фон — под всем содержимым, нажатия и прокрутку не перехватывает */}
+    <AssistantSpectrum busyRef={cmdBusyRef} />
     {menuBlock}
 
     <div className="ng-assistant-inner" style={innerStyle}>
@@ -10757,6 +10856,8 @@ export default function NexaApp() {
           --on-fold: #FFFFFF;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
+          /* Грани складки Главной (те же цвета, что в fold.svg) */
+          --fold-hf-a1: #0C336D; --fold-hf-a2: #139CB4; --fold-hf-b1: #00FFDF; --fold-hf-b2: #2DD4BF; --fold-hf-c1: #9DB1FD; --fold-hf-c2: #042AA5;
           color-scheme: dark;
         }
         :root[data-theme="light"] {
@@ -10781,6 +10882,8 @@ export default function NexaApp() {
           --on-fold: #FFFFFF;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
+          /* Грани складки Главной (те же цвета, что в fold.svg) */
+          --fold-hf-a1: #0C336D; --fold-hf-a2: #139CB4; --fold-hf-b1: #00FFDF; --fold-hf-b2: #2DD4BF; --fold-hf-c1: #9DB1FD; --fold-hf-c2: #042AA5;
           color-scheme: light;
         }
         body { transition: background-color 200ms ease, color 200ms ease; }
@@ -10804,6 +10907,33 @@ export default function NexaApp() {
         .ng-hamburger { display: none; }
         .ng-devices-list { display: block; }
         .ng-devices-mobile { display: none; }
+
+        /* Спектральный фон ассистента (AssistantSpectrum): маленький холст,
+           растянутый на весь экран. Мягкое свечение и размытие разрешены только
+           здесь (см. CLAUDE.md). Без масок и фильтров: середину приглушает сам
+           холст, браузеру остаётся только растянуть готовую картинку */
+        .nx-spectrum {
+          position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
+          pointer-events: none; display: block;
+        }
+        /* Складка Главной (HomeFold): грани вращаются вокруг общего сгиба */
+        .nx-homefold path { transform-box: view-box; transform-origin: 372px 663px; }
+        .nx-homefold.is-intro .f-c { animation: nx-hf-c 860ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .nx-homefold.is-intro .f-b { animation: nx-hf-b 860ms cubic-bezier(0.16, 1, 0.3, 1) 170ms both; }
+        .nx-homefold.is-intro .f-a { animation: nx-hf-a 860ms cubic-bezier(0.16, 1, 0.3, 1) 340ms both; }
+        @keyframes nx-hf-c { from { opacity: 0; transform: rotate(-38deg) scale(0.3); } 55% { opacity: 1; } to { opacity: 1; transform: none; } }
+        @keyframes nx-hf-b { from { opacity: 0; transform: rotate(32deg) scale(0.3); } 55% { opacity: 1; } to { opacity: 1; transform: none; } }
+        @keyframes nx-hf-a { from { opacity: 0; transform: rotate(-26deg) scale(0.35); } 55% { opacity: 1; } to { opacity: 1; transform: none; } }
+        /* Новое устройство: грани коротко расходятся от сгиба и возвращаются */
+        .nx-homefold.is-pulse .f-c { animation: nx-hp-c 640ms cubic-bezier(0.4, 0, 0.2, 1); }
+        .nx-homefold.is-pulse .f-b { animation: nx-hp-b 640ms cubic-bezier(0.4, 0, 0.2, 1) 60ms; }
+        .nx-homefold.is-pulse .f-a { animation: nx-hp-a 640ms cubic-bezier(0.4, 0, 0.2, 1) 120ms; }
+        @keyframes nx-hp-c { 45% { transform: translate(-22px, -18px) rotate(-3deg); } }
+        @keyframes nx-hp-b { 45% { transform: translate(22px, -16px) rotate(3deg); } }
+        @keyframes nx-hp-a { 45% { transform: translate(18px, 20px) rotate(-2deg); } }
+        /* Грани уступают место картинке с тенями */
+        .nx-homefold.is-settle { opacity: 0; transition: opacity 300ms ease; }
+        @media (prefers-reduced-motion: reduce) { .nx-homefold path { animation: none !important; } }
 
         /* Полоска заполнения (место на устройстве, хранилище) — тонкая, 4px */
         .nx-sys-bar {
