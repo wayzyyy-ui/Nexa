@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.9";
+const VERSION = "0.9.10";
 
 
 const C = {
@@ -66,6 +66,18 @@ const C = {
   foldCyan: "var(--fold-cyan)",  // голубой
   foldMint: "var(--fold-mint)",  // мятный
   foldGreen: "var(--fold-green)",// зелёный
+};
+
+/* Размеры дизайн-системы для inline-стилей — те же числа, что CSS-переменные
+   --fs-*, --sp-*, --r-* в блоке <style> (там же описание шкалы).
+   Новые элементы собирать из этих значений, а не придумывать свои */
+const T = {
+  // Шрифт: метка, мелкая подпись, вторичный, основной, строка, крупная строка, раздел, экран
+  fs: { label: 11, small: 12, sub: 13, body: 14, row: 15, lead: 16, section: 22, page: 40 },
+  // Отступы — шаг 4
+  sp: { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, 10: 40 },
+  // Углы: поля/плашки, средние карточки, крупные карточки и панели, кнопки
+  r: { sm: 10, md: 14, lg: 18, pill: 999 },
 };
 
 /* ---------- ТЕМА ----------
@@ -1193,7 +1205,7 @@ function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings }) {
             </span>
           </div>
           {notes.items.length === 0 ? (
-            <div style={{ padding: "26px 16px", textAlign: "center", fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
+            <div style={{ padding: "26px 16px", textAlign: "center", fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>
               Пока тихо. Здесь появятся события:<br />файлы, устройства, синхронизация, расписание.
             </div>
           ) : (
@@ -1288,18 +1300,18 @@ function TimeDate() {
 
 // onClick необязательный: если передан, кнопка становится нажимаемой.
 function IconBtn({ icon, s = 18, onClick, label }) {
-  return (
-    <div
-      onClick={onClick}
-      role={onClick ? "button" : undefined}
-      aria-label={label}
-      style={{
-        width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: onClick ? "pointer" : "default",
-      }}
-    >
+  // Без onClick — просто значок. С onClick — настоящая кнопка: до неё можно
+  // дойти клавишей Tab и нажать Enter / пробелом
+  if (!onClick) return (
+    <div aria-hidden="true" style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {icon({ c: C.text, s })}
     </div>
+  );
+  return (
+    <button type="button" className="nx-icon-btn" onClick={onClick} aria-label={label} title={label}
+      style={{ ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {icon({ c: C.text, s })}
+    </button>
   );
 }
 
@@ -1795,7 +1807,7 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
                   {Icon.sparkle({ c: C.mint, s: 18 })}
                 </div>
                 <div>
-                  <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
+                  <div style={{ fontWeight: 500 }}>ИИ — Ассистент</div>
                   <div style={{ fontSize: 13, color: C.muted }}>Чем могу помочь?</div>
                 </div>
               </div>
@@ -1828,7 +1840,7 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
          {/* Hero */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ng-display" style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.2 }}>
+            <div className="ng-display nx-home-hero" style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.2 }}>
               Все устройства в одной системе
             </div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>
@@ -1949,7 +1961,7 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
             {Icon.sparkle({ c: C.mint, s: 20 })}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 500 }}>AI - Ассистент</div>
+            <div style={{ fontWeight: 500 }}>ИИ — Ассистент</div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Чем могу помочь?</div>
           </div>
           <div style={{
@@ -2039,7 +2051,7 @@ function ActivityList({ items, limit }) {
               {(ACTIVITY_ICON[it.kind] || ACTIVITY_ICON.sent)(tone)}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+              <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
               {it.text && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>}
             </div>
             <span style={{ fontSize: 12, color: C.mutedSoft, flexShrink: 0, whiteSpace: "nowrap" }}>{activityTime(it.at)}</span>
@@ -2057,7 +2069,7 @@ function ActivityBlock({ items, onOpen }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
         <span style={{ fontSize: 16, fontWeight: 500 }}>Активность</span>
         <button type="button" className="nx-link-btn" onClick={onOpen} style={{
-          ...btnReset, fontSize: 12.5, color: C.mutedSoft, borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 2,
+          ...btnReset, fontSize: 13, color: C.mutedSoft, borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 2,
         }}>
           Вся активность →
         </button>
@@ -2083,7 +2095,7 @@ function ScreenActivity({ items, onBack, onClear }) {
     <div className="ng-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 820 }}>
       <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap", margin: "18px 0 6px" }}>
-        <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>Активность</div>
+        <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>Активность</div>
         {items.length > 0 && !confirm && (
           <button type="button" className="nx-ghost-btn" onClick={() => setConfirm(true)} style={ghost}>Очистить</button>
         )}
@@ -2096,14 +2108,14 @@ function ScreenActivity({ items, onBack, onClear }) {
           display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", marginBottom: 16, borderRadius: 10,
           border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, background: `color-mix(in srgb, ${C.red} 8%, transparent)`,
         }}>
-          <span style={{ flex: "1 1 200px", fontSize: 13.5 }}>Очистить всю ленту на этом устройстве? Вернуть не получится.</span>
+          <span style={{ flex: "1 1 200px", fontSize: 14 }}>Очистить всю ленту на этом устройстве? Вернуть не получится.</span>
           <button type="button" className="nx-ghost-btn" onClick={() => setConfirm(false)} style={ghost}>Отмена</button>
           <button type="button" className="nx-ghost-btn" onClick={() => { onClear(); setConfirm(false); }} style={{ ...ghost, borderColor: C.red, color: C.red }}>Очистить</button>
         </div>
       )}
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 18, padding: "4px 18px", background: C.bg }}>
         {items.length === 0
-          ? <div style={{ fontSize: 13.5, color: C.mutedSoft, padding: "18px 0" }}>Пока пусто. Подключите устройство по коду — его события появятся здесь.</div>
+          ? <div style={{ fontSize: 14, color: C.mutedSoft, padding: "18px 0" }}>Пока пусто. Подключите устройство по коду — его события появятся здесь.</div>
           : <ActivityList items={items} />}
       </div>
     </div>
@@ -2124,7 +2136,7 @@ function LockOverlay({ from, onUnlock }) {
         <span style={{ transform: "rotate(-45deg)", display: "flex" }}>{Icon.lock({ c: C.mint, s: 26 })}</span>
       </span>
       <div id="nx-lock-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>NEXA заблокирована</div>
-      <div style={{ fontSize: 14.5, color: C.muted, marginTop: 10, maxWidth: 340, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 15, color: C.muted, marginTop: 10, maxWidth: 340, lineHeight: 1.5 }}>
         Заблокировали с устройства «{from}».
       </div>
       <button type="button" className="nx-primary" onClick={onUnlock} autoFocus style={{
@@ -2168,15 +2180,15 @@ function LocateMap({ lat, lon, acc }) {
     })();
     return () => { off = true; map?.remove(); };
   }, [lat, lon, acc]);
-  if (fail) return <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10 }}>Карта не загрузилась — нет связи с сервисом карт. Координаты ниже</div>;
+  if (fail) return <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10 }}>Карта не загрузилась — нет связи с сервисом карт. Координаты ниже</div>;
   return <div ref={ref} className="nx-map" data-no-swipe role="img" aria-label="Карта: где устройство" style={{ height: 220, marginTop: 10, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.border}` }} />;
 }
 // Ответ на «Где устройство?»: карта, точность, когда определено, «Открыть в картах»
 function LocateResult({ r }) {
   if (!r) return null;
-  if (r.state === "asking") return <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, marginTop: 10 }}><Spinner s={11} /> Спрашиваем устройство…</div>;
+  if (r.state === "asking") return <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, marginTop: 10 }}><Spinner s={11} /> Спрашиваем устройство…</div>;
   if (r.state !== "ok") return (
-    <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10, lineHeight: 1.45 }}>
+    <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10, lineHeight: 1.45 }}>
       {{ off: "На устройстве не разрешено показывать местоположение — включите это в его Настройках → «Поиск этого устройства»",
          denied: "Устройству не дали доступ к геолокации — разрешите его в настройках телефона или браузера",
          error: "Устройство не смогло определить место — нет сигнала GPS или сети",
@@ -2189,7 +2201,7 @@ function LocateResult({ r }) {
   return (
     <div style={{ marginTop: 6 }}>
       <LocateMap lat={r.lat} lon={r.lon} acc={r.acc} />
-      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 12px", marginTop: 8, fontSize: 12.5, color: C.muted }}>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 12px", marginTop: 8, fontSize: 13, color: C.muted }}>
         <span>Определено в {when} · точность {acc}</span>
         <a href={isNative ? `geo:${r.lat},${r.lon}?q=${r.lat},${r.lon}` : url} target="_blank" rel="noopener noreferrer" style={{ color: C.mint }}>Открыть в картах</a>
       </div>
@@ -2218,7 +2230,7 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
   };
   return (
     <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
-      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginBottom: 10 }}>Быстрые действия</div>
+      <div style={{ fontSize: 13, color: C.mutedSoft, marginBottom: 10 }}>Быстрые действия</div>
       <div className="nx-quick-actions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
         <FindChip state={st.find} onClick={() => act.find(d)} style={pushFindOk ? pill : off({ ...pill })} />
         <button type="button" className="nx-ghost-btn" disabled={!!why || st.lock === "locked"} onClick={() => act.lock(d)} style={off(pill)}>
@@ -2235,13 +2247,13 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
       <LocateResult r={st.locate} />
       {/* Отправка файла: настоящий процент, отмена; ошибка — честно */}
       {send.state && (
-        <div role={send.state === "error" ? "alert" : "status"} style={{ marginTop: 10, fontSize: 12.5, color: send.state === "error" ? C.red : C.muted }}>
+        <div role={send.state === "error" ? "alert" : "status"} style={{ marginTop: 10, fontSize: 13, color: send.state === "error" ? C.red : C.muted }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {sending ? <Spinner s={11} /> : send.state === "done" ? Icon.check({ c: C.green, s: 13 }) : Icon.alert({ c: C.red, s: 13 })}
             <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {sending ? `Отправляем «${send.name}» — ${Math.round((send.progress || 0) * 100)}%` : send.state === "done" ? `«${send.name}» отправлен` : send.error}
             </span>
-            {sending && <button type="button" onClick={() => act.cancelSend(d)} style={{ ...btnReset, fontSize: 12.5, color: C.mutedSoft, textDecoration: "underline", textUnderlineOffset: 3 }}>Отменить</button>}
+            {sending && <button type="button" onClick={() => act.cancelSend(d)} style={{ ...btnReset, fontSize: 13, color: C.mutedSoft, textDecoration: "underline", textUnderlineOffset: 3 }}>Отменить</button>}
           </div>
           {sending && (
             <div style={{ height: 2, background: C.border, marginTop: 8 }}>
@@ -2259,8 +2271,8 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
           {Icon.shareUp({ c: why ? C.mutedSoft : C.text, s: 14 })} Открыть на устройстве
         </button>
       </form>
-      {urlNote && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 6 }}>{urlNote}</div>}
-      {why && <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>{why}{pushFindOk ? ". «Найти» сработает и сейчас: телефону придёт уведомление, которое звонит" : ""}</div>}
+      {urlNote && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 6 }}>{urlNote}</div>}
+      {why && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>{why}{pushFindOk ? ". «Найти» сработает и сейчас: телефону придёт уведомление, которое звонит" : ""}</div>}
       {!d.online && linkOnline && (
         <button type="button" className="nx-ghost-btn" onClick={act.reconnect} style={{ ...pill, marginTop: 10 }}>
           {Icon.refresh({ c: C.text, s: 14 })} Подключить снова
@@ -2384,7 +2396,7 @@ function FindOverlay({ from, onFound, onTimeout }) {
         </span>
       </div>
       <div id="nx-find-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>Устройство ищут</div>
-      <div style={{ fontSize: 14.5, color: C.muted, marginTop: 10, maxWidth: 320, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 15, color: C.muted, marginTop: 10, maxWidth: 320, lineHeight: 1.5 }}>
         Вас зовёт «{from}». Нажмите, когда найдёте — сигнал выключится.
       </div>
       <button type="button" className="nx-primary" onClick={() => found.current?.()} autoFocus style={{
@@ -2512,7 +2524,7 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
             <PairCodeForm onClaim={(code) => { onClaim?.(code); onClose(); }} />
             {onScan && (
               <button type="button" className="nx-ghost-btn" onClick={() => { onClose(); onScan(); }} style={{
-                ...btnReset, marginTop: 12, width: "100%", padding: "11px 16px", fontSize: 13.5, borderRadius: 999,
+                ...btnReset, marginTop: 12, width: "100%", padding: "11px 16px", fontSize: 14, borderRadius: 999,
                 border: `1px solid ${C.borderStrong}`, color: C.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}>
                 {Icon.search({ c: C.text, s: 15 })} Сканировать QR с другого экрана
@@ -2529,7 +2541,7 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
               </div>
             </div>
             {/* Тонкая вертикальная грань между способами */}
-            <div className="nx-pair-or" aria-hidden="true" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, color: C.mutedSoft, fontSize: 11.5 }}>
+            <div className="nx-pair-or" aria-hidden="true" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, color: C.mutedSoft, fontSize: 12 }}>
               <span style={{ flex: 1, width: 1, background: C.border }} />или<span style={{ flex: 1, width: 1, background: C.border }} />
             </div>
             <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -2580,9 +2592,9 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
         </div>
 
         <BtEntry onOpen={onBt} />
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 12.5, color: C.mutedSoft }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 13, color: C.mutedSoft }}>
           Хотите просто посмотреть, как это выглядит?{" "}
-          <button type="button" onClick={onDemo} style={{ ...btnReset, fontSize: 12.5, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
+          <button type="button" onClick={onDemo} style={{ ...btnReset, fontSize: 13, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
             Добавить демо-устройство
           </button>
         </div>
@@ -2616,11 +2628,11 @@ function PairStatusDialog({ claim, onClose }) {
           </span>
         </div>
         <div id="nx-claim-title" style={{ fontFamily: fontDisplay, fontSize: 22 }}>{waiting ? "Подключаем…" : ok ? "Подключено" : "Не получилось"}</div>
-        <div role="status" style={{ fontSize: 13.5, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
+        <div role="status" style={{ fontSize: 14, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
           {waiting ? "Проверяем код на другом устройстве" : ok ? "Это устройство теперь в списке ваших устройств" : claim.text}
         </div>
         <button type="button" className="nx-ghost-btn" onClick={onClose} style={{
-          ...btnReset, marginTop: 18, padding: "9px 22px", fontSize: 13.5, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text,
+          ...btnReset, marginTop: 18, padding: "9px 22px", fontSize: 14, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text,
         }}>
           {waiting ? "Скрыть" : ok ? "Готово" : "Закрыть"}
         </button>
@@ -2697,7 +2709,7 @@ const LinkColHead = ({ title, right }) => (
 
 // Пусто в колонке: контурная складка и короткая подсказка
 const LinkEmpty = ({ children }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0", fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
+  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0", fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>
     <OutlineFold s={40} /> <span>{children}</span>
   </div>
 );
@@ -2804,7 +2816,7 @@ function FlowTextField({ value, onChange, label, onNote }) {
         }}
       />
       <button type="button" className="nx-ghost-btn" onClick={paste} disabled={busy} style={{
-        ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, padding: "6px 14px", fontSize: 12.5,
+        ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, padding: "6px 14px", fontSize: 13,
         borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text,
       }}>
         {busy ? <Spinner s={12} /> : Icon.copy({ c: C.mint, s: 13 })} Вставить скопированное
@@ -2847,18 +2859,18 @@ function DeviceMessages({ d, link, flowOn = true }) {
           <div style={{ padding: "16px 18px 18px" }}>
             <FlowTextField value={text} onChange={(v) => { setText(v); setNote(null); }} label={`Текст или ссылка для «${d.name}»`} onNote={setNote} />
             {!canSend && (
-              <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10 }}>
+              <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10 }}>
                 {!flowOn ? "NEXA Flow выключен в Настройках" : !online ? "Нет связи — отправить не получится" : "Устройство не в сети — отправить можно, когда на нём откроют NEXA"}
               </div>
             )}
-            {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10 }}>{note}</div>}
+            {note && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10 }}>{note}</div>}
             <StateButton
               variant="primary" state={sendState}
               labels={{ loading: "Отправляем…", success: "Отправлено", error: "Не отправилось" }}
               icon={Icon.send({ c: C.onFold, s: 14 })}
               disabled={!canSend || !text.trim()}
               onClick={send}
-              style={{ marginTop: 14, width: "100%", padding: "11px 16px", borderRadius: 999, fontSize: 13.5 }}
+              style={{ marginTop: 14, width: "100%", padding: "11px 16px", borderRadius: 999, fontSize: 14 }}
             >
               Отправить
             </StateButton>
@@ -2946,9 +2958,9 @@ function FlowSendDialog({ initial, initialTo = null, link, devices, flowOn, user
             ))}
           </div>
         )}
-        {why && <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 14, lineHeight: 1.45 }}>{why}</div>}
-        {note && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10 }}>{note}</div>}
-        {st && <div role="status" style={{ fontSize: 12.5, marginTop: 10, color: st[1] === "green" ? C.green : st[1] === "red" ? C.red : C.muted }}>«{rec.to_name}»: {st[0]}</div>}
+        {why && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 14, lineHeight: 1.45 }}>{why}</div>}
+        {note && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10 }}>{note}</div>}
+        {st && <div role="status" style={{ fontSize: 13, marginTop: 10, color: st[1] === "green" ? C.green : st[1] === "red" ? C.red : C.muted }}>«{rec.to_name}»: {st[0]}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
           {!user ? (
             <StateButton variant="primary" onClick={onLogin} style={{ flex: 1, borderRadius: 999, padding: "11px 16px" }}>Войти</StateButton>
@@ -3099,12 +3111,12 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
           }}>
             <span className="nx-weather-pin" style={{ display: "flex", width: 24, justifyContent: "center", flexShrink: 0 }}>{Icon.pin({ c: C.muted, s: 20 })}</span>
             {/* Длинное название города обрезается многоточием, подпись не съезжает */}
-            <span className="nx-weather-cityname" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{city}</span>
-            {cityNote && (
+            <span className="nx-weather-cityname" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{city === "—" ? "Город не выбран" : city}</span>
+            {cityNote && city !== "—" && (
               <span className="nx-weather-note" style={{ flexShrink: 0, marginLeft: -6, fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap" }}>· {cityNote}</span>
             )}
             {/* Город не определился — подсказываем, что его можно указать */}
-            {city === "—" && <span style={{ fontSize: 11, color: C.mint, whiteSpace: "nowrap" }}>указать</span>}
+            {city === "—" && <span style={{ flexShrink: 0, marginLeft: -6, fontSize: 12, color: C.mint, whiteSpace: "nowrap" }}>· Указать</span>}
           </button>
         )}
       </div>
@@ -3156,7 +3168,7 @@ function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, ton
               </div>
             ) : (
               <>
-                <div style={{ fontSize: 13.5, lineHeight: 1.4 }}>
+                <div style={{ fontSize: 14, lineHeight: 1.4 }}>
                   Не удалось загрузить погоду
                   {veil.text && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{veil.text}</div>}
                 </div>
@@ -3680,22 +3692,22 @@ function CityPicker({ onPick, onAuto, onClose, isManual }) {
         </button>
       </form>
       <div style={{ marginTop: 6 }}>
-        {state.loading && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, padding: "6px 2px" }}><Spinner /> Ищем…</div>}
-        {state.error && <div style={{ fontSize: 12.5, color: C.red, padding: "6px 2px" }}>{state.error}</div>}
+        {state.loading && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, padding: "6px 2px" }}><Spinner /> Ищем…</div>}
+        {state.error && <div style={{ fontSize: 13, color: C.red, padding: "6px 2px" }}>{state.error}</div>}
         {!state.loading && !state.error && text.length >= 2 && state.list.length === 0 && (
-          <div style={{ fontSize: 12.5, color: C.mutedSoft, padding: "6px 2px" }}>Ничего не нашлось</div>
+          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "6px 2px" }}>Ничего не нашлось</div>
         )}
         {state.list.map((c) => (
           <button key={c.lat + "," + c.lon} type="button" className="nx-row-btn" onClick={() => onPick(c)} style={{
             ...btnReset, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "baseline", gap: 8,
-            padding: "8px 4px", borderBottom: "1px solid " + C.border, fontSize: 13.5,
+            padding: "8px 4px", borderBottom: "1px solid " + C.border, fontSize: 14,
           }}>
             <span>{c.city}</span>
-            <span style={{ fontSize: 11.5, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.region}</span>
+            <span style={{ fontSize: 12, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.region}</span>
           </button>
         ))}
         {isManual && (
-          <button type="button" className="nx-link-btn" onClick={onAuto} style={{ ...btnReset, fontSize: 12.5, color: C.muted, padding: "8px 2px" }}>
+          <button type="button" className="nx-link-btn" onClick={onAuto} style={{ ...btnReset, fontSize: 13, color: C.muted, padding: "8px 2px" }}>
             Определять автоматически
           </button>
         )}
@@ -3831,7 +3843,7 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
             </div>
           );
         })}
-        <div style={{ padding: "8px 14px 10px", fontSize: 11.5, color: C.mutedSoft, borderTop: `1px solid ${C.border}` }}>
+        <div style={{ padding: "8px 14px 10px", fontSize: 12, color: C.mutedSoft, borderTop: `1px solid ${C.border}` }}>
           Днём / ночью. Дальше 16 дней точного прогноза нет ни у одного сервиса.
         </div>
       </>
@@ -3948,7 +3960,7 @@ function DayStrip({ value, onChange, all }) {
             background: on ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})` : "transparent",
             color: on ? C.onFold : C.text,
           }}>
-            <span style={{ display: "block", fontSize: 11.5, opacity: on ? 0.9 : 0.7, whiteSpace: "nowrap" }}>{top}</span>
+            <span style={{ display: "block", fontSize: 12, opacity: on ? 0.9 : 0.7, whiteSpace: "nowrap" }}>{top}</span>
             <span style={{ display: "block", fontFamily: fontDisplay, fontSize: 18, lineHeight: 1.2, marginTop: 1 }}>{d.getDate()}</span>
             <span style={{ display: "block", width: 4, height: 4, margin: "3px auto 0", borderRadius: "50%", background: has ? (on ? C.onFold : C.mint) : "transparent" }} />
           </button>
@@ -4001,7 +4013,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
   const tomorrowSky = weatherCodeToText(tomorrow.code);
 
   // Тихая строка под карточкой: идёт обновление или не вышло обновить
-  const statusLine = { fontSize: 11.5, color: C.mutedSoft };
+  const statusLine = { fontSize: 12, color: C.mutedSoft };
 
   // Настоящих данных ещё нет — вместо выдуманных цифр размываем значения
   // и пишем, что происходит: грузим или не вышло (тогда кнопка «Обновить»)
@@ -4141,7 +4153,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
               aria-label="Обновить погоду"
               title="Обновить погоду"
               style={{
-                ...btnReset, width: 26, height: 26, borderRadius: 10,
+                ...btnReset, width: 30, height: 30, borderRadius: 10,
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}
             >
@@ -4471,7 +4483,7 @@ function MediaLayout({ children, hideArt }) {
 function MediaTitle({ title, subtitle }) {
   return (
     <>
-      <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{title}</div>
+      <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{title}</div>
       <div className="nx-page-sub" style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
     </>
   );
@@ -4531,15 +4543,15 @@ function StorageFolds({ cats, selected, onSelect }) {
         const f = STORAGE_FOLDS[c.id];
         const dimmed = selected !== null && selected !== c.id;
         return (
-          <div key={c.id} className="nx-seg-label" aria-hidden="true" style={{
+          <div key={c.id} className="nx-seg-label" data-cat={c.id} aria-hidden="true" style={{
             position: "absolute", left: `${f.label[0]}%`, top: `${f.label[1]}%`, pointerEvents: "none",
             color: C.onFold, lineHeight: 1.2, whiteSpace: "nowrap",
             opacity: dimmed ? 0.45 : 1, transition: "opacity 200ms ease",
           }}>
-            <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>{c.label}</span>
+            <span style={{ display: "block", fontWeight: 600, fontSize: 13 }}>{c.label}</span>
             <span style={{ display: "block", fontSize: 12 }}>{formatBytes(c.bytes)}</span>
             {/* Пустая категория — без «0%» */}
-            {c.bytes > 0 && <span style={{ display: "block", fontSize: 11.5, opacity: 0.75 }}>{c.pct}%</span>}
+            {c.bytes > 0 && <span style={{ display: "block", fontSize: 12, opacity: 0.75 }}>{c.pct}%</span>}
           </div>
         );
       })}
@@ -4621,7 +4633,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
 
       {/* Только на телефоне: заголовок хранилища над карточкой, как в макете */}
       <div className="nx-only-mobile nx-storage-head" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-        <div className="ng-display" style={{ fontSize: 22, fontWeight: 400 }}>Хранилище</div>
+        <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600 }}>Хранилище</div>
         <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>{usedLabel}</div>
       </div>
       {/* Телефон: полоска заполнения и пояснение — под заголовком */}
@@ -4632,14 +4644,14 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
 
       <div className="nx-storage-box" style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", marginBottom: 34 }}>
         <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
-          <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 150 }}>
+          <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 180 }}>
             {Icon.drive({ c: C.text, s: 24 })}
-            {/* Колонка узкая: полоска и пояснение — в её ширину, на складки не заходят */}
+            {/* Колонка узкая: только объём и полоска. Пояснение — внизу карточки,
+                во всю ширину (в узкой колонке оно рвалось на шесть строк) */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14 }}>Хранилище</div>
-              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{usedLabel}</div>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 2, lineHeight: 1.35 }}>{usedLabel}</div>
               {usedBar(true)}
-              <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 6, lineHeight: 1.4 }}>{storeNote}</div>
             </div>
           </div>
           {/* Собираем диаграмму из массива MEDIA_CATS — чтобы поменять пропорции
@@ -4657,7 +4669,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
           }}>
             <div style={{ minWidth: 140 }}>
               <div className="ng-display" style={{ fontSize: 26, fontWeight: 400 }}>{formatBytes(sel.bytes)}</div>
-              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{sel.label}{sel.bytes > 0 ? ` · ${sel.pct}% занятого места` : " · пока пусто"}</div>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{sel.label}{sel.bytes > 0 ? ` · ${sel.pct}% занятого места` : " · пока пусто"}</div>
               <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>
                 {countOf(sel.id)} {plural(countOf(sel.id), ["файл", "файла", "файлов"])} в списке
               </div>
@@ -4666,10 +4678,10 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
               <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Где хранится</div>
               {/* Ничего не занято — не рисуем пустые полоски */}
               {sel.devices.length === 0 && (
-                <div style={{ fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>Здесь пока ничего нет. Добавьте файлы в «Файлах» — покажем, на каком устройстве они лежат.</div>
+                <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>Здесь пока ничего нет. Добавьте файлы в «Файлах» — покажем, на каком устройстве они лежат.</div>
               )}
               {sel.devices.map(([name, bytes]) => (
-                <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, fontSize: 12.5 }}>
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, fontSize: 13 }}>
                   <div style={{ width: 76, flexShrink: 0 }}>{name}</div>
                   <div style={{ flex: 1, height: 6, background: C.chip, overflow: "hidden" }}>
                     {/* Полоска "вырастает" слева направо — показывает долю устройства */}
@@ -4683,21 +4695,22 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
               ))}
             </div>
             <button type="button" className="nx-ghost-btn" onClick={() => onOpenCategory(sel.id)} style={{
-              ...btnReset, fontSize: 12.5, border: `1px solid ${C.borderStrong}`, borderRadius: 12,
+              ...btnReset, fontSize: 13, border: `1px solid ${C.borderStrong}`, borderRadius: 12,
               padding: "8px 14px", alignSelf: "flex-end", whiteSpace: "nowrap",
             }}>
               Открыть в файлах →
             </button>
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>
-            Нажмите на складку, чтобы увидеть, где лежат файлы
+          <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>
+            {/* На телефоне пояснение уже стоит над карточкой */}
+            <span className="nx-hide-mobile">{storeNote}. </span>Нажмите на складку, чтобы увидеть, где лежат файлы
           </div>
         )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
-        <div className="ng-display" style={{ fontSize: 24, fontWeight: 400 }}>Категории</div>
+        <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600 }}>Категории</div>
         <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{
           ...btnReset, fontSize: 12, color: C.mutedSoft, borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 2,
         }}>
@@ -4722,7 +4735,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
               }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", width: "100%" }}>
                 <div>
-                  <div style={{ fontSize: 13.5 }}>{cat.label}</div>
+                  <div style={{ fontSize: 14 }}>{cat.label}</div>
                   <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>{n} {plural(n, ["файл", "файла", "файлов"])}</div>
                 </div>
                 {Icon.chevron({ s: 14 })}
@@ -4732,10 +4745,10 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
         })}
       </div>
 
-      <div className="ng-display" style={{ fontSize: 24, fontWeight: 400, marginBottom: 16 }}>Недавние файлы</div>
+      <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600, marginBottom: T.sp[3] }}>Недавние файлы</div>
       {/* Файлов ещё нет (новый аккаунт) — подсказка вместо пустой ленты */}
       {recent.length === 0 && (
-        <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+        <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", fontSize: 14, color: C.muted, lineHeight: 1.5 }}>
           Пока пусто. Добавьте файлы в разделе{" "}
           <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{ ...btnReset, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
             «Файлы»
@@ -4759,7 +4772,7 @@ function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer
               }}>
                 <FileThumb file={f} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                  <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
                   <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
                 </div>
               </button>
@@ -4779,7 +4792,7 @@ function Crumb({ children, active, onClick }) {
     <button type="button" disabled={active} onClick={onClick} className={active ? undefined : "nx-crumb"} style={{
       ...btnReset,
       cursor: active ? "default" : "pointer",
-      height: 30, padding: "0 20px 0 18px", fontSize: 12.5, whiteSpace: "nowrap", flexShrink: 0,
+      height: 30, padding: "0 20px 0 18px", fontSize: 13, whiteSpace: "nowrap", flexShrink: 0,
       // Скос задаём в пикселях, чтобы угол был одинаковым у коротких и длинных чипсов
       clipPath: "polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)",
       background: active
@@ -4976,7 +4989,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
           <input
             value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder={device ? "Поиск по устройству…" : cat ? "Поиск в категории…" : "Поиск в этой папке…"}
-            style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 12.5, padding: 0 }}
+            style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 13, padding: 0 }}
           />
           {query && (
             <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" style={{ ...btnReset, display: "flex" }}>
@@ -4993,7 +5006,8 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
         paddingBottom: 10, borderBottom: `1px solid ${C.borderStrong}`,
       }}>
         <div style={{
-          fontFamily: fontDisplay, fontSize: 18, fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.04em",
+          // Как заголовок раздела (SectionTitle): тот же размер и вес, без капса
+          fontFamily: fontDisplay, fontSize: 22, fontWeight: 600,
           minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
           {heading}
@@ -5030,7 +5044,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
         const waiting = u.status === "queued";
         const waitText = navigator.onLine === false ? "Нет сети — загрузится, когда связь вернётся (пока NEXA открыта)"
           : u.nextAt ? `Не вышло — повторим в ${new Date(u.nextAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Скоро отправим";
-        const small = { ...btnReset, fontSize: 12.5, padding: "4px 10px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
+        const small = { ...btnReset, fontSize: 13, padding: "4px 10px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
         return (
           <div key={u.id} role={failed ? "alert" : "status"} className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
@@ -5131,7 +5145,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
             <button type="button" key={sf.id} className="nx-row-btn" onClick={() => setFolder(sf.id)} style={rowStyle}>
               <FolderThumb />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5 }}>{sf.name}</div>
+                <div style={{ fontSize: 14 }}>{sf.name}</div>
                 <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
                   Папка · {n} {plural(n, ["объект", "объекта", "объектов"])}
                 </div>
@@ -5147,7 +5161,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
             <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
               <FileThumb file={f} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
                 <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {fileMeta(f)}{flat ? ` · ${folderName(folders, f.folder)}` : ""}
                 </div>
@@ -5204,7 +5218,7 @@ function Spinner({ s = 14, c = C.mint }) {
 function StateButton({ state = "idle", variant = "ghost", icon, children, labels = {}, onClick, disabled, style }) {
   const primary = variant === "primary" && (state === "idle" || state === "loading");
   const base = {
-    ...btnReset, borderRadius: 12, padding: "10px 14px", fontSize: 13,
+    ...btnReset, borderRadius: T.r.pill, padding: "10px 16px", fontSize: T.fs.sub, minHeight: 40,
     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
     border: `1px solid ${C.borderStrong}`,
   };
@@ -5242,9 +5256,9 @@ function StateNote({ kind = "error", children }) {
   const color = kind === "error" ? C.red : C.green;
   return (
     <div role={kind === "error" ? "alert" : "status"} className="nx-pop" style={{
-      display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px",
-      border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`, borderRadius: 10,
-      background: `color-mix(in srgb, ${color} 8%, transparent)`, fontSize: 12.5, lineHeight: 1.45,
+      display: "flex", alignItems: "flex-start", gap: T.sp[3] - 2, padding: `${T.sp[3] - 2}px ${T.sp[3]}px`,
+      border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`, borderRadius: T.r.sm,
+      background: `color-mix(in srgb, ${color} 8%, transparent)`, fontSize: T.fs.sub, lineHeight: 1.45,
     }}>
       <span style={{ display: "flex", marginTop: 1 }}>
         {(kind === "error" ? Icon.alert : Icon.check)({ c: color, s: 16 })}
@@ -5269,7 +5283,7 @@ function DevicesSkeleton() {
           </div>
         </div>
       ))}
-      <div style={{ fontSize: 12.5, color: C.mutedSoft, textAlign: "center" }}>Загружаем ваши устройства…</div>
+      <div style={{ fontSize: 13, color: C.mutedSoft, textAlign: "center" }}>Загружаем ваши устройства…</div>
     </div>
   );
 }
@@ -5285,8 +5299,8 @@ function EmptyState({ title, text, action, compact }) {
         <path d="M10 4 62 1 54 41 2 43Z" stroke={C.borderStrong} strokeWidth="1.4" strokeLinejoin="round" />
         <path d="M62 1 34 22 54 41" stroke={C.borderStrong} strokeWidth="1.4" strokeDasharray="3 3" strokeLinejoin="round" />
       </svg>
-      <div style={{ fontSize: 14.5 }}>{title}</div>
-      {text && <div style={{ fontSize: 12.5, color: C.mutedSoft, maxWidth: 320, lineHeight: 1.5 }}>{text}</div>}
+      <div style={{ fontSize: T.fs.row, fontWeight: 500 }}>{title}</div>
+      {text && <div style={{ fontSize: T.fs.sub, color: C.muted, maxWidth: 320, lineHeight: 1.5 }}>{text}</div>}
       {action && <div style={{ marginTop: 8 }}>{action}</div>}
     </div>
   );
@@ -5466,7 +5480,7 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
           {confirmDel ? (
             // Подтверждение удаления заменяет ряд кнопок
             <div className="nx-pop" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 13.5, marginBottom: 4 }}>Удалить файл?</div>
+              <div style={{ fontSize: 14, marginBottom: 4 }}>Удалить файл?</div>
               <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
                 «{file.name}» пропадёт из всех папок и списков.
               </div>
@@ -5691,10 +5705,10 @@ function TransferMenu({ anchor, file, devices, sendingId, onPick, onClose }) {
     }}>
       <div style={{ padding: "6px 8px 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
         <div style={{ fontSize: 12, color: C.muted }}>Передать на…</div>
-        <div style={{ fontSize: 12.5, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+        <div style={{ fontSize: 13, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
       </div>
       {list.length === 0 && (
-        <div style={{ fontSize: 12.5, color: C.mutedSoft, padding: "10px 8px" }}>Других устройств пока нет</div>
+        <div style={{ fontSize: 13, color: C.mutedSoft, padding: "10px 8px" }}>Других устройств пока нет</div>
       )}
       {list.map((d) => {
         const sending = sendingId === d.id;
@@ -5713,7 +5727,7 @@ function TransferMenu({ anchor, file, devices, sendingId, onPick, onClose }) {
               {d.icon({ c: C.text, s: 17 })}
             </span>
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+              <span style={{ display: "block", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
               <span style={{ display: "block", fontSize: 11, color: sending ? C.mint : C.mutedSoft, marginTop: 1 }}>
                 {sending ? "Отправка…" : d.online ? "В сети" : "Не в сети"}
               </span>
@@ -5773,7 +5787,7 @@ function FoldFlight({ file, from: row, to, onDone }) {
         display: "flex", alignItems: "center", gap: 14, padding: "0 12px", overflow: "hidden",
       }}>
         <FileThumb file={file} />
-        <span style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
+        <span style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</span>
       </div>
       {/* Загнутый угол: обратная сторона в цветах бренда и тёмная грань сгиба */}
       <div ref={flap} style={{
@@ -6226,7 +6240,7 @@ function PhoneParts({ d, pick, onPick }) {
   const live = d.parts.filter((p) => p.online && !p.isSelf);
   return (
     <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
-      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginBottom: 8 }}>Сайт и приложение на этом телефоне</div>
+      <div style={{ fontSize: 13, color: C.mutedSoft, marginBottom: 8 }}>Сайт и приложение на этом телефоне</div>
       <div role={live.length > 1 ? "radiogroup" : undefined} aria-label="Куда отправлять действия" style={{ display: "grid", gap: 6 }}>
         {d.parts.map((p) => {
           const chosen = live.length > 1 && p.id === pick?.id;
@@ -6236,7 +6250,7 @@ function PhoneParts({ d, pick, onPick }) {
                 {(p.kind === "app" ? Icon.phone : Icon.web)({ c: p.online ? C.mint : C.mutedSoft, s: 14 })}
               </span>
               <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                <span style={{ display: "block", fontSize: 13.5, color: C.text }}>{partLabel(p)}{p.isSelf ? " · это устройство" : ""}</span>
+                <span style={{ display: "block", fontSize: 14, color: C.text }}>{partLabel(p)}{p.isSelf ? " · это устройство" : ""}</span>
                 <span style={{ display: "block", fontSize: 12, marginTop: 2, color: p.online ? C.green : C.mutedSoft }}>
                   {p.online ? ["Онлайн", sysShort(p.sys)].filter(Boolean).join(" · ") : lastSeenText(p.seenAt)}
                 </span>
@@ -6268,7 +6282,7 @@ function BtDeviceInfo({ d, onRename }) {
   return (
     <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px" }}>
       <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
-        <label htmlFor="nx-bt-name" style={{ fontSize: 12.5, color: C.mutedSoft }}>Название</label>
+        <label htmlFor="nx-bt-name" style={{ fontSize: 13, color: C.mutedSoft }}>Название</label>
         <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
           <input id="nx-bt-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
             flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
@@ -6277,7 +6291,7 @@ function BtDeviceInfo({ d, onRename }) {
           <button type="submit" className="nx-ghost-btn" disabled={!changed} style={{ ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: changed ? C.text : C.mutedSoft }}>Сохранить</button>
         </div>
       </form>
-      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.55 }}>
+      <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 12, lineHeight: 1.55 }}>
         Bluetooth · сопряжено с «{d.host_name || "телефоном"}»
         <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Подключено к телефону" : "Сейчас не подключено"}</span>
         {d.checkedAt ? <> · по данным телефона в {new Date(d.checkedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</> : null}
@@ -6328,7 +6342,7 @@ function BluetoothPicker({ added, onAdd, onClose }) {
         {st?.supported && st.permission !== "granted" && st.permission !== "denied" && (
           <StateButton variant="primary" onClick={async () => { await btRequest(); load(); }} style={{ width: "100%", marginTop: 14, borderRadius: 999, padding: "11px 16px" }}>Разрешить</StateButton>
         )}
-        {err && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 12 }}>{err}</div>}
+        {err && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 12 }}>{err}</div>}
         {list && !list.length && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 16, lineHeight: 1.5 }}>Сопряжённых устройств нет. Сначала сопрягите часы или наушники в настройках Bluetooth телефона</div>}
         {list && list.length > 0 && (
           <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
@@ -6362,11 +6376,11 @@ function BluetoothPicker({ added, onAdd, onClose }) {
 // Кнопка «По Bluetooth» в окнах добавления: в приложении — открывает выбор, на сайте — честно объясняет
 function BtEntry({ onOpen }) {
   if (!btAvailable) return (
-    <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>Часы и наушники по Bluetooth — в приложении NEXA для Android: браузер не видит Bluetooth-устройства телефона</div>
+    <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>Часы и наушники по Bluetooth — в приложении NEXA для Android: браузер не видит Bluetooth-устройства телефона</div>
   );
   return (
     <button type="button" className="nx-ghost-btn" onClick={onOpen} style={{
-      ...btnReset, marginTop: 14, width: "100%", padding: "11px 16px", fontSize: 13.5, borderRadius: 999,
+      ...btnReset, marginTop: 14, width: "100%", padding: "11px 16px", fontSize: 14, borderRadius: 999,
       border: `1px solid ${C.borderStrong}`, color: C.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
     }}>
       {Icon.buds({ c: C.text, s: 16 })} По Bluetooth — часы, наушники
@@ -6382,7 +6396,7 @@ function RealDeviceInfo({ d, onRename, actions }) {
   return (
     <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px" }}>
       <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
-        <label htmlFor="nx-real-name" style={{ fontSize: 12.5, color: C.mutedSoft }}>Название</label>
+        <label htmlFor="nx-real-name" style={{ fontSize: 13, color: C.mutedSoft }}>Название</label>
         <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
           <input id="nx-real-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
             flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
@@ -6396,7 +6410,7 @@ function RealDeviceInfo({ d, onRename, actions }) {
           </button>
         </div>
       </form>
-      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 12, lineHeight: 1.5 }}>
         {peerLabel(d)} · подключено по коду{d.isSelf ? " · это устройство" : ""}
         <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Онлайн" : lastSeenText(d.seenAt)}</span>
       </div>
@@ -6573,7 +6587,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
 
       {/* Шапка: крупное название и статус */}
       <div style={{ display: "flex", alignItems: "flex-end", flexWrap: "wrap", gap: "8px 16px", margin: "22px 0 22px" }}>
-        <div className="ng-display nx-device-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>{d.name}</div>
+        <div className="ng-display nx-device-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{d.name}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted, paddingBottom: 6 }}>
           <Dot color={d.online ? C.green : C.red} />
           {d.real || d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
@@ -6651,7 +6665,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         {/* Карточка «Состояние»: заряд, память, сеть и кнопки — как карточка справа */}
         <div className="nx-dev-card" style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
-          <span style={{ fontSize: 12.5, color: C.mutedSoft }}>Состояние</span>
+          <span style={{ fontSize: 13, color: C.mutedSoft }}>Состояние</span>
           {/* Когда сведения получены: у отключённого — последние достоверные */}
           {d.real && (
             <span style={{ fontSize: 12, color: C.mutedSoft, textAlign: "right" }}>
@@ -6742,7 +6756,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             }}>
               <div style={{ display: "flex", flexShrink: 0 }}>{s.icon({ c: C.muted, s: 18 })}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5 }}>{s.title}</div>
+                <div style={{ fontSize: 14 }}>{s.title}</div>
                 <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{s.sub}</div>
               </div>
               <Toggle on={d[s.key]} onClick={() => onSetting(s.key)} />
@@ -6760,7 +6774,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
               background: `color-mix(in srgb, ${C.red} 8%, transparent)`,
             }}>
               <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                <div style={{ fontSize: 13.5 }}>Удалить «{d.name}»?</div>
+                <div style={{ fontSize: 14 }}>Удалить «{d.name}»?</div>
                 <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>Его можно будет подключить заново</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -6973,7 +6987,7 @@ function AddDeviceModal({ names, onAdd, onClose, onBt }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
                       <Spinner /> Ищем {t.name.toLowerCase()} рядом с вами
                     </div>
-                    <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 4 }}>
+                    <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 4 }}>
                       Устройство должно быть включено и лежать рядом
                     </div>
                   </>
@@ -6982,7 +6996,7 @@ function AddDeviceModal({ names, onAdd, onClose, onBt }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
                       <Dot color={C.green} /> {t.name} · рядом с вами
                     </div>
-                    <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 4 }}>
+                    <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 4 }}>
                       Сигнал хороший, можно подключать
                     </div>
                   </>
@@ -7020,7 +7034,7 @@ function AddDeviceModal({ names, onAdd, onClose, onBt }) {
                   padding: "12px 14px", outline: "none",
                 }}
               />
-              <div id="nx-add-hint" style={{ fontSize: 12.5, marginTop: 8, color: nameError ? C.red : C.mutedSoft }}>
+              <div id="nx-add-hint" style={{ fontSize: 13, marginTop: 8, color: nameError ? C.red : C.mutedSoft }}>
                 {nameError || "Под этим названием устройство появится в списке"}
               </div>
               <div style={footer}>
@@ -7048,7 +7062,7 @@ function AddDeviceModal({ names, onAdd, onClose, onBt }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
                   <Dot color={C.green} /> {trimmed} · Онлайн
                 </div>
-                <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 4 }}>
+                <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 4 }}>
                   Устройство подключено и уже есть в списке
                 </div>
               </div>
@@ -7095,7 +7109,7 @@ function ToastItem({ toast, onClose }) {
         {toast.text && <div className="nx-toast-text">{toast.text}</div>}
         {toast.action && (
           <button type="button" className="nx-ghost-btn" onClick={() => { toast.action.onClick(); onClose(); }} style={{
-            ...btnReset, marginTop: 8, padding: "5px 12px", fontSize: 12.5, borderRadius: 999,
+            ...btnReset, marginTop: 8, padding: "5px 12px", fontSize: 13, borderRadius: 999,
             border: `1px solid ${C.borderStrong}`, color: C.text,
           }}>
             {toast.action.label}
@@ -7435,7 +7449,7 @@ function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, device
                 />
               ))}
               {fileHits.length > 8 && (
-                <div style={{ padding: "6px 18px", fontSize: 11.5, color: C.mutedSoft }}>
+                <div style={{ padding: "6px 18px", fontSize: 12, color: C.mutedSoft }}>
                   и ещё {fileHits.length - 8}…
                 </div>
               )}
@@ -7494,7 +7508,7 @@ function SearchGroup({ title, children }) {
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{
-        fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase",
+        fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
         color: C.mutedSoft, padding: "8px 18px 4px",
       }}>
         {title}
@@ -7529,12 +7543,12 @@ function SearchRow({ icon, thumb, title, subtitle, onClick }) {
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 13.5, color: C.text,
+          fontSize: 14, color: C.text,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>{title}</div>
         {subtitle && (
           <div style={{
-            fontSize: 11.5, color: C.mutedSoft, marginTop: 2,
+            fontSize: 12, color: C.mutedSoft, marginTop: 2,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{subtitle}</div>
         )}
@@ -8042,11 +8056,11 @@ function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, 
           </div>
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             <button type="button" role="menuitem" className="nx-ghost-btn" autoFocus onClick={() => setMenu(null)}
-              style={{ ...btnReset, padding: "6px 12px", fontSize: 12.5, border: `1px solid ${C.borderStrong}`, color: C.text }}>
+              style={{ ...btnReset, padding: "6px 12px", fontSize: 13, border: `1px solid ${C.borderStrong}`, color: C.text }}>
               Отмена
             </button>
             <button type="button" role="menuitem" className="nx-ghost-btn" onClick={() => { setMenu(null); onDelete(menuChat.id); }}
-              style={{ ...btnReset, padding: "6px 12px", fontSize: 12.5, border: `1px solid color-mix(in srgb, ${C.red} 60%, transparent)`, color: C.red }}>
+              style={{ ...btnReset, padding: "6px 12px", fontSize: 13, border: `1px solid color-mix(in srgb, ${C.red} 60%, transparent)`, color: C.red }}>
               Удалить
             </button>
           </div>
@@ -8137,13 +8151,13 @@ function AttachChip({ att, onRemove, onToFiles }) {
         {att.status === "preparing" ? <Spinner s={14} /> : formatLabel(att.name).slice(0, 4)}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+        <span style={{ display: "block", fontSize: 14, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
         <span style={{ display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.4, color: att.status === "error" ? C.red : C.mutedSoft }}>
           {att.status === "error" ? status : `${meta} · ${status}`}
         </span>
       </span>
       {onToFiles && (
-        <button type="button" className="nx-ghost-btn" onClick={onToFiles} style={{ ...btnReset, flexShrink: 0, padding: "6px 12px", fontSize: 12.5, border: `1px solid ${C.borderStrong}`, color: C.text }}>
+        <button type="button" className="nx-ghost-btn" onClick={onToFiles} style={{ ...btnReset, flexShrink: 0, padding: "6px 12px", fontSize: 13, border: `1px solid ${C.borderStrong}`, color: C.text }}>
           В «Файлы»
         </button>
       )}
@@ -8687,7 +8701,7 @@ useEffect(() => {
     </button>
     <div style={{ textAlign: "left", minWidth: 0 }}>
       {/* На телефоне — одна строка без переноса: название и маленькая версия рядом */}
-      <div className="ng-display nx-assistant-title" style={{ fontSize: 40, fontWeight: 600, textAlign: "left" }}>
+      <div className="ng-display nx-assistant-title" style={{ fontSize: T.fs.page, fontWeight: 500, textAlign: "left" }}>
         ИИ — Ассистент<span className="nx-assistant-ver"> v{VERSION}</span>
       </div>
       {/* Описание — только на компьютере */}
@@ -8746,12 +8760,12 @@ const menuBlock = (
       {fileAsks.map(([label, q]) => (
         <button key={label} type="button" className="nx-ghost-btn" onClick={() => sendMessage(q)} style={{
           ...btnReset, flexShrink: 0, whiteSpace: "nowrap", border: `1px solid ${C.borderStrong}`, borderRadius: 999,
-          padding: "6px 12px", fontSize: 12.5, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
+          padding: "6px 12px", fontSize: 13, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
         }}>{label}</button>
       ))}
       <button type="button" className="nx-ghost-btn" onClick={() => { setInput("Найди в файле: "); setTimeout(() => taRef.current?.focus(), 0); }} style={{
         ...btnReset, flexShrink: 0, whiteSpace: "nowrap", border: `1px solid ${C.borderStrong}`, borderRadius: 999,
-        padding: "6px 12px", fontSize: 12.5, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
+        padding: "6px 12px", fontSize: 13, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
       }}>Найти в файле…</button>
     </div>
   )}
@@ -9197,7 +9211,7 @@ function MessageBubble({ role, text, file, error, actionLabel, undoable, undone,
           {file && (
             <div className="nx-msg-file" style={{
               display: "flex", alignItems: "center", gap: 8, maxWidth: "72%", padding: "7px 12px", boxSizing: "border-box",
-              border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.panel, fontSize: 12.5, color: C.muted,
+              border: `1px solid ${C.borderStrong}`, borderRadius: 14, background: C.panel, fontSize: 13, color: C.muted,
             }}>
               {Icon.clip({ c: C.mint, s: 14 })}
               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{file.name}</span>
@@ -9249,7 +9263,7 @@ function MessageBubble({ role, text, file, error, actionLabel, undoable, undone,
           textAlign: "left", alignSelf: "flex-start",
           ...(error ? { color: C.red, display: "flex", alignItems: "center", gap: 6 } : {}),
         }}>
-          {error ? <>{Icon.alert({ c: C.red, s: 14 })} Ответ не получен</> : "NEXA Assistant"}
+          {error ? <>{Icon.alert({ c: C.red, s: 14 })} Ответ не получен</> : "Ассистент NEXA"}
         </div>
 
         <div className="nx-bubble-text" style={{
@@ -9330,7 +9344,7 @@ function AssistantSkeleton() {
           paddingLeft: 4, textTransform: "uppercase", fontWeight: 500,
           textAlign: "left", alignSelf: "flex-start",
         }}>
-          NEXA Assistant
+          Ассистент NEXA
         </div>
 
         {/* Пузырь по форме как настоящий, только вместо текста — серые полоски */}
@@ -9379,6 +9393,7 @@ function Toggle({ on, onClick, label, disabled }) {
       type="button"
       onClick={onClick}          // при клике вызываем переданную функцию
       role="switch" aria-checked={on} aria-label={label} disabled={disabled}
+      className="nx-toggle"
       style={{
         border: "none", opacity: disabled ? 0.45 : 1,
         width: 42, height: 24, borderRadius: 999, padding: 3, boxSizing: "border-box",
@@ -9403,10 +9418,10 @@ function SectionTitle({ children }) {
     <div
       className="ng-display nx-section-title"
       style={{
-        fontSize: 22,
+        fontSize: T.fs.section,
         fontWeight: 600,
         color: C.text,
-        marginBottom: 14,
+        marginBottom: T.sp[3],
         marginTop: 0,
         textAlign: "left",
       }}
@@ -9567,8 +9582,8 @@ function SlimBanner({ label, icon, title, sub, action, onClose, onClosed }) {
     }}>
       <span style={{ display: "flex", flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.25 }}>{title}</div>
-        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.25 }}>{sub}</div>
+        <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.25 }}>{title}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 2, lineHeight: 1.25 }}>{sub}</div>
       </div>
       {action}
       {(onClose || onClosed) && (
@@ -9605,7 +9620,7 @@ function InstallBanner({ onHowTo }) {
       sub={platform === "ios" ? "Удобнее с экрана «Домой»" : "Быстрее и удобнее, чем в браузере"}
       action={platform === "android" ? <ApkButton label="Скачать" small onDownload={() => setTimeout(() => setHidden(true), 1200)} /> : (
         <button type="button" className="nx-ghost-btn" onClick={onHowTo} style={{
-          ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5,
+          ...btnReset, flexShrink: 0, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "7px 14px", fontSize: 13,
         }}>
           Как?
         </button>
@@ -9694,7 +9709,7 @@ function UpdateActions({ update, onLater, big }) {
     </button>
   );
   const ghost = (label, onClick) => <button type="button" className="nx-ghost-btn" onClick={onClick} style={{ ...pill, fontWeight: 400, border: `1px solid ${C.borderStrong}`, color: C.text }}>{label}</button>;
-  const note = (text, color = C.mutedSoft) => <div style={{ fontSize: 12.5, color, lineHeight: 1.5, marginTop: 10 }}>{text}</div>;
+  const note = (text, color = C.mutedSoft) => <div style={{ fontSize: 13, color, lineHeight: 1.5, marginTop: 10 }}>{text}</div>;
   const row = (...kids) => <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, justifyContent: big ? "center" : "flex-start" }}>{kids}</div>;
 
   if (mine.state === "downloading") {
@@ -9702,7 +9717,7 @@ function UpdateActions({ update, onLater, big }) {
     const checking = mine.total && mine.loaded >= mine.total;
     return (
       <div role="status" style={{ marginTop: 12, textAlign: "left" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5, color: C.muted }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, color: C.muted }}>
           <span>{checking ? "Проверяем файл…" : `Скачиваем — ${pct}%`}</span>
           <span style={{ fontFamily: fontDisplay }}>{mine.total ? `${mbText(mine.loaded)} из ${mbText(mine.total)}` : mbText(mine.loaded)}</span>
         </div>
@@ -9762,7 +9777,7 @@ function UpdateCard({ update, onLater, variant = "home" }) {
         </span>
         <span style={{ minWidth: 0 }}>
           <span style={{ display: "block", fontSize: 15, fontWeight: 500 }}>Доступно обновление</span>
-          <span style={{ display: "block", fontSize: 12.5, color: C.mutedSoft, marginTop: 2 }}>
+          <span style={{ display: "block", fontSize: 13, color: C.mutedSoft, marginTop: 2 }}>
             NEXA {update.version}{update.size ? ` · ${mbText(update.size)}` : ""}{update.required ? " · эта версия скоро перестанет работать" : ""}
           </span>
         </span>
@@ -9777,7 +9792,7 @@ function UpdateCard({ update, onLater, variant = "home" }) {
         </ul>
       )}
       {variant === "home" && notes.length > 3 && (
-        <button type="button" className="nx-link-btn" onClick={() => setMore((v) => !v)} style={{ ...btnReset, fontSize: 12.5, color: C.mutedSoft, marginTop: 6 }}>
+        <button type="button" className="nx-link-btn" onClick={() => setMore((v) => !v)} style={{ ...btnReset, fontSize: 13, color: C.mutedSoft, marginTop: 6 }}>
           {more ? "Свернуть" : `И ещё ${notes.length - 3}`}
         </button>
       )}
@@ -9802,7 +9817,7 @@ function ForceUpdateScreen({ update }) {
     }}>
       <img src={foldSvg} alt="" style={{ width: 120, height: "auto", marginBottom: 28 }} />
       <div className="ng-display" style={{ fontSize: 26, lineHeight: 1.2, marginBottom: 10 }}>Обновите приложение</div>
-      <div style={{ fontSize: 14.5, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 12 }}>
+      <div style={{ fontSize: 15, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 12 }}>
         {`Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
       </div>
       <div style={{ width: "min(320px, 100%)" }}><UpdateActions update={update} big /></div>
@@ -9816,7 +9831,7 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
       className={wrap ? "nx-set-row nx-set-row-wrap" : "nx-set-row"}
       onClick={onClick}
       style={{
-        display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+        display: "flex", alignItems: "center", gap: T.sp[3], padding: `${T.sp[3]}px ${T.sp[4]}px`, minHeight: 64, boxSizing: "border-box",
         borderBottom: last ? "none" : `1px solid ${C.border}`,
         cursor: onClick ? "pointer" : "default",
       }}
@@ -9829,9 +9844,9 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
           {icon}
         </div>
         <div style={{ minWidth: 0, textAlign: "left" }}>
-          <div className="nx-set-title" style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.25 }}>{title}</div>
+          <div className="nx-set-title" style={{ fontSize: T.fs.row, fontWeight: 500, lineHeight: 1.25 }}>{title}</div>
           {subtitle && (
-            <div className="nx-set-sub" style={{ fontSize: 13, color: C.muted, marginTop: 3, lineHeight: 1.3 }}>{subtitle}</div>
+            <div className="nx-set-sub" style={{ fontSize: T.fs.sub, color: C.muted, marginTop: T.sp[1] - 1, lineHeight: 1.35, maxWidth: 560 }}>{subtitle}</div>
           )}
         </div>
       </div>
@@ -9844,7 +9859,7 @@ function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick }) {
 function SettingsGroup({ children }) {
   return (
     // Фон страницы — карточка лежит на сетке-чертеже как плашка, линии не идут сквозь текст
-    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: 18, overflow: "hidden", marginBottom: 28, background: C.bg }}>
+    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: T.r.lg, overflow: "hidden", marginBottom: T.sp[8], background: C.bg }}>
       {children}
     </div>
   );
@@ -10146,15 +10161,15 @@ function QrLoginView({ onBack }) {
               : <div style={{ width: 150, height: 150, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${C.border}` }}><Spinner s={18} /></div>}
           </div>
           <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 500 }}>Отсканируйте в приложении NEXA</div>
-            <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5, marginTop: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>Отсканируйте в приложении NEXA</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginTop: 4 }}>
               Настройки → «Войти на другом устройстве». Или введите там код:
             </div>
             <div style={{ marginTop: 10 }}>{ss && <CodeCells code={ss.code} dim={dim} />}</div>
             <div aria-hidden="true" style={{ height: 3, marginTop: 12, background: `color-mix(in srgb, ${C.text} 8%, transparent)` }}>
               <div style={{ height: "100%", width: `${dim ? 0 : Math.max(0, Math.min(100, (left / QR_LOGIN_TTL_MS) * 100))}%`, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, transition: "width 500ms linear" }} />
             </div>
-            <div role="status" style={{ fontSize: 12.5, marginTop: 8, color: st.phase === "expired" ? C.red : C.muted, display: "flex", alignItems: "center", gap: 6 }}>
+            <div role="status" style={{ fontSize: 13, marginTop: 8, color: st.phase === "expired" ? C.red : C.muted, display: "flex", alignItems: "center", gap: 6 }}>
               {st.phase === "signing" ? <><Spinner s={11} /> Входим…</>
                 : st.phase === "expired" ? "Код истёк"
                 : st.phase === "loading" ? "Готовим код…"
@@ -10259,7 +10274,7 @@ function ApproveLoginModal({ initialCode, onClose, onScan }) {
                 {Icon.search({ c: C.onFold, s: 15 })} Сканировать QR
               </button>
             )}
-            <label htmlFor="nx-approve-code" style={{ fontSize: 12.5, color: C.mutedSoft }}>{onScan ? "Или введите код" : "Код с экрана нового устройства"}</label>
+            <label htmlFor="nx-approve-code" style={{ fontSize: 13, color: C.mutedSoft }}>{onScan ? "Или введите код" : "Код с экрана нового устройства"}</label>
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <input id="nx-approve-code" className="nx-input" value={clean} onChange={(e) => { setCode(e.target.value); setError(null); }}
                 autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={6} placeholder="······" autoFocus={!onScan}
@@ -10298,7 +10313,7 @@ function ApproveLoginModal({ initialCode, onClose, onScan }) {
         {st.phase === "done" && (
           <button type="button" onClick={onClose} style={{ ...ghost, marginTop: 18, width: "100%" }}>Готово</button>
         )}
-        {error && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 12, lineHeight: 1.45 }}>{error}</div>}
+        {error && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 12, lineHeight: 1.45 }}>{error}</div>}
       </div>
     </div>
   );
@@ -10407,7 +10422,7 @@ function AuthPanel({ onEscape }) {
         aria-invalid={!!error} aria-describedby="nx-auth-hint"
         style={authField(!!error)}
       />
-      <div id="nx-auth-hint" role={error ? "alert" : undefined} style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
+      <div id="nx-auth-hint" role={error ? "alert" : undefined} style={{ fontSize: 13, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
         {error || "Пришлём код — пароль не нужен"}
       </div>
       <StateButton variant="primary" state={busy ? "loading" : "idle"} labels={{ loading: "Отправляем…" }}
@@ -10425,13 +10440,13 @@ function AuthPanel({ onEscape }) {
       }}>
         {Icon.phone({ c: C.text, s: 15 })} Войти по QR с телефона
       </button>
-      <div style={{ fontSize: 11.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
         Проект учебный. Данные хранятся для демонстрации и удаляются по запросу.
       </div>
     </form>
   ) : (
     <form className="nx-auth-step" data-step="code" onSubmit={(e) => { e.preventDefault(); verify(); }} noValidate>
-      <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>
         Код отправили на <span style={{ color: C.text }}>{cleanEmail}</span>.{" "}
         <button type="button" onClick={() => { setStep("email"); setError(null); }} style={authLink}>Изменить почту</button>
       </div>
@@ -10445,7 +10460,7 @@ function AuthPanel({ onEscape }) {
         aria-invalid={!!error} aria-describedby="nx-auth-code-hint"
         style={{ ...authField(!!error), fontFamily: fontDisplay, fontSize: 22, letterSpacing: "0.3em" }}
       />
-      <div id="nx-auth-code-hint" role={error ? "alert" : undefined} style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
+      <div id="nx-auth-code-hint" role={error ? "alert" : undefined} style={{ fontSize: 13, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
         {error || "Письмо может прийти через минуту. Загляните и в «Спам»"}
       </div>
       <StateButton variant="primary" state={busy ? "loading" : "idle"} labels={{ loading: "Проверяем…" }}
@@ -10476,7 +10491,7 @@ function AuthGate({ onGuest }) {
       <div style={{ margin: "auto 0", width: "min(400px, 100%)", textAlign: "left" }}>
         <img src={foldSvg} alt="" style={{ width: 96, height: "auto", display: "block", marginBottom: 28 }} />
         <div id="nx-auth-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>Добро пожаловать в NEXA</div>
-        <div style={{ fontSize: 14.5, color: C.muted, lineHeight: 1.5, marginTop: 10, marginBottom: 26 }}>
+        <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.5, marginTop: 10, marginBottom: 26 }}>
           Войдите по почте — без пароля, по коду из письма. Или загляните без аккаунта.
         </div>
         {open ? (
@@ -10486,7 +10501,7 @@ function AuthGate({ onGuest }) {
           </div>
         ) : (
           <button type="button" className="nx-primary" onClick={() => setOpen(true)} style={{
-            ...btnReset, width: "100%", padding: "13px 16px", fontSize: 14.5, fontWeight: 500,
+            ...btnReset, width: "100%", padding: "13px 16px", fontSize: 15, fontWeight: 500,
             border: "1px solid transparent", color: C.onFold,
             background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -10656,18 +10671,18 @@ function DeleteDataDialog({ onConfirm, onClose }) {
         onClick={(e) => e.stopPropagation()}
         style={{ width: "min(400px, 100%)", background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "20px 22px 22px", boxSizing: "border-box", textAlign: "left" }}>
         <div id="nx-del-title" style={{ fontFamily: fontDisplay, fontSize: 22, lineHeight: 1.2 }}>Удалить мои данные?</div>
-        <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginTop: 10 }}>
+        <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5, marginTop: 10 }}>
           Устройства и чаты аккаунта удалятся из облака и с этого устройства. Вернуть их не получится. Аккаунт останется — войти можно будет снова.
         </div>
         {error && <div style={{ marginTop: 14 }}><StateNote kind="error">{error}</StateNote></div>}
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button type="button" className="nx-ghost-btn" onClick={onClose} disabled={busy} style={{
-            ...btnReset, flex: 1, padding: "11px 16px", fontSize: 13.5, border: `1px solid ${C.borderStrong}`, color: C.text, textAlign: "center",
+            ...btnReset, flex: 1, padding: "11px 16px", fontSize: 14, border: `1px solid ${C.borderStrong}`, color: C.text, textAlign: "center",
           }}>
             Отмена
           </button>
           <StateButton state={busy ? "loading" : "idle"} labels={{ loading: "Удаляем…" }} onClick={run}
-            style={{ flex: 1, padding: "11px 16px", fontSize: 13.5, borderRadius: 999, borderColor: C.red, color: C.red }}>
+            style={{ flex: 1, padding: "11px 16px", fontSize: 14, borderRadius: 999, borderColor: C.red, color: C.red }}>
             Удалить
           </StateButton>
         </div>
@@ -10743,15 +10758,15 @@ function SyncStatus({ online, uid, loading, pending, queued, text, nextAt, gaveU
     <div className="nx-sync-status nx-pop" role="status" style={{
       position: "fixed", zIndex: 60, display: "flex", alignItems: "center", gap: 8,
       padding: "4px 6px 4px 12px", border: `1px solid ${C.borderStrong}`, borderRadius: 999, background: C.panel,
-      fontSize: 12.5, color: C.muted, maxWidth: "calc(100vw - 32px)", boxSizing: "border-box",
+      fontSize: 13, color: C.muted, maxWidth: "calc(100vw - 32px)", boxSizing: "border-box",
     }}>
       {dot}
       <button type="button" onClick={onOpen} aria-haspopup="dialog" title="Подробнее о синхронизации" style={{
-        ...btnReset, fontSize: 12.5, color: C.muted, padding: "4px 0", minWidth: 0, textAlign: "left",
+        ...btnReset, fontSize: 13, color: C.muted, padding: "4px 0", minWidth: 0, textAlign: "left",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>{label}</button>
       {retry && online && (
-        <button type="button" onClick={onRetry} style={{ ...btnReset, color: C.mint, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3, flexShrink: 0 }}>
+        <button type="button" onClick={onRetry} style={{ ...btnReset, color: C.mint, fontSize: 13, textDecoration: "underline", textUnderlineOffset: 3, flexShrink: 0 }}>
           Повторить
         </button>
       )}
@@ -10793,7 +10808,7 @@ function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, onUpload
             {Icon.close({ c: C.muted, s: 16 })}
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13.5, color: C.text }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 14, color: C.text }}>
           <Dot color={online ? C.green : C.red} /> {online ? "Сеть есть" : "Нет сети — работаем с данными на этом устройстве"}
         </div>
         {!uid ? (
@@ -10807,15 +10822,15 @@ function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, onUpload
                 const [txt, col] = partState(syncState[key]);
                 return (
                   <div key={key} style={{ padding: "10px 14px", borderTop: i ? `1px solid ${C.border}` : "none" }}>
-                    <div style={{ fontSize: 13.5, color: C.text }}>{title}</div>
-                    <div style={{ fontSize: 12.5, color: col, marginTop: 2, lineHeight: 1.4 }}>{txt}</div>
+                    <div style={{ fontSize: 14, color: C.text }}>{title}</div>
+                    <div style={{ fontSize: 13, color: col, marginTop: 2, lineHeight: 1.4 }}>{txt}</div>
                   </div>
                 );
               })}
             </div>
             {queue.length > 0 && (
               <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 12.5, color: C.mutedSoft, marginBottom: 6 }}>Файлы ждут загрузки: {queue.length}</div>
+                <div style={{ fontSize: 13, color: C.mutedSoft, marginBottom: 6 }}>Файлы ждут загрузки: {queue.length}</div>
                 {queue.map((u) => (
                   <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
                     {u.status === "error" ? Icon.alert({ c: C.red, s: 14 }) : u.status === "uploading" ? <Spinner s={12} /> : Icon.refresh({ c: C.muted, s: 14 })}
@@ -10825,7 +10840,7 @@ function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, onUpload
                         {u.status === "error" ? u.error : u.status === "uploading" ? `Загружаем — ${Math.round((u.progress || 0) * 100)}%` : online ? "Ждёт повтора" : "Ждёт сети"}
                       </span>
                     </span>
-                    {u.status === "error" && online && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction(u.id, "retry")} style={{ ...btnReset, fontSize: 12.5, padding: "4px 10px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Повторить</button>}
+                    {u.status === "error" && online && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction(u.id, "retry")} style={{ ...btnReset, fontSize: 13, padding: "4px 10px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Повторить</button>}
                     <button type="button" className="nx-icon-btn" onClick={() => onUploadAction(u.id, "dismiss")} aria-label={`Убрать «${u.name}» из очереди`} style={{ ...btnReset, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {Icon.close({ c: C.muted, s: 13 })}
                     </button>
@@ -10834,14 +10849,14 @@ function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, onUpload
               </div>
             )}
             {trash > 0 && (
-              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 12 }}>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 12 }}>
                 Удаление из облака ждёт связи: {trash} {plural(trash, ["файл", "файла", "файлов"])}
               </div>
             )}
             {authLost && (
-              <div style={{ fontSize: 12.5, color: C.red, marginTop: 12, lineHeight: 1.45 }}>
+              <div style={{ fontSize: 13, color: C.red, marginTop: 12, lineHeight: 1.45 }}>
                 Сессия закончилась — изменения сохранены на устройстве и уйдут после входа.{" "}
-                <button type="button" onClick={onLogin} style={{ ...btnReset, color: C.mint, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3 }}>Войти</button>
+                <button type="button" onClick={onLogin} style={{ ...btnReset, color: C.mint, fontSize: 13, textDecoration: "underline", textUnderlineOffset: 3 }}>Войти</button>
               </div>
             )}
           </>
@@ -10909,11 +10924,11 @@ function NoteSettings({ prefs, setPrefs, perm, onAsk }) {
       ? "Браузер покажет их, пока вкладка NEXA открыта (можно свёрнутой). Закрытая вкладка ничего не присылает"
       : "Приходят, пока приложение запущено. Напоминания о делах ставятся заранее и придут, даже если NEXA закрыта (в режиме экономии Android может их задержать)";
   const flip = (id, field) => setPrefs((p) => ({ ...p, [id]: { ...p[id], [field]: !p[id][field] } }));
-  const permRight = kind === "none" ? <span style={{ fontSize: 12.5, color: C.mutedSoft }}>Недоступны</span>
-    : perm === "granted" ? <span style={{ fontSize: 12.5, color: C.green }}>Разрешены</span>
-    : perm === "denied" ? <span style={{ fontSize: 12.5, color: C.red, maxWidth: 220, textAlign: "right", lineHeight: 1.35 }}>Запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
+  const permRight = kind === "none" ? <span style={{ fontSize: 13, color: C.mutedSoft }}>Недоступны</span>
+    : perm === "granted" ? <span style={{ fontSize: 13, color: C.green }}>Разрешены</span>
+    : perm === "denied" ? <span style={{ fontSize: 13, color: C.red, maxWidth: 220, textAlign: "right", lineHeight: 1.35 }}>Запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
     : <button type="button" className="nx-ghost-btn" onClick={onAsk} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Разрешить</button>;
-  const sw = { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" };
+  const sw = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, whiteSpace: "nowrap" };
   return (
     <div id="nx-note-settings" style={{ scrollMarginTop: 80 }}>
       <SectionTitle>Уведомления</SectionTitle>
@@ -10968,15 +10983,14 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
   );
 
   return (
-    <div className="ng-screen nx-stagger" style={{ padding: "28px 40px 40px" }}>
-      {/* Справа отступ под значки колокольчика, поиска и профиля, которые лежат
-          поверх экрана у правого края окна. На широком экране контент уже
-          (не больше 1440px) и значки стоят правее него — тогда отступ не нужен,
-          и строка поиска встаёт ровно по краю карточек.
-          78px — ширина левой панели, 160px — место под значки с зазором,
-          (100vw − 78px − 1440px) / 2 — пустое поле справа от контента */}
-      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: "max(0px, calc(160px - max(0px, (100vw - 78px - 1440px) / 2)))" }}>
-        <div className="ng-display nx-page-title" style={{ fontSize: 40, fontWeight: 400, lineHeight: 1.1 }}>Настройки</div>
+    <div className="ng-screen nx-stagger" style={{ padding: "28px 40px 40px", maxWidth: 1000 }}>
+      {/* Колонка настроек не шире 1000px: на широком экране переключатели не уезжают
+          далеко от подписей. Справа у шапки — отступ под значки верхней строки
+          (быстрые действия, колокольчик, поиск, профиль ≈ 200px), если колонка до них
+          достаёт. Колонка во всю ширину (окно уже 1176px) — отступ 200px; шире —
+          значки правее колонки, отступ сходит на нет: 1374px − ширина окна */}
+      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: "max(0px, min(200px, calc(1374px - 100vw)))" }}>
+        <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>Настройки</div>
         {/* Поиск по настройкам. Открывает общий поиск по всему приложению.
             На телефоне скрыт: там есть иконка поиска в верхней строке */}
         <button
@@ -12941,6 +12955,26 @@ export default function NexaApp() {
         :root {
           --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
           --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+
+          /* ═══ ДИЗАЙН-СИСТЕМА NEXA: размеры, отступы, углы, движение ═══
+             Цвета — ниже, в блоках тем (и объект C). Здесь — всё остальное, одно для обеих тем.
+             В JS те же числа лежат в объекте T (рядом с C).
+
+             Шрифт: заголовки — Space Grotesk (.ng-display), текст — Raleway, цифры — NexaNumbers.
+             Шкала (px): 11 подпись-метка · 12 мелкая подпись · 13 вторичный текст · 14 основной
+             · 15 заголовок строки · 16 крупная строка · 18 · 20 · 22 заголовок раздела
+             · 24/30 · 40 заголовок экрана (на телефоне 26). Дробные размеры не использовать. */
+          --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px;
+          --fs-16: 16px; --fs-22: 22px; --fs-page: 40px;
+          /* Отступы — шаг 4: 4, 8, 12, 16, 20, 24, 32, 40 */
+          --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+          /* Углы: поля и мелкие плашки 10, средние карточки 14–16, крупные 18–20, кнопки — таблетки/круги */
+          --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-pill: 999px;
+          /* Нажимаемая область на телефоне — не меньше 44px */
+          --tap: 44px;
+          /* Движение: быстрое (наведение, нажатие), обычное (появление), медленное (переход экрана) */
+          --dur-1: 160ms; --dur-2: 240ms; --dur-3: 420ms;
+          --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
         }
         /* В приложении: экран ассистента и панель истории закреплены сверху —
            сдвигаем их под статус-бар, а низ ассистента — над нижней полосой */
@@ -13173,7 +13207,7 @@ export default function NexaApp() {
         }
         .nx-hist-open {
           flex: 1; min-width: 0; padding: 7px 4px 7px 10px; text-align: left;
-          background: transparent; border: none; color: var(--text); font: inherit; font-size: 13.5px;
+          background: transparent; border: none; color: var(--text); font: inherit; font-size: 14px;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
         }
         .nx-hist-more {
@@ -13189,7 +13223,7 @@ export default function NexaApp() {
         .nx-hist-rename {
           flex: 1; min-width: 0; margin: 2px; padding: 5px 8px; outline: none;
           border: 1px solid var(--mint); border-radius: 10px; background: var(--bg); color: var(--text);
-          font: inherit; font-size: 13.5px;
+          font: inherit; font-size: 14px;
         }
         .nx-hist-empty { padding: 6px 10px; font-size: 13px; line-height: 1.5; color: var(--muted-soft); }
         .nx-hist-sync {
@@ -13207,7 +13241,7 @@ export default function NexaApp() {
           border: 1px solid var(--border-strong); border-radius: 16px;
         }
         .nx-hist-email { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .nx-hist-sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-hist-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--muted-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         /* Крестик шторки — круглая кнопка-значок */
         .nx-hist-close {
           width: 36px; height: 36px; padding: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -13223,7 +13257,7 @@ export default function NexaApp() {
         .nx-hist-menu > button {
           display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
           background: transparent; border: none; border-radius: 10px; color: var(--text);
-          font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+          font: inherit; font-size: 14px; text-align: left; cursor: pointer;
         }
         .nx-hist-menu > button:hover, .nx-hist-menu > button:focus-visible { background: var(--hover); outline: none; }
         .nx-hist-menu > button.is-danger { color: var(--red); }
@@ -13370,7 +13404,7 @@ export default function NexaApp() {
         }
         .nx-quick-step {
           display: flex; align-items: center; gap: 8px; padding: 10px 14px 0 10px;
-          font-size: 12.5px; color: var(--muted);
+          font-size: 13px; color: var(--muted);
         }
         .nx-quick-search { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
         .nx-quick-search input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font: inherit; font-size: 15px; padding: 0; }
@@ -13397,7 +13431,7 @@ export default function NexaApp() {
         .nx-quick-note { margin: 6px 12px 8px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.5; color: var(--muted-soft); }
         .nx-quick-foot {
           display: flex; justify-content: space-between; gap: 12px; padding: 9px 16px;
-          border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted-soft);
+          border-top: 1px solid var(--border); font-size: 12px; color: var(--muted-soft);
         }
         /* Телефон: панель сверху на всю ширину, в пределах видимой области
            (над клавиатурой), строки крупнее — под палец */
@@ -13408,7 +13442,7 @@ export default function NexaApp() {
           .nx-quick-search input { font-size: 16px; }
           .nx-quick-row { min-height: 56px; padding: 8px 12px; }
           .nx-quick-title { font-size: 15px; }
-          .nx-quick-sub { font-size: 12.5px; }
+          .nx-quick-sub { font-size: 13px; }
         }
                 /* ─── Системные уведомления (тосты) ──────────────────
            Плашка сверху справа, как системное уведомление телефона:
@@ -13440,9 +13474,9 @@ export default function NexaApp() {
           display: flex; align-items: center; justify-content: center;
         }
         .nx-toast-body { flex: 1; min-width: 0; padding-top: 1px; text-align: left; }
-        .nx-toast-title { font-size: 13.5px; font-weight: 500; line-height: 1.3; }
+        .nx-toast-title { font-size: 14px; font-weight: 500; line-height: 1.3; }
         .nx-toast-text {
-          font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.4;
+          font-size: 13px; color: var(--muted); margin-top: 2px; line-height: 1.4;
           overflow: hidden; text-overflow: ellipsis;
           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
         }
@@ -13582,6 +13616,14 @@ export default function NexaApp() {
         /* Все кнопки — скруглённые: кнопки с текстом — «таблетки», кнопки-значки — круги.
            Скошенные чипсы пути (складка), строки списков и карточки не трогаем */
         .nx-ghost-btn, .nx-primary, .nx-icon-btn, .nx-action { border-radius: 999px !important; }
+        /* Палец больше курсора: на сенсорном экране у маленьких кнопок-значков
+           и переключателей невидимая зона нажатия растёт до ~44px (--tap).
+           Сама кнопка и раскладка не меняются — ::after выходит за края */
+        @media (pointer: coarse) {
+          .nx-icon-btn:not([style*="position"]), .nx-toggle:not([style*="position"]) { position: relative; }
+          .nx-icon-btn::after, .nx-toggle::after { content: ""; position: absolute; inset: -5px; }
+          .nx-toggle::after { inset: -10px -2px; }
+        }
         /* Градиент — на всю кнопку вместе с рамкой. Иначе под прозрачной рамкой 1px
            браузер повторяет градиент с другого края: по бокам видны тонкие полоски
            чужого цвета (голубая слева, синяя справа) */
@@ -13714,6 +13756,7 @@ export default function NexaApp() {
         .nx-no-scrollbar { scrollbar-width: none; }
         /* Блоки только для телефона (на телефоне становятся flex-строкой) */
         .nx-only-mobile { display: none; }
+        @media ${PHONE_MQ} { .nx-hide-mobile { display: none !important; } }
         @media ${PHONE_MQ} { .nx-only-mobile { display: flex !important; } }
         .nx-no-scrollbar::-webkit-scrollbar { display: none; }
         /* Складка справа на "Медиа" и "Файлах" — только на широком экране */
@@ -13803,10 +13846,11 @@ export default function NexaApp() {
           .ng-timedate { display: none !important; }
 
           /* Все заголовки-дисплеи меньше */
-          .ng-display { font-size: 24px !important; }
+          .ng-display { font-size: 20px !important; } /* заголовок раздела на телефоне; заголовок экрана — 24px, ниже */
+          .ng-display.nx-home-hero { font-size: 24px !important; } /* главный заголовок Главной — крупнее разделов */
 
           /* Экран настроек на телефоне */
-          .ng-display.nx-section-title { font-size: 18px !important; margin-bottom: 10px !important; }
+          .ng-display.nx-section-title { font-size: 20px !important; margin-bottom: 10px !important; }
           .nx-settings-search { display: none !important; }
           .nx-pair-body { flex-direction: column; align-items: flex-start !important; }
           .nx-pair-or { display: none !important; }
@@ -13821,7 +13865,7 @@ export default function NexaApp() {
           .nx-set-row { padding: 12px 14px !important; gap: 12px !important; }
           .nx-set-icon { width: 36px !important; height: 36px !important; }
           .nx-set-title { font-size: 15px !important; }
-          .nx-set-sub { font-size: 12.5px !important; }
+          .nx-set-sub { font-size: 13px !important; }
           /* Переключатель темы уходит на отдельную строку под текстом
              и растягивается на всю ширину карточки */
           .nx-set-row-wrap { flex-wrap: wrap; row-gap: 12px !important; }
@@ -13878,8 +13922,9 @@ export default function NexaApp() {
           /* Заголовок страницы в одну строку с иконками поиска и профиля.
              Справа оставляем место под эти иконки, подзаголовок прячем */
           .ng-display.nx-page-title {
-            font-size: 30px !important;
-            margin: 12px 0 24px !important;
+            /* 24px: «Медиа и файлы» помещается в одну строку рядом с четырьмя значками */
+            font-size: 24px !important; line-height: 1.15 !important;
+            margin: 12px 0 20px !important;
             padding-right: 168px; /* место под молнию, колокольчик, поиск и профиль */
           }
           /* Панель уведомлений на телефоне — по ширине экрана */
@@ -13892,8 +13937,11 @@ export default function NexaApp() {
           .nx-storage-box { padding: 12px 10px !important; margin-bottom: 28px !important; }
           .ng-storage-folds { height: 92px !important; }
           /* Подпись ближе к левому краю складки, чтобы поместилась в узкие */
-          .ng-storage-folds .nx-seg-label span:nth-child(1) { font-size: 9.5px !important; }
-          .ng-storage-folds .nx-seg-label span:nth-child(2) { font-size: 9px !important; }
+          .ng-storage-folds .nx-seg-label span:nth-child(1) { font-size: 10.5px !important; }
+          .ng-storage-folds .nx-seg-label span:nth-child(2) { font-size: 10px !important; }
+          /* «Документы» и «Музыка» на узкой ленте стояли в одной строке и налезали —
+             подпись музыки опускаем ниже, в нижнюю часть её грани */
+          .ng-storage-folds .nx-seg-label[data-cat="music"] { top: 60% !important; }
           .ng-storage-folds .nx-seg-label span:nth-child(3) { display: none !important; }
 
           /* ─── Сегодня на телефоне ─── */
@@ -13918,7 +13966,7 @@ export default function NexaApp() {
             grid-template-areas: "time dot box" !important;
             column-gap: 4px !important;
           }
-          .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 12.5px !important; }
+          .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 13px !important; }
           .nx-sched-title { font-size: 15px !important; }
           .nx-sched-form input { font-size: 16px !important; } /* iPhone не приближает страницу */
           .nx-sched-hint { visibility: hidden; } /* Enter/Esc на телефоне не нужны — место под кнопки остаётся */
@@ -13938,7 +13986,7 @@ export default function NexaApp() {
           /* На телефоне складка шире — за устройством, по центру сцены */
           .nx-device-fold { width: 86% !important; left: 7% !important; margin-top: calc(86% * -0.35) !important; }
           .nx-device-info { grid-template-columns: minmax(0, 1fr) !important; }
-          .nx-device-title { font-size: 30px !important; }
+          .nx-device-title { font-size: 24px !important; } /* как заголовок экрана */
           /* Фон на телефоне: на весь экран, грани в обоих углах — поменьше
              и бледнее, чтобы не спорить с текстом на узком экране */
           .nx-backdrop { left: 0 !important; }
@@ -14011,7 +14059,7 @@ export default function NexaApp() {
           }
           /* Сине-мятная обводка поля остаётся, внешнее свечение на телефоне убираем */
           .nx-input-ring { box-shadow: none !important; }
-          .ng-disclaimer { font-size: 10.5px !important; }
+          .ng-disclaimer { font-size: 11px !important; }
           /* Клавиатура открыта — подпись под полем убираем: место нужнее переписке */
           body.kb-open .ng-disclaimer { display: none !important; }
           /* …и быстрые вопросы по файлу: при клавиатуре место нужнее переписке */
