@@ -29,13 +29,23 @@ const toMs = (iso) => (iso ? new Date(iso).getTime() : 0);
 /* ─── Заметки о синхронизации (в localStorage, у каждого аккаунта свои) ───
    synced  — id строк, которые точно есть в облаке (если их там больше нет —
              значит, удалили на другом устройстве);
-   deleted — id, удалённые здесь, но ещё не удалённые в облаке (нет связи) */
+   deleted — id, удалённые здесь, но ещё не удалённые в облаке (нет связи);
+   ver     — какие версии облако подтвердило: id → [updatedAt здесь, updated_at в облаке].
+             По ним видно, что изменили здесь и что — на другом устройстве (конфликт),
+             и сколько изменений ещё ждут отправки — даже после перезапуска без сети */
 const metaKey = (uid) => `nexa-sync@${uid}`;
 function readMeta(uid, table) {
   try {
     const m = JSON.parse(localStorage.getItem(metaKey(uid)))?.[table];
-    return { synced: m?.synced || [], deleted: m?.deleted || [] };
-  } catch { return { synced: [], deleted: [] }; }
+    return { synced: m?.synced || [], deleted: m?.deleted || [], ver: m?.ver || {} };
+  } catch { return { synced: [], deleted: [], ver: {} }; }
+}
+// Сколько изменений ещё не подтверждено облаком: новые и изменённые строки + удаления.
+// Строка без заметки о версии, но из облака (старые заметки) — считаем сохранённой
+export function pendingCount(list, meta) {
+  const synced = new Set(meta.synced);
+  const changed = list.filter((i) => { const v = meta.ver[i.id]; return v ? v[0] !== i.updatedAt : !synced.has(i.id); });
+  return changed.length + meta.deleted.length;
 }
 function writeMeta(uid, table, meta) {
   try {
@@ -48,7 +58,9 @@ export const clearMeta = (uid) => { try { localStorage.removeItem(metaKey(uid));
 
 /* ─── Запросы к Supabase ─── */
 async function fetchRows(table) {
-  const { data, error } = await supabase.from(table).select("*").order("created_at");
+  // Свои повторы клиента выключены: паузы и число попыток решает useCloudList (RETRY_DELAYS_MS),
+  // иначе попытки перемножаются (4 наших × 4 клиента)
+  const { data, error } = await supabase.from(table).select("*").order("created_at").retry(false);
   if (error) throw error;
   return data || [];
 }
@@ -88,21 +100,28 @@ function noteLocalPins(rows, sentWithColumn) {
   writeLocalPins([...pins]);
 }
 
+// Отправить строки и удаления. Возвращает Map id → updated_at из облака (мс):
+// облако само ставит это время, по нему потом видно, меняли ли строку на другом устройстве.
+// Upsert по id — повторная отправка той же строки не создаёт дубля
 async function pushRows(table, upserts, deletes) {
+  const confirmed = new Map();
   if (upserts.length) {
-    let { error } = await supabase.from(table).upsert(withoutMissing(table, upserts));
+    const send = () => supabase.from(table).upsert(withoutMissing(table, upserts)).select("id, updated_at");
+    let { data, error } = await send();
     const col = error && missingOptional(table, error);
     if (col) {
       missingColumns.add(`${table}.${col}`);
-      ({ error } = await supabase.from(table).upsert(withoutMissing(table, upserts)));
+      ({ data, error } = await send());
     }
     if (error) throw error;
+    (data || []).forEach((r) => confirmed.set(r.id, toMs(r.updated_at)));
     if (table === "chats") noteLocalPins(upserts, !missingColumns.has("chats.pinned"));
   }
   if (deletes.length) {
     const { error } = await supabase.from(table).delete().in("id", deletes);
     if (error) throw error;
   }
+  return confirmed;
 }
 // «Удалить мои данные»: все устройства и чаты этого пользователя
 export async function deleteAllMine(uid) {
@@ -160,35 +179,76 @@ export const CHAT_ROWS = {
   }),
   // Новые диалоги сверху
   sort: (list) => [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+  label: (c) => c.title || "Диалог",
+  /* Конфликт: диалог дописали и здесь, и на другом устройстве (например, оба без сети).
+     Ничего не теряем: объединяем сообщения обеих версий без повторов, по времени */
+  resolve: (l, c) => {
+    const key = (m) => `${m?.role}|${m?.at || ""}|${m?.text}`;
+    const seen = new Set(), all = [];
+    for (const m of [...(c.messages || []), ...(l.messages || [])]) {
+      const k = key(m);
+      if (!seen.has(k)) { seen.add(k); all.push(m); }
+    }
+    if (all.every((m) => m?.at)) all.sort((a, b) => a.at - b.at);
+    return { ...c, ...l, messages: all, updatedAt: Date.now() };
+  },
 };
 export const DEVICE_ROWS = {
   toRow: (d) => ({ id: d.id, name: d.name, type: d.type, state: d.state || {}, created_at: toIso(d.createdAt) }),
   fromRow: (r) => ({ id: r.id, name: r.name, type: r.type, state: r.state || {}, createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at) }),
   // В порядке добавления
   sort: (list) => [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+  label: (d) => d.name || "Устройство",
 };
+SCHEDULE_ROWS.label = (it) => `${it.time || ""} ${it.title || "Дело"}`.trim();
 
 /* Сводим локальный список с облачным. Правила:
-   - удалили здесь без связи → удаляем и в облаке;
-   - есть и там, и тут → берём более свежую версию (updated_at);
+   - удалили здесь без связи → удаляем и в облаке (а если там за это время
+     изменили — удаление отменяем и берём изменённую версию);
+   - есть и там, и тут: менялось только здесь → отправляем; только там → берём облако;
+     менялось в обоих местах — конфликт: resolve (диалоги — объединяем сообщения)
+     или более новая версия;
    - есть только тут: новое → отправляем; уже было в облаке, а теперь нет →
-     удалили на другом устройстве, убираем и тут */
-export function mergeLists(local, cloud, meta) {
-  const deleted = new Set(meta.deleted), synced = new Set(meta.synced);
+     удалили на другом устройстве: убираем и тут, если здесь не меняли
+     (меняли — оставляем и отправляем снова).
+   Без заметки о версии (старые данные) — как раньше: кто новее, тот и прав.
+   conflicts — что решили сами, чтобы честно сказать об этом человеку */
+export function mergeLists(local, cloud, meta, resolve) {
+  const deleted = new Set(meta.deleted), synced = new Set(meta.synced), ver = meta.ver || {};
   const localById = new Map(local.map((i) => [i.id, i]));
   const cloudIds = new Set(cloud.map((c) => c.id));
-  const result = [], upserts = [], deletes = [];
+  const result = [], upserts = [], deletes = [], conflicts = [];
+  // true / false — точно знаем; null — заметки о версии нет
+  const changedHere = (l) => { const v = ver[l.id]; return v ? l.updatedAt !== v[0] : null; };
+  const changedThere = (c) => { const v = ver[c.id]; return v && v[1] ? c.updatedAt !== v[1] : null; };
   for (const c of cloud) {
-    if (deleted.has(c.id)) { deletes.push(c.id); continue; }
     const l = localById.get(c.id);
-    if (l && (l.updatedAt || 0) > (c.updatedAt || 0)) { result.push(l); upserts.push(l); }
-    else result.push(c);
+    if (deleted.has(c.id)) {
+      if (changedThere(c)) { result.push(c); conflicts.push({ id: c.id, kind: "deletedHere", item: c }); }
+      else deletes.push(c.id);
+      continue;
+    }
+    if (!l) { result.push(c); continue; }
+    const here = changedHere(l), there = changedThere(c);
+    if (here && there) {
+      const merged = resolve ? resolve(l, c) : null;
+      const pick = merged || ((l.updatedAt || 0) >= (c.updatedAt || 0) ? l : c);
+      conflicts.push({ id: c.id, kind: merged ? "merged" : pick === l ? "keptHere" : "keptThere", item: pick });
+      result.push(pick);
+      if (pick !== c) upserts.push(pick);
+    } else if (here || (here === null && (l.updatedAt || 0) > (c.updatedAt || 0))) {
+      result.push(l); upserts.push(l);
+    } else result.push(c);
   }
   for (const l of local) {
-    if (cloudIds.has(l.id) || synced.has(l.id)) continue;
+    if (cloudIds.has(l.id)) continue;
+    if (synced.has(l.id)) {
+      if (changedHere(l)) { result.push(l); upserts.push(l); conflicts.push({ id: l.id, kind: "deletedThere", item: l }); }
+      continue;
+    }
     result.push(l); upserts.push(l);
   }
-  return { result, upserts, deletes };
+  return { result, upserts, deletes, conflicts };
 }
 
 // Понятный текст, почему не вышло поговорить с облаком
@@ -206,71 +266,149 @@ export function syncErrorText(e) {
   }
   return "Не удалось сохранить в облако, работаем локально";
 }
+/* Что за ошибка — от этого зависит, повторять ли:
+   offline — браузер знает, что сети нет: ждём события «online»;
+   network / server — повторяем сами несколько раз с паузами;
+   auth / setup / denied — повтор не поможет: нужен вход или настройка облака */
+export function syncErrorKind(e) {
+  const msg = String(e?.message || "").toLowerCase();
+  const code = String(e?.code || "");
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+  if (msg.includes("failed to fetch") || msg.includes("network") || msg.includes("load failed")) return "network";
+  if (code === "42P01" || code === "PGRST205" || msg.includes("could not find the table") || msg.includes("does not exist")) return "setup";
+  if (msg.includes("jwt") || code === "PGRST301" || code === "401") return "auth";
+  if (code === "42501" || msg.includes("permission denied") || msg.includes("row-level security")) return "denied";
+  return "server";
+}
+// Паузы перед повторами после сбоя: потом — только вручную или когда вернётся связь
+export const RETRY_DELAYS_MS = [3000, 10000, 30000];
 
-/* Хук синхронизации одного списка (устройства или чаты).
+/* Хук синхронизации одного списка (устройства, чаты, файлы, папки, расписание).
    uid       — id вошедшего (null — гость: хук ничего не делает);
-   table     — "devices" или "chats";
+   table     — имя таблицы;
    value     — локальное состояние (то, что хранит приложение);
    setValue  — как его заменить (без лишних отметок времени);
    toList / fromList — перевод состояния в список { id, updatedAt, … } и обратно;
-   rows      — CHAT_ROWS или DEVICE_ROWS;
+   rows      — CHAT_ROWS, DEVICE_ROWS…; rows.resolve — как объединить конфликт (необязательно);
    migrate   — для чатов: { prepare(local, cloudRows) → список с перенесёнными гостевыми
                диалогами или null, migrated() — отметить, что перенос сделан };
-   onStatus  — сообщить состояние: { loading } | { ok } | { error, text };
+   onStatus  — состояние: { loading, pending } | { ok, pending, at } |
+               { error, text, kind, pending, nextAt (когда следующий повтор) или gaveUp };
+               pending — сколько изменений ещё не подтверждено облаком;
+   onConflict — список решённых конфликтов [{ id, kind, item }] (сказать человеку);
    onPushed  — правки этого устройства ушли в облако (сказать остальным «обновитесь»).
                После простой сводки при входе не вызывается — иначе устройства
                гоняли бы друг другу «обновись» по кругу */
-export function useCloudList({ uid, table, value, setValue, toList, fromList, rows, migrate, onStatus, onPushed }) {
+export function useCloudList({ uid, table, value, setValue, toList, fromList, rows, migrate, onStatus, onPushed, onConflict }) {
   const latest = useRef(value);
   latest.current = value;
-  const baseline = useRef(new Map()); // что уже лежит в облаке: id → updatedAt
   const ready = useRef(false);        // сводка с облаком прошла — можно отправлять изменения
   const timer = useRef(null);
+  const retryTimer = useRef(null);
+  const attempts = useRef(0);         // сколько повторов подряд уже было
+  const lastStatus = useRef({});
   const [retry, setRetry] = useState(0);
   const status = useRef(onStatus);
   status.current = onStatus;
   const pushed = useRef(onPushed);
   pushed.current = onPushed;
+  const conflicted = useRef(onConflict);
+  conflicted.current = onConflict;
+
+  // Состояние + сколько ждёт отправки (по подтверждённым облаком версиям)
+  const report = (st) => {
+    if (st) lastStatus.current = st;
+    if (!uid) return;
+    const pending = pendingCount(toList(latest.current), readMeta(uid, table));
+    status.current?.({ ...lastStatus.current, pending });
+  };
+  // Сбой: сеть или сервер — повторяем с паузами (не больше RETRY_DELAYS_MS.length раз),
+  // остальное (нет входа, нет прав, облако не настроено) — повтор не поможет
+  const failed = (e) => {
+    const kind = syncErrorKind(e);
+    clearTimeout(retryTimer.current);
+    let nextAt = null;
+    if ((kind === "network" || kind === "server") && attempts.current < RETRY_DELAYS_MS.length) {
+      const delay = RETRY_DELAYS_MS[attempts.current++];
+      nextAt = Date.now() + delay;
+      retryTimer.current = setTimeout(() => setRetry((n) => n + 1), delay);
+    }
+    report({ error: e, text: syncErrorText(e), kind, nextAt, gaveUp: !nextAt && kind !== "offline" });
+  };
+  // Подтверждённые облаком версии: id → [updatedAt здесь, updated_at в облаке]
+  const confirm = (meta, items, cloudTimes) => {
+    const ver = { ...meta.ver };
+    for (const i of items) ver[i.id] = [i.updatedAt, cloudTimes.get(i.id) ?? null]; // нет времени облака — сравним по-старому
+    return ver;
+  };
 
   // Связь вернулась — сводим заново (заодно уйдёт всё, что накопилось без сети)
   useEffect(() => {
-    const again = () => setRetry((n) => n + 1);
+    const again = () => { attempts.current = 0; setRetry((n) => n + 1); };
     window.addEventListener("online", again);
     return () => window.removeEventListener("online", again);
   }, []);
 
-  // При входе (и после восстановления связи): берём облако и сводим с локальным
+  // При входе, после восстановления связи и при повторе: берём облако и сводим с локальным
   useEffect(() => {
     ready.current = false;
+    clearTimeout(retryTimer.current);
     if (!uid || !supabase) return;
     let cancelled = false;
-    status.current?.({ loading: true });
+    report({ loading: true });
     (async () => {
       try {
-        // Браузер уже знает, что сети нет, — не ждём повторных попыток, сразу работаем локально
+        // Браузер уже знает, что сети нет, — не ждём, сразу работаем локально
         if (navigator.onLine === false) throw new Error("network: offline");
         const cloudRows = await fetchRows(table);
         if (cancelled) return;
-        let local = toList(latest.current);
+        const orig = toList(latest.current);
+        let local = orig;
         // Старые локальные id (не uuid) облако не примет — выдаём новые
         local = local.map((i) => (isUuid(i.id) ? i : { ...i, id: newId(), updatedAt: Date.now() }));
         const moved = migrate?.prepare(local, cloudRows);
         if (moved) local = moved;
         const meta = readMeta(uid, table);
-        const { result, upserts, deletes } = mergeLists(local, cloudRows.map(rows.fromRow), meta);
-        await pushRows(table, upserts.map(rows.toRow), deletes);
+        const cloudList = cloudRows.map(rows.fromRow);
+        const { result, upserts, deletes, conflicts } = mergeLists(local, cloudList, meta, rows.resolve);
+        const times = await pushRows(table, upserts.map(rows.toRow), deletes);
         if (cancelled) return;
         if (moved) migrate.migrated();
         const sorted = rows.sort(result);
-        writeMeta(uid, table, { synced: sorted.map((i) => i.id), deleted: [] });
-        baseline.current = new Map(sorted.map((i) => [i.id, i.updatedAt]));
+        // Версии: взятое из облака — как есть, отправленное — с временем, которое поставило облако
+        const sent = new Set(upserts.map((i) => i.id));
+        const ver = {};
+        for (const i of sorted) {
+          if (sent.has(i.id)) ver[i.id] = [i.updatedAt, times.get(i.id) ?? null];
+          else ver[i.id] = [i.updatedAt, i.updatedAt];
+        }
+        writeMeta(uid, table, { synced: sorted.map((i) => i.id), deleted: [], ver });
         ready.current = true;
-        // Функцией: в одном хранилище бывают два списка (файлы и папки) —
-        // берём самое свежее состояние, чтобы не затереть соседний список
-        setValue((prev) => fromList(sorted, prev));
-        status.current?.({ ok: true });
+        attempts.current = 0;
+        /* Пока шла сводка (запросы к облаку — это время), человек мог добавить,
+           изменить или удалить что-то здесь. Такие правки не затираем: новое и
+           изменённое оставляем (уйдёт следующей отправкой), удалённое не возвращаем.
+           Функцией: в одном хранилище бывают два списка (файлы и папки) —
+           берём самое свежее состояние, чтобы не затереть соседний список */
+        const before = new Map(orig.map((i) => [i.id, i.updatedAt]));
+        const keepEdits = (cur) => {
+          const now = toList(cur), byId = new Map(sorted.map((i) => [i.id, i]));
+          const nowIds = new Set(now.map((i) => i.id));
+          for (const i of now) {
+            if (!before.has(i.id) && !byId.has(i.id)) byId.set(i.id, i);           // появилось во время сводки
+            else if (before.has(i.id) && before.get(i.id) !== i.updatedAt) byId.set(i.id, i); // изменили во время сводки
+          }
+          for (const id of before.keys()) if (isUuid(id) && !nowIds.has(id)) byId.delete(id); // удалили во время сводки
+          return fromList(rows.sort([...byId.values()]), cur);
+        };
+        setValue((prev) => keepEdits(prev));
+        latest.current = keepEdits(latest.current);
+        report({ ok: true, at: Date.now() });
+        if (conflicts.length) conflicted.current?.(conflicts);
+        // Что-то из этого устройства ушло (накопилось без сети) — пусть остальные перечитают
+        if (upserts.length || deletes.length) pushed.current?.();
       } catch (e) {
-        if (!cancelled) status.current?.({ error: e, text: syncErrorText(e) });
+        if (!cancelled) failed(e);
       }
     })();
     return () => { cancelled = true; };
@@ -285,38 +423,44 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
     const gone = meta.synced.filter((id) => !ids.has(id));
     if (gone.length) {
       writeMeta(uid, table, {
+        ...meta,
         synced: meta.synced.filter((id) => ids.has(id)),
         deleted: [...new Set([...meta.deleted, ...gone])],
       });
     }
+    report();
     if (!ready.current) return;
     clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       const list = toList(latest.current);
-      const upserts = list.filter((i) => baseline.current.get(i.id) !== i.updatedAt);
-      const now = new Set(list.map((i) => i.id));
-      const deletes = [...baseline.current.keys()].filter((id) => !now.has(id));
+      const m0 = readMeta(uid, table);
+      // Ждёт отправки: версия не совпадает с подтверждённой облаком; удаления — из заметок
+      const upserts = list.filter((i) => { const v = m0.ver[i.id]; return v ? v[0] !== i.updatedAt : !m0.synced.includes(i.id); });
+      const deletes = m0.deleted;
       if (!upserts.length && !deletes.length) return;
       try {
-        await pushRows(table, upserts.map(rows.toRow), deletes);
-        upserts.forEach((i) => baseline.current.set(i.id, i.updatedAt));
-        deletes.forEach((id) => baseline.current.delete(id));
+        if (navigator.onLine === false) throw new Error("network: offline");
+        const times = await pushRows(table, upserts.map(rows.toRow), deletes);
         const m = readMeta(uid, table);
+        const ver = confirm(m, upserts, times);
+        deletes.forEach((id) => delete ver[id]);
         writeMeta(uid, table, {
           synced: [...new Set([...m.synced.filter((id) => !deletes.includes(id)), ...upserts.map((i) => i.id)])],
           deleted: m.deleted.filter((id) => !deletes.includes(id)),
+          ver,
         });
-        status.current?.({ ok: true });
+        attempts.current = 0;
+        report({ ok: true, at: Date.now() });
         pushed.current?.();
       } catch (e) {
-        status.current?.({ error: e, text: syncErrorText(e) });
+        failed(e);
       }
     }, SAVE_DELAY_MS);
   }, [value, uid]);
 
   // Ушли из аккаунта — неотправленное не теряется: оно в локальном списке,
   // при следующем входе сводка отправит его
-  useEffect(() => () => clearTimeout(timer.current), [uid]);
+  useEffect(() => () => { clearTimeout(timer.current); clearTimeout(retryTimer.current); }, [uid]);
 
-  return { retry: () => setRetry((n) => n + 1) };
+  return { retry: () => { attempts.current = 0; setRetry((n) => n + 1); } };
 }

@@ -26,9 +26,10 @@ import {
   fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, fileUrl, useFileUrl, forgetUrl,
   rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, FILE_MAX_MB,
   cloudBytes, localBytes, CLOUD_QUOTA_BYTES, fileBlob, signedFileUrl,
+  enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.5";
+const VERSION = "0.9.6";
 
 
 const C = {
@@ -1577,7 +1578,9 @@ function LinkPulse({ p, onDone }) {
 // loading — устройства аккаунта ещё грузятся из облака
 // findState / onFind — «Найти» у реальных устройств (подключённых по коду)
 // activityBlock — компактная лента «Активность» (только у вошедшего)
-function ScreenHome({ devices, received = {}, update, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore }) {
+function ScreenHome({ devices, received = {}, update, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore, netState = "ok" }) {
+  // Подпись под заголовком — честная: «Синхронизировано» только когда облако всё подтвердило
+  const tagline = { offline: "Нет сети. Работает на этом устройстве. Рядом с вами", pending: "Сохраняем изменения. Работает. Рядом с вами", ok: "Синхронизировано. Работает. Рядом с вами", local: "Работает на этом устройстве. Рядом с вами" }[netState];
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online).length;
   // Подпись под устройством: статус и «это устройство»
@@ -1626,7 +1629,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               Все устройства в одной системе
             </div>
             <div style={{ fontSize: 14, color: C.muted, marginTop: 14, marginBottom: 30 }}>
-              Синхронизировано. Работает. Рядом с вами
+              {tagline}
             </div>
             {/* В приложении на планшете: баннер обновления над списком устройств */}
             {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateBanner update={update} /></div>}
@@ -1752,7 +1755,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               Все устройства в одной системе
             </div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>
-              Синхронизировано. Работает. Рядом с вами
+              {tagline}
             </div>
           </div>
           {/* Складка крупнее и чуть выше — вровень с заголовком */}
@@ -4877,19 +4880,23 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
       {/* Загрузки: имя, настоящий процент, отмена; ошибка — «Повторить» и «Убрать» */}
       {uploads.map((u) => {
         const failed = u.status === "error";
+        // Ждёт в очереди (нет сети или пауза перед повтором) — содержимое сохранено на устройстве
+        const waiting = u.status === "queued";
+        const waitText = navigator.onLine === false ? "Нет сети — загрузится, когда связь вернётся (пока NEXA открыта)"
+          : u.nextAt ? `Не вышло — повторим в ${new Date(u.nextAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Скоро отправим";
         const small = { ...btnReset, fontSize: 12.5, padding: "4px 10px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
         return (
           <div key={u.id} role={failed ? "alert" : "status"} className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-              {failed ? Icon.alert({ c: C.red, s: 16 }) : <Spinner />}
+              {failed ? Icon.alert({ c: C.red, s: 16 }) : waiting ? Icon.refresh({ c: C.muted, s: 16 }) : <Spinner />}
               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {failed ? `Не загрузилось: «${u.name}»` : `Загружаем «${u.name}»`}
+                {failed ? `Не загрузилось: «${u.name}»` : waiting ? `Ждёт отправки: «${u.name}»` : `Загружаем «${u.name}»`}
               </span>
               <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                {!failed && <span style={{ fontSize: 12, color: C.mutedSoft, fontFamily: fontDisplay }}>{Math.round(u.progress * 100)}%</span>}
-                {failed && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction?.(u.id, "retry")} style={small}>Повторить</button>}
-                <button type="button" className="nx-icon-btn" onClick={() => onUploadAction?.(u.id, failed ? "dismiss" : "cancel")}
-                  aria-label={failed ? "Убрать" : "Отменить загрузку"} title={failed ? "Убрать" : "Отменить"} style={{
+                {!failed && !waiting && <span style={{ fontSize: 12, color: C.mutedSoft, fontFamily: fontDisplay }}>{Math.round(u.progress * 100)}%</span>}
+                {(failed || (waiting && navigator.onLine !== false)) && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction?.(u.id, "retry")} style={small}>{waiting ? "Сейчас" : "Повторить"}</button>}
+                <button type="button" className="nx-icon-btn" onClick={() => onUploadAction?.(u.id, failed || waiting ? "dismiss" : "cancel")}
+                  aria-label={failed || waiting ? "Убрать" : "Отменить загрузку"} title={failed || waiting ? "Убрать" : "Отменить"} style={{
                     ...btnReset, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
                   {Icon.close({ c: C.muted, s: 13 })}
@@ -4898,6 +4905,7 @@ function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initial
             </div>
             {failed
               ? <div style={{ fontSize: 12, color: C.red, marginTop: 6, paddingLeft: 26 }}>{u.error}</div>
+              : waiting ? <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6, paddingLeft: 26 }}>{waitText}</div>
               : (
                 <div style={{ height: 2, background: C.border, marginTop: 10, overflow: "hidden" }}>
                   <div style={{
@@ -10223,24 +10231,190 @@ function DeleteDataDialog({ onConfirm, onClose }) {
   );
 }
 
-/* Тихая строка о синхронизации: «Загружаем…» или «Нет связи, работаем локально».
-   Без свечения: плашка с обводкой 1px внизу экрана */
-function SyncStatus({ loading, text, onRetry }) {
-  if (!loading && !text) return null;
+/* Есть ли сеть — по мнению браузера (события online / offline).
+   Браузер может считать, что сеть есть, когда её нет, — тогда о сбое скажет сама синхронизация */
+function useOnline() {
+  const [on, setOn] = useState(() => navigator.onLine !== false);
+  useEffect(() => {
+    const up = () => setOn(true), down = () => setOn(false);
+    window.addEventListener("online", up); window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []);
+  return on;
+}
+// «через 8 с» до следующего повтора (перерисовывается раз в секунду, только пока есть повтор)
+function useCountdown(at) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!at || at === Infinity) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [at]);
+  return at && at !== Infinity ? Math.max(0, Math.ceil((at - Date.now()) / 1000)) : null;
+}
+const changesWord = (n) => `${n} ${plural(n, ["изменение", "изменения", "изменений"])}`;
+const waitWord = (n) => plural(n, ["ждёт", "ждут", "ждут"]);
+
+/* Компактный индикатор связи и синхронизации (внизу слева, на телефоне — над панелью).
+   Что показывает — только правду:
+   - нет сети: «Нет сети» и сколько изменений ждёт отправки (у гостя — что всё на устройстве);
+   - идёт сводка / отправка: «Синхронизируем…», «Отправляем 3 изменения…»;
+   - сбой: «Не отправилось · повтор через 8 с» или, когда повторы кончились, «Повторить»;
+   - «Сохранено в облаке» — коротко и только после ответа облака, что всё принято.
+   Нажатие открывает подробности (SyncDetails) */
+function SyncStatus({ online, uid, loading, pending, queued, text, nextAt, gaveUp, onRetry, onOpen }) {
+  const left = useCountdown(nextAt);
+  const total = pending + queued;
+  // «Сохранено» — на 2,5 с после того, как ожидающих стало 0 и облако подтвердило
+  const [saved, setSaved] = useState(false);
+  const prevTotal = useRef(total);
+  useEffect(() => {
+    if (loading) return; // ждём, пока сводка закончится по всем частям
+    if (prevTotal.current > 0 && total === 0 && online && !text) setSaved(true);
+    else if (total > 0 || !online || text) setSaved(false);
+    prevTotal.current = total;
+  }, [total, online, loading, text]);
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(false), 2500);
+    return () => clearTimeout(t);
+  }, [saved]);
+
+  let dot = null, label = null, retry = false;
+  if (!online) {
+    dot = <Dot color={C.red} />;
+    label = uid ? (total ? `Нет сети · ${changesWord(total)} ${waitWord(total)} отправки` : "Нет сети · данные на этом устройстве") : "Нет сети · всё сохраняется на этом устройстве";
+  } else if (!uid) return null;
+  else if (loading) { dot = <Spinner s={12} />; label = total ? `Синхронизируем · ждут: ${total}` : "Синхронизируем…"; }
+  else if (text) {
+    dot = <Dot color={C.red} />;
+    label = [text, total ? `не отправлено: ${total}` : null, left != null ? `повтор через ${left} с` : null].filter(Boolean).join(" · ");
+    retry = gaveUp || left == null;
+  } else if (total) { dot = <Spinner s={12} />; label = `Отправляем ${changesWord(total)}…`; }
+  else if (saved) { dot = Icon.check({ c: C.green, s: 13 }); label = "Сохранено в облаке"; }
+  else return null;
+
   return (
     <div className="nx-sync-status nx-pop" role="status" style={{
-      position: "fixed", zIndex: 60, display: "flex", alignItems: "center", gap: 10,
-      padding: "8px 12px", border: `1px solid ${C.borderStrong}`, borderRadius: 10, background: C.panel,
+      position: "fixed", zIndex: 60, display: "flex", alignItems: "center", gap: 8,
+      padding: "4px 6px 4px 12px", border: `1px solid ${C.borderStrong}`, borderRadius: 999, background: C.panel,
       fontSize: 12.5, color: C.muted, maxWidth: "calc(100vw - 32px)", boxSizing: "border-box",
     }}>
-      {loading ? <Spinner s={12} /> : <Dot color={C.red} />}
-      <span>{loading ? "Загружаем данные аккаунта…" : text}</span>
-      {!loading && onRetry && (
-        <button type="button" onClick={onRetry} style={{ ...btnReset, color: C.mint, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3 }}>
+      {dot}
+      <button type="button" onClick={onOpen} aria-haspopup="dialog" title="Подробнее о синхронизации" style={{
+        ...btnReset, fontSize: 12.5, color: C.muted, padding: "4px 0", minWidth: 0, textAlign: "left",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>{label}</button>
+      {retry && online && (
+        <button type="button" onClick={onRetry} style={{ ...btnReset, color: C.mint, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3, flexShrink: 0 }}>
           Повторить
         </button>
       )}
+      <button type="button" className="nx-icon-btn" onClick={onOpen} aria-label="Подробнее о синхронизации" style={{ ...btnReset, width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {Icon.chevron({ c: C.mutedSoft, s: 13 })}
+      </button>
     </div>
+  );
+}
+
+/* Подробности: что с каждой частью данных, очередь загрузок, удаления из облака.
+   Только то, что знаем точно; «сохранено» — по подтверждению облака */
+const SYNC_PARTS = [["devices", "Устройства"], ["chats", "Диалоги ассистента"], ["schedule", "Расписание"], ["files", "Сведения о файлах"], ["folders", "Папки"]];
+function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, onUploadAction, onLogin, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const queue = uploads.filter((u) => u.queued);
+  const partState = (st) => {
+    if (!st) return ["Ещё не проверяли", C.mutedSoft];
+    if (st.localOnly) return ["Только на этом устройстве — облако для расписания не настроено", C.mutedSoft];
+    if (st.loading) return ["Синхронизируем…", C.muted];
+    if (st.text) return [`${st.text}${st.pending ? ` · ждут: ${st.pending}` : ""}${st.nextAt ? " · повторим сами" : st.gaveUp ? " · повторы кончились" : ""}`, C.red];
+    if (st.pending) return [`${changesWord(st.pending)} ${waitWord(st.pending)} отправки`, C.muted];
+    return [`Сохранено в облаке${st.at ? ` · ${new Date(st.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}`, C.green];
+  };
+  const authLost = uid && Object.values(syncState).some((st) => st?.kind === "auth");
+  return createPortal(
+    <div className="nx-viewer" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--scrim)" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-sync-title" onClick={(e) => e.stopPropagation()} className="nx-pop nx-scroll" style={{
+        width: "min(480px, 100%)", maxHeight: "calc(100% - 32px)", overflowY: "auto", boxSizing: "border-box",
+        background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 20, padding: 20, textAlign: "left",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div id="nx-sync-title" className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>Связь и синхронизация</div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{ ...btnReset, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {Icon.close({ c: C.muted, s: 16 })}
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13.5, color: C.text }}>
+          <Dot color={online ? C.green : C.red} /> {online ? "Сеть есть" : "Нет сети — работаем с данными на этом устройстве"}
+        </div>
+        {!uid ? (
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>
+            Вы без аккаунта: всё хранится только в этом браузере, в облако ничего не отправляется.
+          </div>
+        ) : (
+          <>
+            <div style={{ marginTop: 14, border: `1px solid ${C.border}`, borderRadius: 14 }}>
+              {SYNC_PARTS.map(([key, title], i) => {
+                const [txt, col] = partState(syncState[key]);
+                return (
+                  <div key={key} style={{ padding: "10px 14px", borderTop: i ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ fontSize: 13.5, color: C.text }}>{title}</div>
+                    <div style={{ fontSize: 12.5, color: col, marginTop: 2, lineHeight: 1.4 }}>{txt}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {queue.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 12.5, color: C.mutedSoft, marginBottom: 6 }}>Файлы ждут загрузки: {queue.length}</div>
+                {queue.map((u) => (
+                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
+                    {u.status === "error" ? Icon.alert({ c: C.red, s: 14 }) : u.status === "uploading" ? <Spinner s={12} /> : Icon.refresh({ c: C.muted, s: 14 })}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{u.name}</span>
+                      <span style={{ display: "block", fontSize: 12, color: u.status === "error" ? C.red : C.mutedSoft }}>
+                        {u.status === "error" ? u.error : u.status === "uploading" ? `Загружаем — ${Math.round((u.progress || 0) * 100)}%` : online ? "Ждёт повтора" : "Ждёт сети"}
+                      </span>
+                    </span>
+                    {u.status === "error" && online && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction(u.id, "retry")} style={{ ...btnReset, fontSize: 12.5, padding: "4px 10px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Повторить</button>}
+                    <button type="button" className="nx-icon-btn" onClick={() => onUploadAction(u.id, "dismiss")} aria-label={`Убрать «${u.name}» из очереди`} style={{ ...btnReset, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {Icon.close({ c: C.muted, s: 13 })}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {trash > 0 && (
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 12 }}>
+                Удаление из облака ждёт связи: {trash} {plural(trash, ["файл", "файла", "файлов"])}
+              </div>
+            )}
+            {authLost && (
+              <div style={{ fontSize: 12.5, color: C.red, marginTop: 12, lineHeight: 1.45 }}>
+                Сессия закончилась — изменения сохранены на устройстве и уйдут после входа.{" "}
+                <button type="button" onClick={onLogin} style={{ ...btnReset, color: C.mint, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3 }}>Войти</button>
+              </div>
+            )}
+          </>
+        )}
+        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 14, lineHeight: 1.5 }}>
+          Отправка идёт, пока NEXA открыта. Закрыли — ничего не потеряется: отправим при следующем запуске с интернетом.
+          В фоне браузер и система этого не гарантируют. «Найти», блокировка, передача на устройство и NEXA Flow
+          без сети не копятся — их нужно повторить, когда связь вернётся.
+        </div>
+        {uid && (
+          <StateButton variant="primary" disabled={!online} onClick={onRetry} icon={Icon.refresh({ c: C.onFold, s: 14 })}
+            style={{ width: "100%", marginTop: 16, borderRadius: 999, padding: "11px 16px" }}>
+            {online ? "Повторить сейчас" : "Повторим, когда появится сеть"}
+          </StateButton>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -10839,10 +11013,31 @@ export default function NexaApp() {
      syncState — что сейчас с синхронизацией у каждой таблицы */
   const [syncState, setSyncState] = useState({});
   useEffect(() => { setSyncState({}); }, [uid]);
+  /* Конфликты, которые сводка решила сама (см. mergeLists в sync.js), — честно
+     говорим, что выбрали. Больше двух сразу — одно общее уведомление, подробности в центре уведомлений */
+  const CONFLICT_WHAT = { devices: "устройство", chats: "диалог", files: "файл", file_folders: "папка", schedule: "дело" };
+  const conflictNote = (table, rowsDef) => (list) => {
+    const texts = list.map(({ kind, item }) => {
+      const name = `«${rowsDef.label?.(item) || CONFLICT_WHAT[table]}»`;
+      return {
+        merged: `${name} дописали здесь и на другом устройстве — сообщения объединены, ничего не потерялось`,
+        keptHere: `${name} изменили здесь и на другом устройстве — оставлена более новая версия, с этого устройства`,
+        keptThere: `${name} изменили здесь и на другом устройстве — оставлена более новая версия, с другого устройства`,
+        deletedHere: `${name} удалили здесь без сети, а на другом устройстве изменили — удаление отменено`,
+        deletedThere: `${name} удалили на другом устройстве, а здесь изменили — версия с этого устройства сохранена`,
+      }[kind];
+    });
+    if (texts.length <= 2) texts.forEach((text) => showToast({ title: `Конфликт: ${CONFLICT_WHAT[table]}`, text, kind: "sync", duration: 9000 }));
+    else {
+      texts.forEach((text) => logEvent({ title: `Конфликт: ${CONFLICT_WHAT[table]}`, text, kind: "sync" }));
+      showToast({ title: `Конфликтов при синхронизации: ${texts.length}`, text: "Решены автоматически — подробности в уведомлениях", kind: "sync", duration: 9000 });
+    }
+  };
   const devicesSync = useCloudList({
     uid, table: "devices", value: deviceStore, setValue: setDeviceStore,
     toList: devicesToList, fromList: devicesFromList, rows: DEVICE_ROWS,
     onStatus: (st) => setSyncState((s) => ({ ...s, devices: st })),
+    onConflict: conflictNote("devices", DEVICE_ROWS),
     // Правки ушли в облако — остальные устройства аккаунта перечитают их сразу
     onPushed: () => link.emit("sync.changed", { table: "devices" }),
   });
@@ -10867,6 +11062,7 @@ export default function NexaApp() {
       ...chatMigration(uid),
     },
     onStatus: (st) => setSyncState((s) => ({ ...s, chats: st })),
+    onConflict: conflictNote("chats", CHAT_ROWS),
     onPushed: () => link.emit("sync.changed", { table: "chats" }),
   });
   /* Сведения о файлах и папки аккаунта — в облако (таблицы files и file_folders).
@@ -10887,6 +11083,7 @@ export default function NexaApp() {
     }),
     rows: FILE_ROWS,
     onStatus: (st) => setSyncState((s) => ({ ...s, files: st })),
+    onConflict: conflictNote("files", FILE_ROWS),
     onPushed: () => link.emit("sync.changed", { table: "files" }),
   });
   const foldersSync = useCloudList({
@@ -10895,6 +11092,7 @@ export default function NexaApp() {
     fromList: (list, prev) => ({ ...prev, folders: list }),
     rows: FOLDER_ROWS,
     onStatus: (st) => setSyncState((s) => ({ ...s, folders: st })),
+    onConflict: conflictNote("file_folders", FOLDER_ROWS),
     onPushed: () => link.emit("sync.changed", { table: "file_folders" }),
   });
   /* Расписание аккаунта — в облако (таблица schedule). Пока schedule.sql не
@@ -10916,7 +11114,9 @@ export default function NexaApp() {
       },
       migrated: () => { try { localStorage.setItem(SCHEDULE_MIGRATED_KEY, JSON.stringify([...new Set([...scheduleMigrated(), uid])])); } catch {} },
     },
-    onStatus: (st) => setSyncState((s) => ({ ...s, schedule: st.error && isMissingTable(st.error) ? { ok: true } : st })),
+    // Таблицы расписания нет — дела живут только здесь: не «ошибка» и не «ждёт отправки»
+    onStatus: (st) => setSyncState((s) => ({ ...s, schedule: st.error && isMissingTable(st.error) ? { ok: true, pending: 0, localOnly: true } : st })),
+    onConflict: conflictNote("schedule", SCHEDULE_ROWS),
     onPushed: () => link.emit("sync.changed", { table: "schedule" }),
   });
   // Удаления из хранилища, которые не прошли без сети, — повторяем при входе и когда связь вернулась
@@ -10930,7 +11130,13 @@ export default function NexaApp() {
 
   const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
-  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); };
+  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); runUploadQueue("all"); };
+  // Сколько изменений ещё не подтверждено облаком (по всем таблицам) и что с повторами
+  const syncPending = uid ? Object.values(syncState).reduce((n, st) => n + (st?.pending || 0), 0) : 0;
+  const syncNextAt = uid ? Math.min(Infinity, ...Object.values(syncState).map((st) => st?.nextAt || Infinity)) : Infinity;
+  const syncGaveUp = !!uid && Object.values(syncState).some((st) => st?.gaveUp);
+  const online = useOnline();
+  const [syncOpen, setSyncOpen] = useState(false); // окно «Связь и синхронизация»
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
   const pullRefresh = async () => {
@@ -11652,7 +11858,14 @@ export default function NexaApp() {
       setTimeout(() => done({}), 250);
       return;
     }
-    if (navigator.onLine === false) { fail("Нет связи — файл не загрузился"); return; }
+    // Нет сети — сразу в очередь: загрузится, когда связь вернётся (пока NEXA открыта)
+    const toQueue = async () => {
+      const ok = await enqueueUpload(uid, { ...meta, addedAt: meta.addedAt, attempts: 0, status: "queued" }, file);
+      setUploads((list) => list.filter((u) => u.id !== upId));
+      if (!ok) { showToast({ title: "Файл не сохранился для отправки", text: `«${name}»: в браузере не хватило места — добавьте его, когда появится сеть`, kind: "error" }); return; }
+      loadQueueRows();
+    };
+    if (navigator.onLine === false) { toQueue(); return; }
     const ctl = uploadToCloud({ uid, id, file, onProgress: (pr) => patch({ progress: pr }) });
     uploadCtl.current[upId] = ctl;
     ctl.promise
@@ -11660,13 +11873,93 @@ export default function NexaApp() {
       .catch((err) => {
         delete uploadCtl.current[upId];
         if (err?.kind === "abort") setUploads((list) => list.filter((u) => u.id !== upId));
+        else if (err?.kind === "network") toQueue(); // связь оборвалась посреди загрузки
         else fail(err?.text || "Не загрузилось — попробуйте ещё раз");
       });
   };
+
+  /* ── Очередь загрузок без сети (src/lib/files.js) ──
+     Строки очереди в списке загрузок: status "queued" (ждёт сети или повтора),
+     "uploading", "error" (повторы кончились или ошибка, которую повтор не исправит).
+     Повторы: 3 раза с паузами 5, 20 и 60 с, потом — только «Повторить».
+     Перед отправкой проверяем, что вошёл тот же человек, чей файл в очереди */
+  const QUEUE_DELAYS = [5000, 20000, 60000];
+  const queueBusy = useRef(false);
+  const queueTimer = useRef(null);
+  const loadQueueRows = () => {
+    if (!uid) return;
+    const q = readUploadQueue(uid);
+    setUploads((list) => [
+      ...list.filter((u) => !u.queued),
+      ...q.map((it) => ({ id: `q-${it.id}`, fileId: it.id, name: it.name, folder: it.folder, queued: true,
+        progress: 0, status: it.status === "error" ? "error" : "queued", error: it.error, nextAt: it.nextAt || null })),
+    ]);
+  };
+  // reset: "all" — «Повторить» (и упавшие тоже), "waiting" — связь вернулась (только ждущие, без пауз)
+  const runUploadQueue = async (reset = null) => {
+    if (!uid || queueBusy.current || navigator.onLine === false) return;
+    queueBusy.current = true; clearTimeout(queueTimer.current);
+    try {
+      if (reset) readUploadQueue(uid).forEach((it) => {
+        if (reset === "all" || it.status === "queued") patchUploadQueue(uid, it.id, { status: "queued", attempts: reset === "all" ? 0 : it.attempts, error: null, nextAt: null });
+      });
+      for (const it of readUploadQueue(uid)) {
+        if (it.status === "error" || (it.nextAt && it.nextAt > Date.now())) continue;
+        // Сессия того же аккаунта — иначе не отправляем (вышли / вошли другим)
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user?.id !== uid) break;
+        const blob = await queuedBlob(uid, it.id);
+        if (!blob) { patchUploadQueue(uid, it.id, { status: "error", error: "Содержимое файла не сохранилось — добавьте его заново" }); continue; }
+        setUploads((list) => list.map((u) => (u.fileId === it.id && u.queued ? { ...u, status: "uploading", progress: 0 } : u)));
+        try {
+          const { path } = await uploadToCloud({ uid, id: it.id, file: blob,
+            onProgress: (pr) => setUploads((list) => list.map((u) => (u.fileId === it.id && u.queued ? { ...u, progress: pr } : u))) }).promise
+            .catch((e) => { if (e?.kind === "exists") return { path: `${uid}/${it.id}` }; throw e; }); // уже в облаке — не дублируем
+          rememberLocal(uid, it.id, blob);
+          const { attempts, status, error, nextAt, ...meta } = it;
+          setFileStore((st) => (st.added.some((f) => f.id === it.id) ? st
+            : { ...st, added: [...st.added, { ...meta, path, updatedAt: Date.now() }] }));
+          await dequeueUpload(uid, it.id);
+          showToast({ title: "Файл загружен", text: `«${it.name}» — после восстановления связи` });
+        } catch (e) {
+          const n = (it.attempts || 0) + 1;
+          if ((e?.kind === "network" || e?.kind === "server") && n < QUEUE_DELAYS.length + 1) {
+            patchUploadQueue(uid, it.id, { status: "queued", attempts: n, nextAt: Date.now() + QUEUE_DELAYS[n - 1], error: e?.text });
+          } else {
+            patchUploadQueue(uid, it.id, { status: "error", attempts: n, nextAt: null,
+              error: e?.kind === "network" || e?.kind === "server" ? `Не загрузилось после ${n} попыток — нажмите «Повторить»` : e?.text || "Не загрузилось" });
+          }
+        }
+      }
+    } finally {
+      queueBusy.current = false;
+      loadQueueRows();
+      // Ближайший повтор по расписанию
+      const next = Math.min(Infinity, ...readUploadQueue(uid).filter((it) => it.status === "queued" && it.nextAt).map((it) => it.nextAt));
+      if (next < Infinity) queueTimer.current = setTimeout(() => runUploadQueue(), Math.max(500, next - Date.now()));
+    }
+  };
+  const runQueueRef = useRef(runUploadQueue); runQueueRef.current = runUploadQueue;
+  const loadQueueRef = useRef(loadQueueRows); loadQueueRef.current = loadQueueRows;
+  // Вошли / перезапуск: строки очереди на экран, есть сеть — отправляем; связь вернулась — тоже
+  useEffect(() => {
+    if (!uid) return;
+    loadQueueRef.current();
+    const t = setTimeout(() => runQueueRef.current(), 1500); // после сводки с облаком
+    const again = () => runQueueRef.current("waiting");
+    window.addEventListener("online", again);
+    return () => { clearTimeout(t); clearTimeout(queueTimer.current); window.removeEventListener("online", again); };
+  }, [uid]);
   // Отменить идущую загрузку, повторить неудачную или убрать строку с ошибкой
   const uploadAction = (upId, action) => {
     const u = uploads.find((x) => x.id === upId);
     if (!u) return;
+    // Строка очереди: «Повторить» — сразу снова; «Убрать» / «Отменить» — убрать из очереди
+    if (u.queued) {
+      if (action === "retry") { patchUploadQueue(uid, u.fileId, { status: "queued", attempts: 0, nextAt: null, error: null }); loadQueueRows(); runUploadQueue(); }
+      else dequeueUpload(uid, u.fileId).then(loadQueueRows);
+      return;
+    }
     if (action === "cancel") { uploadCtl.current[upId]?.abort(); return; }
     setUploads((list) => list.filter((x) => x.id !== upId));
     if (action === "retry") startUpload(u.file, u.folder, u.fileId);
@@ -11740,7 +12033,9 @@ export default function NexaApp() {
     });
     const next = nextScheduleItem(schedule);
     const cloudFiles = sortByRecent(files.filter((f) => f.uploaded && f.path));
-    const syncText = syncLoading ? "Синхронизация: загружаем данные…" : syncError ? `Синхронизация: ${syncError}` : "Синхронизировано с облаком";
+    const syncText = !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}`
+      : syncLoading ? "Синхронизация: загружаем данные…" : syncError ? `Синхронизация: ${syncError}`
+      : syncPending ? `Отправляем: ${syncPending}` : "Сохранено в облаке";
     const list = [
       { id: "chat", title: "Новый диалог с ассистентом", sub: "ИИ-ассистент NEXA", icon: Icon.sparkle,
         keywords: ["ассистент", "ии", "чат", "диалог", "вопрос", "спросить"], run: newChatQuick },
@@ -12963,7 +13258,12 @@ export default function NexaApp() {
       <PullIndicator pull={pull.pull} busy={pull.busy} />
       {/* Синхронизация аккаунта: «Загружаем…» или «Нет связи, работаем локально» */}
       {/* На экране ассистента строка живёт внутри панели истории — не перекрывает чат */}
-      {tab !== "assistant" && <SyncStatus loading={syncLoading} text={syncError} onRetry={retrySync} />}
+      {tab !== "assistant" && (
+        <SyncStatus online={online} uid={uid} loading={syncLoading} pending={syncPending} queued={uploads.filter((u) => u.queued).length}
+          text={syncError} nextAt={syncNextAt} gaveUp={syncGaveUp} onRetry={retrySync} onOpen={() => setSyncOpen(true)} />
+      )}
+      {syncOpen && <SyncDetails online={online} uid={uid} syncState={syncState} uploads={uploads} trash={uid ? trashCount(uid) : 0}
+        onRetry={retrySync} onUploadAction={uploadAction} onLogin={() => { setSyncOpen(false); setAuthOpen(true); }} onClose={() => setSyncOpen(false)} />}
       {/* Первый запуск: войти или продолжить без аккаунта */}
       {showGate && <AuthGate onGuest={() => { saveGuest(true); setGuest(true); }} />}
       {authOpen && !auth.user && <AuthModal onClose={() => { setAuthOpen(false); setPendingPair(null); setPendingLogin(null); }}
@@ -13047,7 +13347,7 @@ export default function NexaApp() {
       uid={uid}
       onAddFiles={(list) => addFiles(list, null)}
       account={auth.user ? { email: auth.user.email || "" } : null}
-      sync={{ loading: syncLoading, text: syncError, onRetry: retrySync }}
+      sync={{ loading: syncLoading && online, text: !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}` : syncError, onRetry: online ? retrySync : null }}
       bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />}
     />
   ) : (
@@ -13061,6 +13361,7 @@ export default function NexaApp() {
           onOpenDevice={showDevice}
           onAddDevice={onAddDevice}
           onRestoreDevices={restoreDevices}
+          netState={!online ? "offline" : !uid ? "local" : syncLoading || syncPending || syncError ? "pending" : "ok"}
           activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
           findState={findState}
           onFind={findDevice}

@@ -256,9 +256,44 @@ export const FILE_ROWS = {
     device: r.device || "", path: r.storage_path || null, createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at),
   }),
   sort: (list) => [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+  label: (f) => f.name || "Файл",
 };
 export const FOLDER_ROWS = {
   toRow: (f) => ({ id: f.id, name: f.name, parent: f.parent ?? null, created_at: toIso(f.createdAt) }),
   fromRow: (r) => ({ id: r.id, name: r.name, parent: r.parent ?? null, createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at) }),
   sort: (list) => [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+  label: (f) => f.name || "Папка",
 };
+
+/* ─── Очередь загрузок без сети (только вошедший) ───
+   Файл, который не удалось загрузить из-за сети, ждёт здесь: сведения —
+   в localStorage (nexa-upload-queue@<id>), содержимое — в IndexedDB этого
+   браузера (ключ «<id аккаунта>:queue:<id файла>», при выходе стирается вместе
+   с остальными копиями). Загружается снова, когда NexaApp открыт и есть сеть —
+   в фоне браузер и система этого не гарантируют. id файла не меняется, поэтому
+   повтор не создаёт дубль: если файл уже в облаке, хранилище ответит «уже есть» */
+const queueKey = (uid) => `nexa-upload-queue@${uid}`;
+const queueBlob = (uid, id) => `${uid}:queue:${id}`;
+export function readUploadQueue(uid) {
+  try { const v = JSON.parse(localStorage.getItem(queueKey(uid))); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function writeUploadQueue(uid, list) {
+  try { list.length ? localStorage.setItem(queueKey(uid), JSON.stringify(list)) : localStorage.removeItem(queueKey(uid)); } catch {}
+}
+// Поставить в очередь: false — не получилось сохранить содержимое (нет IndexedDB / места)
+export async function enqueueUpload(uid, item, blob) {
+  await tx("readwrite", (st) => st.put(blob, queueBlob(uid, item.id)));
+  if (!(await cacheGet(queueBlob(uid, item.id)))) return false; // проверяем, что содержимое правда сохранилось
+  writeUploadQueue(uid, [...readUploadQueue(uid).filter((q) => q.id !== item.id), item]);
+  return true;
+}
+export function patchUploadQueue(uid, id, patch) {
+  writeUploadQueue(uid, readUploadQueue(uid).map((q) => (q.id === id ? { ...q, ...patch } : q)));
+}
+export async function dequeueUpload(uid, id) {
+  writeUploadQueue(uid, readUploadQueue(uid).filter((q) => q.id !== id));
+  await cacheDel(queueBlob(uid, id));
+}
+export const queuedBlob = (uid, id) => cacheGet(queueBlob(uid, id));
+// Удалений из облака, которые ждут связи (см. removeFromCloud)
+export const trashCount = (uid) => readTrash(uid).length;
