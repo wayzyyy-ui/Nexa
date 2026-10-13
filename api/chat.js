@@ -29,6 +29,11 @@ const MODEL = 'gemini-flash-lite-latest';
 // Настройки ответа: temperature ниже — меньше фантазий,
 // maxOutputTokens — потолок длины, чтобы не было «простыней»
 const GENERATION = { temperature: 0.4, maxOutputTokens: 400 };
+// Без «обдумывания» перед ответом. MODEL — псевдоним «последняя Flash-Lite»: Google
+// переводит его на новые модели, а новые по умолчанию сначала молча думают —
+// первые слова приходят через несколько секунд, а мысли съедают maxOutputTokens.
+// Для коротких ответов ассистента это не нужно
+const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
 
 // Команды выполняются в самом приложении (до обращения к серверу), но модель
 // должна о них знать, чтобы правильно отвечать на «что ты умеешь» в любой форме
@@ -146,12 +151,16 @@ export default async function handler(req, res) {
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
-    const stream = await ai.models.generateContentStream({
-      model: MODEL,
-      contents,
-      // С файлом ответ может быть длиннее: пересказ, список пунктов
-      config: { systemInstruction: SYSTEM_INSTRUCTION, ...GENERATION, ...(hasAttachment ? { maxOutputTokens: 1200 } : {}) },
-    });
+    // С файлом ответ может быть длиннее: пересказ, список пунктов
+    const config = { systemInstruction: SYSTEM_INSTRUCTION, ...GENERATION, ...(hasAttachment ? { maxOutputTokens: 1200 } : {}) };
+    let stream;
+    try {
+      stream = await ai.models.generateContentStream({ model: MODEL, contents, config: { ...config, ...NO_THINKING } });
+    } catch (e) {
+      // Модель не умеет отключать обдумывание — спрашиваем как раньше, без этой настройки
+      if (e?.status !== 400 || !/thinking/i.test(String(e?.message || ''))) throw e;
+      stream = await ai.models.generateContentStream({ model: MODEL, contents, config });
+    }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');

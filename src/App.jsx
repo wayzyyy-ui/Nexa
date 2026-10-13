@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.10";
+const VERSION = "0.9.11";
 
 
 const C = {
