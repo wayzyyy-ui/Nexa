@@ -6,7 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import foldSvg from "./assets/fold.svg";
 import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyKind, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.6";
+const VERSION = "0.9.7";
 
 
 const C = {
@@ -1031,23 +1031,65 @@ const loadNotes = () => {
   return { items: [], seenAt: 0 };
 };
 
-// «только что», «5 мин назад», «2 ч назад», «вчера в 14:05», «3 окт.»
+/* ═══ ЕДИНЫЕ УВЕДОМЛЕНИЯ (notify в NexaApp) ═══
+   Категории — у каждой две настройки (nexa-note-prefs, на этом устройстве):
+   app — в приложении (всплывающее + колокольчик), system — системное
+   (Android-приложение; сайт на компьютере — пока вкладка открыта).
+   В колокольчик попадают только события этих категорий; ответы на действия
+   человека («Файл переименован», «Тема переключена») — только всплывающие.
+   Лента «Активность» — отдельно: журнал связи устройств, её не трогаем */
+const NOTE_CATS = [
+  { id: "files", label: "Файлы", sub: "Файл отправлен или не отправлен, пришёл файл", icon: Icon.folder },
+  { id: "flow", label: "Текст и ссылки", sub: "Пришло с другого устройства", icon: Icon.shareUp },
+  { id: "devices", label: "Устройства", sub: "Новое устройство в аккаунте, устройство нашлось", icon: Icon.phone },
+  { id: "sync", label: "Синхронизация и связь", sub: "Не удалось сохранить в облако, связь восстановлена, конфликты", icon: Icon.refresh },
+  { id: "schedule", label: "Расписание", sub: "За 15 минут до дела", icon: Icon.calendar },
+  { id: "updates", label: "Обновления", sub: "Вышла новая версия приложения", icon: Icon.download },
+];
+const NOTE_PREFS_KEY = "nexa-note-prefs";
+const loadNotePrefs = () => {
+  const prefs = Object.fromEntries(NOTE_CATS.map((c) => [c.id, { app: true, system: false }]));
+  try {
+    const v = JSON.parse(localStorage.getItem(NOTE_PREFS_KEY));
+    if (v) for (const c of NOTE_CATS) if (v[c.id]) prefs[c.id] = { app: v[c.id].app !== false, system: !!v[c.id].system };
+  } catch {}
+  return prefs;
+};
+/* Одно событие — одно уведомление, даже если пришло несколько сигналов
+   (повтор события, две вкладки одного браузера, повторная синхронизация).
+   Ключ события помним сутки; между вкладками — под общим замком (Web Locks) */
+const NOTE_CLAIMS_KEY = "nexa-note-claims";
+function claimNow(key) {
+  try {
+    const now = Date.now(), all = JSON.parse(localStorage.getItem(NOTE_CLAIMS_KEY) || "{}");
+    for (const k in all) if (now - all[k] > 86400000) delete all[k];
+    if (all[key]) return false;
+    all[key] = now;
+    localStorage.setItem(NOTE_CLAIMS_KEY, JSON.stringify(all));
+  } catch {}
+  return true;
+}
+const claimNote = (key) => (!key ? Promise.resolve(true)
+  : navigator.locks?.request ? navigator.locks.request("nexa-note-claims", () => claimNow(key)) : Promise.resolve(claimNow(key)));
+
+// Время события: «только что», «5 мин назад», «в 14:05», «вчера в 14:05», «3 окт. в 14:05»
 function noteTime(at) {
   const diff = Math.max(0, Date.now() - at);
-  const min = Math.round(diff / 60000);
+  const min = Math.floor(diff / 60000);
   if (min < 1) return "только что";
   if (min < 60) return `${min} мин назад`;
   const d = new Date(at);
   const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) return `${Math.round(min / 60)} ч назад`;
+  if (d.toDateString() === new Date().toDateString()) return `в ${hm}`;
   const y = new Date(Date.now() - 86400000);
   if (d.toDateString() === y.toDateString()) return `вчера в ${hm}`;
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
 }
 
-// Значок события: по виду (kind) или по словам в заголовке
+// Значок события: по категории, у старых записей — по словам в заголовке
 function noteIcon(n) {
+  const cat = NOTE_CATS.find((c) => c.id === n.cat);
+  if (cat) return cat.icon;
   const t = `${n.kind || ""} ${n.title || ""}`.toLowerCase();
   if (/theme|тем/.test(t)) return Icon.sparkle;
   if (/файл|папк|ссылк/.test(t)) return Icon.folder;
@@ -1056,7 +1098,7 @@ function noteIcon(n) {
   return Icon.bell;
 }
 
-function NotificationBell({ notes, onSeen, onClear }) {
+function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings }) {
   const [open, setOpen] = useState(false);
   const [seenBefore, setSeenBefore] = useState(0); // что было новым в момент открытия
   const ref = useRef(null);
@@ -1121,19 +1163,31 @@ function NotificationBell({ notes, onSeen, onClear }) {
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.border}` }}>
             <span style={{ fontSize: 14 }}>Уведомления</span>
-            <button type="button" className="nx-link-btn" onClick={onClear} disabled={!notes.items.length}
-              style={{ ...btnReset, fontSize: 12, color: C.muted }}>
-              Очистить
-            </button>
+            <span style={{ display: "flex", gap: 14 }}>
+              {onSettings && (
+                <button type="button" className="nx-link-btn" onClick={() => { setOpen(false); onSettings(); }} style={{ ...btnReset, fontSize: 12, color: C.muted }}>
+                  Настроить
+                </button>
+              )}
+              <button type="button" className="nx-link-btn" onClick={onClear} disabled={!notes.items.length}
+                style={{ ...btnReset, fontSize: 12, color: C.muted }}>
+                Очистить
+              </button>
+            </span>
           </div>
           {notes.items.length === 0 ? (
             <div style={{ padding: "26px 16px", textAlign: "center", fontSize: 12.5, color: C.mutedSoft, lineHeight: 1.5 }}>
-              Пока тихо. Здесь появятся события:<br />файлы, устройства, тема, расписание.
+              Пока тихо. Здесь появятся события:<br />файлы, устройства, синхронизация, расписание.
             </div>
           ) : (
             <div className="nx-scroll nx-stagger" style={{ maxHeight: 380, overflowY: "auto" }}>
               {notes.items.map((n) => (
-                <div key={n.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: `1px solid ${C.border}` }}>
+                // Есть куда перейти — вся строка ведёт туда (раздел, устройство, окно)
+                <div key={n.id} role={n.target ? "button" : undefined} tabIndex={n.target ? 0 : undefined} className={n.target ? "nx-row-btn" : undefined}
+                  onClick={n.target ? () => { setOpen(false); onOpen?.(n.target); } : undefined}
+                  onKeyDown={n.target ? (e) => { if (e.key === "Enter") { setOpen(false); onOpen?.(n.target); } } : undefined}
+                  title={new Date(n.at).toLocaleString("ru-RU")}
+                  style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: `1px solid ${C.border}`, cursor: n.target ? "pointer" : "default" }}>
                   <span style={{
                     width: 28, height: 28, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`,
                     display: "flex", alignItems: "center", justifyContent: "center",
@@ -1147,8 +1201,12 @@ function NotificationBell({ notes, onSeen, onClear }) {
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title}</span>
                     </div>
                     {n.text && <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.text}</div>}
+                    {/* Откуда событие и когда оно случилось */}
+                    <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {[n.source, noteTime(n.at)].filter(Boolean).join(" · ")}
+                    </div>
                   </div>
-                  <span style={{ fontSize: 11, color: C.mutedSoft, whiteSpace: "nowrap", marginTop: 1 }}>{noteTime(n.at)}</span>
+                  {n.target && <span style={{ marginTop: 6, flexShrink: 0, display: "flex" }}>{Icon.chevron({ c: C.mutedSoft, s: 12 })}</span>}
                 </div>
               ))}
             </div>
@@ -4193,9 +4251,8 @@ const folderName = (folders, id) => (id ? folders.find((f) => f.id === id)?.name
 const SETTINGS_INDEX = [
   { title: "Пользователь", subtitle: "user@example.com", keywords: ["профиль", "аккаунт", "почта"] },
   { title: "Тема оформления", subtitle: "Светлая или тёмная", keywords: ["тема", "оформление", "светлая", "тёмная"] },
-  { title: "Уведомления о событиях", subtitle: "Календарь, встречи, напоминания", keywords: ["уведомления", "события", "календарь"] },
-  { title: "Сообщения и комментарии", subtitle: "Упоминания, ответы, новые сообщения", keywords: ["сообщения", "комментарии"] },
-  { title: "Рекомендации и новости", subtitle: "Полезные советы и обновления", keywords: ["рекомендации", "новости"] },
+  { title: "Уведомления", subtitle: "Файлы, текст и ссылки, устройства, синхронизация, расписание, обновления", keywords: ["уведомления", "колокольчик", "напоминания", "категории"] },
+  { title: "Системные уведомления", subtitle: "Уведомления телефона или браузера", keywords: ["системные", "разрешение", "пуш", "push"] },
   { title: "Выйти из аккаунта", subtitle: "Завершить сессию на всех устройствах", keywords: ["выход", "logout", "выйти"] },
   { title: "О системе", subtitle: `NEXA ${VERSION}`, keywords: ["версия", "о системе", "nexa"] },
 ];
@@ -10453,19 +10510,44 @@ function ThisDeviceSettings({ sys }) {
   );
 }
 
-function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock }) {
-  // Список уведомлений хранится в состоянии (useState),
-  // потому что он меняется при кликах
-  const [notifs, setNotifs] = useState([
-    { icon: Icon.bell, label: "Уведомления о событиях", sub: "Календарь, встречи, напоминания", on: true },
-    { icon: Icon.chat, label: "Сообщения и комментарии", sub: "Упоминания, ответы, новые сообщения", on: true },
-    { icon: Icon.megaphone, label: "Рекомендации и новости", sub: "Полезные советы и обновления", on: false },
-  ]);
+/* Настройки уведомлений: по каждой категории — «В NEXA» (всплывающее и колокольчик)
+   и «Системные». Где системные невозможны, так и пишем, а не обещаем */
+function NoteSettings({ prefs, setPrefs, perm, onAsk }) {
+  const kind = systemNotifyKind();
+  const sysOn = perm === "granted";
+  const where = kind === "none"
+    ? "На сайте в телефоне браузер их не показывает — уведомления только внутри NEXA. Системные есть в приложении NEXA для Android"
+    : kind === "web"
+      ? "Браузер покажет их, пока вкладка NEXA открыта (можно свёрнутой). Закрытая вкладка ничего не присылает"
+      : "Приходят, пока приложение запущено. Напоминания о делах ставятся заранее и придут, даже если NEXA закрыта (в режиме экономии Android может их задержать)";
+  const flip = (id, field) => setPrefs((p) => ({ ...p, [id]: { ...p[id], [field]: !p[id][field] } }));
+  const permRight = kind === "none" ? <span style={{ fontSize: 12.5, color: C.mutedSoft }}>Недоступны</span>
+    : perm === "granted" ? <span style={{ fontSize: 12.5, color: C.green }}>Разрешены</span>
+    : perm === "denied" ? <span style={{ fontSize: 12.5, color: C.red, maxWidth: 220, textAlign: "right", lineHeight: 1.35 }}>Запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
+    : <button type="button" className="nx-ghost-btn" onClick={onAsk} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Разрешить</button>;
+  const sw = { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" };
+  return (
+    <div id="nx-note-settings" style={{ scrollMarginTop: 80 }}>
+      <SectionTitle>Уведомления</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow wrap icon={Icon.bell({ c: C.muted, s: 18 })} title="Системные уведомления" subtitle={where} right={permRight} />
+        {NOTE_CATS.map((c, i) => (
+          <SettingsRow key={c.id} wrap last={i === NOTE_CATS.length - 1} icon={c.icon({ c: C.muted, s: 18 })} title={c.label} subtitle={c.sub}
+            right={(
+              <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+                <span style={sw}>В NEXA <Toggle on={prefs[c.id]?.app} onClick={() => flip(c.id, "app")} label={`${c.label}: в NEXA`} /></span>
+                {kind !== "none" && (
+                  <span style={{ ...sw, opacity: sysOn ? 1 : 0.6 }}>Системные <Toggle on={sysOn && prefs[c.id]?.system} disabled={!sysOn} onClick={() => flip(c.id, "system")} label={`${c.label}: системные`} /></span>
+                )}
+              </div>
+            )} />
+        ))}
+      </SettingsGroup>
+    </div>
+  );
+}
 
-  // Переключаем у строки с номером index значение on на противоположное
-  const toggleNotif = (index) => {
-    setNotifs(notifs.map((n, i) => (i === index ? { ...n, on: !n.on } : n)));
-  };
+function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -10556,19 +10638,7 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
         )}
       </SettingsGroup>
 
-      <SectionTitle>Уведомления</SectionTitle>
-      <SettingsGroup>
-        {notifs.map((n, i) => (
-          <SettingsRow
-            key={n.label}
-            last={i === notifs.length - 1}
-            icon={n.icon({ c: C.muted, s: 18 })}
-            title={n.label}
-            subtitle={n.sub}
-            right={<Toggle on={n.on} onClick={() => toggleNotif(i)} />}
-          />
-        ))}
-      </SettingsGroup>
+      {noteBlock}
 
       {flowBlock}
 
@@ -10854,16 +10924,68 @@ export default function NexaApp() {
 
   // Центр уведомлений: последние 20 событий (общие для всех вкладок)
   const [notes, setNotes] = useSharedState(NOTES_KEY, loadNotes);
+  // Запись: время события, источник (какое устройство), категория и куда перейти по нажатию
   const addNote = (n) => setNotes((s) => ({
     ...s,
-    items: [{ id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), title: n.title, text: n.text || "", kind: n.kind }, ...s.items].slice(0, NOTES_MAX),
+    items: [{ id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: n.at || Date.now(), title: n.title, text: n.text || "",
+      cat: n.cat, source: n.source || "", target: n.target || null, key: n.key || null }, ...s.items].slice(0, NOTES_MAX),
   }));
-  // Записи из любого места приложения (logEvent → событие "nexa-log")
+  // logEvent из любого места: в колокольчик — только события с категорией (без всплывающего)
   useEffect(() => {
-    const onLog = (e) => addNote(e.detail || {});
+    const onLog = (e) => { if (e.detail?.cat) notifyRef.current({ ...e.detail, toast: false }); };
     window.addEventListener("nexa-log", onLog);
     return () => window.removeEventListener("nexa-log", onLog);
   }, []);
+
+  /* ── Уведомления: notify({ cat, title, text, toastText, source, at, key, target, action, system, toast }) ──
+     cat — категория NOTE_CATS (без неё — просто всплывающее, в колокольчик не пишем);
+     text — что запомнить в колокольчике (без содержимого личных сообщений и файлов);
+     toastText — что показать во всплывающем сейчас (если отличается);
+     key — ключ события: второй сигнал о том же событии ничего не покажет;
+     target — куда ведёт нажатие ({ tab } | { device } | { sync } | { update } | { activity });
+     system — false, если системное уже показала сама система (напоминания Android).
+     Системное — когда NEXA не на экране (или «в приложении» выключено) и человек его разрешил */
+  const [notePrefs, setNotePrefs] = useSharedState(NOTE_PREFS_KEY, loadNotePrefs);
+  const notePrefsRef = useRef(notePrefs); notePrefsRef.current = notePrefs;
+  const [notePerm, setNotePerm] = useState("unsupported");
+  const notePermRef = useRef(notePerm); notePermRef.current = notePerm;
+  useEffect(() => {
+    const check = () => systemNotifyPermission().then(setNotePerm);
+    check();
+    // Разрешение могли поменять в настройках телефона или браузера
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+  }, []);
+  const eventAt = (ts) => (Number.isFinite(ts) && Math.abs(Date.now() - ts) < 10 * 60000 ? ts : Date.now());
+  const notify = async (n) => {
+    if (!NOTE_CATS.some((c) => c.id === n.cat)) { showToast(n); return; }
+    if (!(await claimNote(n.key))) return; // это событие уже показывали
+    const pref = notePrefsRef.current[n.cat] || {};
+    const at = n.at || Date.now();
+    // Устройство-источник не нашлось в списке — ведём на Главную, а не в никуда
+    if (n.target && "device" in n.target && !n.target.device) n = { ...n, target: { tab: "home" } };
+    const away = document.visibilityState === "hidden";
+    if (pref.app) {
+      addNote({ ...n, at });
+      if (!away && n.toast !== false) {
+        showToast({ title: n.title, text: n.toastText ?? n.text, duration: n.duration || (n.action ? 8000 : 5000),
+          action: n.action || (n.target ? { label: "Открыть", onClick: () => openTargetRef.current?.(n.target) } : undefined) });
+      }
+    }
+    if (pref.system && n.system !== false && notePermRef.current === "granted" && (away || !pref.app)) {
+      systemNotify({ cat: n.cat, title: n.title, body: n.systemText ?? n.text, target: n.target, key: n.key || `${n.cat}:${at}` });
+    }
+  };
+  const notifyRef = useRef(notify); notifyRef.current = notify;
+  // «Разрешить» в Настройках: спрашиваем систему; разрешили — включаем системные для всех категорий
+  // (человек сам об этом попросил; отдельные категории можно выключить)
+  const askNotePerm = async () => {
+    const p = await systemNotifyPermission(true);
+    setNotePerm(p);
+    if (p === "granted") setNotePrefs((prev) => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { ...prev[c.id], system: true }])));
+  };
+  const openTargetRef = useRef(null); // ставится ниже, когда готовы переходы
+  const realRowRef = useRef(() => null); // запись устройства по device_id — ставится ниже
 
   /* Связь устройств: свой закрытый канал аккаунта (src/lib/realtime.js).
      Пришёл текст — короткое уведомление (только как текст); остальные события
@@ -10876,11 +10998,17 @@ export default function NexaApp() {
   const link = useDeviceLink(uid, {
     flowOn: () => flowRef.current.on,
     onText: (item) => {
-      // Похожее на пароль или ключ — в уведомление не выводим и сами не копируем
-      const show = (copied) => showToast({
-        title: `Пришло с устройства «${item.from_name}»${copied ? " · скопировано" : ""}`,
-        text: item.sensitive ? "Скрытое содержимое — похоже на пароль или ключ" : item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
-        kind: "device",
+      // Похожее на пароль или ключ — в уведомление не выводим и сами не копируем.
+      // Сам текст — только во всплывающем на экране; в колокольчике и системном — без содержимого
+      const isLink = !item.sensitive && !!safeUrl(item.text);
+      const from = item.from_name || "Устройство";
+      const show = (copied) => notifyRef.current({
+        cat: "flow", key: `text:${item.id}`, at: eventAt(item.ts), source: `«${from}»`,
+        title: `${isLink ? "Ссылка" : "Текст"} с устройства «${from}»${copied ? " · скопировано" : ""}`,
+        text: item.sensitive ? "Скрытое содержимое — похоже на пароль или ключ" : isLink ? `Ссылка · ${new URL(safeUrl(item.text)).hostname}` : "Откройте устройство, чтобы посмотреть",
+        toastText: item.sensitive ? "Скрытое содержимое — похоже на пароль или ключ" : item.text.length > 80 ? item.text.slice(0, 80) + "…" : item.text,
+        systemText: "Откройте NEXA, чтобы посмотреть",
+        target: { device: realRowRef.current(item.from_device)?.id },
         ...(!copied && !item.sensitive ? { action: { label: "Копировать", onClick: () => clipboardWrite(item.text).then((ok) => ok || copyText(item.text)) }, duration: 9000 } : {}),
       });
       if (flowRef.current.autoCopy && !item.sensitive && document.visibilityState === "visible") clipboardWrite(item.text).then(show);
@@ -10904,9 +11032,8 @@ export default function NexaApp() {
   useEffect(() => { if (uid && thisSys) link.shareSys(thisSys); }, [thisSys, uid]);
   const onTextActivity = useRef(null); // ставится ниже, когда готова лента
 
-  // Тост — и сразу запись в центр уведомлений, чтобы не исчезал бесследно
+  // Всплывающее уведомление (только на экране). В колокольчик пишет notify — по категориям
   const showToast = (t) => {
-    addNote(t);
     const id = ++toastIdRef.current;
     setToasts((list) => [...list, { id, ...t }]);
     setTimeout(
@@ -11016,7 +11143,9 @@ export default function NexaApp() {
   /* Конфликты, которые сводка решила сама (см. mergeLists в sync.js), — честно
      говорим, что выбрали. Больше двух сразу — одно общее уведомление, подробности в центре уведомлений */
   const CONFLICT_WHAT = { devices: "устройство", chats: "диалог", files: "файл", file_folders: "папка", schedule: "дело" };
-  const conflictNote = (table, rowsDef) => (list) => {
+  const conflictNote = (table, rowsDef) => (all) => {
+    const list = table === "devices" ? all.filter((c) => c.kind === "deletedHere" || c.kind === "deletedThere") : all;
+    if (!list.length) return;
     const texts = list.map(({ kind, item }) => {
       const name = `«${rowsDef.label?.(item) || CONFLICT_WHAT[table]}»`;
       return {
@@ -11027,11 +11156,10 @@ export default function NexaApp() {
         deletedThere: `${name} удалили на другом устройстве, а здесь изменили — версия с этого устройства сохранена`,
       }[kind];
     });
-    if (texts.length <= 2) texts.forEach((text) => showToast({ title: `Конфликт: ${CONFLICT_WHAT[table]}`, text, kind: "sync", duration: 9000 }));
-    else {
-      texts.forEach((text) => logEvent({ title: `Конфликт: ${CONFLICT_WHAT[table]}`, text, kind: "sync" }));
-      showToast({ title: `Конфликтов при синхронизации: ${texts.length}`, text: "Решены автоматически — подробности в уведомлениях", kind: "sync", duration: 9000 });
-    }
+    const base = { cat: "sync", source: "Облако NEXA", target: table === "chats" ? { tab: "assistant" } : table === "schedule" ? { tab: "today" } : table.startsWith("file") ? { tab: "files" } : { tab: "home" } };
+    const many = texts.length > 2;
+    list.forEach(({ id, kind }, i) => notifyRef.current({ ...base, key: `conflict:${table}:${id}:${kind}:${Math.floor(Date.now() / 60000)}`, title: `Конфликт: ${CONFLICT_WHAT[table]}`, text: texts[i], toast: !many, duration: 9000 }));
+    if (many) showToast({ title: `Конфликтов при синхронизации: ${texts.length}`, text: "Решены автоматически — подробности в уведомлениях", duration: 9000 });
   };
   const devicesSync = useCloudList({
     uid, table: "devices", value: deviceStore, setValue: setDeviceStore,
@@ -11161,13 +11289,13 @@ export default function NexaApp() {
     const me = link.self?.device_id;
     const from = realNames[p.from_device] || p.from_name || "Устройство";
     if (event === "lock.on") {
-      if (p.target_device_id === me) { setLocked({ from }); logActivity("lock", `«${from}» заблокировало экран NEXA`, "Демонстрация"); }
+      if (p.target_device_id === me) { setLocked({ from }); logActivityOnce(`lock:${p.id}`, "lock", `«${from}» заблокировало экран NEXA`, "Демонстрация"); }
       return;
     }
     if (event === "lock.off") {
       setLockState((st) => {
         if (!st[p.target_device_id]) return st;
-        showToast({ title: `«${from}» разблокировали`, kind: "device" });
+        notifyRef.current({ cat: "devices", key: `unlock:${p.target_device_id}:${p.ts}`, at: eventAt(p.ts), source: `«${from}»`, title: `«${from}» разблокировали`, text: "Экран NEXA снова открыт", target: { device: realRowRef.current(p.target_device_id)?.id } });
         const n = { ...st }; delete n[p.target_device_id]; return n;
       });
       return;
@@ -11175,8 +11303,10 @@ export default function NexaApp() {
     if (event === "file.send") {
       if (p.to_device !== me || !uid) return;
       refreshTableSoon("files"); // запись о файле — в общий список «Файлов»
-      logActivity("file", `Получен файл «${safeFileName(p.name)}»`, `От «${from}» · ${formatSize(p.size / 1e6)}`);
-      showToast({ title: `Файл от «${from}»`, text: safeFileName(p.name), kind: "device", duration: 10000,
+      logActivityOnce(`file:${p.id}:${p.ts}`, "file", `Получен файл «${safeFileName(p.name)}»`, `От «${from}» · ${formatSize(p.size / 1e6)}`);
+      // Ключ — файл и время отправки: тот же сигнал дважды отсекаем, а новую отправку того же файла — нет
+      notifyRef.current({ cat: "files", key: `file-in:${p.id}:${p.ts}`, at: eventAt(p.ts), source: `«${from}»`, title: `Файл от «${from}»`, text: safeFileName(p.name),
+        systemText: "Новый файл в «Файлах»", target: { tab: "files" }, duration: 10000,
         action: { label: "Открыть", onClick: () => openReceivedFile(p) } });
       return;
     }
@@ -11184,9 +11314,9 @@ export default function NexaApp() {
       const safe = p.to_device === me && safeUrl(p.url);
       if (!safe) return;
       const host = new URL(safe).hostname;
-      logActivity("link", `Ссылка от «${from}»`, host);
-      showToast({ title: `Ссылка от «${from}»`, text: host, kind: "device", duration: 12000,
-        action: { label: "Открыть", onClick: () => openUrl(safe) } });
+      logActivityOnce(`link:${p.id}`, "link", `Ссылка от «${from}»`, host);
+      notifyRef.current({ cat: "flow", key: `link:${p.id}`, at: eventAt(p.ts), source: `«${from}»`, title: `Ссылка от «${from}»`, text: `Ссылка · ${host}`,
+        systemText: "Откройте NEXA, чтобы посмотреть", duration: 12000, action: { label: "Открыть", onClick: () => openUrl(safe) } });
     }
   };
   // Список устройств поменялся на другом устройстве — перечитываем из облака
@@ -11244,7 +11374,7 @@ export default function NexaApp() {
     sess.used = true; // код сразу недействителен
     addRealDevice(p);
     link.emit("pair.ok", { device_id: p.device_id, name: p.name || "Устройство" });
-    showToast({ title: "Устройство подключено", text: p.name || "Устройство", kind: "device" });
+    notifyRef.current({ cat: "devices", key: `newdev:${p.device_id}`, source: "Это устройство", title: "Подключено новое устройство", text: p.name || "Устройство", target: { tab: "home" } });
     closePair();
     // Когда новое устройство уйдёт в облако — пусть остальные перечитают список
     setTimeout(() => link.emit("devices.changed", {}), 2500);
@@ -11355,7 +11485,9 @@ export default function NexaApp() {
   const logActivity = (kind, title, text = "") => setActivity((list) =>
     [{ id: `a${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), kind, title, text }, ...list].slice(0, ACTIVITY_MAX));
   const [activityOpen, setActivityOpen] = useState(false);
-  onTextActivity.current = (item) => logActivity("text", `Получен текст от «${realNames[item.from_device] || item.from_name || "Устройство"}»`, safeUrl(item.text) ? "Ссылка" : "Сообщение");
+  // То же событие ещё раз (повтор сигнала, вторая вкладка этого браузера) — в ленту не пишем
+  const logActivityOnce = (key, ...args) => claimNote(`act:${key}`).then((ok) => ok && logActivity(...args));
+  onTextActivity.current = (item) => logActivityOnce(`text:${item.id}`, "text", `Получен текст от «${realNames[item.from_device] || item.from_name || "Устройство"}»`, safeUrl(item.text) ? "Ссылка" : "Сообщение");
 
   /* ── «Был в сети»: Presence говорит, кто онлайн сейчас; время последней
      активности пишем в state.seenAt реального устройства (уходит в облако).
@@ -11377,6 +11509,7 @@ export default function NexaApp() {
   // Записи реальных устройств «как есть» (без склейки сайта и приложения):
   // время «был в сети», сведения и отпечаток пишутся в свою запись
   const realRowOf = (deviceId) => deviceStore.added.find((d) => deviceStore.state[d.id]?.real && deviceStore.state[d.id]?.device_id === deviceId);
+  realRowRef.current = realRowOf;
   const selfRow = realRowOf(link.self?.device_id);
   /* Отпечаток телефона (state.hw) — в запись каждого устройства в сети и своего:
      так склеиваются сайт и приложение, подключённые ещё до появления отпечатка */
@@ -11425,11 +11558,11 @@ export default function NexaApp() {
     }
     const self = link.self?.device_id;
     for (const [id, peer] of now) {
-      if (id !== self && !prevPeers.current.has(id)) logActivity("connect", `«${realNames[id] || peer.name}» подключилось`, peerLabel(peer));
+      if (id !== self && !prevPeers.current.has(id)) logActivityOnce(`conn:${id}:${Math.floor(Date.now() / 60000)}`, "connect", `«${realNames[id] || peer.name}» подключилось`, peerLabel(peer));
     }
     for (const [id, peer] of prevPeers.current) {
       if (id === self || now.has(id)) continue;
-      logActivity("disconnect", `«${realNames[id] || peer.name}» отключилось`);
+      logActivityOnce(`disc:${id}:${Math.floor(Date.now() / 60000)}`, "disconnect", `«${realNames[id] || peer.name}» отключилось`);
       const row = realRowOf(id);
       markSeen(row);
       keepSys(row, lastPeerSys.current[id] || peer.sys); // последние сведения, которые устройство успело прислать
@@ -11477,13 +11610,19 @@ export default function NexaApp() {
         mb: toMb(file.size), size: file.size, mime: file.type || "", path, addedAt: now, updatedAt: now,
       }] }));
       const ok = await link.emit("file.send", { id, to_device: key, name, size: file.size, mime: file.type || "" });
-      if (!ok) { set({ state: "error", error: "Файл в «Файлах», но устройство не получило уведомление — нет связи" }); return; }
+      if (!ok) {
+        set({ state: "error", error: "Файл в «Файлах», но устройство не получило уведомление — нет связи" });
+        notifyRef.current({ cat: "files", key: `file-fail:${id}`, source: "Это устройство", title: `Файл не отправлен на «${d.name}»`, text: `«${name}» лежит в «Файлах» — нет связи`, target: { device: d.id } });
+        return;
+      }
       set({ state: "done" });
       logActivity("sent", `Файл «${name}» отправлен на «${d.name}»`);
+      notifyRef.current({ cat: "files", key: `file-sent:${id}`, source: "Это устройство", title: `Файл отправлен на «${d.name}»`, text: name, target: { device: d.id } });
       setTimeout(() => setSendState((st) => (st[key]?.state === "done" ? { ...st, [key]: null } : st)), 5000);
     }).catch((err) => {
       if (err?.kind === "abort") { setSendState((st) => ({ ...st, [key]: null })); return; }
       set({ state: "error", error: err?.text || "Не отправилось — попробуйте ещё раз" });
+      notifyRef.current({ cat: "files", key: `file-fail:${id}`, source: "Это устройство", title: `Файл не отправлен на «${d.name}»`, text: err?.text || "Не загрузился — попробуйте ещё раз", target: { device: d.id } });
     }).finally(() => { delete sendCtl.current[key]; });
   };
   const cancelSend = (d) => sendCtl.current[d.device_id]?.abort();
@@ -11536,8 +11675,8 @@ export default function NexaApp() {
     clearTimeout(findTimers.current[p.target_device_id]);
     clearFindLater(p.target_device_id);
     if (p.found) {
-      showToast({ title: "Нашлось", text: p.from_name || "Устройство", kind: "device" });
-      logActivity("found", `«${realNames[p.target_device_id] || p.from_name || "Устройство"}» нашлось`);
+      notifyRef.current({ cat: "devices", key: `found:${p.target_device_id}:${p.ts}`, at: eventAt(p.ts), source: `«${p.from_name || "Устройство"}»`, title: `«${realNames[p.target_device_id] || p.from_name || "Устройство"}» нашлось`, text: "Там нажали «Нашёл»", target: { device: realRowRef.current(p.target_device_id)?.id } });
+      logActivityOnce(`found:${p.target_device_id}:${p.ts}`, "found", `«${realNames[p.target_device_id] || p.from_name || "Устройство"}» нашлось`);
     }
   };
   // Меня нашли (или минута прошла): выключаем сигнал и сообщаем
@@ -11920,7 +12059,7 @@ export default function NexaApp() {
           setFileStore((st) => (st.added.some((f) => f.id === it.id) ? st
             : { ...st, added: [...st.added, { ...meta, path, updatedAt: Date.now() }] }));
           await dequeueUpload(uid, it.id);
-          showToast({ title: "Файл загружен", text: `«${it.name}» — после восстановления связи` });
+          notify({ cat: "files", key: `upload:${it.id}`, source: "Это устройство", title: "Файл загружен", text: `«${it.name}» — после восстановления связи`, target: { tab: "files" } });
         } catch (e) {
           const n = (it.attempts || 0) + 1;
           if ((e?.kind === "network" || e?.kind === "server") && n < QUEUE_DELAYS.length + 1) {
@@ -11979,6 +12118,111 @@ export default function NexaApp() {
     if (tab !== "assistant") setSearchChatId(null);
   }, [tab]);
 
+  /* ── Куда ведёт уведомление (колокольчик, всплывающее, системное) ── */
+  const openTarget = (t) => {
+    if (!t) return;
+    if (t.device) {
+      const card = devices.find((d) => d.id === t.device || d.members?.includes(t.device));
+      if (card) { setActivityOpen(false); showDevice(card.id); return; }
+      goTab("home"); return;
+    }
+    if (t.sync) { setSyncOpen(true); return; }
+    if (t.activity) { openActivity(); return; }
+    if (t.update) { if (appUpdate?.url) openUpdate(appUpdate.url); else goTab("home"); return; }
+    if (t.tab) {
+      goTab(t.tab);
+      // Настройки уведомлений — сразу к своему разделу
+      if (t.notes) setTimeout(() => document.getElementById("nx-note-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 120);
+    }
+  };
+  openTargetRef.current = openTarget;
+  // Нажали на системное уведомление (Android или браузер)
+  useEffect(() => onSystemNoteOpen((t) => openTargetRef.current?.(t)), []);
+
+  /* ── Синхронизация: «не удалось» — когда повторы кончились или сессия закончилась;
+     «восстановлено» — только если до этого был сбой или без сети ждали изменения,
+     и облако подтвердило, что всё сохранено. Ключ — по 10-минутке: одно на все вкладки ── */
+  const syncAlarm = useRef({ failed: false, waited: false });
+  useEffect(() => {
+    if (!uid) { syncAlarm.current = { failed: false, waited: false }; return; }
+    const a = syncAlarm.current;
+    const authLost = Object.values(syncState).some((st) => st?.kind === "auth");
+    const bucket = Math.floor(Date.now() / 600000);
+    if (!online && syncPending > 0) a.waited = true;
+    if ((syncGaveUp || authLost) && !a.failed) {
+      a.failed = true;
+      notify({ cat: "sync", key: `sync-fail:${uid}:${bucket}`, source: "Облако NEXA", target: { sync: true },
+        title: authLost ? "Сессия закончилась" : "Не удалось сохранить в облако",
+        text: authLost ? "Изменения на устройстве — войдите заново" : `${syncError || "Облако не отвечает"}${syncPending ? ` · ждут: ${syncPending}` : ""}` });
+    }
+    if ((a.failed || a.waited) && online && !syncLoading && !syncError && syncPending === 0) {
+      a.failed = false; a.waited = false;
+      notify({ cat: "sync", key: `sync-ok:${uid}:${bucket}`, source: "Облако NEXA", target: { sync: true },
+        title: "Связь восстановлена", text: "Изменения сохранены в облаке" });
+    }
+  }, [uid, online, syncLoading, syncError, syncPending, syncGaveUp]);
+
+  /* ── Новое устройство в аккаунте: появилось в списке, подтверждённом облаком.
+     Какие устройства уже знаем — nexa-known-devices@<id>; первый раз запоминаем молча ── */
+  const realIds = deviceStore.added.map((d) => deviceStore.state[d.id]?.real && deviceStore.state[d.id]?.device_id).filter(Boolean);
+  const realKey = realIds.join(",");
+  useEffect(() => {
+    if (!uid || !syncState.devices?.ok) return;
+    const k = `nexa-known-devices@${uid}`;
+    let known = null;
+    try { known = JSON.parse(localStorage.getItem(k)); } catch {}
+    const save = (ids) => { try { localStorage.setItem(k, JSON.stringify(ids)); } catch {} };
+    if (!Array.isArray(known)) { save(realIds); return; }
+    const fresh = realIds.filter((id) => !known.includes(id) && id !== link.self?.device_id);
+    for (const id of fresh) {
+      const row = realRowOf(id);
+      notify({ cat: "devices", key: `newdev:${id}`, source: "Аккаунт NEXA", title: "Новое устройство в аккаунте", text: row?.name || "Устройство", target: { device: row?.id } });
+    }
+    if (fresh.length) save([...new Set([...known, ...realIds])]);
+  }, [uid, syncState.devices?.ok, realKey]);
+
+  /* ── Расписание: за 15 минут до дела ──
+     В приложении с включёнными системными — напоминания заранее ставит Android
+     (придут и при закрытом приложении); тогда здесь только запись в колокольчик.
+     Иначе — проверка раз в 30 с, пока NEXA открыта */
+  const REMIND_MIN = 15;
+  const startOf = (it) => { const t = new Date(`${it.date || dayKey()}T${it.time}:00`).getTime(); return Number.isFinite(t) ? t : null; };
+  const nativeReminders = isNative && notePrefs.schedule?.system && notePerm === "granted";
+  const remindKey = (it) => `sched:${it.id}:${it.date}T${it.time}`;
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      for (const it of schedule) {
+        const start = startOf(it);
+        if (!start || now < start - REMIND_MIN * 60000 || now >= start) continue;
+        const left = Math.max(1, Math.round((start - now) / 60000));
+        notify({ cat: "schedule", key: remindKey(it), source: "Расписание", target: { tab: "today" },
+          title: `Через ${left} мин: ${it.title}`, text: `Начало в ${it.time}`,
+          ...(nativeReminders ? { system: false, toast: false } : {}) });
+      }
+    };
+    tick();
+    const t = setInterval(tick, 30000);
+    return () => clearInterval(t);
+  }, [schedule, nativeReminders]);
+  useEffect(() => {
+    if (!isNative) return;
+    if (!nativeReminders) { scheduleReminders([]); return; }
+    const week = Date.now() + 7 * 86400000;
+    scheduleReminders(schedule.map((it) => ({ it, start: startOf(it) }))
+      .filter(({ start }) => start && start < week)
+      // Android может показать напоминание позже (экономия заряда, телефон был выключен) —
+      // поэтому без «через 15 мин»: «Скоро» и точное время начала
+      .map(({ it, start }) => ({ key: remindKey(it), at: start - REMIND_MIN * 60000, title: `Скоро: ${it.title}`, body: `Начало в ${it.time}`, target: { tab: "today" } })));
+  }, [schedule, nativeReminders]);
+
+  /* ── Обновление приложения: один раз на версию ── */
+  useEffect(() => {
+    if (!appUpdate?.version) return;
+    notify({ cat: "updates", key: `update:${appUpdate.version}`, source: "NEXA", target: { update: true },
+      title: `Вышла NEXA ${appUpdate.version}`, text: appUpdate.required ? "Эта версия больше не поддерживается — обновите" : "Можно обновить — займёт минуту" });
+  }, [appUpdate?.version]);
+
   /* ── Панель быстрых действий (QuickPanel) ──
      Открывается: молния в верхней строке, Ctrl/⌘ + K, событие QUICK_EVENT,
      в будущей EXE-версии — глобальное сочетание (onDesktopQuickPanel).
@@ -12009,8 +12253,8 @@ export default function NexaApp() {
     if (!uid || !f.path) return;
     const name = safeFileName(f.name);
     const ok = await link.emit("file.send", { id: f.id, to_device: d.device_id, name, size: fileBytes(f), mime: f.mime || "" });
-    if (!ok) { showToast({ title: "Файл не отправлен", text: "Нет связи — попробуйте ещё раз", kind: "error" }); return; }
-    showToast({ title: `Файл отправлен на «${d.name}»`, text: name, kind: "device" });
+    if (!ok) { notify({ cat: "files", key: `file-fail:${f.id}:${Date.now()}`, source: "Это устройство", title: `Файл не отправлен на «${d.name}»`, text: "Нет связи — попробуйте ещё раз", target: { device: d.id } }); return; }
+    notify({ cat: "files", key: `file-sent:${f.id}:${d.device_id}:${Date.now()}`, source: "Это устройство", title: `Файл отправлен на «${d.name}»`, text: name, target: { device: d.id } });
     logActivity("sent", `Файл «${name}» отправлен на «${d.name}»`);
   };
   // Файл с этого устройства: обычный выбор файла, дальше — sendFileTo, как на экране устройства
@@ -13288,7 +13532,7 @@ export default function NexaApp() {
           <TopBar>
             {tab === "settings" ? null : <TimeDate />}
             <QuickBtn />
-            <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />
+            <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
             <IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" />
             <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
           </TopBar>
@@ -13348,7 +13592,7 @@ export default function NexaApp() {
       onAddFiles={(list) => addFiles(list, null)}
       account={auth.user ? { email: auth.user.email || "" } : null}
       sync={{ loading: syncLoading && online, text: !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}` : syncError, onRetry: online ? retrySync : null }}
-      bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} />}
+      bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
     />
   ) : (
     <div key={tab} className="ng-screen-anim">
@@ -13386,7 +13630,8 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+      {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()}
+        noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} />} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
         flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
           onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
     </div>

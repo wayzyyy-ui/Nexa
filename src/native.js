@@ -304,3 +304,101 @@ export function onDesktopQuickPanel(cb) {
     return typeof off === "function" ? off : () => {};
   } catch { return () => {}; }
 }
+
+/* ─── Системные уведомления (src/App.jsx: notify) ───
+   Приложение: @capacitor/local-notifications — свой канал Android на каждую
+   категорию (человек может настроить их и в настройках телефона), разрешение
+   POST_NOTIFICATIONS на Android 13+. Показываем, пока приложение запущено
+   (открыто или свёрнуто); напоминания о делах ставим заранее через систему —
+   они придут и при закрытом приложении (Android может слегка задержать их
+   в режиме экономии заряда).
+   Сайт на компьютере: Notification API браузера — только пока вкладка открыта.
+   Сайт на телефоне: без service worker браузер их не показывает — не обещаем */
+export const NOTE_CHANNELS = {
+  files: "Файлы", flow: "Текст и ссылки", devices: "Устройства",
+  sync: "Синхронизация и связь", schedule: "Расписание", updates: "Обновления",
+};
+let localNotes = null;
+// Модуль отдаём в обёртке { api }: сам объект плагина Capacitor нельзя возвращать из async —
+// JavaScript примет его за «обещание», вызовет .then, и плагин ответит ошибкой
+const ln = async () => (localNotes ||= { api: (await import("@capacitor/local-notifications")).LocalNotifications });
+// "app" — приложение, "web" — браузер на компьютере, "none" — нельзя
+export function systemNotifyKind() {
+  if (isNative) return "app";
+  if (typeof Notification === "undefined") return "none";
+  return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? "none" : "web";
+}
+// Разрешение: "granted" | "denied" | "prompt" | "unsupported". request — спросить человека
+export async function systemNotifyPermission(request = false) {
+  const kind = systemNotifyKind();
+  try {
+    if (kind === "app") {
+      const { api: L } = await ln();
+      const st = request ? await L.requestPermissions() : await L.checkPermissions();
+      return st.display === "granted" ? "granted" : st.display === "denied" ? "denied" : "prompt";
+    }
+    if (kind === "web") {
+      if (request && Notification.permission === "default") await Notification.requestPermission();
+      return Notification.permission === "default" ? "prompt" : Notification.permission;
+    }
+  } catch {}
+  return "unsupported";
+}
+// Номер уведомления для Android — целое число из ключа события (одно событие — один номер)
+function noteNumber(key) {
+  let h = 2166136261;
+  for (const ch of String(key)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return (h >>> 1) % 2000000000 || 1;
+}
+let channelsMade = false;
+async function makeChannels(L) {
+  if (channelsMade) return;
+  channelsMade = true;
+  for (const [id, name] of Object.entries(NOTE_CHANNELS)) {
+    await L.createChannel({ id: `nexa-${id}`, name, importance: id === "schedule" ? 4 : 3, visibility: 0 }).catch(() => {});
+  }
+}
+// Показать системное уведомление сейчас. Возвращает true, если показали
+export async function systemNotify({ cat, title, body, target, key }) {
+  const kind = systemNotifyKind();
+  try {
+    if (kind === "app") {
+      const { api: L } = await ln();
+      await makeChannels(L);
+      await L.schedule({ notifications: [{ id: noteNumber(key), title, body: body || "", channelId: `nexa-${cat}`, smallIcon: "ic_stat_nexa", extra: { target: target || null } }] });
+      return true;
+    }
+    if (kind === "web" && Notification.permission === "granted") {
+      const n = new Notification(title, { body: body || "", tag: key, icon: "/icons/icon-192.png" });
+      n.onclick = () => { window.focus(); window.dispatchEvent(new CustomEvent("nexa-note-open", { detail: target || null })); n.close(); };
+      return true;
+    }
+  } catch {}
+  return false;
+}
+// Напоминания о делах — заранее, через систему (только приложение).
+// items: [{ key, at (мс, когда показать), title, body, target }]; старые наши напоминания снимаем
+export async function scheduleReminders(items) {
+  if (!isNative) return;
+  try {
+    const { api: L } = await ln();
+    await makeChannels(L);
+    const { notifications } = await L.getPending();
+    const ours = notifications.filter((n) => n.extra?.reminder);
+    if (ours.length) await L.cancel({ notifications: ours.map((n) => ({ id: n.id })) });
+    const future = items.filter((it) => it.at > Date.now() + 5000).slice(0, 40);
+    if (!future.length) return;
+    await L.schedule({ notifications: future.map((it) => ({
+      id: noteNumber(it.key), title: it.title, body: it.body || "", channelId: "nexa-schedule", smallIcon: "ic_stat_nexa",
+      schedule: { at: new Date(it.at), allowWhileIdle: true }, extra: { target: it.target || null, reminder: true, key: it.key },
+    })) });
+  } catch {}
+}
+// Нажали на системное уведомление: cb(target). Возвращает отписку
+export function onSystemNoteOpen(cb) {
+  const web = (e) => cb(e.detail);
+  window.addEventListener("nexa-note-open", web);
+  let handle = null;
+  if (isNative) handle = ln().then(({ api }) => api.addListener("localNotificationActionPerformed", (e) => cb(e.notification?.extra?.target || null))).catch(() => null);
+  return () => { window.removeEventListener("nexa-note-open", web); Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
+}
