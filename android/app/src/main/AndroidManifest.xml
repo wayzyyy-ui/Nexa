@@ -71,6 +71,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Обновление изнутри: открыть системный установщик для скачанного APK (NexaUpdatePlugin).
+         Android всё равно спросит человека; без права — экран «Установка неизвестных приложений» -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Bluetooth: только список сопряжённых устройств и их состояние (NexaBluetoothPlugin).
          До Android 12 — обычное разрешение, с Android 12 — «Устройства поблизости» -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />

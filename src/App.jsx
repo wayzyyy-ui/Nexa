@@ -6,7 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import foldSvg from "./assets/fold.svg";
 import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyKind, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btStatus, btRequest, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, updateDownload, updateCancel, updateCanInstall, updateOpenSettings, updateInstall, updateSigner, updateCleanup, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyKind, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btStatus, btRequest, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.8";
+const VERSION = "0.9.9";
 
 
 const C = {
@@ -1655,7 +1655,7 @@ function LinkPulse({ p, onDone }) {
 // loading — устройства аккаунта ещё грузятся из облака
 // findState / onFind — «Найти» у реальных устройств (подключённых по коду)
 // activityBlock — компактная лента «Активность» (только у вошедшего)
-function ScreenHome({ devices, received = {}, update, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore, netState = "ok" }) {
+function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore, netState = "ok" }) {
   // Подпись под заголовком — честная: «Синхронизировано» только когда облако всё подтвердило
   const tagline = { offline: "Нет сети. Работает на этом устройстве. Рядом с вами", pending: "Сохраняем изменения. Работает. Рядом с вами", ok: "Синхронизировано. Работает. Рядом с вами", local: "Работает на этом устройстве. Рядом с вами" }[netState];
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
@@ -1709,7 +1709,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
               {tagline}
             </div>
             {/* В приложении на планшете: баннер обновления над списком устройств */}
-            {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateBanner update={update} /></div>}
+            {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
 
             {/* Карточка «Устройства»: у каждого устройства своя плашка */}
             <div className="nx-stagger nx-home-devices" style={{ flex: 1, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "4px 18px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1842,7 +1842,7 @@ function ScreenHome({ devices, received = {}, update, loading, findState = {}, o
         </div>
 
         {/* В приложении: вышла новая версия — предлагаем обновиться */}
-        <UpdateBanner update={update} />
+        {update && <div style={{ marginBottom: 18 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
         {/* Предложение установить приложение (только телефон в браузере) */}
         <InstallBanner onHowTo={() => {
           onNavigate("settings");
@@ -9643,26 +9643,146 @@ function SiteUpdateBanner({ update }) {
    Приложение работает, но баннер закрыть нельзя — мягко подталкиваем обновиться.
    Если версия совсем старая (required), вместо него — ForceUpdateScreen */
 const UPDATE_DISMISS_KEY = "nexa-update-dismissed"; // сайт: какую версию уже скрыли
-function UpdateBanner({ update }) {
-  const [started, setStarted] = useState(false); // нажали «Обновить» — файл скачивается
-  if (!update) return null;
+
+/* ═══ ОБНОВЛЕНИЕ ИЗНУТРИ ПРИЛОЖЕНИЯ (только Android, NexaUpdatePlugin) ═══
+   Ход один на всё приложение (Главная, Настройки, экран «Обновите»):
+   idle → downloading (процент, «Отменить») → проверка размера и SHA-256 →
+   needPerm (нет права ставить приложения: экран настроек, после возврата — дальше само) →
+   installing (открыто окно Android «Установить?» — тихой установки не бывает).
+   error — «Повторить»; signer — новый APK подписан другим ключом: поверх не встанет. */
+let updState = { state: "idle", loaded: 0, total: 0, error: "", version: "" };
+const updSubs = new Set();
+const updSet = (patch) => { updState = { ...updState, ...patch }; updSubs.forEach((f) => f()); };
+const useUpdState = () => useSyncExternalStore((f) => { updSubs.add(f); return () => updSubs.delete(f); }, () => updState);
+async function updProceed() {
+  if (!(await updateCanInstall())) { updSet({ state: "needPerm" }); return; }
+  try { await updateInstall(); updSet({ state: "installing" }); }
+  catch (e) { updSet({ state: "error", error: e?.message || "Не получилось открыть установщик Android" }); }
+}
+async function updStart(info) {
+  if (["downloading", "installing"].includes(updState.state) && updState.version === info.version) {
+    if (updState.state === "installing") updProceed(); // «Открыть установщик ещё раз»
+    return;
+  }
+  // Подпись: Android ставит обновление поверх только с тем же ключом — проверяем заранее
+  if (info.signer) {
+    const mine = await updateSigner();
+    if (mine && mine !== info.signer) { updSet({ state: "signer", version: info.version }); return; }
+  }
+  updSet({ state: "downloading", loaded: 0, total: info.size || 0, error: "", version: info.version });
+  try {
+    await updateDownload(info, (loaded, total) => updSet({ loaded, total: total || info.size || 0 }));
+  } catch (e) {
+    if (e?.code === "cancel") { updSet({ state: "idle" }); return; }
+    updSet({ state: "error", error: e?.message || "Не скачалось — проверьте интернет и повторите" });
+    return;
+  }
+  await updProceed();
+}
+// Вернулись из настроек «Установка неизвестных приложений» — продолжаем сами
+const updResume = () => { if (updState.state === "needPerm") updProceed(); };
+const mbText = (b) => `${String((b / 1048576).toFixed(1)).replace(".", ",")} МБ`;
+
+// Кнопки и состояние обновления (общие для Главной, Настроек и экрана «Обновите»)
+function UpdateActions({ update, onLater, big }) {
+  const st = useUpdState();
+  const mine = st.version === update.version ? st : { state: "idle" };
+  const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, whiteSpace: "nowrap", padding: big ? "12px 22px" : "8px 16px", fontSize: big ? 15 : 13, fontWeight: 500, borderRadius: 999 };
+  const primary = (label, onClick, icon = Icon.download) => (
+    <button type="button" className="nx-primary" onClick={onClick} style={{ ...pill, border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>
+      {icon({ c: C.onFold, s: big ? 16 : 14 })} {label}
+    </button>
+  );
+  const ghost = (label, onClick) => <button type="button" className="nx-ghost-btn" onClick={onClick} style={{ ...pill, fontWeight: 400, border: `1px solid ${C.borderStrong}`, color: C.text }}>{label}</button>;
+  const note = (text, color = C.mutedSoft) => <div style={{ fontSize: 12.5, color, lineHeight: 1.5, marginTop: 10 }}>{text}</div>;
+  const row = (...kids) => <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, justifyContent: big ? "center" : "flex-start" }}>{kids}</div>;
+
+  if (mine.state === "downloading") {
+    const pct = mine.total ? Math.min(100, Math.round((mine.loaded / mine.total) * 100)) : 0;
+    const checking = mine.total && mine.loaded >= mine.total;
+    return (
+      <div role="status" style={{ marginTop: 12, textAlign: "left" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5, color: C.muted }}>
+          <span>{checking ? "Проверяем файл…" : `Скачиваем — ${pct}%`}</span>
+          <span style={{ fontFamily: fontDisplay }}>{mine.total ? `${mbText(mine.loaded)} из ${mbText(mine.total)}` : mbText(mine.loaded)}</span>
+        </div>
+        <div style={{ height: 4, borderRadius: 10, marginTop: 8, overflow: "hidden", background: `color-mix(in srgb, ${C.text} 10%, transparent)` }}>
+          <div style={{ height: "100%", width: `${Math.max(2, pct)}%`, background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`, transition: "width 200ms linear" }} />
+        </div>
+        {!checking && row(ghost("Отменить", updateCancel))}
+      </div>
+    );
+  }
+  if (mine.state === "error") return (
+    <div role="alert">
+      {note(mine.error, C.red)}
+      {row(primary("Повторить", () => updStart(update), Icon.refresh), onLater && ghost("Позже", onLater))}
+    </div>
+  );
+  if (mine.state === "needPerm") return (
+    <div>
+      {note("Файл скачан. Чтобы установить его изнутри NEXA, Android должен разрешить ей устанавливать приложения. Нажмите «Открыть настройки», включите «Разрешить установку из этого источника» и вернитесь в NEXA — установка продолжится сама.", C.muted)}
+      {row(primary("Открыть настройки", updateOpenSettings, Icon.gear))}
+    </div>
+  );
+  if (mine.state === "installing") return (
+    <div>
+      {note("Открыто окно Android «Установить?» — нажмите «Установить». Это обычное подтверждение Android, без него обновление не ставится. NEXA перезапустится новой версией, данные сохранятся. Если Google Play Protect предложит проверку — нажмите «Подробнее» → «Установить без проверки» (NEXA ставится не из магазина).", C.muted)}
+      {row(ghost("Открыть установщик ещё раз", () => updStart(update)))}
+    </div>
+  );
+  if (mine.state === "signer") return (
+    <div role="alert">
+      {note("Новая версия подписана другим ключом — Android не поставит её поверх этой. Удалите NEXA и установите заново с сайта; после входа данные аккаунта вернутся из облака.", C.red)}
+      {row(primary("Скачать в браузере", () => openUpdate(update.url)))}
+    </div>
+  );
   return (
-    <SlimBanner
-      key={update.version}
-      label="Обновление приложения"
-      icon={Icon.refresh({ c: C.mint, s: 18 })}
-      title={`Доступна NEXA ${update.version}`}
-      sub={started ? "Скачивается — откройте файл, чтобы обновить" : "Эта версия скоро перестанет работать. Данные сохранятся"}
-      action={
-        <button type="button" className="nx-primary" onClick={() => { setStarted(true); openUpdate(update.url); }} style={{
-          ...btnReset, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-          padding: "7px 14px", fontSize: 12.5, fontWeight: 500, borderRadius: 999, border: "1px solid transparent",
-          color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-        }}>
-          {Icon.download({ c: C.onFold, s: 14 })} Обновить
+    <div>
+      {row(primary("Обновить", () => updStart(update)), onLater && ghost("Позже", onLater))}
+      {note("Android попросит подтвердить установку в своём окне — данные сохранятся.")}
+    </div>
+  );
+}
+
+// Блок «Доступно обновление»: версия, что нового, кнопки. variant: "home" (плашка) | "settings"
+function UpdateCard({ update, onLater, variant = "home" }) {
+  const [more, setMore] = useState(false);
+  if (!update) return null;
+  const notes = update.notes || [];
+  const shown = variant === "home" && !more ? notes.slice(0, 3) : notes;
+  return (
+    <div className="nx-update-card nx-pop" style={{
+      textAlign: "left", padding: variant === "home" ? "16px 18px" : "14px 16px", boxSizing: "border-box",
+      border: `1px solid ${variant === "home" ? C.borderStrong : "transparent"}`, borderRadius: variant === "home" ? 18 : 0, background: variant === "home" ? C.panel : "transparent",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 16, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {Icon.refresh({ c: C.mint, s: 18 })}
+        </span>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 15, fontWeight: 500 }}>Доступно обновление</span>
+          <span style={{ display: "block", fontSize: 12.5, color: C.mutedSoft, marginTop: 2 }}>
+            NEXA {update.version}{update.size ? ` · ${mbText(update.size)}` : ""}{update.required ? " · эта версия скоро перестанет работать" : ""}
+          </span>
+        </span>
+      </div>
+      {shown.length > 0 && (
+        <ul style={{ listStyle: "none", margin: "12px 0 0", padding: 0, display: "grid", gap: 6 }}>
+          {shown.map((n, i) => (
+            <li key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+              <span aria-hidden="true" style={{ width: 8, height: 1, background: C.mint, marginTop: 9, flexShrink: 0 }} />{n}
+            </li>
+          ))}
+        </ul>
+      )}
+      {variant === "home" && notes.length > 3 && (
+        <button type="button" className="nx-link-btn" onClick={() => setMore((v) => !v)} style={{ ...btnReset, fontSize: 12.5, color: C.mutedSoft, marginTop: 6 }}>
+          {more ? "Свернуть" : `И ещё ${notes.length - 3}`}
         </button>
-      }
-    />
+      )}
+      <UpdateActions update={update} onLater={update.required ? null : onLater} />
+    </div>
   );
 }
 
@@ -9672,7 +9792,6 @@ function UpdateBanner({ update }) {
    Закрыть нельзя — только скачать новую.
    Без интернета проверка не проходит, и старая версия открывается как обычно */
 function ForceUpdateScreen({ update }) {
-  const [started, setStarted] = useState(false); // нажали «Скачать» — файл скачивается
   return (
     <div className="nx-force-update" role="alertdialog" aria-modal="true" aria-label="Обновите приложение" style={{
       position: "fixed", inset: 0, zIndex: 1000,
@@ -9683,18 +9802,10 @@ function ForceUpdateScreen({ update }) {
     }}>
       <img src={foldSvg} alt="" style={{ width: 120, height: "auto", marginBottom: 28 }} />
       <div className="ng-display" style={{ fontSize: 26, lineHeight: 1.2, marginBottom: 10 }}>Обновите приложение</div>
-      <div style={{ fontSize: 14.5, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 28 }}>
-        {started
-          ? "Скачивается — откройте файл, чтобы установить. Данные сохранятся."
-          : `Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
+      <div style={{ fontSize: 14.5, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 12 }}>
+        {`Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
       </div>
-      <button type="button" className="nx-primary" onClick={() => { setStarted(true); openUpdate(update.url); }} style={{
-        ...btnReset, display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
-        padding: "12px 22px", fontSize: 15, fontWeight: 500, borderRadius: 999, border: "1px solid transparent",
-        color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-      }}>
-        {Icon.download({ c: C.onFold, s: 16 })} {started ? "Скачать ещё раз" : "Обновить"}
-      </button>
+      <div style={{ width: "min(320px, 100%)" }}><UpdateActions update={update} big /></div>
     </div>
   );
 }
@@ -10824,7 +10935,7 @@ function NoteSettings({ prefs, setPrefs, perm, onAsk }) {
   );
 }
 
-function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, locateBlock }) {
+function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, locateBlock, updateBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -10922,6 +11033,8 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
       {locateBlock}
 
       <ThisDeviceSettings sys={sys} />
+
+      {updateBlock}
 
       <InstallSettings />
 
@@ -11566,7 +11679,7 @@ export default function NexaApp() {
   const pullRefresh = async () => {
     retrySync();
     window.dispatchEvent(new Event("nexa-refresh"));
-    try { setAppUpdate(await checkForUpdate()); } catch {}
+    try { await checkUpdate(true); } catch {}
   };
   const pull = usePullToRefresh(isNative, pullRefresh);
 
@@ -12313,13 +12426,24 @@ export default function NexaApp() {
   // Новая версия приложения: проверяем при запуске и когда приложение
   // снова открыли из фона (на сайте checkForUpdate сразу возвращает null)
   const [appUpdate, setAppUpdate] = useState(null);
+  const [updateCheckedAt, setUpdateCheckedAt] = useState(0);
+  // Какая версия стоит — спрашиваем у Android (versionName из build.gradle), а не у кода сайта
+  const [installedVersion, setInstalledVersion] = useState(VERSION);
+  useEffect(() => { if (isNative) CapApp.getInfo().then((i) => i?.version && setInstalledVersion(i.version)).catch(() => {}); }, []);
+  // При запуске и при возврате в приложение; сам сайт спрашиваем не чаще раза в 6 часов
+  // (между проверками — последний ответ из памяти, см. checkForUpdate)
+  const checkUpdate = (force) => checkForUpdate({ force }).then((u) => { setAppUpdate(u); setUpdateCheckedAt(Date.now()); });
   useEffect(() => {
     if (!isNative) return;
-    const check = () => checkForUpdate().then(setAppUpdate);
-    check();
-    const sub = CapApp.addListener("resume", check);
+    updateCleanup(); // скачанный в прошлый раз файл больше не нужен (обновление уже стоит или брошено)
+    checkUpdate(false);
+    const sub = CapApp.addListener("resume", () => { checkUpdate(false); updResume(); });
     return () => { sub.then((h) => h.remove()); };
   }, []);
+  // «Позже» прячет блок на Главной для этой версии (в Настройках он остаётся — там можно передумать)
+  const [updateLater, setUpdateLater] = useState(() => { try { return localStorage.getItem("nexa-update-later") || ""; } catch { return ""; } });
+  const laterUpdate = () => { if (!appUpdate) return; setUpdateLater(appUpdate.version); try { localStorage.setItem("nexa-update-later", appUpdate.version); } catch {} };
+  const homeUpdate = appUpdate && !appUpdate.required && appUpdate.version === updateLater ? null : appUpdate;
 
   // История разделов — для кнопки «Назад» на Android
   const tabHistory = useRef([]);
@@ -12604,7 +12728,7 @@ export default function NexaApp() {
     }
     if (t.sync) { setSyncOpen(true); return; }
     if (t.activity) { openActivity(); return; }
-    if (t.update) { if (appUpdate?.url) openUpdate(appUpdate.url); else goTab("home"); return; }
+    if (t.update) { goTab("settings"); return; }
     if (t.tab) {
       goTab(t.tab);
       // Настройки уведомлений — сразу к своему разделу
@@ -14110,7 +14234,8 @@ export default function NexaApp() {
         <ScreenHome
           devices={devices}
           received={received}
-          update={appUpdate}
+          update={homeUpdate}
+          onUpdateLater={laterUpdate}
           onNavigate={goTab}
           onOpenDevice={showDevice}
           onAddDevice={onAddDevice}
@@ -14142,6 +14267,18 @@ export default function NexaApp() {
       )}
       {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()}
         noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} />}
+        updateBlock={isNative && (
+          <>
+            <SectionTitle>Обновление</SectionTitle>
+            <SettingsGroup>
+              {appUpdate ? <UpdateCard variant="settings" update={appUpdate} /> : (
+                <SettingsRow last icon={Icon.check({ c: C.green, s: 18 })} title={`Установлена последняя версия · NEXA ${installedVersion}`}
+                  subtitle={updateCheckedAt ? `Проверено в ${new Date(updateCheckedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} · сайт спрашиваем не чаще раза в 6 часов` : "Проверяем…"}
+                  right={<button type="button" className="nx-ghost-btn" onClick={() => checkUpdate(true)} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Проверить</button>} />
+              )}
+            </SettingsGroup>
+          </>
+        )}
         locateBlock={uid && (
           <>
             <SectionTitle>Поиск этого устройства</SectionTitle>

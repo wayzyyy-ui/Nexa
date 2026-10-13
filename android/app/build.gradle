@@ -9,6 +9,14 @@ def nexaVersion = (file("../../package.json").text =~ /"version"\s*:\s*"([^"]+)"
 def nexaParts = nexaVersion.tokenize(".").collect { it.replaceAll(/\D.*/, "") as int }
 def nexaVersionCode = nexaParts[0] * 10000 + nexaParts[1] * 100 + nexaParts[2]
 
+/* Release-подпись: android/keystore.properties (в git не попадает, образец — keystore.properties.example).
+   Есть файл — release-сборка подписывается вашим ключом. Нет — release не подписывается,
+   а npm run release:android собирает debug-APK, как раньше (ключ ~/.android/debug.keystore).
+   Обновление встаёт поверх, только если ключ тот же, что у установленного приложения */
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) { keystorePropsFile.withInputStream { keystoreProps.load(it) } }
+
 android {
     namespace = "ru.nexalink.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -25,8 +33,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropsFile.exists()) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

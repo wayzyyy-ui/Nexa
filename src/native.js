@@ -14,31 +14,62 @@ export const API_BASE = (import.meta.env.VITE_API_BASE ?? (isNative ? "https://n
 export const API_CHAT_URL = `${API_BASE}/api/chat`;
 
 /* Проверка обновлений (только в приложении).
-   На сайте рядом с nexa.apk лежит version.json — номер версии этого APK
-   (его пишет npm run release:android). Если там номер больше, чем у
-   установленного приложения, возвращаем { version, url, required } — можно обновиться.
-   required: true — версия приложения старше minVersionCode из version.json,
-   то есть запрещена: приложение покажет экран «Эта версия устарела».
-   Нет сети или файла — тихо возвращаем null, приложение работает как обычно */
-export async function checkForUpdate() {
+   На сайте рядом с nexa.apk лежит version.json (его пишет npm run copy:apk).
+   Номер установленной версии — App.getInfo().build (versionCode из build.gradle).
+   Сайт спрашиваем не чаще раза в 6 часов (при запуске и при возврате в приложение);
+   между проверками — последний ответ из памяти (nexa-update-cache). force — спросить сейчас.
+   Если на сайте новее: { version, versionCode, url (ссылка с номером версии), notes, size,
+   sha256, signer, required }. required — версия старше minVersionCode: экран «Обновите приложение».
+   Нет сети и ответа в памяти — null, приложение работает как обычно */
+const UPDATE_CACHE = "nexa-update-cache";
+export const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
+export async function checkForUpdate({ force = false } = {}) {
   if (!isNative) return null;
   try {
     const { App } = await import("@capacitor/app");
-    const info = await App.getInfo(); // build — число версии установленного приложения
-    const res = await fetch(`${API_BASE}/version.json?t=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const latest = await res.json();
+    const info = await App.getInfo(); // build — versionCode установленного приложения
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(UPDATE_CACHE)); } catch {}
+    let latest = cached?.latest || null;
+    if (force || !cached || Date.now() - cached.at > UPDATE_EVERY_MS) {
+      const res = await fetch(`${API_BASE}/version.json?t=${Date.now()}`, { cache: "no-store" }).catch(() => null);
+      if (res?.ok) {
+        latest = await res.json().catch(() => latest);
+        try { localStorage.setItem(UPDATE_CACHE, JSON.stringify({ at: Date.now(), latest })); } catch {}
+      }
+    }
     if (!latest || !(Number(latest.versionCode) > Number(info.build))) return null;
-    // ?v= — чтобы телефон не взял старый файл из кэша
+    const path = latest.apkUrl || `${latest.url || "/nexa.apk"}?v=${latest.versionCode}`;
     return {
-      version: latest.version,
-      url: `${API_BASE}${latest.url || "/nexa.apk"}?v=${latest.versionCode}`,
+      version: String(latest.version || ""),
+      versionCode: Number(latest.versionCode),
+      url: /^https:\/\//.test(path) ? path : `${API_BASE}${path}`,
+      notes: Array.isArray(latest.notes) ? latest.notes.filter((x) => typeof x === "string").slice(0, 12) : [],
+      size: Number(latest.size) || 0,
+      sha256: typeof latest.sha256 === "string" ? latest.sha256 : "",
+      signer: typeof latest.signer === "string" ? latest.signer : "",
       required: Number(info.build) < Number(latest.minVersionCode || 0),
     };
   } catch {
     return null;
   }
 }
+
+/* ─── Обновление изнутри (NexaUpdatePlugin.java) ───
+   Скачать APK в кэш с прогрессом и отменой → проверить размер и SHA-256 →
+   открыть системный установщик. Тихой установки нет: Android всегда спрашивает */
+const updPlugin = isNative ? registerPlugin("NexaUpdate") : null;
+export async function updateDownload(info, onProgress) {
+  const sub = updPlugin.addListener("progress", (e) => onProgress?.(e.loaded, e.total));
+  try { return await updPlugin.download({ url: info.url, size: info.size || 0, sha256: info.sha256 || "" }); }
+  finally { Promise.resolve(sub).then((h) => h?.remove()).catch(() => {}); }
+}
+export const updateCancel = () => updPlugin?.cancel().catch(() => {});
+export async function updateCanInstall() { try { return (await updPlugin.canInstall()).allowed; } catch { return false; } }
+export const updateOpenSettings = () => updPlugin?.openInstallSettings().catch(() => {});
+export const updateInstall = () => updPlugin.install();
+export async function updateSigner() { try { return (await updPlugin.signer()).sha256 || ""; } catch { return ""; } }
+export const updateCleanup = () => updPlugin?.cleanup().catch(() => {});
 
 /* Скачать обновление: открываем ссылку на APK — Capacitor отдаёт внешние
    адреса системному браузеру, он скачивает файл, а Android предлагает

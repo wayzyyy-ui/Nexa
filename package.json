@@ -1,7 +1,7 @@
 {
   "name": "nexa",
   "private": true,
-  "version": "0.9.8",
+  "version": "0.9.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "build:android": "vite build --mode android && node -e \"require('fs').rmSync('dist/nexa.apk',{force:true})\" && cap sync android",
     "open:android": "cap open android",
-    "release:android": "node scripts/release-android.mjs"
+    "release:android": "node scripts/release-android.mjs",
+    "copy:apk": "node scripts/copy-apk.mjs"
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^8.2.1",

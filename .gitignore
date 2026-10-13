@@ -31,3 +31,9 @@ dist-ssr
 *.backup.jsx
 App.backup.jsx
 App.backup-before-media.jsx
+# Ключ подписи Android-приложения и пароли к нему — только на этом компьютере
+android/keystore.properties
+*.jks
+*.keystore
+# Настройки Firebase для Android (ключ клиента) — только на этом компьютере, где собирается APK
+android/app/google-services.json
