@@ -402,3 +402,42 @@ export function onSystemNoteOpen(cb) {
   if (isNative) handle = ln().then(({ api }) => api.addListener("localNotificationActionPerformed", (e) => cb(e.notification?.extra?.target || null))).catch(() => null);
   return () => { window.removeEventListener("nexa-note-open", web); Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
 }
+
+/* ─── Bluetooth (только приложение Android, NexaBluetoothPlugin.java) ───
+   Список уже сопряжённых с телефоном устройств: часы, наушники и т.п.
+   Ничего не ищет и не подключает. Браузер такого списка не даёт — на сайте недоступно */
+const btPlugin = isNative ? registerPlugin("NexaBluetooth") : null;
+export const btAvailable = isNative;
+// { supported, enabled, permission: "granted" | "denied" | "prompt" }
+export async function btStatus() {
+  if (!btPlugin) return { supported: false };
+  try { return await btPlugin.status(); } catch { return { supported: false }; }
+}
+export async function btRequest() {
+  if (!btPlugin) return { supported: false };
+  try { return await btPlugin.requestPermission(); } catch { return btStatus(); }
+}
+// { enabled, devices: [{ id, name, kind, connected, battery? }] } или { error }
+export async function btBonded() {
+  if (!btPlugin) return { error: "unsupported" };
+  try { return await btPlugin.bonded(); } catch (e) { return { error: e?.code || "error", message: e?.message || "" }; }
+}
+export function onBtChange(cb) {
+  if (!btPlugin) return () => {};
+  const h = btPlugin.addListener("changed", () => cb());
+  return () => { Promise.resolve(h).then((x) => x?.remove()).catch(() => {}); };
+}
+
+/* ─── Push «Найти устройство» (NexaPushPlugin.java + api/push.js) ───
+   pushToken() — адрес этого приложения для push (Firebase); не настроен — { error: "not_configured" }.
+   onPushOpen(cb) — нажали на уведомление «Устройство ищут»: cb({ type: "find", id, from }) */
+const pushPlugin = isNative ? registerPlugin("NexaPush") : null;
+export async function pushToken() {
+  if (!pushPlugin) return { error: "unsupported" };
+  try { return await pushPlugin.token(); } catch (e) { return { error: e?.code || "error" }; }
+}
+export function onPushOpen(cb) {
+  if (!pushPlugin) return () => {};
+  const h = pushPlugin.addListener("pushOpen", (e) => cb(e));
+  return () => { Promise.resolve(h).then((x) => x?.remove()).catch(() => {}); };
+}

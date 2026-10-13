@@ -6,7 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import foldSvg from "./assets/fold.svg";
 import { runSpectrum } from "./lib/spectrum.js";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyKind, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen } from "./native.js";
+import { isNative, API_CHAT_URL, setSystemBarsTheme, checkForUpdate, openUpdate, startIntro, vibrate, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, nativeFile, clipboardRead, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyKind, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btStatus, btRequest, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // QR-код со ссылкой на сайт (блок установки на компьютере)
 import QRCode from "qrcode";
@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.7";
+const VERSION = "0.9.8";
 
 
 const C = {
@@ -289,6 +289,13 @@ const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10Z" strokeLinejoin="round" />
       <path d="M10 18.5a2 2 0 0 0 4 0" strokeLinecap="round" />
+    </svg>
+  ),
+  // Сайт: окно браузера — рамка и полоса адреса
+  web: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M3.5 9h17M6.5 7h.01M9 7h.01" strokeLinecap="round" />
     </svg>
   ),
   // Вложение: скрепка из прямых отрезков со скруглёнными сгибами
@@ -692,6 +699,7 @@ function useBackdropMotion(ref) {
     const queue = () => { if (!frame) frame = requestAnimationFrame(apply); };
     // Компьютер: за курсором
     const move = (e) => {
+      if (document.documentElement.classList.contains("nx-modal-open")) return;
       px = (e.clientX / window.innerWidth) * 2 - 1;
       py = (e.clientY / window.innerHeight) * 2 - 1;
       queue();
@@ -701,6 +709,7 @@ function useBackdropMotion(ref) {
     let base = null;
     const tilt = (e) => {
       if (e.gamma == null || e.beta == null) return;
+      if (document.documentElement.classList.contains("nx-modal-open")) return; // под окном фон стоит
       if (base === null) base = e.beta;
       px = clamp(e.gamma / 25);
       py = clamp((e.beta - base) / 25);
@@ -1099,7 +1108,15 @@ function noteIcon(n) {
 }
 
 function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenNow] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  // Закрытие — с короткой анимацией ухода (как у поиска и быстрых действий)
+  const setOpen = (v) => {
+    if (v) { setLeaving(false); setOpenNow(true); return; }
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setOpenNow(false); return; }
+    setLeaving(true);
+    setTimeout(() => { setOpenNow(false); setLeaving(false); }, LEAVE_MS);
+  };
   const [seenBefore, setSeenBefore] = useState(0); // что было новым в момент открытия
   const ref = useRef(null);
   const panelRef = useRef(null);
@@ -1157,7 +1174,7 @@ function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings }) {
       {/* Панель выносим в корень страницы (portal): так она точно поверх
           всплывающих тостов, а не внутри слоя верхней строки */}
       {open && createPortal(
-        <div ref={panelRef} role="dialog" aria-label="Уведомления" className="nx-pop nx-notes" style={{
+        <div ref={panelRef} role="dialog" aria-label="Уведомления" className={`nx-pop nx-notes${leaving ? " nx-leaving" : ""}`} style={{
           position: "fixed", top: pos.top, right: pos.right, width: 340, zIndex: 600, textAlign: "left",
           background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, overflow: "hidden",
         }}>
@@ -1483,7 +1500,9 @@ function devicesFromList(list, prev) {
 
 // Подпись статуса: "Онлайн • 92%", "Онлайн" или "Не в сети".
 // Реальное устройство: онлайн — по Presence, заряд и сеть — только настоящие (d.sys)
-const deviceStatus = (d) => d.real
+const deviceStatus = (d) => d.bt
+  ? [d.online ? "Подключено" : "Не подключено", d.online && d.battery != null ? `${d.battery}%` : ""].filter(Boolean).join(" • ")
+  : d.real
   ? [realStatus(d), d.online ? sysShort(d.sys) : ""].filter(Boolean).join(" • ")
   : !d.online ? "Не в сети" : d.battery != null ? `Онлайн • ${d.battery}%` : "Онлайн";
 
@@ -2125,6 +2144,59 @@ function LockOverlay({ from, onUnlock }) {
    Найти, заблокировать экран NEXA, отправить файл, открыть ссылку.
    act — действия из NexaApp: { find, lock, sendFile, cancelSend, openLink, reconnect },
    st — их состояние для этого устройства: { find, lock, send: { state, progress, error } } */
+/* Карта «где устройство»: Leaflet и подложка OpenStreetMap (подпись источника — требование
+   их лицензии). Грузится только когда понадобилась. Точка — где устройство, круг — точность */
+function LocateMap({ lat, lon, acc }) {
+  const ref = useRef(null);
+  const [fail, setFail] = useState(false);
+  useEffect(() => {
+    let map = null, off = false;
+    (async () => {
+      try {
+        const L = (await import("leaflet")).default;
+        await import("leaflet/dist/leaflet.css");
+        if (off || !ref.current) return;
+        map = L.map(ref.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
+        map.attributionControl.setPrefix(false); // подпись — только источник карты, как требует его лицензия
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© участники OpenStreetMap" }).addTo(map);
+        const css = getComputedStyle(document.documentElement);
+        const mint = css.getPropertyValue("--mint").trim(), blue = css.getPropertyValue("--blue").trim();
+        L.circle([lat, lon], { radius: Math.max(acc, 10), color: mint, weight: 1, fillColor: mint, fillOpacity: 0.12 }).addTo(map);
+        L.circleMarker([lat, lon], { radius: 7, color: blue, weight: 2, fillColor: blue, fillOpacity: 1 }).addTo(map);
+        map.setView([lat, lon], acc > 2000 ? 12 : acc > 300 ? 15 : 17);
+      } catch { if (!off) setFail(true); }
+    })();
+    return () => { off = true; map?.remove(); };
+  }, [lat, lon, acc]);
+  if (fail) return <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10 }}>Карта не загрузилась — нет связи с сервисом карт. Координаты ниже</div>;
+  return <div ref={ref} className="nx-map" data-no-swipe role="img" aria-label="Карта: где устройство" style={{ height: 220, marginTop: 10, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.border}` }} />;
+}
+// Ответ на «Где устройство?»: карта, точность, когда определено, «Открыть в картах»
+function LocateResult({ r }) {
+  if (!r) return null;
+  if (r.state === "asking") return <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, marginTop: 10 }}><Spinner s={11} /> Спрашиваем устройство…</div>;
+  if (r.state !== "ok") return (
+    <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 10, lineHeight: 1.45 }}>
+      {{ off: "На устройстве не разрешено показывать местоположение — включите это в его Настройках → «Поиск этого устройства»",
+         denied: "Устройству не дали доступ к геолокации — разрешите его в настройках телефона или браузера",
+         error: "Устройство не смогло определить место — нет сигнала GPS или сети",
+         timeout: "Устройство не ответило — возможно, NEXA на нём закрыта" }[r.state]}
+    </div>
+  );
+  const when = new Date(r.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const acc = r.acc < 1000 ? `±${Math.round(r.acc)} м` : `±${(r.acc / 1000).toFixed(1).replace(".", ",")} км`;
+  const url = `https://www.openstreetmap.org/?mlat=${r.lat.toFixed(6)}&mlon=${r.lon.toFixed(6)}#map=17/${r.lat.toFixed(6)}/${r.lon.toFixed(6)}`;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <LocateMap lat={r.lat} lon={r.lon} acc={r.acc} />
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 12px", marginTop: 8, fontSize: 12.5, color: C.muted }}>
+        <span>Определено в {when} · точность {acc}</span>
+        <a href={isNative ? `geo:${r.lat},${r.lon}?q=${r.lat},${r.lon}` : url} target="_blank" rel="noopener noreferrer" style={{ color: C.mint }}>Открыть в картах</a>
+      </div>
+    </div>
+  );
+}
+
 function RealDeviceActions({ d, act, st = {}, linkOnline }) {
   const [url, setUrl] = useState("");
   const [urlNote, setUrlNote] = useState(null);
@@ -2132,6 +2204,8 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
   if (d.isSelf) return null;
   // Почему действия недоступны (null — доступны)
   const why = !linkOnline ? "Нет связи с облаком — проверьте интернет" : !d.online ? "Устройство не в сети — действия появятся, когда на нём откроют NEXA" : null;
+  // «Найти» у приложения работает и без сети на той стороне — push-уведомлением
+  const pushFindOk = linkOnline && !d.online && (d.kind === "app" || d.kind === "both");
   const send = st.send || {};
   const sending = send.state === "uploading";
   const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
@@ -2146,7 +2220,7 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
     <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
       <div style={{ fontSize: 12.5, color: C.mutedSoft, marginBottom: 10 }}>Быстрые действия</div>
       <div className="nx-quick-actions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-        <FindChip state={st.find} onClick={() => act.find(d)} style={off({ ...pill })} />
+        <FindChip state={st.find} onClick={() => act.find(d)} style={pushFindOk ? pill : off({ ...pill })} />
         <button type="button" className="nx-ghost-btn" disabled={!!why || st.lock === "locked"} onClick={() => act.lock(d)} style={off(pill)}>
           {Icon.lock({ c: why ? C.mutedSoft : C.text, s: 14 })} {st.lock === "locked" ? "Заблокировано" : "Заблокировать экран"}
         </button>
@@ -2154,7 +2228,11 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
           {Icon.send({ c: why ? C.mutedSoft : C.text, s: 14 })} Отправить файл
         </button>
         <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act.sendFile(d, f); }} />
+        <button type="button" className="nx-ghost-btn" disabled={!!why || st.locate?.state === "asking"} onClick={() => act.locate(d)} style={off(pill)}>
+          {Icon.pin({ c: why ? C.mutedSoft : C.text, s: 14 })} Где устройство?
+        </button>
       </div>
+      <LocateResult r={st.locate} />
       {/* Отправка файла: настоящий процент, отмена; ошибка — честно */}
       {send.state && (
         <div role={send.state === "error" ? "alert" : "status"} style={{ marginTop: 10, fontSize: 12.5, color: send.state === "error" ? C.red : C.muted }}>
@@ -2182,7 +2260,7 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
         </button>
       </form>
       {urlNote && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 6 }}>{urlNote}</div>}
-      {why && <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>{why}</div>}
+      {why && <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>{why}{pushFindOk ? ". «Найти» сработает и сейчас: телефону придёт уведомление, которое звонит" : ""}</div>}
       {!d.online && linkOnline && (
         <button type="button" className="nx-ghost-btn" onClick={act.reconnect} style={{ ...pill, marginTop: 10 }}>
           {Icon.refresh({ c: C.text, s: 14 })} Подключить снова
@@ -2357,8 +2435,10 @@ const mmss = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return `${Ma
 /* Окно «Подключить устройство» на устройстве, которое выдаёт код.
    session — { code, expiresAt, used, lockedUntil } (живёт в NexaApp) */
 // onClaim — ввели код с другого экрана; onScan — сканировать QR (только в приложении)
-function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onScan }) {
-  const [mode, setMode] = useState("show"); // "show" — показать код, "enter" — ввести чужой
+function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onScan, onBt }) {
+  const [mode, setModeNow] = useState("show"); // "show" — показать код, "enter" — ввести чужой
+  const [slide, setSlide] = useState(null);    // откуда въезжает содержимое при смене вкладки
+  const setMode = (m) => { if (m === mode) return; setSlide(m === "enter" ? "right" : "left"); setModeNow(m); };
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(t); }, []);
   const closeRef = useRef(onClose); closeRef.current = onClose;
@@ -2406,15 +2486,22 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
         </div>
 
         {/* Два направления: это устройство показывает код или вводит чужой */}
-        <div role="tablist" aria-label="Способ подключения" className="nx-seg" style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden", marginTop: 18 }}>
+        <div role="tablist" aria-label="Способ подключения" className="nx-seg" style={{ position: "relative", display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden", marginTop: 18 }}>
+          {/* Подсветка выбранной вкладки — одна плашка, переезжает при переключении */}
+          <span aria-hidden="true" className="nx-seg-thumb" style={{
+            position: "absolute", top: 0, bottom: 0, left: 0, width: "50%", borderRadius: 999,
+            background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+            transform: mode === "enter" ? "translateX(100%)" : "none",
+          }} />
           {[["show", "Показать код"], ["enter", "У меня есть код"]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)} style={{
-              ...btnReset, flex: 1, padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap", textAlign: "center",
-              background: mode === id ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
+              ...btnReset, position: "relative", flex: 1, padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap", textAlign: "center",
+              background: "transparent", transition: "color 200ms ease",
               color: mode === id ? C.onAccent : C.muted, fontWeight: mode === id ? 500 : 400,
             }}>{label}</button>
           ))}
         </div>
+        <div key={mode} className={slide ? `nx-tab-in-${slide}` : undefined}>
 
         {!online ? (
           <div style={{ marginTop: 18 }}>
@@ -2490,7 +2577,9 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
             {step(2, "Или на другом устройстве: «Добавить устройство» → «У меня есть код»")}
           </ol>
         )}
+        </div>
 
+        <BtEntry onOpen={onBt} />
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 12.5, color: C.mutedSoft }}>
           Хотите просто посмотреть, как это выглядит?{" "}
           <button type="button" onClick={onDemo} style={{ ...btnReset, fontSize: 12.5, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
@@ -6129,6 +6218,162 @@ const RESULT_MS = 1600;     // сколько кнопка показывает 
 // по-настоящему (onFind, findState), можно переименовать (onRename)
 // Карточка реального устройства на его экране: переименовать, тип, статус
 // actions — быстрые действия (RealDeviceActions), рисуются внизу карточки
+/* Телефон, где есть и сайт, и приложение (одна карточка, mergeSamePhone):
+   каждая часть отдельно — свой статус и заряд; если в сети обе, человек
+   выбирает, куда уходят действия («Найти», файл, ссылка, блокировка) */
+const partLabel = (p) => (p.kind === "app" ? "Приложение" : "Сайт");
+function PhoneParts({ d, pick, onPick }) {
+  const live = d.parts.filter((p) => p.online && !p.isSelf);
+  return (
+    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginBottom: 8 }}>Сайт и приложение на этом телефоне</div>
+      <div role={live.length > 1 ? "radiogroup" : undefined} aria-label="Куда отправлять действия" style={{ display: "grid", gap: 6 }}>
+        {d.parts.map((p) => {
+          const chosen = live.length > 1 && p.id === pick?.id;
+          const row = (
+            <>
+              <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {(p.kind === "app" ? Icon.phone : Icon.web)({ c: p.online ? C.mint : C.mutedSoft, s: 14 })}
+              </span>
+              <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                <span style={{ display: "block", fontSize: 13.5, color: C.text }}>{partLabel(p)}{p.isSelf ? " · это устройство" : ""}</span>
+                <span style={{ display: "block", fontSize: 12, marginTop: 2, color: p.online ? C.green : C.mutedSoft }}>
+                  {p.online ? ["Онлайн", sysShort(p.sys)].filter(Boolean).join(" · ") : lastSeenText(p.seenAt)}
+                </span>
+              </span>
+              {live.length > 1 && p.online && !p.isSelf && (
+                <span style={{ fontSize: 12, color: chosen ? C.mint : C.mutedSoft, flexShrink: 0 }}>{chosen ? "Действия сюда" : "Выбрать"}</span>
+              )}
+            </>
+          );
+          const box = { display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 14, border: `1px solid ${chosen ? C.mint : C.border}` };
+          return live.length > 1 && p.online && !p.isSelf ? (
+            <button key={p.id} type="button" role="radio" aria-checked={chosen} className="nx-row-btn" onClick={() => onPick(p.id)}
+              style={{ ...btnReset, ...box, width: "100%", background: chosen ? `color-mix(in srgb, ${C.mint} 8%, transparent)` : "transparent" }}>{row}</button>
+          ) : <div key={p.id} style={box}>{row}</div>;
+        })}
+      </div>
+      {live.length === 1 && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 8 }}>Действия уйдут в «{partLabel(live[0])}» — сейчас в сети только оно</div>}
+    </div>
+  );
+}
+
+/* Bluetooth-устройство (часы, наушники…): с каким телефоном сопряжено, подключено ли,
+   когда это проверял телефон. Найти, звонить, менять режимы — NEXA не умеет и не обещает */
+function BtDeviceInfo({ d, onRename }) {
+  const [name, setName] = useState(d.name);
+  useEffect(() => setName(d.name), [d.name]);
+  const clean = name.trim().slice(0, 40);
+  const changed = clean && clean !== d.name;
+  return (
+    <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px" }}>
+      <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
+        <label htmlFor="nx-bt-name" style={{ fontSize: 12.5, color: C.mutedSoft }}>Название</label>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input id="nx-bt-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
+            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
+            border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", outline: "none",
+          }} />
+          <button type="submit" className="nx-ghost-btn" disabled={!changed} style={{ ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: changed ? C.text : C.mutedSoft }}>Сохранить</button>
+        </div>
+      </form>
+      <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.55 }}>
+        Bluetooth · сопряжено с «{d.host_name || "телефоном"}»
+        <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Подключено к телефону" : "Сейчас не подключено"}</span>
+        {d.checkedAt ? <> · по данным телефона в {new Date(d.checkedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</> : null}
+        <br />Найти, позвонить и менять режимы такого устройства NEXA не может — это делает его собственное приложение.
+      </div>
+    </div>
+  );
+}
+
+const BT_TYPE = { watch: "watch", buds: "buds", phone: "phone", laptop: "laptop", tv: "tv" };
+/* Окно «По Bluetooth» (только приложение): сопряжённые с этим телефоном устройства.
+   added — какие уже в NEXA (по отпечатку bt_id). onAdd(item) — добавить карточку */
+function BluetoothPicker({ added, onAdd, onClose }) {
+  const [st, setSt] = useState(null);      // состояние Bluetooth и разрешения
+  const [list, setList] = useState(null);  // сопряжённые устройства
+  const [err, setErr] = useState(null);
+  const load = async () => {
+    const s0 = await btStatus(); setSt(s0);
+    if (!s0.supported || s0.permission !== "granted" || !s0.enabled) { setList(null); return; }
+    const r = await btBonded();
+    if (r.error) { setErr(r.message || "Не получилось прочитать список"); return; }
+    setErr(null); setList(r.devices || []);
+  };
+  useEffect(() => {
+    load();
+    const off = onBtChange(load);
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => { off(); window.removeEventListener("keydown", onKey); };
+  }, []);
+  const why = !st ? "Проверяем Bluetooth…"
+    : !st.supported ? "Bluetooth на этом устройстве нет"
+    : st.permission === "denied" ? "Разрешите NEXA «Устройства поблизости» в настройках телефона — иначе список не прочитать"
+    : st.permission !== "granted" ? "NEXA нужно разрешение «Устройства поблизости», чтобы увидеть сопряжённые устройства. Сами устройства NEXA не подключает и не ищет"
+    : !st.enabled ? "Bluetooth выключен — включите его в шторке телефона" : null;
+  return createPortal(
+    <div className="nx-viewer" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 320, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--scrim)" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nx-bt-title" onClick={(e) => e.stopPropagation()} className="nx-pop nx-scroll" style={{
+        width: "min(460px, 100%)", maxHeight: "calc(100% - 32px)", overflowY: "auto", boxSizing: "border-box",
+        background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 20, padding: 20, textAlign: "left",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div id="nx-bt-title" className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>По Bluetooth</div>
+          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{ ...btnReset, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>{Icon.close({ c: C.muted, s: 16 })}</button>
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>Часы, наушники и другое, что уже сопряжено с этим телефоном в настройках Bluetooth</div>
+        {why && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 16, lineHeight: 1.5 }}>{why}</div>}
+        {st?.supported && st.permission !== "granted" && st.permission !== "denied" && (
+          <StateButton variant="primary" onClick={async () => { await btRequest(); load(); }} style={{ width: "100%", marginTop: 14, borderRadius: 999, padding: "11px 16px" }}>Разрешить</StateButton>
+        )}
+        {err && <div role="alert" style={{ fontSize: 12.5, color: C.red, marginTop: 12 }}>{err}</div>}
+        {list && !list.length && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 16, lineHeight: 1.5 }}>Сопряжённых устройств нет. Сначала сопрягите часы или наушники в настройках Bluetooth телефона</div>}
+        {list && list.length > 0 && (
+          <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+            {list.map((it) => {
+              const type = BT_TYPE[it.kind];
+              const already = added.includes(it.id);
+              return (
+                <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: `1px solid ${C.border}`, borderRadius: 14 }}>
+                  <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {deviceType(type || "phone").icon({ c: it.connected ? C.mint : C.muted, s: 18 })}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 14, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name || deviceType(type || "phone").name}</span>
+                    <span style={{ display: "block", fontSize: 12, color: it.connected ? C.green : C.mutedSoft, marginTop: 2 }}>
+                      {[type ? deviceType(type).name : "Другое", it.connected ? "подключено" : "не подключено", it.battery != null ? `${it.battery}%` : ""].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                  {already ? <span style={{ fontSize: 12, color: C.mutedSoft, flexShrink: 0 }}>Уже в NEXA</span>
+                    : type ? <button type="button" className="nx-ghost-btn" onClick={() => onAdd({ ...it, type })} style={{ ...btnReset, flexShrink: 0, fontSize: 13, padding: "6px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Добавить</button>
+                    : <span style={{ fontSize: 12, color: C.mutedSoft, flexShrink: 0, maxWidth: 110, textAlign: "right" }}>Такие NEXA пока не показывает</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+// Кнопка «По Bluetooth» в окнах добавления: в приложении — открывает выбор, на сайте — честно объясняет
+function BtEntry({ onOpen }) {
+  if (!btAvailable) return (
+    <div style={{ fontSize: 12.5, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>Часы и наушники по Bluetooth — в приложении NEXA для Android: браузер не видит Bluetooth-устройства телефона</div>
+  );
+  return (
+    <button type="button" className="nx-ghost-btn" onClick={onOpen} style={{
+      ...btnReset, marginTop: 14, width: "100%", padding: "11px 16px", fontSize: 13.5, borderRadius: 999,
+      border: `1px solid ${C.borderStrong}`, color: C.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    }}>
+      {Icon.buds({ c: C.text, s: 16 })} По Bluetooth — часы, наушники
+    </button>
+  );
+}
+
 function RealDeviceInfo({ d, onRename, actions }) {
   const [name, setName] = useState(d.name);
   useEffect(() => setName(d.name), [d.name]);
@@ -6291,7 +6536,10 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   // У отключённого устройства полоски серые: данные на момент отключения.
   // Реальное устройство — только то, что оно само сообщило (d.sys), иначе «Нет данных»
   const sys = d.sys;
-  const bars = d.real ? [
+  const bars = d.bt ? [
+    // Bluetooth: заряд — только если телефон его сообщил
+    { label: "Заряд", value: d.battery != null ? `${d.battery}%` : NO_DATA, pct: d.battery ?? 0, low: d.battery != null && d.battery < 20 },
+  ] : d.real ? [
     { label: "Заряд", value: batteryText(sys), pct: sys?.battery ?? (sys?.ac ? 100 : 0), low: sys?.battery != null && sys.battery < 20 },
     {
       label: "Память",
@@ -6389,7 +6637,9 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
               className={flip && flip.on ? "nx-icon-on" : undefined}
               style={{ position: "relative", display: "flex", width: size.w, height: size.h, alignItems: "center", justifyContent: "center", flexShrink: 0, transform: `scale(${scale})` }}
             >
-              <DevicePreview device={d} devices={devices} files={files} folders={folders} />
+              {/* Bluetooth-устройство: без выдуманного экрана — только его значок */}
+              {d.bt ? <span style={{ opacity: d.online ? 1 : 0.5 }}>{d.icon({ c: C.text, s: 96 })}</span>
+                : <DevicePreview device={d} devices={devices} files={files} folders={folders} />}
             </div>
           </div>
       </div>
@@ -6438,7 +6688,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         }}>
           {/* Главная кнопка экрана — подключить / отключить, на всю ширину.
               У реального устройства «в сети» решает само устройство — кнопки нет */}
-          {!d.real && <StateButton
+          {!d.real && !d.bt && <StateButton
             state={power}
             labels={powerLabels}
             icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
@@ -6449,7 +6699,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           </StateButton>}
           {/* Пока устройство звонит, кнопка в состоянии «загрузка».
               У реального устройства «Найти» — в быстрых действиях справа, здесь не повторяем */}
-          {!d.real && <StateButton
+          {!d.real && !d.bt && <StateButton
             variant="primary"
             state={d.real
               ? ({ ringing: "loading", found: "success", timeout: "error" }[findState] || "idle")
@@ -6467,7 +6717,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           </button>
         </div>
         </div>
-        {!d.real && !d.online && power === "idle" && (
+        {!d.real && !d.bt && !d.online && power === "idle" && (
           <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
             Найти можно только устройство в сети
           </div>
@@ -6483,7 +6733,8 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         {/* Реальное устройство: имя и что это за устройство. Выдуманных переключателей нет */}
         {d.real && <RealDeviceInfo d={d} onRename={onRename} actions={realActions} />}
         {/* Переключатели. Энергосбережение — только у устройств с батареей */}
-        {!d.real && <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16 }}>
+        {d.bt && <BtDeviceInfo d={d} onRename={onRename} />}
+        {!d.real && !d.bt && <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16 }}>
           {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
             <div key={s.key} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
@@ -6551,7 +6802,7 @@ const PAIR_MS = 900;    // сколько идёт "подключение" по
 const ADD_STEPS = ["Тип", "Поиск", "Название"];
 const NAME_MAX = 24;    // самое длинное название, чтобы влезало в карточку
 
-function AddDeviceModal({ names, onAdd, onClose }) {
+function AddDeviceModal({ names, onAdd, onClose, onBt }) {
   // step: "type" | "search" | "found" | "name" | "done"
   const [step, setStep] = useState("type");
   const [type, setType] = useState(null);
@@ -6697,6 +6948,7 @@ function AddDeviceModal({ names, onAdd, onClose }) {
 
         {/* Содержимое шага. key — чтобы каждый шаг мягко появлялся заново */}
         <div key={step === "found" ? "search" : step} className="nx-pop">
+          {step === "type" && onBt && <div style={{ marginBottom: 14 }}><BtEntry onOpen={onBt} /></div>}
           {step === "type" && (
             <div className="nx-add-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
               {DEVICE_TYPES.map((dt) => (
@@ -6862,6 +7114,23 @@ function ToastItem({ toast, onClose }) {
    файлам, папкам, диалогам ассистента и строкам настроек.
    Открывается по иконке поиска в верхней строке (или кнопке
    в настройках), закрывается по Esc или клику по затемнению. */
+/* Плавное закрытие окна: сначала короткая анимация ухода (класс nx-leaving), потом onClose.
+   При «уменьшении движения» — сразу. Повторные вызовы во время ухода игнорируются */
+const LEAVE_MS = 160;
+function useLeave(onClose) {
+  const [leaving, setLeaving] = useState(false);
+  const busy = useRef(false);
+  const cb = useRef(onClose); cb.current = onClose;
+  const close = (...args) => {
+    if (busy.current) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { cb.current(...args); return; }
+    busy.current = true;
+    setLeaving(true);
+    setTimeout(() => cb.current(...args), LEAVE_MS);
+  };
+  return [leaving, close];
+}
+
 /* ═══ ПАНЕЛЬ БЫСТРЫХ ДЕЙСТВИЙ ══════════════════════════════════
    Открывается кнопкой-молнией в верхней строке, сочетанием Ctrl/⌘ + K
    и событием QUICK_EVENT (так её откроет любой компонент, а в будущей
@@ -6898,8 +7167,11 @@ function QuickBtn() {
 /* Та же панель служит выбором файла для ассистента: label — название окна,
    placeholder — подсказка в поле, onSearch не передан — строки «Искать везде» нет,
    keys — подсказка справа внизу. Строка с disabled видна, но не выбирается (в sub — почему) */
-function QuickPanel({ commands, note, onClose, onSearch, label = "Быстрые действия", placeholder, icon = Icon.quick, keys = `${QUICK_KEYS} — открыть панель` }) {
+function QuickPanel({ commands, note, onClose: closeNow, onSearch, label = "Быстрые действия", placeholder, icon = Icon.quick, keys = `${QUICK_KEYS} — открыть панель`, closeRef }) {
   const mobile = useMediaQuery(PHONE_MQ);
+  // Закрытие с анимацией; closeRef — чтобы NexaApp мог закрыть так же (повторный Ctrl+K)
+  const [leaving, onClose] = useLeave(closeNow);
+  if (closeRef) closeRef.current = onClose;
   const [query, setQuery] = useState("");
   const [path, setPath] = useState([]); // выбранные шаги: [id команды, id устройства, …]
   const [sel, setSel] = useState(0);
@@ -6965,8 +7237,8 @@ function QuickPanel({ commands, note, onClose, onSearch, label = "Быстрые
   };
 
   return createPortal(
-    <div className="nx-quick-overlay" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={label} className="nx-quick-panel nx-pop" onClick={(e) => e.stopPropagation()}>
+    <div className={`nx-quick-overlay nx-fade-in${leaving ? " nx-fade-leaving" : ""}`} onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={label} className={`nx-quick-panel nx-pop${leaving ? " nx-leaving" : ""}`} onClick={(e) => e.stopPropagation()}>
         {/* Шаг выбора: назад и где мы */}
         {depth > 0 && (
           <div className="nx-quick-step">
@@ -7028,19 +7300,21 @@ function QuickPanel({ commands, note, onClose, onSearch, label = "Быстрые
   );
 }
 
-function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose, onOpenFile, onOpenFolder, onOpenChat, onNavigate, initialQuery = "" }) {
+function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose: closeNow, onOpenFile, onOpenFolder, onOpenChat, onNavigate, initialQuery = "" }) {
+  const [leaving, onClose] = useLeave(closeNow);
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef(null);
   const q = query.trim().toLowerCase();
   const hasQuery = q.length > 0;
 
   // Фокус в поле сразу при открытии, закрытие по Esc
+  const closeRef = useRef(onClose); closeRef.current = onClose;
   useEffect(() => {
     inputRef.current?.focus();
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const match = (text) => hasQuery && typeof text === "string" && text.toLowerCase().includes(q);
   const hitKeys = (arr) => (arr || []).some((k) => match(k));
@@ -7065,7 +7339,7 @@ function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, device
 
   return (
     <div
-      className="nx-search-overlay"
+      className={`nx-search-overlay nx-fade-in${leaving ? " nx-fade-leaving" : ""}`}
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 400,
@@ -7076,7 +7350,7 @@ function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, device
     >
       <div
         role="dialog" aria-modal="true" aria-label="Поиск"
-        className="nx-search-panel nx-pop"
+        className={`nx-search-panel nx-pop${leaving ? " nx-leaving" : ""}`}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(640px, 100%)", maxHeight: "calc(100vh - 10vh - 20px)",
@@ -8549,7 +8823,7 @@ const menuBlock = (
         />
         {/* Пока печатается ответ в этом диалоге — «Остановить» вместо «Отправить» */}
         {streamingHere ? (
-          <button type="button" onClick={(e) => { e.stopPropagation(); liveAbort?.(); }} className="ng-input-send"
+          <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); liveAbort?.(); }} className="ng-input-send"
             aria-label="Остановить ответ" title="Остановить ответ" style={{
               width: 32, height: 32, borderRadius: "50%", background: C.text, border: "none", flexShrink: 0,
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
@@ -8558,6 +8832,9 @@ const menuBlock = (
           </button>
         ) : (
         <button
+          // Палец на кнопке не уводит фокус с поля: клавиатура не закрывается,
+          // экран не прыгает — и нажатие попадает в кнопку (иначе срабатывало только со второго раза)
+          onPointerDown={(e) => e.preventDefault()}
           onClick={() => sendMessage()}
           disabled={!canSend}
           aria-label={sendHint} title={sendHint}
@@ -10547,7 +10824,7 @@ function NoteSettings({ prefs, setPrefs, perm, onAsk }) {
   );
 }
 
-function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock }) {
+function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, locateBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -10642,6 +10919,8 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
 
       {flowBlock}
 
+      {locateBlock}
+
       <ThisDeviceSettings sys={sys} />
 
       <InstallSettings />
@@ -10652,6 +10931,20 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
       </SettingsGroup>
     </div>
   );
+}
+
+/* Любое открытое окно (role="dialog" aria-modal="true") — у html класс nx-modal-open:
+   страница под окном не прокручивается, жест «потяните, чтобы обновить» и фон
+   (наклон, курсор) замирают. Окна сами класс не ставят — следим за страницей */
+function useModalLock() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const check = () => root.classList.toggle("nx-modal-open", !!document.querySelector('[aria-modal="true"]'));
+    const mo = new MutationObserver(check);
+    mo.observe(document.body, { childList: true, subtree: true });
+    check();
+    return () => { mo.disconnect(); root.classList.remove("nx-modal-open"); };
+  }, []);
 }
 
 /* Экранная клавиатура — для всего приложения сразу.
@@ -10878,6 +11171,8 @@ export default function NexaApp() {
 
   // Экранная клавиатура: размер видимой области и признак kb-open
   useKeyboardViewport();
+  // Открыто окно (aria-modal) — страница под ним не прокручивается и не «оттягивается», фон не двигается
+  useModalLock();
 
   // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
   const auth = useAuth();
@@ -11056,6 +11351,7 @@ export default function NexaApp() {
     // Реальные устройства (подключены по коду): «в сети» — по Presence
     // Сведения: своё — прямо с устройства; онлайн — из Presence; не в сети — последние сохранённые
     .map((d) => {
+      if (d.bt) return { ...d, online: !!d.connected, battery: d.battery ?? null };
       if (!d.real) return d;
       const isSelf = d.device_id === link.self?.device_id, online = peerIds.has(d.device_id);
       const saved = cleanSys(d.sys);
@@ -11286,6 +11582,20 @@ export default function NexaApp() {
       return;
     }
     if (event === "find.stop") return onFindStop(p);
+    if (event === "locate.request") {
+      if (p.target_device_id === link.self?.device_id) answerLocate(p, realNames[p.from_device] || p.from_name || "Устройство");
+      return;
+    }
+    if (event === "locate.reply") {
+      if (p.to_device !== link.self?.device_id) return;
+      setLocateState((m) => {
+        const key = Object.keys(m).find((k) => m[k]?.id === p.id);
+        if (!key) return m;
+        clearTimeout(locateTimers.current[key]);
+        return { ...m, [key]: p.status === "ok" ? { state: "ok", id: p.id, lat: p.lat, lon: p.lon, acc: p.acc, at: p.at } : { state: p.status, id: p.id } };
+      });
+      return;
+    }
     const me = link.self?.device_id;
     const from = realNames[p.from_device] || p.from_name || "Устройство";
     if (event === "lock.on") {
@@ -11570,6 +11880,36 @@ export default function NexaApp() {
     prevPeers.current = now;
   }, [peerKey, link.status]);
 
+  /* ── Push (приложение): свой адрес — в таблицу push_tokens (только свои строки, RLS).
+     Таблицы нет (push-tokens.sql не запущен) или Firebase не настроен — тихо пропускаем ── */
+  useEffect(() => {
+    if (!isNative || !uid || !supabase || !link.self?.device_id) return;
+    let off = false;
+    (async () => {
+      const r = await pushToken();
+      if (off || !r.token) return;
+      const key = `nexa-push-token@${uid}`;
+      try { if (localStorage.getItem(key) === r.token) return; } catch {}
+      const { error } = await supabase.from("push_tokens").upsert({ device_id: link.self.device_id, token: r.token, updated_at: new Date().toISOString() });
+      if (!error) { try { localStorage.setItem(key, r.token); } catch {} }
+    })();
+    return () => { off = true; };
+  }, [uid, link.self?.device_id]);
+  // Нажали на «Устройство ищут» — значит, нашли: ответим «Нашёл», как только будет связь
+  const pendingFound = useRef(null);
+  useEffect(() => onPushOpen((e) => {
+    if (e?.type !== "find") return;
+    pendingFound.current = e;
+    setFinding(null); // экран «Устройство ищут» внутри NEXA тоже закрываем — уже нашли
+    showToast({ title: "Нашлось", text: `Сообщим «${e.from || "устройству"}», что телефон нашли` });
+  }), []);
+  useEffect(() => {
+    if (link.status !== "online" || !pendingFound.current || !link.self?.device_id) return;
+    const e = pendingFound.current; pendingFound.current = null;
+    link.emit("find.stop", { target_device_id: link.self.device_id, found: true });
+    logActivityOnce(`found-push:${e.id}`, "found", "Телефон нашли по уведомлению", e.from ? `Искали с «${e.from}»` : "");
+  }, [link.status, link.self?.device_id]);
+
   /* ── Демонстрационная блокировка экрана NEXA ── */
   const [locked, setLocked] = useState(null);    // меня заблокировали: { from }
   const [lockState, setLockState] = useState({}); // я заблокировал: { device_id: "locked" }
@@ -11649,15 +11989,97 @@ export default function NexaApp() {
     if (!ok) showToast({ title: "Файл недоступен", text: "Нет связи или файл уже удалили", kind: "error" });
   };
 
+  /* ── «Где устройство?» ──
+     Спрашиваем по каналу (locate.request), отвечает само устройство (locate.reply),
+     если на нём это разрешено (nexa-locate@<id>, по умолчанию выключено).
+     Координаты только в памяти этого экрана — не в облаке и не в истории */
+  const [locateState, setLocateState] = useState({}); // device_id → { state, lat, lon, acc, at, id }
+  const locateTimers = useRef({});
+  const locateDevice = async (d) => {
+    const id = newId(), key = d.device_id;
+    setLocateState((m) => ({ ...m, [key]: { state: "asking", id } }));
+    const ok = await link.emit("locate.request", { target_device_id: key, id });
+    if (!ok) { setLocateState((m) => ({ ...m, [key]: { state: "timeout", id } })); return; }
+    clearTimeout(locateTimers.current[key]);
+    locateTimers.current[key] = setTimeout(() => setLocateState((m) => (m[key]?.id === id && m[key].state === "asking" ? { ...m, [key]: { state: "timeout", id } } : m)), 25000);
+    logActivity("sent", `Спросили, где «${d.name}»`);
+  };
+  const [locateAllow, setLocateAllow] = useSharedState("nexa-locate" + scope, () => {
+    try { return JSON.parse(localStorage.getItem("nexa-locate" + scope)) || { allow: false }; } catch { return { allow: false }; }
+  });
+  const locateAllowRef = useRef(locateAllow); locateAllowRef.current = locateAllow;
+  // Меня спросили: разрешено — определяем место и отвечаем; нет — честно «выключено»
+  const answerLocate = (p, from) => {
+    const reply = (extra) => link.emit("locate.reply", { id: p.id, to_device: p.from_device, ...extra });
+    if (!locateAllowRef.current.allow) { reply({ status: "off" }); return; }
+    if (!navigator.geolocation) { reply({ status: "error" }); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        reply({ status: "ok", lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, at: pos.timestamp || Date.now() });
+        // Человек у этого устройства должен знать, что его место показали
+        notifyRef.current({ cat: "devices", key: `locate:${p.id}`, source: `«${from}»`, title: `Местоположение показано «${from}»`, text: "По запросу «Где устройство?»", target: { tab: "settings", notes: true } });
+        logActivityOnce(`locate:${p.id}`, "link", `Показали местоположение «${from}»`);
+      },
+      (err) => reply({ status: err?.code === 1 ? "denied" : "error" }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  };
+  // Включили в Настройках: сразу спрашиваем разрешение системы, чтобы потом не ждать
+  const toggleLocateAllow = () => {
+    if (locateAllow.allow) { setLocateAllow({ allow: false }); return; }
+    if (!navigator.geolocation) { showToast({ title: "Геолокация недоступна", text: "Это устройство не умеет определять место" }); return; }
+    navigator.geolocation.getCurrentPosition(
+      () => setLocateAllow({ allow: true }),
+      (err) => showToast({ title: "Нет доступа к геолокации", text: err?.code === 1 ? "Разрешите доступ к местоположению в настройках телефона или браузера" : "Не получилось определить место — попробуйте ещё раз" }),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 },
+    );
+  };
+
   /* ── Найти устройство ── */
   const [finding, setFinding] = useState(null);     // меня ищут: { from }
   const [findState, setFindState] = useState({});   // ищем мы: { device_id: "ringing" | "found" | "timeout" }
+  const findStateRef = useRef(findState); findStateRef.current = findState;
   const findTimers = useRef({});
   const clearFindLater = (id) => setTimeout(() => setFindState((st) => { const n = { ...st }; delete n[id]; return n; }), 5000);
+  // Push в приложение на том телефоне (api/push.js): дойдёт, даже если NEXA там закрыта
+  const pushFind = async (d, id) => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const r = await fetch(`${API_BASE}/api/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "find", target_device_id: d.device_id, id, from_device: link.self?.device_id }),
+      });
+      return (await r.json().catch(() => ({}))) || {};
+    } catch { return { sent: false, reason: "network" }; }
+  };
+  const canPush = (d) => d.real && (d.kind === "app" || d.kind === "both");
   const findDevice = async (d) => {
-    if (!d.real || !d.online || d.isSelf) return;
+    if (!d.real || d.isSelf || (!d.online && !canPush(d))) return;
     setFindState((st) => ({ ...st, [d.device_id]: "ringing" }));
-    const ok = await link.emit("find.ring", { target_device_id: d.device_id, id: newId() });
+    const ringId = newId();
+    // Не в сети — только push; в сети — канал связи, а приложению ещё и push (вдруг экран выключен)
+    if (!d.online || canPush(d)) {
+      pushFind(d, ringId).then((r) => {
+        if (r.sent) { if (!d.online) showToast({ title: `«${d.name}»: отправили уведомление`, text: "Телефон зазвонит, даже если NEXA на нём закрыта" }); return; }
+        if (d.online) return; // в сети — сигнал и так пришёл по каналу
+        setFindState((st) => ({ ...st, [d.device_id]: "timeout" })); clearFindLater(d.device_id);
+        showToast({ title: "Не получилось позвать устройство", text: {
+          not_configured: "Push-уведомления NEXA ещё не настроены (нужен Firebase) — найти можно, только когда NEXA открыта на том телефоне",
+          no_token: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
+          network: "Нет связи — попробуйте ещё раз",
+        }[r.reason] || "Не отправилось — попробуйте ещё раз" });
+      });
+      if (!d.online) {
+        clearTimeout(findTimers.current[d.device_id]);
+        findTimers.current[d.device_id] = setTimeout(() => {
+          setFindState((st) => (st[d.device_id] === "ringing" ? { ...st, [d.device_id]: "timeout" } : st));
+          clearFindLater(d.device_id);
+        }, FIND_RING_MS + 5000);
+        return;
+      }
+    }
+    const ok = await link.emit("find.ring", { target_device_id: d.device_id, id: ringId });
     if (!ok) {
       setFindState((st) => ({ ...st, [d.device_id]: "timeout" })); clearFindLater(d.device_id);
       showToast({ title: "Не получилось позвать устройство", text: "Нет связи — попробуйте ещё раз" });
@@ -11671,10 +12093,12 @@ export default function NexaApp() {
     }, FIND_RING_MS + 5000);
   };
   const onFindStop = (p) => {
+    // «Нашлось» — только тому, кто искал (find.stop видят все устройства аккаунта)
+    const searched = !!findStateRef.current[p.target_device_id];
     setFindState((st) => (st[p.target_device_id] ? { ...st, [p.target_device_id]: p.found ? "found" : "timeout" } : st));
     clearTimeout(findTimers.current[p.target_device_id]);
     clearFindLater(p.target_device_id);
-    if (p.found) {
+    if (p.found && searched) {
       notifyRef.current({ cat: "devices", key: `found:${p.target_device_id}:${p.ts}`, at: eventAt(p.ts), source: `«${p.from_name || "Устройство"}»`, title: `«${realNames[p.target_device_id] || p.from_name || "Устройство"}» нашлось`, text: "Там нажали «Нашёл»", target: { device: realRowRef.current(p.target_device_id)?.id } });
       logActivityOnce(`found:${p.target_device_id}:${p.ts}`, "found", `«${realNames[p.target_device_id] || p.from_name || "Устройство"}» нашлось`);
     }
@@ -11715,6 +12139,46 @@ export default function NexaApp() {
     return null;
   };
   const [addOpen, setAddOpen] = useState(false);            // открыто ли окно добавления
+  /* ── Bluetooth (приложение Android): сопряжённые часы, наушники… ──
+     Карточка — обычная запись устройств (уходит в облако аккаунта), в state:
+     bt, bt_id (отпечаток адреса), host (device_id телефона, где сопряжено), connected, battery, checkedAt.
+     Подключено ли — знает только телефон-хозяин: он обновляет запись при изменении */
+  const [btOpen, setBtOpen] = useState(false);
+  const btIds = deviceStore.added.map((d) => deviceStore.state[d.id]?.bt && deviceStore.state[d.id]?.bt_id).filter(Boolean);
+  const addBtDevice = (it) => {
+    const now = Date.now();
+    const id = newId();
+    const t = deviceType(it.type);
+    setDeviceStore((s) => (s.added.some((d) => s.state[d.id]?.bt_id === it.id) ? s : {
+      ...s,
+      added: [...s.added, { id, type: it.type, name: uniqueDeviceName(t.name, s.added.map((x) => x.name)), createdAt: now, battery: null, memory: t.memory, online: false, lastSeen: "" }],
+      state: { ...s.state, [id]: { bt: true, bt_id: it.id, host: link.self?.device_id || "local", host_name: link.self?.name || "Этот телефон", connected: !!it.connected, battery: it.battery ?? null, checkedAt: now } },
+      updated: { ...s.updated, [id]: now },
+    }));
+    showToast({ title: "Добавлено", text: `${t.name} — по Bluetooth` });
+  };
+  const btRef = useRef({}); btRef.current = { store: deviceStore, self: link.self?.device_id };
+  useEffect(() => {
+    if (!btAvailable) return;
+    const refresh = async () => {
+      const { store, self } = btRef.current;
+      const mine = store.added.filter((d) => store.state[d.id]?.bt && [self, "local"].includes(store.state[d.id]?.host));
+      if (!mine.length) return;
+      const r = await btBonded();
+      if (r.error) return;
+      const byId = new Map((r.devices || []).map((x) => [x.id, x]));
+      for (const d of mine) {
+        const st = store.state[d.id], now = byId.get(st.bt_id);
+        const connected = !!now?.connected, battery = now?.battery ?? null;
+        // Пишем только изменения — лишние правки не гоняем в облако
+        if (st.connected !== connected || st.battery !== battery) patchDevice(d.id, { connected, battery, checkedAt: Date.now() });
+      }
+    };
+    refresh();
+    const off = onBtChange(refresh);
+    const t = setInterval(refresh, 60000);
+    return () => { off(); clearInterval(t); };
+  }, [btIds.join(",")]);
   const uploadInputRef = useRef(null);                      // выбор файлов по команде ассистента
   const [openDeviceId, setOpenDeviceId] = useState(null);   // чей экран устройства открыт
 
@@ -11759,6 +12223,18 @@ export default function NexaApp() {
     setTransfer(null);
   };
   const openDevice = devices.find((d) => d.id === openDeviceId);
+  /* Склеенный телефон (сайт + приложение): куда отправлять действия.
+     По умолчанию — приложение, если оно в сети; человек может выбрать сайт */
+  const [partPick, setPartPick] = useState({}); // id карточки → id части
+  const livePart = (card) => {
+    if (!card?.parts) return null;
+    const live = card.parts.filter((p) => p.online && !p.isSelf);
+    return live.find((p) => p.id === partPick[card.id]) || live.find((p) => p.kind === "app") || live[0] || null;
+  };
+  const actTarget = (card) => {
+    const p = livePart(card);
+    return p ? { ...card, device_id: p.device_id, online: true, sys: p.sys, isSelf: false } : card;
+  };
   const [filesDevice, setFilesDevice] = useState(null);     // отбор файлов по устройству
   const onDeviceFile = (d) => (f) => f.device === d.name || f.device === d.alias;
 
@@ -12228,19 +12704,21 @@ export default function NexaApp() {
      в будущей EXE-версии — глобальное сочетание (onDesktopQuickPanel).
      Не открывается поверх другого окна, экрана входа и экрана «Обновите» */
   const [quickOpen, setQuickOpen] = useState(false);
+  const quickCloseRef = useRef(null); // плавное закрытие панели (ставит QuickPanel)
   const [searchQuery, setSearchQuery] = useState("");
   const openSearch = (q = "") => { setSearchQuery(q); setSearchOpen(true); };
   const quickBlocked = useRef(false);
   quickBlocked.current = !!appUpdate?.required || showGate || !!locked;
   useEffect(() => {
     const open = () => {
-      if (quickBlocked.current || document.querySelector('[role="dialog"]:not(.nx-hist-drawer), .nx-auth-gate')) return;
+      // Уходящее окно (анимация закрытия) уже не считается открытым
+      if (quickBlocked.current || document.querySelector('[role="dialog"]:not(.nx-hist-drawer):not(.nx-leaving), .nx-auth-gate')) return;
       setQuickOpen(true);
     };
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.code !== "KeyK") return;
       e.preventDefault(); // в браузере Ctrl+K иначе прыгает в адресную строку
-      if (document.querySelector(".nx-quick-panel")) setQuickOpen(false); else open();
+      if (document.querySelector(".nx-quick-panel")) (quickCloseRef.current ? quickCloseRef.current() : setQuickOpen(false)); else open();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener(QUICK_EVENT, open);
@@ -12730,6 +13208,31 @@ export default function NexaApp() {
         /* ─── Глобальный поиск ─────────────────────────────── */
         .nx-search-row:hover { background-color: var(--hover) !important; }
         .nx-search-row:focus-visible { outline: 1px solid var(--mint); outline-offset: -2px; }
+        /* ─── Уход окон: поиск, быстрые действия, колокольчик (useLeave) ─── */
+        @keyframes nx-pop-out { to { opacity: 0; transform: translateY(-6px) scale(0.98); } }
+        @keyframes nx-fade-in-k { from { opacity: 0; } }
+        @keyframes nx-fade-out-k { to { opacity: 0; } }
+        .nx-leaving { animation: nx-pop-out ${LEAVE_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards !important; pointer-events: none; }
+        .nx-fade-in { animation: nx-fade-in-k 180ms ease; }
+        .nx-fade-leaving { animation: nx-fade-out-k ${LEAVE_MS}ms ease forwards; pointer-events: none; }
+        /* Смена вкладки в окне подключения: подсветка переезжает, содержимое въезжает сбоку */
+        .nx-seg-thumb { transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes nx-tab-r { from { opacity: 0; transform: translateX(18px); } }
+        @keyframes nx-tab-l { from { opacity: 0; transform: translateX(-18px); } }
+        .nx-tab-in-right { animation: nx-tab-r 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-tab-in-left { animation: nx-tab-l 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+        /* Карта «где устройство»: в тёмной теме подложка затемнена, подписи — шрифтом NEXA */
+        :root[data-theme="dark"] .nx-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+        .nx-map .leaflet-control-attribution { font-size: 10px; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--muted); }
+        .nx-map .leaflet-control-attribution a { color: var(--muted); }
+        .nx-map { font-family: inherit; }
+        /* Открыто окно — страница под ним стоит */
+        html.nx-modal-open, html.nx-modal-open body { overflow: hidden !important; overscroll-behavior: none; }
+        .nx-viewer, .nx-quick-overlay, .nx-search-overlay { overscroll-behavior: contain; }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-leaving, .nx-fade-in, .nx-fade-leaving, .nx-tab-in-right, .nx-tab-in-left { animation: none !important; }
+          .nx-seg-thumb { transition: none; }
+        }
         /* ─── Панель быстрых действий (QuickPanel) ─────────── */
         .nx-quick-overlay {
           position: fixed; inset: 0; z-index: 400; box-sizing: border-box;
@@ -13514,7 +14017,8 @@ export default function NexaApp() {
         hint={pendingPair ? "Войдите той же почтой, что и на другом устройстве, — потом подключим это устройство"
           : pendingLogin ? "Чтобы разрешить вход на другом устройстве, сначала войдите здесь" : null} />}
       {/* Подключение по коду: окно с кодом и окно «Подключаем…» */}
-      {pairOpen && <PairModal session={pairView} online={link.status === "online"} onNewCode={newPairCode}
+      {btOpen && <BluetoothPicker added={btIds} onAdd={addBtDevice} onClose={() => setBtOpen(false)} />}
+      {pairOpen && <PairModal session={pairView} online={link.status === "online"} onNewCode={newPairCode} onBt={() => { closePair(); setBtOpen(true); }}
         onDemo={() => { closePair(); setAddOpen(true); }} onClose={closePair}
         onClaim={claimPair} onScan={canScanQr ? scanAndHandle : null} />}
       {claim && <PairStatusDialog claim={claim} onClose={() => setClaim(null)} />}
@@ -13569,11 +14073,17 @@ export default function NexaApp() {
         onRename={(name) => renameDevice(openDevice.id, name)}
         link={link}
         flowOn={flow.on}
-        realActions={openDevice.real && (
-          <RealDeviceActions d={openDevice} linkOnline={link.status === "online"}
-            st={{ find: findState[openDevice.device_id], lock: lockState[openDevice.device_id], send: sendState[openDevice.device_id] }}
-            act={{ find: findDevice, lock: lockDevice, sendFile: sendFileTo, cancelSend, openLink: openLinkOn, reconnect: openPair }} />
-        )}
+        realActions={openDevice.real && (() => {
+          const t = actTarget(openDevice);
+          return (
+            <>
+              {openDevice.parts && <PhoneParts d={openDevice} pick={livePart(openDevice)} onPick={(pid) => setPartPick((m) => ({ ...m, [openDevice.id]: pid }))} />}
+              <RealDeviceActions d={t} linkOnline={link.status === "online"}
+                st={{ find: findState[t.device_id], lock: lockState[t.device_id], send: sendState[t.device_id], locate: locateState[t.device_id] }}
+                act={{ find: findDevice, lock: lockDevice, sendFile: sendFileTo, cancelSend, openLink: openLinkOn, reconnect: openPair, locate: locateDevice }} />
+            </>
+          );
+        })()}
       />
     </div>
   ) : tab === "assistant" ? (
@@ -13631,7 +14141,17 @@ export default function NexaApp() {
         />
       )}
       {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()}
-        noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} />} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+        noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} />}
+        locateBlock={uid && (
+          <>
+            <SectionTitle>Поиск этого устройства</SectionTitle>
+            <SettingsGroup>
+              <SettingsRow last icon={Icon.pin({ c: C.muted, s: 18 })} title="Показывать, где это устройство"
+                subtitle="Только вашим устройствам и только по кнопке «Где устройство?». Место определяется один раз на запрос и нигде не хранится. Пока NEXA открыта или свёрнута"
+                right={<Toggle on={!!locateAllow.allow} onClick={toggleLocateAllow} label="Показывать, где это устройство" />} />
+            </SettingsGroup>
+          </>
+        )} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
         flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
           onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
     </div>
@@ -13680,6 +14200,7 @@ export default function NexaApp() {
       {/* Окно добавления устройства: тип → поиск → название → готово */}
       {addOpen && (
         <AddDeviceModal
+          onBt={btAvailable ? () => { setAddOpen(false); setBtOpen(true); } : null}
           names={devices.map((d) => d.name)}
           onAdd={addDevice}
           onClose={() => setAddOpen(false)}
@@ -13716,7 +14237,7 @@ export default function NexaApp() {
       {flowSend && <FlowSendDialog initial={flowSend.text} initialTo={flowSend.to} link={link} devices={devices} flowOn={flow.on} user={auth.user}
         onLogin={() => { setFlowSend(null); setAuthOpen(true); }} onClose={() => setFlowSend(null)} />}
       {/* Панель быстрых действий */}
-      {quickOpen && <QuickPanel commands={quick.list} note={quick.note} onClose={() => setQuickOpen(false)} onSearch={openSearch} />}
+      {quickOpen && <QuickPanel commands={quick.list} note={quick.note} onClose={() => setQuickOpen(false)} onSearch={openSearch} closeRef={quickCloseRef} />}
       {/* Быстрые действия → «Отправить файл» → «Выбрать на этом устройстве» */}
       <input ref={quickFileRef} type="file" hidden onChange={(e) => {
         const f = e.target.files?.[0], d = quickFileTo.current;

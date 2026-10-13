@@ -8,6 +8,15 @@ import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    // NEXA на экране: тогда push «Найти» ничего не показывает — сигнал придёт по каналу связи
+    static volatile boolean inForeground = false;
+
+    @Override
+    public void onResume() { super.onResume(); inForeground = true; }
+
+    @Override
+    public void onPause() { inForeground = false; super.onPause(); }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Свой модуль: место на телефоне (см. NexaDiskPlugin). Регистрируем до super.onCreate
@@ -16,6 +25,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NexaFilesPlugin.class);
         // NEXA Flow: текст из «Поделиться» другого приложения (см. NexaSharePlugin)
         registerPlugin(NexaSharePlugin.class);
+        // Bluetooth: сопряжённые часы, наушники и т.п. (см. NexaBluetoothPlugin)
+        registerPlugin(NexaBluetoothPlugin.class);
+        // Push «Найти устройство»: адрес для сервера и нажатие на уведомление (см. NexaPushPlugin)
+        registerPlugin(NexaPushPlugin.class);
         // Виджеты рабочего стола: расписание и город из приложения (см. widgets/NexaWidgetsPlugin)
         registerPlugin(ru.nexalink.app.widgets.NexaWidgetsPlugin.class);
         super.onCreate(savedInstanceState);

@@ -127,11 +127,11 @@ async function pushRows(table, upserts, deletes) {
 export async function deleteAllMine(uid) {
   // Сначала содержимое файлов в хранилище (папка <id аккаунта>/), потом записи
   await removeAllStorage(uid);
-  for (const table of ["devices", "chats", "files", "file_folders", "schedule"]) {
+  for (const table of ["devices", "chats", "files", "file_folders", "schedule", "push_tokens"]) {
     const { error } = await supabase.from(table).delete().eq("user_id", uid);
-    // Таблиц файлов и расписания может ещё не быть (не запущены files-storage.sql,
-    // schedule.sql) — это не ошибка
-    if (error && !((table.startsWith("file") || table === "schedule") && isMissingTable(error))) throw error;
+    // Таблиц файлов, расписания и push-адресов может ещё не быть (не запущены
+    // files-storage.sql, schedule.sql, push-tokens.sql) — это не ошибка
+    if (error && !((table.startsWith("file") || table === "schedule" || table === "push_tokens") && isMissingTable(error))) throw error;
   }
   clearMeta(uid);
 }

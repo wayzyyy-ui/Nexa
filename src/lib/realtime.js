@@ -128,6 +128,10 @@ const SCHEMAS = {
     && (p.left == null || (Number.isInteger(p.left) && p.left >= 0 && p.left <= 5)),
   "find.ring": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
   "find.stop": (p) => base(p) && isId(p.target_device_id) && typeof p.found === "boolean",
+  // «Где устройство?» — разовый запрос; ответ — координаты (не сохраняются нигде) или причина отказа
+  "locate.request": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
+  "locate.reply": (p) => base(p) && isId(p.id) && isId(p.to_device) && ["ok", "off", "denied", "error"].includes(p.status)
+    && (p.status !== "ok" || (Number.isFinite(p.lat) && Math.abs(p.lat) <= 90 && Number.isFinite(p.lon) && Math.abs(p.lon) <= 180 && Number.isFinite(p.acc) && p.acc >= 0 && isTs(p.at))),
   // Демонстрационная блокировка экрана NEXA (не системная блокировка телефона)
   "lock.on": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
   "lock.off": (p) => base(p) && isId(p.target_device_id),

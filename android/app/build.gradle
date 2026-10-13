@@ -54,6 +54,9 @@ dependencies {
     implementation project(':capacitor-android')
     // Виджеты: фоновое обновление погоды (WorkManager)
     implementation "androidx.work:work-runtime:2.11.2"
+    // «Найти» при закрытом приложении: push через Firebase (NexaMessagingService).
+    // Без google-services.json Firebase не запускается — приложение работает как раньше
+    implementation "com.google.firebase:firebase-messaging:24.1.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

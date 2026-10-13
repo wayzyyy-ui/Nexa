@@ -57,6 +57,13 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_weather_info" />
         </receiver>
 
+        <!-- Push «Найти устройство» (api/push.js → Firebase) -->
+        <service android:name=".NexaMessagingService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Сканер QR (Google Code Scanner): модуль сканирования подгружается сам -->
         <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
     </application>
@@ -64,4 +71,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Bluetooth: только список сопряжённых устройств и их состояние (NexaBluetoothPlugin).
+         До Android 12 — обычное разрешение, с Android 12 — «Устройства поблизости» -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- «Где устройство?»: место определяется по запросу, только если это включено в Настройках NEXA -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>
