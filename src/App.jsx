@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.14";
+const VERSION = "0.9.15";
 
 
 const C = {
@@ -867,12 +867,11 @@ const NAV = [
   { id: "settings", label: "Настройки", icon: Icon.gear },
 ];
 function MobileTabBar({ active, onChange }) {
-  // Порядок как в макете 2026-10: Главная первой, дальше Ассистент, Сегодня, Медиа, Файлы
-  // (тот же порядок у свайпов — SWIPE_ORDER)
+  // Главная — по центру (главный раздел), остальные по бокам
   const mobileNav = [
-    { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
     { id: "today",     label: "Сегодня",   icon: Icon.calendar },
+    { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "media",     label: "Медиа",     icon: Icon.image },
     { id: "files",     label: "Файлы",     icon: Icon.folder },
   ];
@@ -945,9 +944,11 @@ function MobileTabBar({ active, onChange }) {
               width: 52,
               height: 42,
               boxSizing: "border-box",
-              borderRadius: 999,
+              borderRadius: 18,
               background: C.chip,
-              border: `1px solid ${C.lineBright}`,
+              // На Главной рамка подсветки мятная
+              border: `1px solid ${shownIndex === homeIndex ? `color-mix(in srgb, ${C.mint} 55%, transparent)` : C.borderStrong}`,
+              transition: "border-color 300ms ease",
             }} />
           </div>
 
@@ -972,7 +973,8 @@ function MobileTabBar({ active, onChange }) {
                 color: C.text,
               }}
             >
-              {item.icon({ c: "currentColor", s: 22 })}
+              {/* Главная чуть заметнее: мятный значок крупнее остальных */}
+              {item.main ? item.icon({ c: C.mint, s: 25 }) : item.icon({ c: "currentColor", s: 22 })}
             </button>
           ))}
         </div>
@@ -1847,7 +1849,6 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
       <div className="ng-home-mobile">
         {/* Знак + слово NEXA, под ним «Ваша экосистема». Значки справа — общая верхняя строка */}
         <div className="nx-home-brand" style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0 26px" }}>
-          <LogoMark s={30} />
           <div style={{ minWidth: 0 }}>
             <Logo small bare />
             <div style={{ fontSize: 10, letterSpacing: "0.24em", color: C.muted, marginTop: 5, textTransform: "uppercase" }}>
@@ -1930,10 +1931,10 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
           style={{ ...btnReset, width: "100%", marginTop: 28, textAlign: "left", color: C.text }}>
           <span aria-hidden="true" style={{
             width: 46, height: 46, borderRadius: "50%", flexShrink: 0,
-            background: `linear-gradient(140deg, ${C.blue}, ${C.foldDeep})`,
+            background: C.mintDark,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            {Icon.sparkle({ c: C.onFold, s: 22 })}
+            {Icon.sparkle({ c: C.mint, s: 22 })}
           </span>
           <span style={{ flex: 1, minWidth: 0 }}>
             <span className="ng-display" style={{ display: "block", fontSize: 20, fontWeight: 500, lineHeight: 1.2 }}>ИИ — Ассистент</span>
@@ -3104,7 +3105,7 @@ const weatherMark = (s = 24) => (
 );
 
 // Знак перед температурой: "+18", "-3", "0"
-const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
+const signed = (n) => (n == null ? "—" : n > 0 ? `+${n}` : `${n}`);
 
 // Крупная температура, за градусом острая складка.
 // tone — цвет складки: мятный для ясной погоды, серый для пасмурной.
@@ -3332,49 +3333,42 @@ const loadSchedule = (key = SCHEDULE_KEY) => {
 // Минуты от начала дня: "14:30" → 870
 const toMinutes = (hm) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
 
-/* ---------- РЕАЛЬНАЯ ПОГОДА (Open-Meteo) ----------
-   Бесплатный сервис без ключа, браузер ходит в него напрямую.
-   Город — Казань. Обновляем раз в 15 минут. */
-// Адрес погоды собирается по координатам — так одни и те же данные
-// можно получать для любого города, а не только для Казани
-const weatherUrl = (lat, lon) =>
-  `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-  "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,surface_pressure,weather_code" +
-  "&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=16"; // 16 дней — максимум бесплатного прогноза
-const WEATHER_REFRESH_MS = 15 * 60 * 1000;
-const WEATHER_TIMEOUT_MS = 10000;   // дольше 10 секунд ответа не ждём
+/* ---------- ПОГОДА: только через наш сервер /api/weather ----------
+   Источник — Gismeteo (токен только на сервере), резерв — Open-Meteo; что пришло —
+   видно по полю source, подпись источника обязательна (WeatherAttribution).
+   Города — только из разрешённых (тот же список в api/weather.js): Казань по умолчанию
+   и Москва. Последний удачный ответ по городу лежит в браузере (nexa-weather:<id>) —
+   без сети показываем его с пометкой. Выдуманных цифр нет: пока данных нет — «—» под вуалью */
+const WEATHER_CITIES = [{ id: "kazan", city: "Казань" }, { id: "moscow", city: "Москва" }];
+const DEFAULT_WEATHER_CITY = "kazan";
+const WEATHER_API = `${API_BASE}/api/weather`;
+const WEATHER_REFRESH_MS = 15 * 60 * 1000; // сервер всё равно отдаёт кеш (час) — лимит Gismeteo не тратится
+const WEATHER_TIMEOUT_MS = 10000;          // дольше 10 секунд ответа не ждём
+const WEATHER_SAVED_KEY = "nexa-weather:"; // + id города → { json, at } — последний удачный ответ
+const CITY_KEY = "nexa-weather-city";      // выбранный город (id из WEATHER_CITIES)
 
 // Понятная причина, почему погода не загрузилась (для строки под карточкой)
 function weatherErrorText(err, timedOut) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return "нет интернета";
-  if (timedOut) return "сервис погоды не ответил";
-  // "Failed to fetch" / "Load failed" — запрос не дошёл: сеть, VPN или блокировщик
-  if (err instanceof TypeError) return "нет связи с сервисом погоды";
+  if (timedOut) return "сервер погоды не ответил";
+  if (err instanceof TypeError) return "нет связи с сервером погоды";
   return err.message || "неизвестная ошибка";
 }
 
-// Заглушки: показываются, пока погода грузится или если загрузить не вышло,
-// чтобы карточки не пустели. Даты — сегодня и завтра, не захардкожены.
-const WEATHER_FALLBACK = {
-  now: { temp: 18, feels: 17, wind: 3, humidity: 62, pressure: 758, code: 0, date: new Date() },
-  tomorrow: { temp: 12, min: 7, code: 3, date: new Date(Date.now() + 86400000) },
-};
-
-// WMO-код погоды → русский текст и цвет складки:
-// мятный — ясно и почти ясно, серый — облачно, осадки, туман
-/* Значок погоды в нашем стиле: тонкие линии и «облако»-грань (параллелограмм).
+/* Состояние погоды (cond из api/weather): sun | partly | cloud | overcast | rain | snow | sleet | storm | fog.
+   Значок в нашем стиле: тонкие линии и «облако»-грань (параллелограмм).
    Солнце — мятное, облака — серые грани, осадки — мятные штрихи/точки */
-function weatherKind(code) {
-  if (code === 0 || code === 1) return "sun";
-  if (code === 2) return "partly";
-  if (code === 45 || code === 48) return "fog";
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
-  if (code >= 95) return "storm";
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+function weatherKind(cond) {
+  if (cond === "sun") return "sun";
+  if (cond === "partly") return "partly";
+  if (cond === "fog") return "fog";
+  if (cond === "snow") return "snow";
+  if (cond === "storm") return "storm";
+  if (cond === "rain" || cond === "sleet") return "rain";
   return "cloud";
 }
-function WeatherGlyph({ code, s = 20 }) {
-  const kind = weatherKind(code);
+function WeatherGlyph({ cond, s = 20 }) {
+  const kind = weatherKind(cond);
   const mint = { stroke: C.mint }, gray = { stroke: C.muted };
   const cloud = (pts, o = 1) => <polygon points={pts} strokeWidth="1.3" strokeLinejoin="round" style={{ stroke: C.muted, fill: `color-mix(in srgb, ${C.muted} ${Math.round(o * 35)}%, transparent)` }} />;
   const rays = (cx, cy, r1, r2, n) => Array.from({ length: n }, (_, i) => {
@@ -3393,35 +3387,29 @@ function WeatherGlyph({ code, s = 20 }) {
     </svg>
   );
 }
-
-function weatherCodeToText(code) {
-  const clear = { tone: C.mint };
-  // rain — идут осадки каплями (морось, дождь, ливень, гроза): на складке будут капли
-  const rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95;
-  const gray = { tone: C.muted, rain };
-  if (code === 0) return { text: "Ясно", ...clear };
-  if (code === 1) return { text: "Почти ясно", ...clear };
-  if (code === 2) return { text: "Переменная облачность", ...clear };
-  if (code === 3) return { text: "Пасмурно", ...gray };
-  if (code === 45 || code === 48) return { text: "Туман", ...gray };
-  if (code >= 51 && code <= 55) return { text: "Морось", ...gray };
-  if (code === 56 || code === 57) return { text: "Ледяная морось", ...gray };
-  if (code === 61 || code === 63) return { text: "Дождь", ...gray };
-  if (code === 65) return { text: "Сильный дождь", ...gray };
-  if (code === 66 || code === 67) return { text: "Ледяной дождь", ...gray };
-  if (code === 71 || code === 73) return { text: "Снег", ...gray };
-  if (code === 75) return { text: "Сильный снег", ...gray };
-  if (code === 77) return { text: "Снежная крупа", ...gray };
-  if (code >= 80 && code <= 82) return { text: "Ливень", ...gray };
-  if (code === 85 || code === 86) return { text: "Снегопад", ...gray };
-  if (code === 95) return { text: "Гроза", ...gray };
-  if (code === 96 || code === 99) return { text: "Гроза с градом", ...gray };
-  return { text: "Облачно", ...gray }; // неизвестный код — нейтрально
+// Цвет складки температуры и капли: мятный — ясно и малооблачно, серый — остальное
+function condLook(cond) {
+  return {
+    tone: cond === "sun" || cond === "partly" ? C.mint : C.muted,
+    rain: cond === "rain" || cond === "sleet" || cond === "storm",
+  };
 }
 
-// Дата для карточки: «7 октября 2026», по времени Казани
+// Подпись источника погоды — обязательное условие Gismeteo («По данным Gismeteo» со ссылкой
+// на gismeteo.ru). Резерв — подпись Open-Meteo. Ссылка открывается во внешнем браузере
+function WeatherAttribution({ w, style }) {
+  const a = w && w.attribution;
+  if (!a || !/^https:\/\//.test(a.url || "")) return null;
+  return (
+    <a className="nx-weather-attr" href={a.url} target="_blank" rel="noopener noreferrer"
+      style={{ fontSize: 12, color: C.muted, textDecoration: "underline", textUnderlineOffset: 3, textDecorationColor: C.borderStrong, ...style }}>
+      {a.text}
+    </a>
+  );
+}
+
+// Дата для карточки: «7 октября 2026»
 function formatWeatherDate(date) {
-  // Без timeZone — берётся часовой пояс устройства пользователя
   const dayMonth = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
   // Год берём отдельной частью: иначе некоторые браузеры допишут «г.»
   const year = new Intl.DateTimeFormat("ru-RU", { year: "numeric" })
@@ -3429,42 +3417,23 @@ function formatWeatherDate(date) {
   return `${dayMonth} ${year}`;
 }
 
-// "2026-10-07" из ответа → дата. Берём полдень по UTC, чтобы
-// при переводе во время Казани день точно не съехал
+// "2026-10-07" из ответа → дата. Берём полдень по UTC, чтобы день точно не съехал
 const dayFromIso = (iso) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12));
 };
 
-// Разбор ответа Open-Meteo в наш вид. Единицы:
-// ветер км/ч → м/с (÷3.6), давление гПа → мм рт. ст. (×0.750062), температура — целая
-function parseWeather(data) {
-  const c = data.current;
-  const d = data.daily;
-  if (!c || !d || !Array.isArray(d.time) || d.time.length < 2) throw new Error("Неполный ответ погоды");
+// Ответ /api/weather → вид экрана. Сегодня — первый день, завтра — второй
+function parseApiWeather(j) {
+  if (!j || !j.now || !Array.isArray(j.days) || !j.days.length) throw new Error("неполный ответ погоды");
+  const days = j.days.map((d) => ({ date: dayFromIso(d.date), max: d.max, min: d.min, cond: d.cond, text: d.text }));
+  const t = days[1] || null;
   return {
-    now: {
-      temp: Math.round(c.temperature_2m),
-      feels: Math.round(c.apparent_temperature),
-      wind: Math.round(c.wind_speed_10m / 3.6),
-      humidity: Math.round(c.relative_humidity_2m),
-      pressure: Math.round(c.surface_pressure * 0.750062),
-      code: c.weather_code,
-      date: dayFromIso(d.time[0]),
-    },
-    tomorrow: {
-      temp: Math.round(d.temperature_2m_max[1]),
-      min: Math.round(d.temperature_2m_min[1]),
-      code: d.weather_code[1],
-      date: dayFromIso(d.time[1]),
-    },
-    // Прогноз по дням (до 16): днём (max), ночью (min) и код погоды.
-    // Последний день сервис иногда присылает пустым (null) — такие дни
-    // пропускаем, иначе округление превратит пустоту в «0°»
-    days: d.time
-      .map((iso, i) => ({ iso, max: d.temperature_2m_max[i], min: d.temperature_2m_min[i], code: d.weather_code[i] }))
-      .filter((x) => x.max != null && x.min != null && x.code != null)
-      .map((x) => ({ date: dayFromIso(x.iso), max: Math.round(x.max), min: Math.round(x.min), code: x.code })),
+    now: { ...j.now, date: days[0].date, min: days[0].min, max: days[0].max },
+    tomorrow: t && { temp: t.max, min: t.min, cond: t.cond, text: t.text, date: t.date },
+    days,
+    source: j.source, stale: !!j.stale, attribution: j.attribution,
+    dataTime: j.time ? Date.parse(j.time) : null,
   };
 }
 
@@ -3476,401 +3445,151 @@ function forecastDayLabel(date, index) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/* ---------- МЕСТОПОЛОЖЕНИЕ ----------
-   Определяем город двумя способами одновременно:
-   1) геолокация браузера — точные координаты, но браузер спросит разрешение;
-   2) ipapi.co — примерно по IP-адресу, без разрешений.
-   Приоритет у геолокации: ответ по IP ставим не раньше чем через 1,5 секунды,
-   чтобы геолокация успела «победить». Пока ничего не пришло — Казань. */
-// Пока город не определён — прочерк. Погода для этого случая берётся
-// по запасным координатам (центр Поволжья), пока город не найдётся
-const DEFAULT_LOCATION = { city: "—", lat: 55.79, lon: 49.11, source: "default" };
-const CITY_KEY = "nexa-city"; // город, выбранный вручную
-const readManualCity = () => {
-  try { const v = JSON.parse(localStorage.getItem(CITY_KEY)); if (v && v.city && v.lat != null) return { ...v, source: "manual" }; } catch {}
-  return null;
-};
-
-/* Общие данные экрана «Сегодня»: расписание, город и последняя
-   загруженная погода. Ими пользуются и экран «Сегодня», и ассистент
-   (сводка «что у меня сегодня»). Экран обновляет город и погоду,
-   когда они загружаются. */
+/* Общие данные экрана «Сегодня»: расписание, город и последняя погода.
+   Ими пользуются и экран «Сегодня», и ассистент (сводка «что у меня сегодня») */
 const TODAY = {
   schedule: [],
-  city: DEFAULT_LOCATION.city, lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon,
+  city: WEATHER_CITIES[0].city, cityId: DEFAULT_WEATHER_CITY,
   weather: null, weatherAt: 0,
 };
 
+const readSavedWeather = (id) => {
+  try { const v = JSON.parse(localStorage.getItem(WEATHER_SAVED_KEY + id)); if (v && v.json && v.at) return v; } catch {}
+  return null;
+};
+const keepWeather = (id, json) => { try { localStorage.setItem(WEATHER_SAVED_KEY + id, JSON.stringify({ json, at: Date.now() })); } catch {} };
+
+// Загрузить погоду города с нашего сервера; удачный ответ — запомнить в браузере
+async function fetchWeather(id, signal) {
+  const res = await fetch(`${WEATHER_API}?city=${encodeURIComponent(id)}`, { signal });
+  if (!res.ok) throw new Error(res.status === 400 ? "город не поддерживается" : res.status === 503 ? "сервис погоды недоступен" : `ответ сервера ${res.status}`);
+  const json = await res.json();
+  const w = parseApiWeather(json);
+  keepWeather(id, json);
+  return w;
+}
+
 // Погода для сводки: свежая из TODAY, а если её нет — загружаем сами
-// (ждём не дольше 5 секунд). Не вышло — null, сводка обойдётся без погоды
+// (ждём не дольше 5 секунд). Не вышло — сохранённая или null
 async function getTodayWeather() {
   if (TODAY.weather && Date.now() - TODAY.weatherAt < WEATHER_REFRESH_MS * 2) return TODAY.weather;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
-    const res = await fetch(weatherUrl(TODAY.lat, TODAY.lon), { signal: ctrl.signal, cache: "no-store" });
-    if (!res.ok) throw new Error(`ответ сервера ${res.status}`);
-    TODAY.weather = parseWeather(await res.json());
+    TODAY.weather = await fetchWeather(TODAY.cityId, ctrl.signal);
     TODAY.weatherAt = Date.now();
     return TODAY.weather;
   } catch {
-    return TODAY.weather;
+    if (TODAY.weather) return TODAY.weather;
+    const saved = readSavedWeather(TODAY.cityId);
+    try { return saved ? parseApiWeather(saved.json) : null; } catch { return null; }
   } finally {
     clearTimeout(timer);
   }
 }
-const GEO_TIMEOUT_MS = 6000;        // дольше 6 секунд геолокацию не ждём
-const GEO_CACHE_MS = 10 * 60 * 1000; // браузер может отдать координаты из кэша за 10 минут
-const IP_GRACE_MS = 1500;           // столько ждём геолокацию, прежде чем поставить город по IP
-const CITY_LOOKUP_MS = 3000;        // дольше 3 секунд название города не ждём
 
-// Подпись под городом на карточке погоды: откуда взялось местоположение
-const LOCATION_SOURCE_TEXT = {
-  geo: "определено точно",
-  ip: "примерно по IP",
-  default: "не определено",
-  manual: "выбран вами",
+// Выбранный город погоды (id). Нет выбора или он не из списка — Казань
+const readCityId = () => {
+  try { const v = localStorage.getItem(CITY_KEY); if (WEATHER_CITIES.some((c) => c.id === v)) return v; } catch {}
+  return DEFAULT_WEATHER_CITY;
 };
-
-/* Местоположение по IP: пробуем несколько бесплатных сервисов по очереди
-   (у каждого бывают лимиты и блокировки). Ответ — { lat, lon } или null.
-   С VPN по IP определится город сервера VPN — для точности есть геолокация
-   и ручной выбор города */
-const IP_SERVICES = [
-  ["https://ipapi.co/json/", (d) => !d.error && [d.latitude, d.longitude]],
-  ["https://ipwho.is/", (d) => d.success !== false && [d.latitude, d.longitude]],
-  ["https://get.geojs.io/v1/ip/geo.json", (d) => [parseFloat(d.latitude), parseFloat(d.longitude)]],
-];
-const IP_SERVICE_MS = 4000; // один сервис ждём не дольше 4 секунд — потом следующий
-let ipFailedAt = 0;          // все сервисы не ответили — 10 минут не спрашиваем снова
-async function ipLocation(signal) {
-  if (Date.now() - ipFailedAt < 10 * 60 * 1000) return null;
-  for (const [url, pick] of IP_SERVICES) {
-    // Свой «стоп» на каждый сервис: зависший сервис не держит очередь
-    const ctrl = new AbortController();
-    const stop = () => ctrl.abort();
-    const timer = setTimeout(stop, IP_SERVICE_MS);
-    signal?.addEventListener("abort", stop);
-    try {
-      const res = await fetch(url, { signal: ctrl.signal });
-      if (!res.ok) continue;
-      const ll = pick(await res.json());
-      if (ll && Number.isFinite(ll[0]) && Number.isFinite(ll[1])) return { lat: ll[0], lon: ll[1] };
-    } catch {
-      if (signal?.aborted) return null; // экран закрыли — дальше не спрашиваем
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", stop);
-    }
-  }
-  if (!signal?.aborted) ipFailedAt = Date.now();
-  return null;
-}
-
-/* Поиск города по названию (Open-Meteo, без ключа). До 6 вариантов:
-   { city, region, lat, lon } — регион, чтобы различать одинаковые названия */
-async function searchCities(q, signal) {
-  const res = await fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=ru&format=json&name=" + encodeURIComponent(q), { signal });
-  if (!res.ok) throw new Error("ответ сервера " + res.status);
-  const data = await res.json();
-  return (data.results || []).map((r) => ({
-    city: r.name, region: [r.admin1, r.country].filter(Boolean).join(", "),
-    lat: round2(r.latitude), lon: round2(r.longitude),
-  }))
-    // Одинаковые «город + регион» (город и одноимённый район) показываем один раз
-    .filter((c, i, all) => all.findIndex((x) => x.city === c.city && x.region === c.region) === i);
-}
-
-// Геолокация браузера в виде промиса. Если браузер её не умеет
-// (старый браузер или сайт открыт не по HTTPS) — сразу «отказ»
-function getBrowserPosition() {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      reject(new Error("геолокация недоступна"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      timeout: GEO_TIMEOUT_MS,
-      maximumAge: GEO_CACHE_MS,
-    });
-  });
-}
-
-// Название города по координатам, по-русски (BigDataCloud, без ключа).
-// Берём city, а если его нет — locality. Не дождались или ошибка — null
-// Запрос с ограничением по времени: не ответил за CITY_LOOKUP_MS — считаем, что не вышло
-function withTimeout(promise) {
-  const giveUp = new Promise((resolve) => setTimeout(() => resolve(null), CITY_LOOKUP_MS));
-  return Promise.race([promise.catch(() => null), giveUp]);
-}
-
-// Крупные города — запасной вариант, если ни один сервис не назвал город.
-// Работает даже без интернета: просто ищем ближайший по координатам
-const KNOWN_CITIES = [
-  ["Москва", 55.76, 37.62], ["Санкт-Петербург", 59.94, 30.31], ["Казань", 55.79, 49.11],
-  ["Нижний Новгород", 56.33, 44.0], ["Екатеринбург", 56.84, 60.61], ["Новосибирск", 55.03, 82.92],
-  ["Самара", 53.2, 50.15], ["Уфа", 54.74, 55.97], ["Челябинск", 55.16, 61.4],
-  ["Пермь", 58.01, 56.25], ["Ростов-на-Дону", 47.24, 39.71], ["Краснодар", 45.04, 38.98],
-  ["Воронеж", 51.66, 39.2], ["Волгоград", 48.71, 44.51], ["Омск", 54.99, 73.37],
-  ["Красноярск", 56.01, 92.85], ["Набережные Челны", 55.74, 52.4], ["Ижевск", 56.85, 53.2],
-  ["Ульяновск", 54.31, 48.4], ["Чебоксары", 56.14, 47.25], ["Йошкар-Ола", 56.63, 47.89],
-];
-function nearestKnownCity(lat, lon) {
-  // Расстояние в км по формуле для небольших расстояний — точности хватает
-  const km = ([, la, lo]) => {
-    const dx = (lo - lon) * 111 * Math.cos((lat * Math.PI) / 180);
-    const dy = (la - lat) * 111;
-    return Math.hypot(dx, dy);
+function useWeatherCity() {
+  const [id, setId] = useState(readCityId);
+  const pick = (nid) => {
+    try { localStorage.setItem(CITY_KEY, nid); } catch {}
+    widgetsSetCity(nid, (WEATHER_CITIES.find((c) => c.id === nid) || WEATHER_CITIES[0]).city); // виджет погоды (только в приложении)
+    setId(nid);
   };
-  const best = KNOWN_CITIES.reduce((a, b) => (km(b) < km(a) ? b : a));
-  // Ближе 60 км — это тот самый город; дальше — честно пишем «рядом с»
-  return km(best) < 60 ? best[0] : `Рядом с г. ${best[0]}`;
+  return { id, city: (WEATHER_CITIES.find((c) => c.id === id) || WEATHER_CITIES[0]).city, pick };
 }
 
-// Название города по координатам, по-русски. Пробуем по очереди:
-// 1) BigDataCloud (city или locality), 2) OpenStreetMap (Nominatim),
-// 3) ближайший крупный город из списка выше. Пустым не бывает никогда
-async function cityByCoords(lat, lon, signal) {
-  const bdc = await withTimeout(
-    fetch("https://api.bigdatacloud.net/data/reverse-geocode-client" +
-      `?latitude=${lat}&longitude=${lon}&localityLanguage=ru`, { signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => (data && (data.city || data.locality)) || null)
-  );
-  if (bdc) return bdc;
-
-  const osm = await withTimeout(
-    fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=ru" +
-      `&lat=${lat}&lon=${lon}`, { signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const a = data && data.address;
-        return (a && (a.city || a.town || a.village || a.municipality)) || null;
-      })
-  );
-  if (osm) return osm;
-
-  return nearestKnownCity(lat, lon);
-}
-
-// Координаты округляем до сотых (≈1 км): для погоды точнее не нужно
-const round2 = (n) => Math.round(n * 100) / 100;
-
-/* Хук местоположения. Возвращает { city, lat, lon, source },
-   source — "geo" (геолокация), "ip" (по IP) или "default" (Казань). */
-/* Память на время работы страницы: экран «Сегодня» открывают много раз,
-   а город и погода за пару минут не меняются. Без неё каждый заход
-   заново спрашивал IP-сервис и сервис погоды */
-const AUTO_LOC_TTL = 30 * 60 * 1000; // город, определённый автоматически, — 30 минут
-let autoLocMemo = null;              // { loc, at }
-const weatherMemo = new Map();       // "lat,lon" → { at, data }
-const freshAutoLoc = () => (autoLocMemo && Date.now() - autoLocMemo.at < AUTO_LOC_TTL ? autoLocMemo.loc : null);
-
-function useLocation() {
-  // Город, выбранный вручную, важнее автоматики
-  const [manual, setManual] = useState(readManualCity);
-  const [loc, setLocState] = useState(() => freshAutoLoc() || DEFAULT_LOCATION);
-  // Найденный автоматически город запоминаем (см. autoLocMemo)
-  const setLoc = (l) => {
-    if (l && (l.source === "ip" || l.source === "geo")) autoLocMemo = { loc: l, at: Date.now() };
-    setLocState(l);
-  };
-
-  useEffect(() => {
-    if (manual) return; // выбран вручную — ничего не определяем
-    // Уже определили недавно точно (геолокация) — не спрашиваем снова.
-    // По IP — показываем сразу, но геолокацию всё равно пробуем: она точнее
-    const memo = freshAutoLoc();
-    if (memo?.source === "geo") return;
-    let cancelled = false;   // экран закрыли — больше ничего не обновляем
-    let geoWon = false;      // геолокация сработала — ответ по IP больше не нужен
-    let graceOver = false;   // прошли ли 1,5 секунды ожидания геолокации
-    let ipLoc = null;        // готовый ответ по IP, если уже пришёл
-    const ctrl = new AbortController(); // чтобы оборвать запросы при закрытии
-
-    // Ставим город по IP, только если: он уже пришёл, 1,5 секунды прошли
-    // и геолокация не успела победить
-    const applyIp = () => {
-      if (!cancelled && !geoWon && graceOver && ipLoc) setLoc(ipLoc);
-    };
-    const graceTimer = setTimeout(() => { graceOver = true; applyIp(); }, IP_GRACE_MS);
-
-    // Способ 1: по IP (несколько сервисов по очереди). Название города
-    // переспрашиваем по координатам — так оно по-русски
-    // Город по IP уже запомнен — второй раз IP-сервис не спрашиваем
-    (memo ? Promise.resolve(null) : ipLocation(ctrl.signal))
-      .then(async (ll) => {
-        if (!ll) return;
-        const lat = round2(ll.lat);
-        const lon = round2(ll.lon);
-        const city = await cityByCoords(lat, lon, ctrl.signal);
-        ipLoc = { city, lat, lon, source: "ip" };
-        applyIp();
-      })
-      .catch(() => { /* тихо: остаётся следующий по приоритету вариант */ });
-
-    // Способ 2: геолокация браузера. Если пользователь отказал или
-    // браузер не ответил за 6 секунд — тихо, остаётся IP или Казань
-    getBrowserPosition()
-      .then(async (pos) => {
-        if (cancelled) return;
-        geoWon = true; // с этого момента ответ по IP игнорируем
-        const lat = round2(pos.coords.latitude);
-        const lon = round2(pos.coords.longitude);
-        const city = await cityByCoords(lat, lon, ctrl.signal);
-        if (!cancelled) setLoc({ city, lat, lon, source: "geo" });
-      })
-      .catch(() => { /* отказ или нет геолокации — без ошибок и всплывашек */ });
-
-    return () => {
-      cancelled = true;
-      clearTimeout(graceTimer);
-      ctrl.abort();
-    };
-  }, [manual]);
-
-  // Выбрать город вручную (null — снова определять автоматически)
-  const pick = (c) => {
-    try {
-      if (c) localStorage.setItem(CITY_KEY, JSON.stringify({ city: c.city, lat: c.lat, lon: c.lon }));
-      else localStorage.removeItem(CITY_KEY);
-    } catch {}
-    widgetsSetCity(c); // виджет погоды на рабочем столе (только в приложении)
-    if (!c) setLoc(DEFAULT_LOCATION);
-    setManual(c ? { city: c.city, lat: c.lat, lon: c.lon, source: "manual" } : null);
-  };
-
-  return { ...(manual || loc), pick };
-}
-
-/* Выбор города: поле поиска и список вариантов прямо в карточке погоды.
-   Enter — первый вариант, Esc — отмена */
-function CityPicker({ onPick, onAuto, onClose, isManual }) {
-  const [q, setQ] = useState("");
-  const [state, setState] = useState({ loading: false, list: [], error: null });
-  useEffect(() => {
-    const text = q.trim();
-    if (text.length < 2) { setState({ loading: false, list: [], error: null }); return; }
-    const ctrl = new AbortController();
-    setState((st) => ({ ...st, loading: true, error: null }));
-    // Ищем через 300 мс после последней буквы, чтобы не слать запрос на каждую
-    const t = setTimeout(() => {
-      searchCities(text, ctrl.signal)
-        .then((list) => setState({ loading: false, list, error: null }))
-        .catch((e) => { if (e.name !== "AbortError") setState({ loading: false, list: [], error: "Не удалось найти — проверьте интернет" }); });
-    }, 300);
-    return () => { clearTimeout(t); ctrl.abort(); };
-  }, [q]);
-  const text = q.trim();
+/* Выбор города прямо в карточке погоды — только разрешённые города. Esc — отмена */
+function CityPicker({ current, onPick, onClose }) {
   return (
-    <div className="nx-pop" style={{ gridArea: "city", marginTop: 10 }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-      <form onSubmit={(e) => { e.preventDefault(); if (state.list[0]) onPick(state.list[0]); }} style={{ display: "flex", gap: 6 }}>
-        <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Введите город"
-          aria-label="Поиск города" style={{
-            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit", fontSize: 16,
-            border: "1px solid " + C.borderStrong, borderRadius: 10, padding: "8px 10px", outline: "none", boxSizing: "border-box",
-          }} />
+    <div className="nx-pop" role="group" aria-label="Город для погоды" style={{ gridArea: "city", marginTop: 10 }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {WEATHER_CITIES.map((c) => (
+          <button key={c.id} type="button" className="nx-ghost-btn" aria-pressed={c.id === current} onClick={() => onPick(c.id)} style={{
+            ...btnReset, padding: "8px 16px", fontSize: 14, borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6,
+            border: `1px solid ${c.id === current ? C.mint : C.borderStrong}`, color: C.text,
+          }}>
+            {c.id === current && Icon.check({ c: C.mint, s: 14 })} {c.city}
+          </button>
+        ))}
         <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Отмена" style={{
           ...btnReset, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
         }}>
           {Icon.close({ c: C.muted, s: 16 })}
         </button>
-      </form>
-      <div style={{ marginTop: 6 }}>
-        {state.loading && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, padding: "6px 2px" }}><Spinner /> Ищем…</div>}
-        {state.error && <div style={{ fontSize: 13, color: C.red, padding: "6px 2px" }}>{state.error}</div>}
-        {!state.loading && !state.error && text.length >= 2 && state.list.length === 0 && (
-          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "6px 2px" }}>Ничего не нашлось</div>
-        )}
-        {state.list.map((c) => (
-          <button key={c.lat + "," + c.lon} type="button" className="nx-row-btn" onClick={() => onPick(c)} style={{
-            ...btnReset, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "baseline", gap: 8,
-            padding: "8px 4px", borderBottom: "1px solid " + C.border, fontSize: 14,
-          }}>
-            <span>{c.city}</span>
-            <span style={{ fontSize: 12, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.region}</span>
-          </button>
-        ))}
-        {isManual && (
-          <button type="button" className="nx-link-btn" onClick={onAuto} style={{ ...btnReset, fontSize: 13, color: C.muted, padding: "8px 2px" }}>
-            Определять автоматически
-          </button>
-        )}
       </div>
+      <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6 }}>Погода доступна для этих городов</div>
     </div>
   );
 }
 
-/* Хук погоды. Возвращает { loading, error, now, tomorrow, refetch }.
-   now / tomorrow — null, пока ни разу не загрузилось (тогда экран берёт
-   заглушки). Если очередное обновление упало, остаются последние
-   удачные данные. Незаконченный запрос отменяется (AbortController),
-   когда начинается новый или экран закрывается. */
-function useWeather(lat, lon) {
-  const memoKey = `${lat},${lon}`;
+/* Хук погоды. Возвращает { loading, error, now, tomorrow, days, source, stale, offline, updatedAt, refetch }.
+   Сразу показывает последний сохранённый ответ (если есть), потом обновляет.
+   Не вышло (нет сети) — остаются сохранённые данные с пометкой offline.
+   Незаконченный запрос отменяется при новом и при закрытии экрана */
+const weatherMemo = new Map(); // id города → { at, data } — на время работы страницы
+function useWeather(cityId) {
   const memoOf = (k) => { const m = weatherMemo.get(k); return m && Date.now() - m.at < WEATHER_REFRESH_MS ? m : null; };
-  // Погода для этого места загружалась меньше 15 минут назад — показываем её сразу
-  const [state, setState] = useState(() => {
-    const m = memoOf(memoKey);
-    return m ? { loading: false, error: null, updatedAt: m.at, ...m.data } : { loading: true, error: null, now: null, tomorrow: null, days: null, updatedAt: null };
-  });
-  const ctrlRef = useRef(null); // текущий запрос — чтобы отменить его при новом
+  const initial = (k) => {
+    const m = memoOf(k);
+    if (m) return { loading: false, error: null, offline: false, updatedAt: m.at, ...m.data };
+    const saved = readSavedWeather(k);
+    if (saved) { try { return { loading: true, error: null, offline: false, updatedAt: saved.at, ...parseApiWeather(saved.json) }; } catch {} }
+    return { loading: true, error: null, offline: false, now: null, tomorrow: null, days: null, updatedAt: null };
+  };
+  const [state, setState] = useState(() => initial(cityId));
+  const ctrlRef = useRef(null);
 
   const load = () => {
     ctrlRef.current?.abort();
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
-    // Если сервис молчит дольше WEATHER_TIMEOUT_MS — прекращаем ждать
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, WEATHER_TIMEOUT_MS);
     setState((s) => ({ ...s, loading: true, error: null }));
-      fetch(weatherUrl(lat, lon), { signal: ctrl.signal, cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`ответ сервера ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        const w = parseWeather(data);
-        // Заодно кладём в общие данные — их читает ассистент
-        TODAY.weather = w;
+    fetchWeather(cityId, ctrl.signal)
+      .then((w) => {
+        TODAY.weather = w; // заодно для ассистента
         TODAY.weatherAt = Date.now();
-        weatherMemo.set(`${lat},${lon}`, { at: Date.now(), data: w });
-        setState({ loading: false, error: null, updatedAt: Date.now(), ...w });
+        weatherMemo.set(cityId, { at: Date.now(), data: w });
+        setState({ loading: false, error: null, offline: false, updatedAt: Date.now(), ...w });
       })
       .catch((err) => {
-        // Запрос отменили сами (новый запрос или ушли с экрана) — это не ошибка
-        if (err.name === "AbortError" && !timedOut) return;
-        // Подробности — в консоль браузера (F12 → Console), чтобы найти причину
-        console.warn("[NEXA] Погода не загрузилась:", err);
-        setState((s) => ({ ...s, loading: false, error: weatherErrorText(err, timedOut) }));
+        if (err.name === "AbortError" && !timedOut) return; // отменили сами — не ошибка
+        // Есть сохранённые данные — показываем их с пометкой «нет связи»
+        setState((s) => ({ ...s, loading: false, error: weatherErrorText(err, timedOut), offline: !!s.now }));
       })
       .finally(() => clearTimeout(timer));
   };
 
-  // Загружаем при открытии экрана и потом раз в 15 минут.
-  // loadRef всегда держит свежую load — с актуальными координатами
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => {
-    // Свежая погода уже есть (см. weatherMemo) — следующая загрузка, когда ей исполнится 15 минут
-    const m = memoOf(memoKey);
-    if (m) setState({ loading: false, error: null, updatedAt: m.at, ...m.data });
+    // Сменили город — сразу то, что есть по нему (память/сохранённое), и загрузка
+    setState(initial(cityId));
+    const m = memoOf(cityId);
     let id = 0;
     const first = setTimeout(() => {
       loadRef.current();
       id = setInterval(() => loadRef.current(), WEATHER_REFRESH_MS);
     }, m ? WEATHER_REFRESH_MS - (Date.now() - m.at) : 0);
-    // Потянули экран вниз в приложении (событие "nexa-refresh") — тоже обновляем
-    const onRefresh = () => loadRef.current();
-    window.addEventListener("nexa-refresh", onRefresh);
+    // Потянули экран вниз в приложении (событие "nexa-refresh") и вернулась сеть — тоже обновляем
+    const again = () => loadRef.current();
+    window.addEventListener("nexa-refresh", again);
+    window.addEventListener("online", again);
     return () => {
       clearTimeout(first);
       clearInterval(id);
-      window.removeEventListener("nexa-refresh", onRefresh);
+      window.removeEventListener("nexa-refresh", again);
+      window.removeEventListener("online", again);
       ctrlRef.current?.abort();
     };
-    // Перезагружаем погоду, когда меняется город (то есть координаты)
-  }, [lat, lon]);
+  }, [cityId]);
 
   return { ...state, refetch: load };
 }
@@ -3881,7 +3600,7 @@ function useWeather(lat, lon) {
      "inline" — список раскрывается под кнопкой (узкий экран и телефон);
      "aside"  — панель справа от погоды на всю высоту колонки (широкий экран),
                 с заголовком, кнопкой «закрыть» и своей прокруткой. */
-function ForecastList({ id, days, loading, error, onRetry, variant = "inline", onClose }) {
+function ForecastList({ id, days, loading, error, onRetry, variant = "inline", onClose, attribution }) {
   const aside = variant === "aside";
 
   // Что внутри: загрузка, ошибка или список дней
@@ -3911,7 +3630,6 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
     body = (
       <>
         {days.map((day, i) => {
-          const sky = weatherCodeToText(day.code);
           return (
             <div key={i} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", fontSize: 13,
@@ -3919,8 +3637,8 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
             }}>
               <div style={{ width: 86, flexShrink: 0, color: i < 2 ? C.text : C.muted }}>{forecastDayLabel(day.date, i)}</div>
               {/* Значок погоды: солнце, облака, дождь, снег, туман или гроза */}
-              <WeatherGlyph code={day.code} />
-              <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sky.text}</div>
+              <WeatherGlyph cond={day.cond} />
+              <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{day.text}</div>
               {/* Днём и ночью */}
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 {signed(day.max)}°<span style={{ color: C.mutedSoft }}> / {signed(day.min)}°</span>
@@ -3928,8 +3646,9 @@ function ForecastList({ id, days, loading, error, onRetry, variant = "inline", o
             </div>
           );
         })}
-        <div style={{ padding: "8px 14px 10px", fontSize: 12, color: C.mutedSoft, borderTop: `1px solid ${C.border}` }}>
-          Днём / ночью. Дальше 16 дней точного прогноза нет ни у одного сервиса.
+        <div style={{ padding: "8px 14px 10px", fontSize: 12, color: C.mutedSoft, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <span>Днём / ночью</span>
+          <WeatherAttribution w={attribution} />
         </div>
       </>
     );
@@ -4081,21 +3800,18 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
     </div>
   );
   // Сначала определяем город, потом по нему грузим погоду
-  const location = useLocation();
-  // Реальная погода; пока её нет (грузится или ошибка) — заглушки
-  const weather = useWeather(location.lat, location.lon);
+  const location = useWeatherCity();
+  // Настоящая погода с нашего сервера; пока её нет — «—» под вуалью (выдуманных цифр нет)
+  const weather = useWeather(location.id);
   const [pickingCity, setPickingCity] = useState(false); // открыт ли выбор города
-  // Город и координаты — в общие данные (для сводки ассистента)
-  useEffect(() => {
-    TODAY.city = location.city;
-    TODAY.lat = location.lat;
-    TODAY.lon = location.lon;
-  }, [location.city, location.lat, location.lon]);
+  // Город — в общие данные (для сводки ассистента)
+  useEffect(() => { TODAY.city = location.city; TODAY.cityId = location.id; }, [location.id]);
   const [forecastOpen, setForecastOpen] = useState(false); // раскрыт ли прогноз на 2 недели
-  const now = weather.now || WEATHER_FALLBACK.now;
-  const tomorrow = weather.tomorrow || WEATHER_FALLBACK.tomorrow;
-  const nowSky = weatherCodeToText(now.code);
-  const tomorrowSky = weatherCodeToText(tomorrow.code);
+  const now = weather.now;
+  const tomorrow = weather.tomorrow;
+  const nowSky = condLook(now?.cond);
+  const tomorrowSky = condLook(tomorrow?.cond);
+  const hm = (ms) => (ms ? new Date(ms).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—");
 
   // Тихая строка под карточкой: идёт обновление или не вышло обновить
   const statusLine = { fontSize: 12, color: C.mutedSoft };
@@ -4208,21 +3924,17 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
         </section>
 
         <div style={{ gridArea: "now" }}>
-            <WeatherCard title="Погода" date={formatWeatherDate(now.date)} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]}
+            <WeatherCard title="Погода" date={formatWeatherDate(now?.date || new Date())} city={location.city}
             onCity={() => setPickingCity(true)}
             cityPicker={pickingCity && (
-              <CityPicker
-                isManual={location.source === "manual"}
-                onClose={() => setPickingCity(false)}
-                onPick={(c) => { location.pick(c); setPickingCity(false); }}
-                onAuto={() => { location.pick(null); setPickingCity(false); }}
-              />
+              <CityPicker current={location.id} onClose={() => setPickingCity(false)}
+                onPick={(id) => { location.pick(id); setPickingCity(false); }} />
             )}
-            temp={now.temp} cond={nowSky.text} feels={now.feels} tone={nowSky.tone} rain={nowSky.rain}
+            temp={now?.temp ?? null} cond={now?.text ?? "—"} feels={now?.feels ?? null} tone={nowSky.tone} rain={nowSky.rain}
             details={[
-              { label: "Ветер", value: `${now.wind} м/с` },
-              { label: "Влажность", value: `${now.humidity} %` },
-              { label: "Давление", value: `${now.pressure} мм` },
+              { label: "Ветер", value: `${now?.wind ?? "—"} м/с` },
+              { label: "Влажность", value: `${now?.humidity ?? "—"} %` },
+              { label: "Давление", value: `${now?.pressure ?? "—"} мм` },
             ]}
             veil={veil}
             // Пока данных нет, о загрузке и ошибке говорит сама карточка (вуаль),
@@ -4247,23 +3959,27 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
                 : Icon.refresh({ c: C.muted, s: 14 })}
             </button>
 
-            {/* Что происходит: обновляемся, ошибка или «обновлено в 14:32» */}
-            <div role="status" style={statusLine}>
+            {/* Что происходит: обновляемся, нет связи (показаны сохранённые), источник недоступен или «обновлено в 14:32» */}
+            <div role="status" style={{ ...statusLine, flex: 1, minWidth: 0 }}>
               {weather.loading
                 ? "Обновление…"
-                : weather.error
-                  ? `Не удалось обновить: ${weather.error} · нажмите ↻`
-                  : weather.updatedAt
-                    ? `Обновлено в ${new Date(weather.updatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`
-                    : null}
+                : weather.offline
+                  ? `Нет связи — данные на ${hm(weather.updatedAt)}`
+                  : weather.error
+                    ? `Не удалось обновить: ${weather.error} · нажмите ↻`
+                    : weather.stale
+                      ? `Источник недоступен — последние данные на ${hm(weather.dataTime || weather.updatedAt)}`
+                      : `Обновлено в ${hm(weather.updatedAt)}`}
             </div>
+            <WeatherAttribution w={weather} style={{ flexShrink: 0 }} />
           </div>
             } />
         </div>
         <div style={{ gridArea: "next", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
-          <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow.date)}
-            temp={tomorrow.temp} cond={tomorrowSky.text} note={`Ночью ${signed(tomorrow.min)}°`} tone={tomorrowSky.tone} rain={tomorrowSky.rain}
-            veil={veil} grow />
+          <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow?.date || new Date(Date.now() + 86400000))}
+            temp={tomorrow?.temp ?? null} cond={tomorrow?.text ?? "—"} note={`Ночью ${signed(tomorrow?.min ?? null)}°`} tone={tomorrowSky.tone} rain={tomorrowSky.rain}
+            veil={veil} grow
+            footer={tomorrow && <div style={{ display: "flex", justifyContent: "flex-end" }}><WeatherAttribution w={weather} /></div>} />
         </div>
         <div style={{ gridArea: "month", alignSelf: "end" }}>
           <button type="button" className="nx-ghost-btn"
@@ -4286,7 +4002,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
           {forecastOpen && (
             <div className="nx-fc-inline">
               <ForecastList id="nx-forecast" days={weather.days} loading={weather.loading}
-                error={weather.error} onRetry={weather.refetch} />
+                error={weather.error} onRetry={weather.refetch} attribution={weather} />
             </div>
           )}
         </div>
@@ -4302,7 +4018,7 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
           }}>
             <div style={{ position: "absolute", inset: 0 }}>
               <ForecastList id="nx-forecast-side" variant="aside" days={weather.days} loading={weather.loading}
-                error={weather.error} onRetry={weather.refetch} onClose={() => setForecastOpen(false)} />
+                error={weather.error} onRetry={weather.refetch} onClose={() => setForecastOpen(false)} attribution={weather} />
             </div>
           </div>
         )}
@@ -7680,7 +7396,7 @@ async function buildTodaySummary() {
   const date = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
   const lines = [`**${date.charAt(0).toUpperCase() + date.slice(1)}.**`];
   lines.push(w
-    ? `${TODAY.city !== "—" ? `${TODAY.city}: ` : "Сейчас "}${signed(w.now.temp)}°, ${weatherCodeToText(w.now.code).text.toLowerCase()}, ощущается как ${signed(w.now.feels)}°.`
+    ? `${TODAY.city}: ${signed(w.now.temp)}°, ${String(w.now.text || "").toLowerCase()}, ощущается как ${signed(w.now.feels)}°. ${w.attribution?.text || ""}${w.stale ? " (последние сохранённые данные)" : ""}.`
     : "Погоду сейчас загрузить не получилось.");
   const total = `${items.length} ${plural(items.length, ["дело", "дела", "дел"])}`;
   lines.push(!items.length
@@ -7844,7 +7560,7 @@ function useMediaQuery(query) {
   return match;
 }
 
-function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, mobile, open, onClose, account, sync, onSettings }) {
+function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, mobile, open, onClose, account, sync, onSettings, leaving }) {
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(null);         // меню диалога: { id, top | bottom, right, confirm }
   const [renaming, setRenaming] = useState(null); // { id, text } — строка превратилась в поле
@@ -7976,7 +7692,7 @@ function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, 
 
   const panel = (
     <aside
-      className={`nx-hist${mobile ? " nx-hist-drawer" : ""}${open ? " is-open" : ""}${dx ? " is-dragging" : ""}`}
+      className={`nx-hist${mobile ? " nx-hist-drawer" : " nx-hist-col"}${open ? " is-open" : ""}${dx ? " is-dragging" : ""}${leaving ? " is-leaving" : ""}`}
       // На телефоне открытая шторка — окно: «Назад» закроет её через Esc
       role={mobile && open ? "dialog" : undefined}
       aria-modal={mobile && open ? "true" : undefined}
@@ -8241,7 +7957,16 @@ useEffect(() => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   // Компьютер: колонку истории можно скрыть крестиком (запоминаем в браузере)
   const [histHidden, setHistHiddenState] = useState(() => { try { return localStorage.getItem("nexa-hist-hidden") === "1"; } catch { return false; } });
-  const setHistHidden = (v) => { setHistHiddenState(v); try { localStorage.setItem("nexa-hist-hidden", v ? "1" : "0"); } catch {} };
+  const setHistHiddenNow = (v) => { setHistHiddenState(v); try { localStorage.setItem("nexa-hist-hidden", v ? "1" : "0"); } catch {} };
+  // Скрыть колонку истории — сначала короткая анимация ухода (уезжает влево), потом убираем.
+  // Показать — колонка появляется и выезжает (CSS .nx-hist-col)
+  const [histLeaving, setHistLeaving] = useState(false);
+  const setHistHidden = (v) => {
+    if (!v) { setHistLeaving(false); setHistHiddenNow(false); return; }
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setHistHiddenNow(true); return; }
+    setHistLeaving(true);
+    setTimeout(() => { setHistLeaving(false); setHistHiddenNow(true); }, 220);
+  };
   // Свайп вправо на экране ассистента открывает историю (см. useTabSwipe в NexaApp)
   useEffect(() => {
     const open = () => setIsHistoryOpen(true);
@@ -8890,6 +8615,7 @@ const menuBlock = (
       mobile={mobile}
       open={isHistoryOpen}
       onClose={() => (mobile ? setIsHistoryOpen(false) : setHistHidden(true))}
+      leaving={!mobile && histLeaving}
       onOpen={(id) => { openChat(id); setIsHistoryOpen(false); }}
       onNew={() => { newChat(); setIsHistoryOpen(false); }}
       onDelete={deleteChat}
@@ -11033,42 +10759,30 @@ function useAccountSettings(uid, notePrefs, setNotePrefs, onPushed) {
 function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   const kind = systemNotifyKind();
   const sysOn = perm === "granted";
+  // Один переключатель на все категории (по просьбе автора). Внутри прежние поля:
+  // включено — app у всех категорий; системные — там, где их разрешило устройство
+  const on = NOTE_CATS.some((c) => prefs[c.id]?.app);
+  const flipAll = () => setPrefs(() => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { app: !on, system: !on && sysOn }])));
   const where = kind === "none"
-    ? "На сайте в телефоне браузер их не показывает — уведомления только внутри NEXA. Системные есть в приложении NEXA для Android"
+    ? "В браузере телефона — только внутри NEXA. Системные есть в приложении для Android"
     : kind === "web"
-      ? "Браузер покажет их, пока вкладка NEXA открыта (можно свёрнутой). Закрытая вкладка ничего не присылает"
-      : "Приходят, пока приложение запущено. Напоминания о делах ставятся заранее и придут, даже если NEXA закрыта (в режиме экономии Android может их задержать)";
-  // Системные «включены», если включены хоть у одной категории
-  const sysAll = sysOn && NOTE_CATS.some((c) => prefs[c.id]?.app && prefs[c.id]?.system);
-  // Категория: вкл/выкл целиком; при включении системные — как общий переключатель
-  const flipCat = (id) => setPrefs((p) => {
-    const on = !p[id]?.app;
-    return { ...p, [id]: { app: on, system: on && sysAll } };
-  });
-  // Общий переключатель системных — сразу для всех включённых категорий
-  const flipSystem = () => setPrefs((p) => {
-    const next = { ...p };
-    for (const c of NOTE_CATS) next[c.id] = { ...p[c.id], system: !sysAll && !!p[c.id]?.app };
-    return next;
-  });
-  const permRight = kind === "none" ? <span style={{ fontSize: 13, color: C.mutedSoft }}>Недоступны</span>
-    : perm === "granted" ? <Toggle on={sysAll} onClick={flipSystem} label="Системные уведомления" />
-    : perm === "denied" ? <span style={{ fontSize: 13, color: C.red, maxWidth: 220, textAlign: "right", lineHeight: 1.35 }}>Запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
-    : <button type="button" className="nx-ghost-btn" onClick={onAsk} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Разрешить</button>;
+      ? "Ещё и системные — пока вкладка NEXA открыта (можно свёрнутой)"
+      : "Ещё и системные. Напоминания о делах придут, даже если NEXA закрыта";
+  const sysLine = kind === "none" ? null
+    : perm === "granted" ? <span style={{ color: C.green }}>Системные разрешены</span>
+    : perm === "denied" ? <span style={{ color: C.red }}>Системные запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
+    : <button type="button" className="nx-link-btn" onClick={onAsk} style={{ ...btnReset, fontSize: 13, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>Разрешить системные</button>;
   return (
     <div id="nx-note-settings" style={{ scrollMarginTop: 80 }}>
       <SectionTitle>Уведомления</SectionTitle>
-      <div style={{ fontSize: T.fs.sub, color: C.muted, lineHeight: 1.45, margin: `-${T.sp[1]}px 0 ${T.sp[3]}px`, maxWidth: 640, textAlign: "left" }}>
-        {account
-          ? "О чём уведомлять — одинаково на всех ваших устройствах. Системные уведомления у каждого устройства свои: их разрешает само устройство"
-          : "Переключатели запоминаются в этом браузере. Войдите — и они будут одинаковыми на всех ваших устройствах"}
-      </div>
       <SettingsGroup>
-        <SettingsRow wrap icon={Icon.bell({ c: C.muted, s: 18 })} title="Системные уведомления" subtitle={where} right={permRight} />
-        {NOTE_CATS.map((c, i) => (
-          <SettingsRow key={c.id} last={i === NOTE_CATS.length - 1} icon={c.icon({ c: C.muted, s: 18 })} title={c.label} subtitle={c.sub}
-            right={<Toggle on={!!prefs[c.id]?.app} onClick={() => flipCat(c.id)} label={c.label} />} />
-        ))}
+        <SettingsRow last icon={Icon.bell({ c: C.muted, s: 18 })} title="Уведомления"
+          subtitle={<>
+            {on ? `Файлы, текст и ссылки, устройства, синхронизация, расписание, обновления. ${where}` : "Выключены — NEXA ничего не показывает"}
+            {on && sysLine && <span style={{ display: "block", marginTop: 6 }}>{sysLine}</span>}
+            {account && <span style={{ display: "block", marginTop: 6, color: C.mutedSoft }}>Одинаково на всех ваших устройствах</span>}
+          </>}
+          right={<Toggle on={on} onClick={flipAll} label="Уведомления" />} />
       </SettingsGroup>
     </div>
   );
@@ -11241,7 +10955,7 @@ function useKeyboardViewport() {
    в 24 px от края экрана (там системный «Назад»), при открытой клавиатуре.
    getCtx() → { tab, sub } (sub — открыт экран устройства или «Активность»);
    onSwipe(dir) — dir: "next" (палец влево) | "prev" (палец вправо) */
-const SWIPE_ORDER = ["home", "assistant", "today", "media", "files"]; // как в нижней панели
+const SWIPE_ORDER = ["assistant", "today", "home", "media", "files"]; // как в нижней панели
 const SWIPE_MIN = 60, SWIPE_FLICK_MIN = 30, SWIPE_FLICK_SPEED = 0.5, SWIPE_FLICK_MS = 300, SWIPE_EDGE = 24, SWIPE_RATIO = 1.5;
 const SWIPE_SKIP = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe], [role="dialog"], [role="menu"], .nx-notes, .nx-viewer, .nx-hist-drawer';
 // Внутри горизонтально прокручиваемого блока свайп — это прокрутка блока
@@ -11512,6 +11226,14 @@ export default function NexaApp() {
     setNotePerm(p);
     if (p === "granted") setNotePrefs((prev) => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { ...prev[c.id], system: !!prev[c.id]?.app }])));
   };
+  // Переключатель уведомлений один: если система их разрешила (в том числе раньше, без нашей кнопки),
+  // системные идут вместе с уведомлениями в NEXA — system = app
+  useEffect(() => {
+    if (notePerm !== "granted") return;
+    setNotePrefs((prev) => NOTE_CATS.some((c) => !!prev[c.id]?.system !== !!prev[c.id]?.app)
+      ? Object.fromEntries(NOTE_CATS.map((c) => [c.id, { ...prev[c.id], system: !!prev[c.id]?.app }]))
+      : prev);
+  }, [notePerm, notePrefs]);
   const openTargetRef = useRef(null); // ставится ниже, когда готовы переходы
   const realRowRef = useRef(() => null); // запись устройства по device_id — ставится ниже
 
@@ -11620,7 +11342,7 @@ export default function NexaApp() {
      Город для виджета погоды — выбранный в NEXA (не выбран — Казань) */
   useEffect(() => { widgetsSetSchedule(schedule); }, [schedule]);
   useEffect(() => {
-    widgetsSetCity(readManualCity());
+    { const cid = readCityId(); widgetsSetCity(cid, (WEATHER_CITIES.find((c) => c.id === cid) || WEATHER_CITIES[0]).city); }
     const away = () => { if (document.visibilityState === "hidden") widgetsFlush(); };
     document.addEventListener("visibilitychange", away);
     return () => document.removeEventListener("visibilitychange", away);
@@ -12478,6 +12200,14 @@ export default function NexaApp() {
 
   // Переход по меню закрывает и экран устройства
   const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setTab(t); };
+  // Переход по меню (боковое на компьютере, нижняя панель на телефоне): новый раздел
+  // въезжает с той стороны, где он стоит в меню — как при свайпе (тот же body[data-swipe])
+  const navTo = (t) => {
+    const order = matchMedia(PHONE_MQ).matches ? SWIPE_ORDER : NAV.map((n) => n.id);
+    const a = order.indexOf(tab), b = order.indexOf(t);
+    if (a >= 0 && b >= 0 && a !== b) setSwipeDir(b > a ? "next" : "prev");
+    goTab(t);
+  };
   // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
   useEffect(() => onSharedText((text) => setFlowSend({ text })), []);
   // Нажали на виджет рабочего стола: «Расписание» → «Сегодня», «Погода» → Главная
@@ -12511,7 +12241,7 @@ export default function NexaApp() {
   // Направление нужно только для въезда нового экрана — потом сбрасываем
   useEffect(() => {
     if (!swipeDir) return;
-    const t = setTimeout(() => setSwipeDir(null), 260);
+    const t = setTimeout(() => setSwipeDir(null), 340);
     return () => clearTimeout(t);
   }, [swipeDir, tab]);
   useEffect(() => onWidgetTab((t) => goTabRef.current(t)), []);
@@ -13305,6 +13035,13 @@ export default function NexaApp() {
           background: color-mix(in srgb, var(--bg) 72%, transparent);
         }
         @media (max-width: 1100px) { .nx-hist { width: 232px; padding: 28px 12px 16px; } }
+        /* Колонка истории (компьютер): выезжает слева, а чат плавно сдвигается — анимируем отступ.
+           При скрытии — уезжает обратно (is-leaving), потом колонку убирают */
+        @keyframes nx-hist-in { from { margin-left: -272px; opacity: 0; } to { margin-left: 0; opacity: 1; } }
+        @keyframes nx-hist-out { from { margin-left: 0; opacity: 1; } to { margin-left: -272px; opacity: 0; } }
+        .nx-hist-col { animation: nx-hist-in 280ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-hist-col.is-leaving { animation: nx-hist-out 220ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+        @media (prefers-reduced-motion: reduce) { .nx-hist-col, .nx-hist-col.is-leaving { animation: none; } }
         /* Крестик на компьютере — маленький круг */
         @media ${DESKTOP_MQ} { .nx-hist-close { width: 28px !important; height: 28px !important; } }
         .nx-hist-head { display: flex; align-items: center; justify-content: space-between; min-height: 18px; }
@@ -13420,13 +13157,13 @@ export default function NexaApp() {
 }
   /* Переход свайпом: новый раздел коротко въезжает сбоку (200 мс).
      next — пришёл справа (листали влево), prev — слева */
-  body[data-swipe="next"] .ng-screen-anim, body[data-swipe="next"] .ng-assistant-anim { animation: nx-swipe-next 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-  body[data-swipe="prev"] .ng-screen-anim, body[data-swipe="prev"] .ng-assistant-anim { animation: nx-swipe-prev 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  body[data-swipe="next"] .ng-screen-anim, body[data-swipe="next"] .ng-assistant-anim { animation: nx-swipe-next 320ms cubic-bezier(0.16, 1, 0.3, 1); }
+  body[data-swipe="prev"] .ng-screen-anim, body[data-swipe="prev"] .ng-assistant-anim { animation: nx-swipe-prev 320ms cubic-bezier(0.16, 1, 0.3, 1); }
   /* Телефон: горизонтальное движение пальца браузер отдаёт нам (вертикальная
      прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
   @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
-  @keyframes nx-swipe-next { from { opacity: 0; transform: translateX(56px); } to { opacity: 1; transform: none; } }
-  @keyframes nx-swipe-prev { from { opacity: 0; transform: translateX(-56px); } to { opacity: 1; transform: none; } }
+  @keyframes nx-swipe-next { from { opacity: 0; transform: translateX(72px); } to { opacity: 1; transform: none; } }
+  @keyframes nx-swipe-prev { from { opacity: 0; transform: translateX(-72px); } to { opacity: 1; transform: none; } }
   /* Без движения — экран просто меняется */
   @media (prefers-reduced-motion: reduce) {
     body[data-swipe] .ng-screen-anim, body[data-swipe] .ng-assistant-anim { animation: none; }
@@ -14249,12 +13986,8 @@ export default function NexaApp() {
             z-index: 50 !important;
             gap: 2px !important;
           }
-          /* Макет 2026-10: поиск и профиль — крупные, между ними тонкая черта; профиль — в круге.
-             Молния и колокольчик — меньше (по просьбе автора) */
+          /* Макет 2026-10: поиск и профиль — крупнее; молния и колокольчик — меньше (по просьбе автора) */
           .ng-topbar > [aria-label="Поиск"] svg, .ng-topbar > [aria-label="Настройки"] svg { width: 22px !important; height: 22px !important; }
-          .ng-topbar > [aria-label="Настройки"] { position: relative; margin-left: 9px; width: 36px !important; height: 36px !important; }
-          .ng-topbar > [aria-label="Настройки"]::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 1px; background: var(--line-bright); }
-          .ng-topbar > [aria-label="Настройки"] svg { box-sizing: border-box; border: 1.4px solid var(--text); border-radius: 50%; padding: 3px; width: 28px !important; height: 28px !important; }
           .ng-topbar > [aria-label="Быстрые действия"] svg, .ng-topbar > div > [aria-label^="Уведомления"] svg { width: 15px !important; height: 15px !important; }
 
            /* Поле ввода: 16px, чтобы iPhone не приближал страницу при вводе */
@@ -14343,8 +14076,8 @@ export default function NexaApp() {
       {/* Это устройство ищут */}
       {locked && <LockOverlay from={locked.from} onUnlock={unlockSelf} />}
       {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
-      <Sidebar active={tab} onChange={goTab} />
-          <MobileTabBar active={tab} onChange={goTab} />
+      <Sidebar active={tab} onChange={navTo} />
+          <MobileTabBar active={tab} onChange={navTo} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
         {/* На экране "Ассистент" своя правая панель вместо обычной

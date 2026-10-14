@@ -9,7 +9,7 @@
     <string name="widget_schedule_open_app">Откройте NEXA, чтобы виджет увидел расписание</string>
 
     <string name="widget_weather_name">NEXA · Погода</string>
-    <string name="widget_weather_desc">Погода в городе из настроек NEXA (по умолчанию Казань). Данные: Open-Meteo.com</string>
+    <string name="widget_weather_desc">Погода в городе из настроек NEXA (по умолчанию Казань). По данным Gismeteo (резерв — Open-Meteo)</string>
     <string name="widget_weather_loading">Загружаем погоду…</string>
     <string name="widget_weather_need_net">Нужен интернет</string>
 </resources>

@@ -241,9 +241,11 @@ export function widgetsSetSchedule(list, force = false) {
 }
 
 // Город из настроек NEXA: { city, lat, lon } или null (не выбран — Казань)
-export function widgetsSetCity(c) {
+// Город погоды для виджета: id из разрешённых (kazan, moscow…), название для подписи
+// и адрес нашего сервера — виджет сам берёт погоду с <api>/api/weather?city=<id>
+export function widgetsSetCity(id, name) {
   if (!isNative) return;
-  NexaWidgets.setCity(c ? { city: c.city, lat: c.lat, lon: c.lon } : { city: null }).catch(() => {});
+  NexaWidgets.setCity({ id: id || "kazan", city: name || null, api: API_BASE || "https://nexa-link.ru" }).catch(() => {});
 }
 
 // Приложение уходит в фон: ещё раз отдать расписание и перерисовать виджеты

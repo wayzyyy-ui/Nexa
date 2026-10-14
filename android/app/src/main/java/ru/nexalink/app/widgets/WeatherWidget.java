@@ -19,7 +19,8 @@ import ru.nexalink.app.R;
 /**
  * Виджет «Погода»: 2 × 2 (компактный) и 4 × 2 (широкий) — один виджет,
  * раскладка меняется по ширине. Город, температура, состояние, минимум
- * и максимум на день, время обновления. Нажатие открывает Главную.
+ * и максимум на день, время обновления, подпись источника (нажатие на неё — сайт
+ * источника, Gismeteo или Open-Meteo). Нажатие на остальной виджет открывает Главную.
  * Данные — последняя удачная погода из WidgetStore (её обновляет WeatherWorker).
  */
 public class WeatherWidget extends AppWidgetProvider {
@@ -78,13 +79,18 @@ public class WeatherWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.weather_range, "");
             v.setTextViewText(R.id.weather_updated, c.getString(R.string.widget_weather_need_net));
             v.setImageViewResource(R.id.weather_icon, R.drawable.ic_widget_cloud);
+            v.setViewVisibility(R.id.weather_attr, android.view.View.GONE);
         } else {
             v.setTextViewText(R.id.weather_city, w.city);
             v.setTextViewText(R.id.weather_temp, signed(w.temp) + "°");
-            v.setTextViewText(R.id.weather_sky, Widgets.weatherText(w.code));
+            v.setTextViewText(R.id.weather_sky, w.text);
             v.setTextViewText(R.id.weather_range, "↓ " + signed(w.min) + "°   ↑ " + signed(w.max) + "°");
-            v.setTextViewText(R.id.weather_updated, updatedText(w.updatedAt));
-            v.setImageViewResource(R.id.weather_icon, Widgets.weatherIcon(w.code));
+            v.setTextViewText(R.id.weather_updated, updatedText(w.updatedAt) + (w.stale ? " · сохранённые" : ""));
+            v.setImageViewResource(R.id.weather_icon, Widgets.weatherIcon(w.cond));
+            // Обязательная подпись источника («По данным Gismeteo»); нажатие — сайт источника
+            v.setViewVisibility(R.id.weather_attr, w.attrText.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE);
+            v.setTextViewText(R.id.weather_attr, w.attrText);
+            v.setOnClickPendingIntent(R.id.weather_attr, Widgets.openSource(c, w.attrUrl, 3));
         }
         v.setOnClickPendingIntent(R.id.widget_root, Widgets.openApp(c, "home", 2));
         return v;

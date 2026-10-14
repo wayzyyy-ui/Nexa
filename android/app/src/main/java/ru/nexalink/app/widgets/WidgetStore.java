@@ -10,20 +10,22 @@ import org.json.JSONObject;
  * Общее хранилище виджетов NEXA — SharedPreferences «nexa_widgets».
  *
  * Сюда пишут: веб-часть приложения через плагин NexaWidgets (расписание и город)
- * и фоновая задача WeatherWorker (погода и координаты города).
+ * и фоновая задача WeatherWorker (погода).
  * Отсюда читают виджеты — поэтому они показывают данные, даже когда
  * само приложение закрыто.
  *
  * Ключи:
  *   schedule      — JSON-массив дел [{date "2026-10-12", time "09:30", title}]
  *   schedule_at   — когда расписание пришло из приложения (мс; 0 — ещё ни разу)
- *   city, city_lat, city_lon — город из настроек NEXA (нет — Казань)
- *   geo_name, geo_lat, geo_lon — найденные геокодером координаты города
+ *   city_id, city — город из настроек NEXA: id для /api/weather и название (нет — Казань)
+ *   api_base      — адрес сервера NEXA (погода — <api_base>/api/weather?city=<id>)
  *   weather       — последняя успешная погода (JSON, см. WeatherData)
  */
 public final class WidgetStore {
     private static final String PREFS = "nexa_widgets";
     public static final String DEFAULT_CITY = "Казань";
+    public static final String DEFAULT_CITY_ID = "kazan";
+    public static final String DEFAULT_API = "https://nexa-link.ru";
 
     private WidgetStore() {}
 
@@ -52,8 +54,8 @@ public final class WidgetStore {
         return prefs(c).getLong("schedule_at", 0) > 0;
     }
 
-    /* ─── Город ─── */
-    /** Город из настроек NEXA; null — не выбран (тогда Казань) */
+    /* ─── Город и сервер ─── */
+    /** Название города из настроек NEXA; null — не выбран (тогда Казань) */
     public static String city(Context c) {
         return prefs(c).getString("city", null);
     }
@@ -63,52 +65,25 @@ public final class WidgetStore {
         return city == null || city.trim().isEmpty() ? DEFAULT_CITY : city;
     }
 
+    /** id города для /api/weather (kazan, moscow…); нет — kazan */
+    public static String cityId(Context c) {
+        return prefs(c).getString("city_id", DEFAULT_CITY_ID);
+    }
+
+    /** Адрес сервера NEXA, откуда брать погоду (https) */
+    public static String apiBase(Context c) {
+        return prefs(c).getString("api_base", DEFAULT_API);
+    }
+
     /** true — город поменялся (нужно обновить погоду) */
-    public static boolean saveCity(Context c, String city, Double lat, Double lon) {
-        String old = city(c);
-        boolean changed = old == null ? city != null : !old.equals(city);
-        SharedPreferences.Editor e = prefs(c).edit();
-        if (city == null) {
-            e.remove("city").remove("city_lat").remove("city_lon");
-        } else {
-            e.putString("city", city);
-            if (lat != null && lon != null) {
-                e.putString("city_lat", String.valueOf(lat)).putString("city_lon", String.valueOf(lon));
-                changed = changed || !String.valueOf(lat).equals(prefs(c).getString("city_lat", ""));
-            } else {
-                e.remove("city_lat").remove("city_lon");
-            }
-        }
+    public static boolean saveCity(Context c, String id, String name, String api) {
+        boolean changed = !id.equals(cityId(c)) || (api != null && !api.equals(apiBase(c)));
+        SharedPreferences.Editor e = prefs(c).edit().putString("city_id", id);
+        if (name != null) e.putString("city", name); else e.remove("city");
+        if (api != null) e.putString("api_base", api);
+        if (changed) e.remove("weather"); // погода прежнего города больше не подходит
         e.apply();
         return changed;
-    }
-
-    /** Координаты города: из настроек NEXA или из кэша геокодера. null — не известны */
-    public static double[] coords(Context c, String city) {
-        SharedPreferences p = prefs(c);
-        if (city.equals(city(c)) && p.contains("city_lat")) {
-            return parse(p.getString("city_lat", null), p.getString("city_lon", null));
-        }
-        if (city.equals(p.getString("geo_name", null))) {
-            return parse(p.getString("geo_lat", null), p.getString("geo_lon", null));
-        }
-        return null;
-    }
-
-    public static void saveGeo(Context c, String city, double lat, double lon) {
-        prefs(c).edit()
-                .putString("geo_name", city)
-                .putString("geo_lat", String.valueOf(lat))
-                .putString("geo_lon", String.valueOf(lon))
-                .apply();
-    }
-
-    private static double[] parse(String lat, String lon) {
-        try {
-            return new double[] { Double.parseDouble(lat), Double.parseDouble(lon) };
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     /* ─── Погода ─── */

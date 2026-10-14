@@ -88,34 +88,23 @@ public final class Widgets {
     }
 
     /* ─── Погода словами и значком (те же коды WMO, что на сайте) ─── */
-    static String weatherText(int code) {
-        if (code == 0) return "Ясно";
-        if (code == 1) return "Почти ясно";
-        if (code == 2) return "Переменная облачность";
-        if (code == 3) return "Пасмурно";
-        if (code == 45 || code == 48) return "Туман";
-        if (code >= 51 && code <= 55) return "Морось";
-        if (code == 56 || code == 57) return "Ледяная морось";
-        if (code == 61 || code == 63) return "Дождь";
-        if (code == 65) return "Сильный дождь";
-        if (code == 66 || code == 67) return "Ледяной дождь";
-        if (code == 71 || code == 73) return "Снег";
-        if (code == 75) return "Сильный снег";
-        if (code == 77) return "Снежная крупа";
-        if (code >= 80 && code <= 82) return "Ливень";
-        if (code == 85 || code == 86) return "Снегопад";
-        if (code == 95) return "Гроза";
-        if (code == 96 || code == 99) return "Гроза с градом";
-        return "Облачно";
+    /** Значок по коду состояния NEXA (cond из /api/weather) */
+    static int weatherIcon(String cond) {
+        if ("sun".equals(cond)) return R.drawable.ic_widget_clear;
+        if ("partly".equals(cond)) return R.drawable.ic_widget_partly;
+        if ("fog".equals(cond)) return R.drawable.ic_widget_fog;
+        if ("snow".equals(cond)) return R.drawable.ic_widget_snow;
+        if ("storm".equals(cond)) return R.drawable.ic_widget_storm;
+        if ("rain".equals(cond) || "sleet".equals(cond)) return R.drawable.ic_widget_rain;
+        return R.drawable.ic_widget_cloud;
     }
 
-    static int weatherIcon(int code) {
-        if (code == 0 || code == 1) return R.drawable.ic_widget_clear;
-        if (code == 2) return R.drawable.ic_widget_partly;
-        if (code == 45 || code == 48) return R.drawable.ic_widget_fog;
-        if ((code >= 71 && code <= 77) || code == 85 || code == 86) return R.drawable.ic_widget_snow;
-        if (code >= 95) return R.drawable.ic_widget_storm;
-        if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return R.drawable.ic_widget_rain;
-        return R.drawable.ic_widget_cloud;
+    /** Подпись источника: открыть его сайт во внешнем браузере. Только известные адреса */
+    static PendingIntent openSource(Context c, String url, int requestCode) {
+        String safe = url != null && (url.startsWith("https://www.gismeteo.ru") || url.startsWith("https://open-meteo.com"))
+                ? url : "https://www.gismeteo.ru";
+        Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(safe));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return PendingIntent.getActivity(c, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }

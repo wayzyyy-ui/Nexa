@@ -76,6 +76,18 @@
                 android:text=""
                 android:textColor="@color/widget_muted"
                 android:textSize="11sp" android:layout_marginTop="2dp" />
+            <TextView
+                android:id="@+id/weather_attr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text=""
+                android:textColor="@color/widget_muted"
+                android:textSize="10sp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
     <!-- Уголок-складка NEXA — внутри полей: лаунчеры Android 12+ скругляют углы виджета сами -->
