@@ -8,8 +8,8 @@ import android.content.Context;
  */
 public interface WeatherSource {
 
-    /** Погода города (id из разрешённых: kazan, moscow…). Бросает исключение, если не вышло. */
-    WeatherData load(String cityId, String cityName) throws Exception;
+    /** Погода: query — «lat=…&lon=…» или «city=kazan». Бросает исключение, если не вышло. */
+    WeatherData load(String query, String cityName) throws Exception;
 
     static WeatherSource current(Context c) {
         return new NexaApiSource(WidgetStore.apiBase(c));

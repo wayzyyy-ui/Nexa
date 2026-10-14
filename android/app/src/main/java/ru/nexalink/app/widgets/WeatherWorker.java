@@ -8,7 +8,7 @@ import androidx.work.WorkerParameters;
 
 /**
  * Фоновое обновление погоды для виджета (WorkManager).
- * Город — из настроек NEXA (id из разрешённых), иначе Казань. Погода — с нашего сервера
+ * Город — из настроек NEXA (координаты), иначе Казань. Погода — с нашего сервера
  * /api/weather (Gismeteo, резерв Open-Meteo). Не вышло (нет сети, сервер молчит) — виджет
  * продолжает показывать последнюю удачную погоду с её временем.
  */
@@ -23,7 +23,7 @@ public class WeatherWorker extends Worker {
     public Result doWork() {
         Context c = getApplicationContext();
         try {
-            WidgetStore.saveWeather(c, WeatherSource.current(c).load(WidgetStore.cityId(c), WidgetStore.cityOrDefault(c)));
+            WidgetStore.saveWeather(c, WeatherSource.current(c).load(WidgetStore.weatherQuery(c), WidgetStore.cityOrDefault(c)));
             Widgets.updateWeather(c);
             return Result.success();
         } catch (Exception e) {

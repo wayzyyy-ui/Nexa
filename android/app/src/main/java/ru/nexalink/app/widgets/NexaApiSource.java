@@ -7,10 +7,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 
 /**
- * Погода для виджета — с нашего сервера NEXA: GET <api>/api/weather?city=<id>.
+ * Погода для виджета — с нашего сервера NEXA: GET <api>/api/weather?lat=…&lon=… (или ?city=kazan).
  * Сам сервер берёт данные у Gismeteo (токен только на сервере), а если Gismeteo
  * недоступен — отдаёт последние сохранённые или Open-Meteo. Источник и его подпись
  * приходят в ответе (source, attribution) — виджет показывает именно их.
@@ -23,9 +22,10 @@ public final class NexaApiSource implements WeatherSource {
     }
 
     @Override
-    public WeatherData load(String cityId, String cityName) throws Exception {
+    public WeatherData load(String query, String cityName) throws Exception {
         if (!base.startsWith("https://")) throw new IllegalStateException("only https");
-        URL url = new URL(base + "/api/weather?city=" + URLEncoder.encode(cityId, "UTF-8"));
+        if (!query.matches("(city=[a-z]{2,20}|lat=-?[0-9.]+&lon=-?[0-9.]+)")) throw new IllegalArgumentException("query");
+        URL url = new URL(base + "/api/weather?" + query);
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
         c.setConnectTimeout(10000);
         c.setReadTimeout(10000);
@@ -40,7 +40,8 @@ public final class NexaApiSource implements WeatherSource {
             JSONObject attr = o.optJSONObject("attribution");
             JSONObject city = o.optJSONObject("city");
             return new WeatherData(
-                    city != null ? city.optString("name", cityName) : cityName,
+                    // Своё название города важнее: по координатам сервер знает лишь ближайший пункт
+                    cityName != null ? cityName : city != null && !city.isNull("name") ? city.optString("name", "Казань") : "Казань",
                     now.getInt("temp"), now.optString("cond", "cloud"), now.optString("text", ""),
                     today.getInt("min"), today.getInt("max"), System.currentTimeMillis(),
                     o.optString("source", ""), attr != null ? attr.optString("text", "") : "",

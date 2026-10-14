@@ -19,7 +19,7 @@ import org.json.JSONObject;
  * setSchedule({ items: [{ date, time, title }] }) — расписание для виджета
  *     (то же, что на экране «Сегодня»). Хранится в SharedPreferences, поэтому
  *     виджет видит его и при закрытом приложении.
- * setCity({ id, city, api }) — город из настроек NEXA (id для /api/weather, название) и адрес сервера.
+ * setCity({ city, lat, lon, api }) — город из настроек NEXA (city: null — не выбран, тогда Казань) и адрес сервера.
  * refresh() — перерисовать виджеты и, если погода устарела, обновить её.
  * Событие "openTab" { tab } — нажали на виджет: открыть раздел ("today" или "home").
  */
@@ -81,17 +81,18 @@ public class NexaWidgetsPlugin extends Plugin {
 
     @PluginMethod
     public void setCity(PluginCall call) {
-        // id — только латиница (kazan, moscow…), api — только https: лишнего не пропускаем
-        String id = call.getString("id", WidgetStore.DEFAULT_CITY_ID);
-        if (id == null || !id.matches("[a-z]{2,20}")) id = WidgetStore.DEFAULT_CITY_ID;
+        // Город, выбранный в NEXA (название и координаты; нет — Казань), и адрес сервера (только https)
         String city = call.getString("city");
         if (city != null) city = city.trim();
         if (city != null && (city.isEmpty() || city.length() > 80)) city = null;
+        Double lat = call.getDouble("lat"), lon = call.getDouble("lon");
+        if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) { lat = null; lon = null; }
+        if (city == null) { lat = null; lon = null; }
         String api = call.getString("api");
         if (api != null && (!api.startsWith("https://") || api.length() > 200)) api = null;
         if (api != null) api = api.replaceAll("/+$", "");
         Context c = getContext();
-        if (WidgetStore.saveCity(c, id, city, api)) {
+        if (WidgetStore.saveCity(c, city, lat, lon, api)) {
             Widgets.updateWeather(c);      // сразу — новое название города
             Widgets.refreshWeatherNow(c);  // и погода для него, как только будет сеть
         }

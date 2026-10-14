@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.15";
+const VERSION = "0.10.0";
 
 
 const C = {
@@ -1689,7 +1689,7 @@ function LinkPulse({ p, onDone }) {
 // loading — устройства аккаунта ещё грузятся из облака
 // findState / onFind — «Найти» у реальных устройств (подключённых по коду)
 // activityBlock — компактная лента «Активность» (только у вошедшего)
-function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, netState = "ok" }) {
+function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, netState = "ok" }) {
   // Подпись под заголовком — честная: «Синхронизировано» только когда облако всё подтвердило
   const tagline = { offline: "Нет сети. Работает на этом устройстве. Рядом с вами", pending: "Сохраняем изменения. Работает. Рядом с вами", ok: "Синхронизировано. Работает. Рядом с вами", local: "Работает на этом устройстве. Рядом с вами" }[netState];
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
@@ -1944,6 +1944,17 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
         </button>
         {/* Активность — крупная карточка с теми же краями */}
         {activityBlock && <div className="nx-act-pill" style={{ marginTop: 18 }}>{activityBlock}</div>}
+        {/* О системе: что такое NEXA, что умеет, обновления и планы */}
+        {onAbout && (
+          <button type="button" className="nx-row-btn nx-pill-card" onClick={onAbout}
+            style={{ ...btnReset, width: "100%", marginTop: 18, padding: "16px 22px", boxSizing: "border-box", display: "flex", alignItems: "center", gap: 14, color: C.text, textAlign: "left" }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 16, fontWeight: 500 }}>О системе</span>
+              <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 3 }}>Что умеет NEXA, обновления и планы</span>
+            </span>
+            {Icon.chevron({ c: C.text, s: 18 })}
+          </button>
+        )}
       </div>
 
     </div>
@@ -2052,6 +2063,125 @@ function ActivityBlock({ items, onOpen }) {
 }
 
 // Отдельный экран «Активность»: все события и «Очистить» с подтверждением
+/* ═══ ЭКРАН «О СИСТЕМЕ» ═══════════════════════════════════════
+   Что такое NEXA, что умеет, история обновлений и планы.
+   Тексты — здесь, в списках ниже: автор правит их прямо тут.
+   Открывается: «Подробнее о системе →» внизу Главной (компьютер и телефон),
+   Настройки → «Система» → «О системе», поиск «о системе». «Назад», Esc и кнопка
+   «Назад» Android возвращают туда, откуда пришли */
+const ABOUT_FEATURES = [
+  { icon: Icon.phone, title: "Устройства вместе", text: "Телефон, компьютер, часы и наушники в одном списке: кто в сети, заряд, память и сеть — только настоящие данные. Подключение по коду или QR, Bluetooth-устройства — через приложение." },
+  { icon: Icon.search, title: "Найти и защитить", text: "«Найти» звонит на потерянный телефон, даже если NEXA на нём закрыта. «Где устройство?» показывает место на карте — только если это разрешено на самом устройстве. Экран NEXA можно заблокировать удалённо." },
+  { icon: Icon.shareUp, title: "NEXA Flow", text: "Общий буфер: текст и ссылки летят на другое ваше устройство за секунду. Пароли и ключи в историю не сохраняются." },
+  { icon: Icon.folder, title: "Файлы в облаке", text: "Свои файлы и папки, отправка на другое устройство, фото на весь экран. Без сети загрузки ждут и уходят сами." },
+  { icon: Icon.sparkle, title: "ИИ — Ассистент", text: "Отвечает на вопросы, читает файлы (PDF, документы, картинки), выполняет команды: тема, расписание, устройства." },
+  { icon: Icon.calendar, title: "Сегодня", text: "Расписание с напоминаниями и погода от Gismeteo. Виджеты на рабочем столе Android." },
+  { icon: Icon.refresh, title: "Синхронизация", text: "Аккаунт по почте без пароля: устройства, диалоги, файлы и расписание одинаковые на сайте и в приложении. Без интернета всё работает и досылается потом." },
+];
+// История обновлений — новые сверху. Добавляя версию, впишите её сюда (и в release-notes.md)
+const ABOUT_UPDATES = [
+  { v: "0.10.0", items: ["Экран «О системе»", "Переименование устройства — карандаш у названия", "Снова определение города для погоды"] },
+  { v: "0.9.15", items: ["Погода от Gismeteo с подписью источника", "Уведомления — одной кнопкой", "Плавные переходы между разделами"] },
+  { v: "0.9.14", items: ["Новый дизайн Главной и экрана устройства", "Новый экран «Обновите NEXA»"] },
+  { v: "0.9.13", items: ["«Где устройство?» — на Яндекс Картах"] },
+  { v: "0.9.12", items: ["Фото на весь экран", "Настройки уведомлений в аккаунте", "Без выдуманных демо-данных"] },
+  { v: "0.9.11", items: ["Ассистент отвечает быстрее"] },
+  { v: "0.9.10", items: ["Единый вид всех экранов"] },
+  { v: "0.9.9", items: ["Обновление приложения прямо изнутри"] },
+  { v: "0.9.8", items: ["Bluetooth-часы и наушники", "Поиск телефона при закрытом приложении"] },
+  { v: "0.9.7", items: ["Единые уведомления с переходом к событию"] },
+  { v: "0.9.6", items: ["Работа без интернета и честный статус синхронизации"] },
+  { v: "0.9.5", items: ["Ассистент читает файлы"] },
+  { v: "0.9.4", items: ["Быстрые действия (Ctrl + K)"] },
+  { v: "0.9.3", items: ["NEXA Flow — общий буфер"] },
+];
+// Что в планах — честно «планы», без обещаний сроков. Автор правит этот список
+const ABOUT_PLANS = [
+  "Приложение для компьютера: быстрые действия по сочетанию клавиш из любой программы",
+  "Передача больших файлов напрямую между устройствами, без облака",
+  "Приложение для iPhone",
+  "Больше городов для погоды и прогноз по часам",
+  "Сценарии: «пришёл домой» — телефон сам отправит файлы на компьютер",
+];
+
+function ScreenAbout({ onBack, installed }) {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || document.querySelector('[role="dialog"], [role="menu"]')) return;
+      onBack();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onBack]);
+  const card = { border: `1px solid ${C.lineBright}`, borderRadius: 28, padding: "22px 24px", background: C.panel, boxSizing: "border-box" };
+  const h2 = { fontSize: T.fs.section, fontWeight: 600, margin: "34px 0 14px" };
+  return (
+    <div className="ng-screen nx-about" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 980 }}>
+      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+
+      {/* Шапка: что это такое */}
+      <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap", margin: "26px 0 8px" }}>
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+          <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>О системе</div>
+          <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.55, marginTop: 14, maxWidth: 560 }}>
+            NEXA объединяет ваши обычные устройства — телефон, компьютер, часы, наушники — в одну систему.
+            Видно, что с каждым из них, файлы и текст передаются в пару нажатий, потерянный телефон можно найти,
+            а ассистент помогает с делами. Это дипломный проект: всё, что вы видите, — настоящие данные ваших устройств.
+          </div>
+        </div>
+        <div aria-hidden="true" style={{ flexShrink: 0 }}><HomeFold size={150} count={0} /></div>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: C.muted }}>
+        <span style={{ padding: "6px 14px", borderRadius: 999, border: `1px solid ${C.borderStrong}` }}>Версия {installed || VERSION}</span>
+        <span style={{ padding: "6px 14px", borderRadius: 999, border: `1px solid ${C.borderStrong}` }}>Сайт и приложение для Android</span>
+      </div>
+
+      {/* Что умеет */}
+      <div className="ng-display" style={h2}>Что умеет NEXA</div>
+      <div className="nx-about-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+        {ABOUT_FEATURES.map((f) => (
+          <div key={f.title} style={{ ...card, padding: "18px 20px", borderRadius: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: C.mintDark }}>
+                {f.icon({ c: C.mint, s: 18 })}
+              </span>
+              <span style={{ fontSize: 16, fontWeight: 500 }}>{f.title}</span>
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginTop: 10 }}>{f.text}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Обновления */}
+      <div className="ng-display" style={h2}>Обновления</div>
+      <div style={{ ...card, padding: "6px 24px" }}>
+        {ABOUT_UPDATES.map((u, i) => (
+          <div key={u.v} style={{ display: "flex", gap: 18, padding: "14px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
+            <div style={{ width: 64, flexShrink: 0, fontSize: 14, fontWeight: 600, color: u.v === VERSION ? C.mint : C.text }}>{u.v}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+              {u.items.map((t) => <div key={t}>{t}</div>)}
+            </div>
+            {u.v === VERSION && <span style={{ alignSelf: "flex-start", fontSize: 11, color: C.mint, border: `1px solid ${C.mint}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>сейчас</span>}
+          </div>
+        ))}
+      </div>
+
+      {/* Планы */}
+      <div className="ng-display" style={h2}>В планах</div>
+      <div style={{ ...card }}>
+        {ABOUT_PLANS.map((p, i) => (
+          <div key={p} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "8px 0", fontSize: 14, lineHeight: 1.5 }}>
+            <span aria-hidden="true" style={{ width: 8, height: 8, marginTop: 7, flexShrink: 0, background: i % 2 ? C.blue : C.mint, clipPath: "polygon(0 0, 100% 50%, 0 100%)" }} />
+            {p}
+          </div>
+        ))}
+        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>Это планы, а не обещания: порядок и сроки могут меняться.</div>
+      </div>
+    </div>
+  );
+}
+
 function ScreenActivity({ items, onBack, onClear }) {
   const [confirm, setConfirm] = useState(false);
   useEffect(() => { window.scrollTo(0, 0); }, []);
@@ -2914,78 +3044,6 @@ function FlowTextField({ value, onChange, label, onNote }) {
   );
 }
 
-/* Связь с реальным устройством — на его экране (DeviceScreen).
-   Чужое устройство: «Передать» текст или ссылку и история передач с ним.
-   Это устройство: вся история передач. link — результат useDeviceLink,
-   flowOn — включён ли NEXA Flow здесь */
-function DeviceMessages({ d, link, flowOn = true }) {
-  const [text, setText] = useState("");
-  const [sendState, setSendState] = useState("idle"); // idle | loading | success | error
-  const [note, setNote] = useState(null);
-  const online = link.status === "online";
-  // У склеенного устройства (сайт + приложение) — переписка с обеими записями
-  const ids = d.parts ? d.parts.map((p) => p.device_id) : [d.device_id];
-  const items = d.isSelf ? flowHistory(link) : flowHistory(link, ids);
-  const canSend = flowOn && online && d.online && !d.isSelf;
-
-  const send = async () => {
-    if (sendState === "loading" || !canSend) return;
-    setSendState("loading"); setNote(null);
-    const res = await link.send(text, d.device_id, d.name);
-    if (res.ok) { setText(""); setSendState("success"); setTimeout(() => setSendState("idle"), 1500); }
-    else { setNote(res.error); setSendState("error"); setTimeout(() => setSendState("idle"), 1800); }
-  };
-
-  const card = { border: `1px solid ${C.border}`, borderRadius: 20, background: C.bg, overflow: "hidden", textAlign: "left" };
-  return (
-    <section aria-label="NEXA Flow — передача текста и ссылок" className="nx-msg-grid" style={{ ...card, marginTop: 24 }}>
-      {!d.isSelf && (
-        <form className="nx-link-col" onSubmit={(e) => { e.preventDefault(); send(); }}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}>
-          <LinkColHead title={`Передать на «${d.name}»`} right={text.length > TEXT_MAX - 300 && (
-            <span style={{ fontSize: 12, color: text.length > TEXT_MAX ? C.red : C.mutedSoft }}>{text.length}/{TEXT_MAX}</span>
-          )} />
-          <div style={{ padding: "16px 18px 18px" }}>
-            <FlowTextField value={text} onChange={(v) => { setText(v); setNote(null); }} label={`Текст или ссылка для «${d.name}»`} onNote={setNote} />
-            {!canSend && (
-              <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10 }}>
-                {!flowOn ? "NEXA Flow выключен в Настройках" : !online ? "Нет связи — отправить не получится" : "Устройство не в сети — отправить можно, когда на нём откроют NEXA"}
-              </div>
-            )}
-            {note && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10 }}>{note}</div>}
-            <StateButton
-              variant="primary" state={sendState}
-              labels={{ loading: "Отправляем…", success: "Отправлено", error: "Не отправилось" }}
-              icon={Icon.send({ c: C.onFold, s: 14 })}
-              disabled={!canSend || !text.trim()}
-              onClick={send}
-              style={{ marginTop: 14, width: "100%", padding: "11px 16px", borderRadius: 999, fontSize: 14 }}
-            >
-              Отправить
-            </StateButton>
-          </div>
-        </form>
-      )}
-      <div className="nx-link-col">
-        <LinkColHead title={d.isSelf ? "История передач" : `История с «${d.name}»`} right={items.length > 0 && (
-          <span style={{ fontSize: 13, color: C.muted }}>{items.length}</span>
-        )} />
-        <div style={{ padding: "4px 18px 14px" }}>
-          {items.length === 0 ? (
-            <div style={{ paddingTop: 8 }}>
-              <LinkEmpty>{d.isSelf ? "Пока ничего не передавали. Отправьте текст или ссылку с другого своего устройства." : "Пока ничего не передавали с этим устройством."}</LinkEmpty>
-            </div>
-          ) : (
-            <div className="nx-scroll nx-inbox-list" style={{ maxHeight: 420, overflowY: "auto" }}>
-              {items.map((it) => <FlowItem key={it.dir + it.id} item={it} link={link} selfName={link.self?.name || "Это устройство"} />)}
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 /* Окно «Отправить в NEXA»: из Настроек и из «Поделиться» Android.
    Текст (можно вставить скопированное), куда — устройства аккаунта в сети,
    потом настоящий статус: доставлено / не подтвердило / выключено */
@@ -3336,16 +3394,15 @@ const toMinutes = (hm) => { const [h, m] = hm.split(":").map(Number); return h *
 /* ---------- ПОГОДА: только через наш сервер /api/weather ----------
    Источник — Gismeteo (токен только на сервере), резерв — Open-Meteo; что пришло —
    видно по полю source, подпись источника обязательна (WeatherAttribution).
-   Города — только из разрешённых (тот же список в api/weather.js): Казань по умолчанию
-   и Москва. Последний удачный ответ по городу лежит в браузере (nexa-weather:<id>) —
-   без сети показываем его с пометкой. Выдуманных цифр нет: пока данных нет — «—» под вуалью */
-const WEATHER_CITIES = [{ id: "kazan", city: "Казань" }, { id: "moscow", city: "Москва" }];
-const DEFAULT_WEATHER_CITY = "kazan";
+   Место определяется на устройстве (геолокация → IP → Казань по умолчанию, или город, выбранный
+   поиском) — см. useLocation ниже; серверу уходят координаты, округлённые до 0,1° (~10 км),
+   чтобы соседние запросы попадали в общий кеш. Последний удачный ответ по месту лежит
+   в браузере (nexa-weather:<место>) — без сети показываем его с пометкой.
+   Выдуманных цифр нет: пока данных нет — «—» под вуалью */
 const WEATHER_API = `${API_BASE}/api/weather`;
 const WEATHER_REFRESH_MS = 15 * 60 * 1000; // сервер всё равно отдаёт кеш (час) — лимит Gismeteo не тратится
 const WEATHER_TIMEOUT_MS = 10000;          // дольше 10 секунд ответа не ждём
-const WEATHER_SAVED_KEY = "nexa-weather:"; // + id города → { json, at } — последний удачный ответ
-const CITY_KEY = "nexa-weather-city";      // выбранный город (id из WEATHER_CITIES)
+const WEATHER_SAVED_KEY = "nexa-weather:"; // + место ("kazan" или "55.8,49.1") → { json, at } — последний удачный ответ
 
 // Понятная причина, почему погода не загрузилась (для строки под карточкой)
 function weatherErrorText(err, timedOut) {
@@ -3447,11 +3504,32 @@ function forecastDayLabel(date, index) {
 
 /* Общие данные экрана «Сегодня»: расписание, город и последняя погода.
    Ими пользуются и экран «Сегодня», и ассистент (сводка «что у меня сегодня») */
+/* ---------- МЕСТОПОЛОЖЕНИЕ ----------
+   Определяем город двумя способами одновременно:
+   1) геолокация браузера — точные координаты, но браузер спросит разрешение;
+   2) ipapi.co — примерно по IP-адресу, без разрешений.
+   Приоритет у геолокации: ответ по IP ставим не раньше чем через 1,5 секунды,
+   чтобы геолокация успела «победить». Пока ничего не пришло — Казань. */
+// Пока город не определён — Казань (погода для неё — ?city=kazan у нашего сервера)
+const DEFAULT_LOCATION = { city: "Казань", lat: 55.8, lon: 49.1, source: "default" };
+const CITY_KEY = "nexa-city"; // город, выбранный вручную
+const readManualCity = () => {
+  try { const v = JSON.parse(localStorage.getItem(CITY_KEY)); if (v && v.city && v.lat != null) return { ...v, source: "manual" }; } catch {}
+  return null;
+};
+
 const TODAY = {
   schedule: [],
-  city: WEATHER_CITIES[0].city, cityId: DEFAULT_WEATHER_CITY,
+  city: DEFAULT_LOCATION.city, place: null, // place — см. weatherPlace
   weather: null, weatherAt: 0,
 };
+// Место для запроса погоды: по умолчанию — Казань по названию, иначе координаты до 0,1°
+const round1 = (n) => Math.round(n * 10) / 10;
+function weatherPlace(loc) {
+  if (!loc || loc.source === "default") return { key: "kazan", q: "city=kazan" };
+  const la = round1(loc.lat), lo = round1(loc.lon);
+  return { key: `${la},${lo}`, q: `lat=${la}&lon=${lo}` };
+}
 
 const readSavedWeather = (id) => {
   try { const v = JSON.parse(localStorage.getItem(WEATHER_SAVED_KEY + id)); if (v && v.json && v.at) return v; } catch {}
@@ -3459,13 +3537,13 @@ const readSavedWeather = (id) => {
 };
 const keepWeather = (id, json) => { try { localStorage.setItem(WEATHER_SAVED_KEY + id, JSON.stringify({ json, at: Date.now() })); } catch {} };
 
-// Загрузить погоду города с нашего сервера; удачный ответ — запомнить в браузере
-async function fetchWeather(id, signal) {
-  const res = await fetch(`${WEATHER_API}?city=${encodeURIComponent(id)}`, { signal });
-  if (!res.ok) throw new Error(res.status === 400 ? "город не поддерживается" : res.status === 503 ? "сервис погоды недоступен" : `ответ сервера ${res.status}`);
+// Загрузить погоду места с нашего сервера; удачный ответ — запомнить в браузере
+async function fetchWeather(place, signal) {
+  const res = await fetch(`${WEATHER_API}?${place.q}`, { signal });
+  if (!res.ok) throw new Error(res.status === 400 ? "место не распознано" : res.status === 503 ? "сервис погоды недоступен" : `ответ сервера ${res.status}`);
   const json = await res.json();
   const w = parseApiWeather(json);
-  keepWeather(id, json);
+  keepWeather(place.key, json);
   return w;
 }
 
@@ -3476,64 +3554,307 @@ async function getTodayWeather() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
-    TODAY.weather = await fetchWeather(TODAY.cityId, ctrl.signal);
+    TODAY.weather = await fetchWeather(TODAY.place || weatherPlace(null), ctrl.signal);
     TODAY.weatherAt = Date.now();
     return TODAY.weather;
   } catch {
     if (TODAY.weather) return TODAY.weather;
-    const saved = readSavedWeather(TODAY.cityId);
+    const saved = readSavedWeather((TODAY.place || weatherPlace(null)).key);
     try { return saved ? parseApiWeather(saved.json) : null; } catch { return null; }
   } finally {
     clearTimeout(timer);
   }
 }
 
-// Выбранный город погоды (id). Нет выбора или он не из списка — Казань
-const readCityId = () => {
-  try { const v = localStorage.getItem(CITY_KEY); if (WEATHER_CITIES.some((c) => c.id === v)) return v; } catch {}
-  return DEFAULT_WEATHER_CITY;
+const GEO_TIMEOUT_MS = 6000;        // дольше 6 секунд геолокацию не ждём
+const GEO_CACHE_MS = 10 * 60 * 1000; // браузер может отдать координаты из кэша за 10 минут
+const IP_GRACE_MS = 1500;           // столько ждём геолокацию, прежде чем поставить город по IP
+const CITY_LOOKUP_MS = 3000;        // дольше 3 секунд название города не ждём
+
+// Подпись под городом на карточке погоды: откуда взялось местоположение
+const LOCATION_SOURCE_TEXT = {
+  geo: "определено точно",
+  ip: "примерно по IP",
+  default: "по умолчанию",
+  manual: "выбран вами",
 };
-function useWeatherCity() {
-  const [id, setId] = useState(readCityId);
-  const pick = (nid) => {
-    try { localStorage.setItem(CITY_KEY, nid); } catch {}
-    widgetsSetCity(nid, (WEATHER_CITIES.find((c) => c.id === nid) || WEATHER_CITIES[0]).city); // виджет погоды (только в приложении)
-    setId(nid);
-  };
-  return { id, city: (WEATHER_CITIES.find((c) => c.id === id) || WEATHER_CITIES[0]).city, pick };
+
+/* Местоположение по IP: пробуем несколько бесплатных сервисов по очереди
+   (у каждого бывают лимиты и блокировки). Ответ — { lat, lon } или null.
+   С VPN по IP определится город сервера VPN — для точности есть геолокация
+   и ручной выбор города */
+const IP_SERVICES = [
+  ["https://ipapi.co/json/", (d) => !d.error && [d.latitude, d.longitude]],
+  ["https://ipwho.is/", (d) => d.success !== false && [d.latitude, d.longitude]],
+  ["https://get.geojs.io/v1/ip/geo.json", (d) => [parseFloat(d.latitude), parseFloat(d.longitude)]],
+];
+const IP_SERVICE_MS = 4000; // один сервис ждём не дольше 4 секунд — потом следующий
+let ipFailedAt = 0;          // все сервисы не ответили — 10 минут не спрашиваем снова
+async function ipLocation(signal) {
+  if (Date.now() - ipFailedAt < 10 * 60 * 1000) return null;
+  for (const [url, pick] of IP_SERVICES) {
+    // Свой «стоп» на каждый сервис: зависший сервис не держит очередь
+    const ctrl = new AbortController();
+    const stop = () => ctrl.abort();
+    const timer = setTimeout(stop, IP_SERVICE_MS);
+    signal?.addEventListener("abort", stop);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) continue;
+      const ll = pick(await res.json());
+      if (ll && Number.isFinite(ll[0]) && Number.isFinite(ll[1])) return { lat: ll[0], lon: ll[1] };
+    } catch {
+      if (signal?.aborted) return null; // экран закрыли — дальше не спрашиваем
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
+    }
+  }
+  if (!signal?.aborted) ipFailedAt = Date.now();
+  return null;
 }
 
-/* Выбор города прямо в карточке погоды — только разрешённые города. Esc — отмена */
-function CityPicker({ current, onPick, onClose }) {
+/* Поиск города по названию (Open-Meteo, без ключа). До 6 вариантов:
+   { city, region, lat, lon } — регион, чтобы различать одинаковые названия */
+async function searchCities(q, signal) {
+  const res = await fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=ru&format=json&name=" + encodeURIComponent(q), { signal });
+  if (!res.ok) throw new Error("ответ сервера " + res.status);
+  const data = await res.json();
+  return (data.results || []).map((r) => ({
+    city: r.name, region: [r.admin1, r.country].filter(Boolean).join(", "),
+    lat: round2(r.latitude), lon: round2(r.longitude),
+  }))
+    // Одинаковые «город + регион» (город и одноимённый район) показываем один раз
+    .filter((c, i, all) => all.findIndex((x) => x.city === c.city && x.region === c.region) === i);
+}
+
+// Геолокация браузера в виде промиса. Если браузер её не умеет
+// (старый браузер или сайт открыт не по HTTPS) — сразу «отказ»
+function getBrowserPosition() {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("геолокация недоступна"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      timeout: GEO_TIMEOUT_MS,
+      maximumAge: GEO_CACHE_MS,
+    });
+  });
+}
+
+// Название города по координатам, по-русски (BigDataCloud, без ключа).
+// Берём city, а если его нет — locality. Не дождались или ошибка — null
+// Запрос с ограничением по времени: не ответил за CITY_LOOKUP_MS — считаем, что не вышло
+function withTimeout(promise) {
+  const giveUp = new Promise((resolve) => setTimeout(() => resolve(null), CITY_LOOKUP_MS));
+  return Promise.race([promise.catch(() => null), giveUp]);
+}
+
+// Крупные города — запасной вариант, если ни один сервис не назвал город.
+// Работает даже без интернета: просто ищем ближайший по координатам
+const KNOWN_CITIES = [
+  ["Москва", 55.76, 37.62], ["Санкт-Петербург", 59.94, 30.31], ["Казань", 55.79, 49.11],
+  ["Нижний Новгород", 56.33, 44.0], ["Екатеринбург", 56.84, 60.61], ["Новосибирск", 55.03, 82.92],
+  ["Самара", 53.2, 50.15], ["Уфа", 54.74, 55.97], ["Челябинск", 55.16, 61.4],
+  ["Пермь", 58.01, 56.25], ["Ростов-на-Дону", 47.24, 39.71], ["Краснодар", 45.04, 38.98],
+  ["Воронеж", 51.66, 39.2], ["Волгоград", 48.71, 44.51], ["Омск", 54.99, 73.37],
+  ["Красноярск", 56.01, 92.85], ["Набережные Челны", 55.74, 52.4], ["Ижевск", 56.85, 53.2],
+  ["Ульяновск", 54.31, 48.4], ["Чебоксары", 56.14, 47.25], ["Йошкар-Ола", 56.63, 47.89],
+];
+function nearestKnownCity(lat, lon) {
+  // Расстояние в км по формуле для небольших расстояний — точности хватает
+  const km = ([, la, lo]) => {
+    const dx = (lo - lon) * 111 * Math.cos((lat * Math.PI) / 180);
+    const dy = (la - lat) * 111;
+    return Math.hypot(dx, dy);
+  };
+  const best = KNOWN_CITIES.reduce((a, b) => (km(b) < km(a) ? b : a));
+  // Ближе 60 км — это тот самый город; дальше — честно пишем «рядом с»
+  return km(best) < 60 ? best[0] : `Рядом с г. ${best[0]}`;
+}
+
+// Название города по координатам, по-русски. Пробуем по очереди:
+// 1) BigDataCloud (city или locality), 2) OpenStreetMap (Nominatim),
+// 3) ближайший крупный город из списка выше. Пустым не бывает никогда
+async function cityByCoords(lat, lon, signal) {
+  const bdc = await withTimeout(
+    fetch("https://api.bigdatacloud.net/data/reverse-geocode-client" +
+      `?latitude=${lat}&longitude=${lon}&localityLanguage=ru`, { signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => (data && (data.city || data.locality)) || null)
+  );
+  if (bdc) return bdc;
+
+  const osm = await withTimeout(
+    fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=ru" +
+      `&lat=${lat}&lon=${lon}`, { signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const a = data && data.address;
+        return (a && (a.city || a.town || a.village || a.municipality)) || null;
+      })
+  );
+  if (osm) return osm;
+
+  return nearestKnownCity(lat, lon);
+}
+
+// Координаты округляем до сотых (≈1 км): для погоды точнее не нужно
+const round2 = (n) => Math.round(n * 100) / 100;
+
+/* Хук местоположения. Возвращает { city, lat, lon, source },
+   source — "geo" (геолокация), "ip" (по IP) или "default" (Казань). */
+/* Память на время работы страницы: экран «Сегодня» открывают много раз,
+   а город и погода за пару минут не меняются. Без неё каждый заход
+   заново спрашивал IP-сервис и сервис погоды */
+const AUTO_LOC_TTL = 30 * 60 * 1000; // город, определённый автоматически, — 30 минут
+let autoLocMemo = null;              // { loc, at }
+const freshAutoLoc = () => (autoLocMemo && Date.now() - autoLocMemo.at < AUTO_LOC_TTL ? autoLocMemo.loc : null);
+
+function useLocation() {
+  // Город, выбранный вручную, важнее автоматики
+  const [manual, setManual] = useState(readManualCity);
+  const [loc, setLocState] = useState(() => freshAutoLoc() || DEFAULT_LOCATION);
+  // Найденный автоматически город запоминаем (см. autoLocMemo)
+  const setLoc = (l) => {
+    if (l && (l.source === "ip" || l.source === "geo")) autoLocMemo = { loc: l, at: Date.now() };
+    setLocState(l);
+  };
+
+  useEffect(() => {
+    if (manual) return; // выбран вручную — ничего не определяем
+    // Уже определили недавно точно (геолокация) — не спрашиваем снова.
+    // По IP — показываем сразу, но геолокацию всё равно пробуем: она точнее
+    const memo = freshAutoLoc();
+    if (memo?.source === "geo") return;
+    let cancelled = false;   // экран закрыли — больше ничего не обновляем
+    let geoWon = false;      // геолокация сработала — ответ по IP больше не нужен
+    let graceOver = false;   // прошли ли 1,5 секунды ожидания геолокации
+    let ipLoc = null;        // готовый ответ по IP, если уже пришёл
+    const ctrl = new AbortController(); // чтобы оборвать запросы при закрытии
+
+    // Ставим город по IP, только если: он уже пришёл, 1,5 секунды прошли
+    // и геолокация не успела победить
+    const applyIp = () => {
+      if (!cancelled && !geoWon && graceOver && ipLoc) setLoc(ipLoc);
+    };
+    const graceTimer = setTimeout(() => { graceOver = true; applyIp(); }, IP_GRACE_MS);
+
+    // Способ 1: по IP (несколько сервисов по очереди). Название города
+    // переспрашиваем по координатам — так оно по-русски
+    // Город по IP уже запомнен — второй раз IP-сервис не спрашиваем
+    (memo ? Promise.resolve(null) : ipLocation(ctrl.signal))
+      .then(async (ll) => {
+        if (!ll) return;
+        const lat = round2(ll.lat);
+        const lon = round2(ll.lon);
+        const city = await cityByCoords(lat, lon, ctrl.signal);
+        ipLoc = { city, lat, lon, source: "ip" };
+        applyIp();
+      })
+      .catch(() => { /* тихо: остаётся следующий по приоритету вариант */ });
+
+    // Способ 2: геолокация браузера. Если пользователь отказал или
+    // браузер не ответил за 6 секунд — тихо, остаётся IP или Казань
+    getBrowserPosition()
+      .then(async (pos) => {
+        if (cancelled) return;
+        geoWon = true; // с этого момента ответ по IP игнорируем
+        const lat = round2(pos.coords.latitude);
+        const lon = round2(pos.coords.longitude);
+        const city = await cityByCoords(lat, lon, ctrl.signal);
+        if (!cancelled) setLoc({ city, lat, lon, source: "geo" });
+      })
+      .catch(() => { /* отказ или нет геолокации — без ошибок и всплывашек */ });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(graceTimer);
+      ctrl.abort();
+    };
+  }, [manual]);
+
+  // Выбрать город вручную (null — снова определять автоматически)
+  const pick = (c) => {
+    try {
+      if (c) localStorage.setItem(CITY_KEY, JSON.stringify({ city: c.city, lat: c.lat, lon: c.lon }));
+      else localStorage.removeItem(CITY_KEY);
+    } catch {}
+    widgetsSetCity(c); // виджет погоды на рабочем столе (только в приложении)
+    if (!c) setLoc(DEFAULT_LOCATION);
+    setManual(c ? { city: c.city, lat: c.lat, lon: c.lon, source: "manual" } : null);
+  };
+
+  return { ...(manual || loc), pick };
+}
+
+/* Выбор города: поле поиска и список вариантов прямо в карточке погоды.
+   Enter — первый вариант, Esc — отмена */
+function CityPicker({ onPick, onAuto, onClose, isManual }) {
+  const [q, setQ] = useState("");
+  const [state, setState] = useState({ loading: false, list: [], error: null });
+  useEffect(() => {
+    const text = q.trim();
+    if (text.length < 2) { setState({ loading: false, list: [], error: null }); return; }
+    const ctrl = new AbortController();
+    setState((st) => ({ ...st, loading: true, error: null }));
+    // Ищем через 300 мс после последней буквы, чтобы не слать запрос на каждую
+    const t = setTimeout(() => {
+      searchCities(text, ctrl.signal)
+        .then((list) => setState({ loading: false, list, error: null }))
+        .catch((e) => { if (e.name !== "AbortError") setState({ loading: false, list: [], error: "Не удалось найти — проверьте интернет" }); });
+    }, 300);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [q]);
+  const text = q.trim();
   return (
-    <div className="nx-pop" role="group" aria-label="Город для погоды" style={{ gridArea: "city", marginTop: 10 }}
-      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {WEATHER_CITIES.map((c) => (
-          <button key={c.id} type="button" className="nx-ghost-btn" aria-pressed={c.id === current} onClick={() => onPick(c.id)} style={{
-            ...btnReset, padding: "8px 16px", fontSize: 14, borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6,
-            border: `1px solid ${c.id === current ? C.mint : C.borderStrong}`, color: C.text,
-          }}>
-            {c.id === current && Icon.check({ c: C.mint, s: 14 })} {c.city}
-          </button>
-        ))}
+    <div className="nx-pop" style={{ gridArea: "city", marginTop: 10 }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+      <form onSubmit={(e) => { e.preventDefault(); if (state.list[0]) onPick(state.list[0]); }} style={{ display: "flex", gap: 6 }}>
+        <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Введите город"
+          aria-label="Поиск города" style={{
+            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontFamily: "inherit", fontSize: 16,
+            border: "1px solid " + C.borderStrong, borderRadius: 10, padding: "8px 10px", outline: "none", boxSizing: "border-box",
+          }} />
         <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Отмена" style={{
           ...btnReset, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
         }}>
           {Icon.close({ c: C.muted, s: 16 })}
         </button>
+      </form>
+      <div style={{ marginTop: 6 }}>
+        {state.loading && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, padding: "6px 2px" }}><Spinner /> Ищем…</div>}
+        {state.error && <div style={{ fontSize: 13, color: C.red, padding: "6px 2px" }}>{state.error}</div>}
+        {!state.loading && !state.error && text.length >= 2 && state.list.length === 0 && (
+          <div style={{ fontSize: 13, color: C.mutedSoft, padding: "6px 2px" }}>Ничего не нашлось</div>
+        )}
+        {state.list.map((c) => (
+          <button key={c.lat + "," + c.lon} type="button" className="nx-row-btn" onClick={() => onPick(c)} style={{
+            ...btnReset, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "baseline", gap: 8,
+            padding: "8px 4px", borderBottom: "1px solid " + C.border, fontSize: 14,
+          }}>
+            <span>{c.city}</span>
+            <span style={{ fontSize: 12, color: C.mutedSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.region}</span>
+          </button>
+        ))}
+        {isManual && (
+          <button type="button" className="nx-link-btn" onClick={onAuto} style={{ ...btnReset, fontSize: 13, color: C.muted, padding: "8px 2px" }}>
+            Определять автоматически
+          </button>
+        )}
       </div>
-      <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6 }}>Погода доступна для этих городов</div>
     </div>
   );
 }
+
 
 /* Хук погоды. Возвращает { loading, error, now, tomorrow, days, source, stale, offline, updatedAt, refetch }.
    Сразу показывает последний сохранённый ответ (если есть), потом обновляет.
    Не вышло (нет сети) — остаются сохранённые данные с пометкой offline.
    Незаконченный запрос отменяется при новом и при закрытии экрана */
 const weatherMemo = new Map(); // id города → { at, data } — на время работы страницы
-function useWeather(cityId) {
+function useWeather(place) {
+  const cityId = place.key; // ключ места: кеш, сохранённое, перезапуск при смене
   const memoOf = (k) => { const m = weatherMemo.get(k); return m && Date.now() - m.at < WEATHER_REFRESH_MS ? m : null; };
   const initial = (k) => {
     const m = memoOf(k);
@@ -3552,7 +3873,7 @@ function useWeather(cityId) {
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, WEATHER_TIMEOUT_MS);
     setState((s) => ({ ...s, loading: true, error: null }));
-    fetchWeather(cityId, ctrl.signal)
+    fetchWeather(place, ctrl.signal)
       .then((w) => {
         TODAY.weather = w; // заодно для ассистента
         TODAY.weatherAt = Date.now();
@@ -3800,12 +4121,13 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
     </div>
   );
   // Сначала определяем город, потом по нему грузим погоду
-  const location = useWeatherCity();
+  const location = useLocation();
+  const place = weatherPlace(location);
   // Настоящая погода с нашего сервера; пока её нет — «—» под вуалью (выдуманных цифр нет)
-  const weather = useWeather(location.id);
+  const weather = useWeather(place);
   const [pickingCity, setPickingCity] = useState(false); // открыт ли выбор города
-  // Город — в общие данные (для сводки ассистента)
-  useEffect(() => { TODAY.city = location.city; TODAY.cityId = location.id; }, [location.id]);
+  // Город и место — в общие данные (для сводки ассистента)
+  useEffect(() => { TODAY.city = location.city; TODAY.place = place; }, [location.city, place.key]);
   const [forecastOpen, setForecastOpen] = useState(false); // раскрыт ли прогноз на 2 недели
   const now = weather.now;
   const tomorrow = weather.tomorrow;
@@ -3924,11 +4246,15 @@ function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }
         </section>
 
         <div style={{ gridArea: "now" }}>
-            <WeatherCard title="Погода" date={formatWeatherDate(now?.date || new Date())} city={location.city}
+            <WeatherCard title="Погода" date={formatWeatherDate(now?.date || new Date())} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]}
             onCity={() => setPickingCity(true)}
             cityPicker={pickingCity && (
-              <CityPicker current={location.id} onClose={() => setPickingCity(false)}
-                onPick={(id) => { location.pick(id); setPickingCity(false); }} />
+              <CityPicker
+                isManual={location.source === "manual"}
+                onClose={() => setPickingCity(false)}
+                onPick={(c) => { location.pick(c); setPickingCity(false); }}
+                onAuto={() => { location.pick(null); setPickingCity(false); }}
+              />
             )}
             temp={now?.temp ?? null} cond={now?.text ?? "—"} feels={now?.feels ?? null} tone={nowSky.tone} rain={nowSky.rain}
             details={[
@@ -6349,24 +6675,10 @@ function PhoneParts({ d, pick, onPick }) {
 
 /* Bluetooth-устройство (часы, наушники…): с каким телефоном сопряжено, подключено ли,
    когда это проверял телефон. Найти, звонить, менять режимы — NEXA не умеет и не обещает */
-function BtDeviceInfo({ d, onRename }) {
-  const [name, setName] = useState(d.name);
-  useEffect(() => setName(d.name), [d.name]);
-  const clean = name.trim().slice(0, 40);
-  const changed = clean && clean !== d.name;
+function BtDeviceInfo({ d }) {
   return (
     <div className="nx-dev-info-box" style={{ borderRadius: 28, padding: "18px 20px", background: `color-mix(in srgb, ${C.text} 7%, transparent)` }}>
-      <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
-        <label htmlFor="nx-bt-name" style={{ fontSize: 13, color: C.mutedSoft }}>Название</label>
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          <input id="nx-bt-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
-            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
-            border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", outline: "none",
-          }} />
-          <button type="submit" className="nx-ghost-btn" disabled={!changed} style={{ ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: changed ? C.text : C.mutedSoft }}>Сохранить</button>
-        </div>
-      </form>
-      <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 12, lineHeight: 1.55 }}>
+      <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.55 }}>
         Bluetooth · сопряжено с «{d.host_name || "телефоном"}»
         <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Подключено к телефону" : "Сейчас не подключено"}</span>
         {d.checkedAt ? <> · по данным телефона в {new Date(d.checkedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</> : null}
@@ -6463,36 +6775,53 @@ function BtEntry({ onOpen }) {
   );
 }
 
-function RealDeviceInfo({ d, onRename, actions }) {
-  const [name, setName] = useState(d.name);
-  useEffect(() => setName(d.name), [d.name]);
-  const clean = name.trim().slice(0, 40);
-  const changed = clean && clean !== d.name;
+function RealDeviceInfo({ d, actions }) {
   return (
     <>
     <div className="nx-dev-info-box" style={{ borderRadius: 28, padding: "18px 20px", background: `color-mix(in srgb, ${C.text} 7%, transparent)` }}>
-      <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
-        <label htmlFor="nx-real-name" style={{ fontSize: 13, color: C.mutedSoft }}>Название</label>
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          <input id="nx-real-name" className="nx-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} style={{
-            flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 15, fontFamily: "inherit",
-            border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", outline: "none",
-          }} />
-          <button type="submit" className="nx-ghost-btn" disabled={!changed} style={{
-            ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999,
-            border: `1px solid ${C.borderStrong}`, color: changed ? C.text : C.mutedSoft,
-          }}>
-            Сохранить
-          </button>
-        </div>
-      </form>
-      <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 12, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.5 }}>
         {peerLabel(d)} · подключено по коду{d.isSelf ? " · это устройство" : ""}
         <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Онлайн" : lastSeenText(d.seenAt)}</span>
       </div>
     </div>
     {actions}
     </>
+  );
+}
+
+/* Название устройства в шапке его экрана. Карандаш рядом — переименовать прямо здесь:
+   название становится полем того же размера. Enter или «Сохранить» — сохранить,
+   Esc или «Отмена» — вернуть как было. Пустое и то же самое не сохраняем */
+function DeviceTitle({ name, onRename }) {
+  const [edit, setEdit] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const inputRef = useRef(null);
+  useEffect(() => { if (!edit) setDraft(name); }, [name, edit]);
+  useEffect(() => { if (edit) inputRef.current?.select(); }, [edit]);
+  const clean = draft.trim().slice(0, 40);
+  const save = () => { if (clean && clean !== name) onRename?.(clean); setEdit(false); };
+  const cancel = () => { setDraft(name); setEdit(false); };
+  if (!edit) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <div className="ng-display nx-device-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1, minWidth: 0, overflowWrap: "anywhere" }}>{name}</div>
+      {onRename && (
+        <button type="button" className="nx-icon-btn" onClick={() => setEdit(true)} aria-label="Переименовать устройство" title="Переименовать"
+          style={{ ...btnReset, width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${C.borderStrong}` }}>
+          {Icon.edit({ c: C.muted, s: 16 })}
+        </button>
+      )}
+    </div>
+  );
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); save(); }} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
+      <input ref={inputRef} className="nx-input ng-display nx-device-title" value={draft} maxLength={40} aria-label="Название устройства"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); } }}
+        style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1, color: C.text, background: "transparent", fontFamily: "inherit",
+          border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "2px 12px", outline: "none", minWidth: 0, width: "min(380px, 100%)", boxSizing: "border-box" }} />
+      <button type="submit" className="nx-primary" disabled={!clean} style={{ ...btnReset, padding: "9px 16px", fontSize: 13, fontWeight: 500, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Сохранить</button>
+      <button type="button" className="nx-ghost-btn" onClick={cancel} style={{ ...btnReset, padding: "9px 16px", fontSize: 13, border: `1px solid ${C.borderStrong}`, color: C.text }}>Отмена</button>
+    </form>
   );
 }
 
@@ -6621,9 +6950,9 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
       </div>
 
-      {/* Шапка: крупное название и статус */}
+      {/* Шапка: крупное название, карандаш (переименовать) и статус */}
       <div style={{ display: "flex", alignItems: "flex-end", flexWrap: "wrap", gap: "8px 16px", margin: "22px 0 22px" }}>
-        <div className="ng-display nx-device-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{d.name}</div>
+        <DeviceTitle name={d.name} onRename={onRename} />
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.muted, paddingBottom: 8 }}>
           <span className="nx-status-dot" style={{ width: 8, height: 8, color: d.online ? C.green : C.red, background: d.online ? C.green : C.red }} />
           {d.real || d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
@@ -6755,8 +7084,8 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
 
       <div data-keep className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: 22, background: C.panel }}>
         {/* Только настоящее: имя и что это за устройство. Выдуманных переключателей нет */}
-        {d.real && <RealDeviceInfo d={d} onRename={onRename} actions={realActions} />}
-        {d.bt && <BtDeviceInfo d={d} onRename={onRename} />}
+        {d.real && <RealDeviceInfo d={d} actions={realActions} />}
+        {d.bt && <BtDeviceInfo d={d} />}
 
         {/* Удаление устройства. Сначала спрашиваем прямо здесь: "Удалить?" */}
         <div ref={delRef} style={{ padding: "18px 0 0" }}>
@@ -6793,8 +7122,6 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         </div>
       </div>
       </div>
-      {/* Реальное устройство: передать текст / ссылку и что от него пришло */}
-      {d.real && link && <DeviceMessages d={d} link={link} flowOn={flowOn} />}
     </div>
   );
 }
@@ -10788,7 +11115,7 @@ function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   );
 }
 
-function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, locateBlock, updateBlock }) {
+function ScreenSettings({ onAbout, onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, locateBlock, updateBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -10875,7 +11202,7 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
 
       <SectionTitle>Система</SectionTitle>
       <SettingsGroup>
-        <SettingsRow last icon={Icon.info({ c: C.text, s: 18 })} title="О системе" subtitle={`NEXA ${VERSION}`} right={Icon.chevron({})} />
+        <SettingsRow last icon={Icon.info({ c: C.text, s: 18 })} title="О системе" subtitle={`NEXA ${VERSION} · что умеет, обновления и планы`} right={Icon.chevron({})} onClick={onAbout} />
       </SettingsGroup>
     </div>
   );
@@ -11342,7 +11669,7 @@ export default function NexaApp() {
      Город для виджета погоды — выбранный в NEXA (не выбран — Казань) */
   useEffect(() => { widgetsSetSchedule(schedule); }, [schedule]);
   useEffect(() => {
-    { const cid = readCityId(); widgetsSetCity(cid, (WEATHER_CITIES.find((c) => c.id === cid) || WEATHER_CITIES[0]).city); }
+    widgetsSetCity(readManualCity());
     const away = () => { if (document.visibilityState === "hidden") widgetsFlush(); };
     document.addEventListener("visibilitychange", away);
     return () => document.removeEventListener("visibilitychange", away);
@@ -11751,6 +12078,7 @@ export default function NexaApp() {
   const logActivity = (kind, title, text = "") => setActivity((list) =>
     [{ id: `a${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), kind, title, text }, ...list].slice(0, ACTIVITY_MAX));
   const [activityOpen, setActivityOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false); // экран «О системе»
   // То же событие ещё раз (повтор сигнала, вторая вкладка этого браузера) — в ленту не пишем
   const logActivityOnce = (key, ...args) => claimNote(`act:${key}`).then((ok) => ok && logActivity(...args));
   onTextActivity.current = (item) => logActivityOnce(`text:${item.id}`, "text", `Получен текст от «${realNames[item.from_device] || item.from_name || "Устройство"}»`, safeUrl(item.text) ? "Ссылка" : "Сообщение");
@@ -12199,7 +12527,9 @@ export default function NexaApp() {
   useSmoothScroll(tab !== "assistant");
 
   // Переход по меню закрывает и экран устройства
-  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setTab(t); };
+  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setTab(t); };
+  // «Подробнее о системе» — с любого экрана (ассистент — через Главную, как «Активность»)
+  const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(true); };
   // Переход по меню (боковое на компьютере, нижняя панель на телефоне): новый раздел
   // въезжает с той стороны, где он стоит в меню — как при свайпе (тот же body[data-swipe])
   const navTo = (t) => {
@@ -12217,7 +12547,7 @@ export default function NexaApp() {
      свайп влево (по самой шторке — её собственный жест, по затемнению — здесь) */
   const [swipeDir, setSwipeDir] = useState(null); // откуда въезжает новый экран: "next" | "prev"
   useTabSwipe(
-    () => ({ tab, sub: !!openDeviceId || activityOpen }),
+    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen }),
     (dir) => {
       if (tab === "assistant") {
         if (document.querySelector(".nx-hist-drawer.is-open")) {
@@ -12309,7 +12639,7 @@ export default function NexaApp() {
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
-  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, locked: !!locked };
+  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, aboutOpen, locked: !!locked };
   useEffect(() => {
     if (!isNative) return;
     const sub = CapApp.addListener("backButton", () => {
@@ -12327,11 +12657,12 @@ export default function NexaApp() {
         target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         return;
       }
-      const { openDeviceId: dev, tab: cur, activityOpen: act, locked: lk } = backState.current;
+      const { openDeviceId: dev, tab: cur, activityOpen: act, aboutOpen: about, locked: lk } = backState.current;
       // Экран NEXA заблокирован (демонстрация) — «Назад» только сворачивает
       if (lk) { CapApp.minimizeApp(); return; }
       // Открыта «Активность» — назад к Главной
       if (act) { setActivityOpen(false); return; }
+      if (about) { setAboutOpen(false); return; }
       // 2) Открыт экран устройства — назад к списку
       if (dev) { setOpenDeviceId(null); return; }
       // 3) Был другой раздел — возвращаемся в него
@@ -14097,7 +14428,11 @@ export default function NexaApp() {
             обычное окно браузера */}
         <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
     {/* Открыт экран устройства — показываем его вместо текущего раздела */}
-    {activityOpen ? (
+    {aboutOpen ? (
+    <div key="about" className="ng-screen-anim">
+      <ScreenAbout onBack={() => setAboutOpen(false)} installed={installedVersion} />
+    </div>
+  ) : activityOpen ? (
     <div key="activity" className="ng-screen-anim">
       <ScreenActivity items={activity} onBack={() => setActivityOpen(false)} onClear={() => setActivity([])} />
     </div>
@@ -14162,6 +14497,7 @@ export default function NexaApp() {
           onNavigate={goTab}
           onOpenDevice={showDevice}
           onAddDevice={onAddDevice}
+          onAbout={openAbout}
           netState={!online ? "offline" : !uid ? "local" : syncLoading || syncPending || syncError ? "pending" : "ok"}
           activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
           findState={findState}
@@ -14187,7 +14523,7 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()}
+      {tab === "settings" && <ScreenSettings onAbout={openAbout} onOpenSearch={() => openSearch()}
         noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
         updateBlock={isNative && (
           <>
@@ -14226,10 +14562,10 @@ export default function NexaApp() {
   }}>
     <Logo small />
     <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-      {tab === "home" && (
-        <div style={{ fontSize: 13, color: C.mutedSoft }}>
+      {tab === "home" && !aboutOpen && !activityOpen && !openDevice && (
+        <button type="button" className="nx-link-btn nx-about-link" onClick={openAbout} style={{ ...btnReset, fontSize: 13, color: C.mutedSoft }}>
           Подробнее о системе →
-        </div>
+        </button>
       )}
       <div style={{ fontSize: 11, color: C.mutedSoft, opacity: 0.6, fontFamily: "monospace" }}>
         v{VERSION}
