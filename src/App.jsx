@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.13";
+const VERSION = "0.9.14";
 
 
 const C = {
@@ -58,6 +58,7 @@ const C = {
   hover: "var(--hover)",         // лёгкая подсветка кнопок (наведение)
   pressed: "var(--pressed)",     // подложка нажатой кнопки
   borderStrong: "var(--border-strong)", // заметная обводка карточек (Медиа, Файлы)
+  lineBright: "var(--line-bright)", // яркая тонкая обводка карточек-«таблеток» (макет 2026-10)
   onFold: "var(--on-fold)",      // белый текст на цветных складках (в обеих темах)
   photoBg: "var(--photo-bg)",    // фон полноэкранного просмотра фото (в обеих темах тёмный)
   // Цвета складок-стёкол на экранах "Медиа" и "Файлы". Это как картинка,
@@ -866,11 +867,12 @@ const NAV = [
   { id: "settings", label: "Настройки", icon: Icon.gear },
 ];
 function MobileTabBar({ active, onChange }) {
-  // Главная — по центру (главный раздел), остальные по бокам
+  // Порядок как в макете 2026-10: Главная первой, дальше Ассистент, Сегодня, Медиа, Файлы
+  // (тот же порядок у свайпов — SWIPE_ORDER)
   const mobileNav = [
+    { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "assistant", label: "Ассистент", icon: Icon.sparkle },
     { id: "today",     label: "Сегодня",   icon: Icon.calendar },
-    { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "media",     label: "Медиа",     icon: Icon.image },
     { id: "files",     label: "Файлы",     icon: Icon.folder },
   ];
@@ -943,11 +945,9 @@ function MobileTabBar({ active, onChange }) {
               width: 52,
               height: 42,
               boxSizing: "border-box",
-              borderRadius: 18,
+              borderRadius: 999,
               background: C.chip,
-              // На Главной рамка подсветки мятная
-              border: `1px solid ${shownIndex === homeIndex ? `color-mix(in srgb, ${C.mint} 55%, transparent)` : C.borderStrong}`,
-              transition: "border-color 300ms ease",
+              border: `1px solid ${C.lineBright}`,
             }} />
           </div>
 
@@ -972,8 +972,7 @@ function MobileTabBar({ active, onChange }) {
                 color: C.text,
               }}
             >
-              {/* Главная чуть заметнее: мятный значок крупнее остальных */}
-              {item.main ? item.icon({ c: C.mint, s: 25 }) : item.icon({ c: "currentColor", s: 22 })}
+              {item.icon({ c: "currentColor", s: 22 })}
             </button>
           ))}
         </div>
@@ -1330,17 +1329,28 @@ function IconBtn({ icon, s = 18, onClick, label }) {
   );
 }
 
+// Знак NEXA — грани складки линиями (макет, Logo-mini.svg). Цвет — как у текста
+function LogoMark({ s = 30 }) {
+  return (
+    <svg viewBox="0 0 46 45" width={s} height={(s * 45) / 46} fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, color: C.text }}>
+      <path d="M20.5114 23.6624V28.7977L1.5 41.0349V13.3554L20.5114 2.57495V8.25654M20.5114 28.7977L1.5 13.3554M20.5114 8.25654L28.0739 13.9814M20.5114 8.25654V18.5271M43.8934 25.9569V5.05154L28.0739 13.9814M43.8934 25.9569L28.0739 13.9814M43.8934 25.9569V41.0349L20.5114 23.6624M28.0739 13.9814L20.5114 18.5271M20.5114 18.5271V23.6624"
+        stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Логотип NEXA. Это тот же SVG из Figma (assets/logo.svg), только вставлен
 // прямо в код. Все фигуры залиты fill="currentColor", то есть берут цвет
 // текста: в тёмной теме логотип белый, в светлой тёмный. Отдельный чёрный
 // файл не нужен, иначе в тёмной теме он пропал бы на фоне.
-function Logo({ small }) {
-  const h = small ? 28 : 36;
+// bare — без внешних отступов (в шапке мобильной Главной рядом со знаком)
+function Logo({ small, bare }) {
+  const h = bare ? 20 : small ? 28 : 36;
   return (
     <svg
       viewBox="0 0 149 25" height={h} width={(h * 149) / 25}
       fill="currentColor" role="img" aria-label="NEXA"
-      style={{ color: C.text, marginBottom: 20, marginRight: 20, display: "block" }}
+      style={{ color: C.text, marginBottom: bare ? 0 : 20, marginRight: bare ? 0 : 20, display: "block" }}
     >
       <rect y="0.128967" width="2.89847" height="23.7675" />
       <rect x="25.521" y="0.143463" width="2.89847" height="23.7675" />
@@ -1458,6 +1468,26 @@ const DEVICE_TYPES = [
   { type: "tv",     icon: Icon.tv,     name: "Телевизор", battery: null, memory: 64 },
 ];
 const deviceType = (type) => DEVICE_TYPES.find((t) => t.type === type) || DEVICE_TYPES[0];
+const DEVICE_ART = {
+  phone: { vb: "0 0 24 41", w: 24, h: 41, body: (
+    <><rect x="0.5" y="0.5" width="22.6" height="39.37" rx="6.5" stroke="currentColor" strokeLinejoin="round" />
+      <rect x="8.82" y="3.91" width="5.96" height="0.87" rx="0.44" fill="currentColor" /></>) },
+  laptop: { vb: "0 0 37 28", w: 37, h: 28, body: (
+    <><rect x="36.185" y="0.366" width="23.347" height="35.819" rx="6.229" transform="rotate(90 36.185 0.366)" stroke="currentColor" strokeWidth="0.73" strokeLinejoin="round" />
+      <path d="M35.94 26.24c.34 0 .61.27.61.61 0 .34-.27.61-.61.61H.61A.61.61 0 0 1 0 26.85c0-.34.27-.61.61-.61h15.1c0 .22.18.39.39.39h4.35c.22 0 .39-.17.39-.39h15.1Z" fill="currentColor" /></>) },
+  tv: { vb: "0 0 50 39", w: 50, h: 39, body: (
+    <><rect x="49.25" y="0.627" width="31.444" height="48.623" rx="8.153" transform="rotate(90 49.25 0.627)" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+      <path d="M34.48 37.65c.29 0 .52.23.52.52 0 .29-.23.52-.52.52H15.4a.52.52 0 0 1 0-1.04h19.08Z" fill="currentColor" /></>) },
+  watch: { vb: "0 0 31 44", w: 31, h: 44, body: (
+    <><rect x="29.532" y="9.566" width="24.843" height="29.032" rx="6.5" transform="rotate(90 29.532 9.566)" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M7.75 9.07V7.5a7 7 0 0 1 7-7h.54a7 7 0 0 1 7 7v1.57M22.23 34.91v1.57a7 7 0 0 1-7 7h-.54a7 7 0 0 1-7-7v-1.57" stroke="currentColor" strokeLinejoin="round" /></>) },
+};
+// Значок устройства для карточки: высота h, цвет текста. Нет своего рисунка — обычный значок
+function deviceArt(d, h = 30) {
+  const a = DEVICE_ART[d.type];
+  if (!a) return d.icon({ c: C.text, s: Math.round(h * 0.85) });
+  return <svg viewBox={a.vb} height={h} width={(h * a.w) / a.h} fill="none" style={{ display: "block", color: C.text, maxWidth: h * 1.3 }}>{a.body}</svg>;
+}
 
 // Название без повторов: "Планшет" → если занято, "Планшет 2", "Планшет 3"…
 function uniqueDeviceName(base, names) {
@@ -1813,156 +1843,106 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
         {activityBlock && <div style={{ marginTop: 36 }}>{activityBlock}</div>}
       </div>
 
-      {/* ══════════ МОБИЛЬНАЯ ВЕРСИЯ ══════════ */}
+      {/* ══════════ МОБИЛЬНАЯ ВЕРСИЯ (макет 2026-10: таблетки, знак NEXA) ══════════ */}
       <div className="ng-home-mobile">
-        {/* Логотип + eyebrow */}
-        <div className="ng-home-logo" style={{ marginBottom: 20 }}>
-          <Logo small />
-          <div style={{
-            fontSize: 11, letterSpacing: "0.12em",
-            color: C.muted, marginTop: 4, textTransform: "uppercase",
-          }}>
-            Ваша экосистема
+        {/* Знак + слово NEXA, под ним «Ваша экосистема». Значки справа — общая верхняя строка */}
+        <div className="nx-home-brand" style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0 26px" }}>
+          <LogoMark s={30} />
+          <div style={{ minWidth: 0 }}>
+            <Logo small bare />
+            <div style={{ fontSize: 10, letterSpacing: "0.24em", color: C.muted, marginTop: 5, textTransform: "uppercase" }}>
+              Ваша экосистема
+            </div>
           </div>
         </div>
 
-         {/* Hero */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+        {/* Заголовок, под ним тонкая линия; справа — складка */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ng-display nx-home-hero" style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.2 }}>
+            <div className="ng-display nx-home-hero" style={{ fontSize: 24, fontWeight: 500, lineHeight: 1.25 }}>
               Все устройства в одной системе
             </div>
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>
-              {tagline}
-            </div>
+            <div aria-hidden="true" style={{ width: 108, height: 1, background: C.lineBright, margin: "14px 0 10px" }} />
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>{tagline}</div>
           </div>
-          {/* Складка крупнее и чуть выше — вровень с заголовком */}
-          <div style={{ flexShrink: 0, alignSelf: "flex-start", margin: "-34px -14px 0 -10px" }}>
-            <HomeFold size={168} count={devices.length} />
+          <div style={{ flexShrink: 0, margin: "-30px -14px 0 -10px" }}>
+            <HomeFold size={160} count={devices.length} />
           </div>
         </div>
 
         {/* В приложении: вышла новая версия — предлагаем обновиться */}
-        {update && <div style={{ marginBottom: 18 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
+        {update && <div style={{ marginTop: 18 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
         {/* Предложение установить приложение (только телефон в браузере) */}
         <InstallBanner onHowTo={() => {
           onNavigate("settings");
           setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
         }} />
 
-        {/* Мои устройства */}
-        <div style={{ marginTop: 24 }}>
-          <div style={{
-            display: "flex", justifyContent: "space-between",
-            alignItems: "center", marginBottom: 14,
-          }}>
-            <div className="ng-display" style={{ fontSize: 20, fontWeight: 600 }}>
-              Мои устройства
-            </div>
-            <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 14 }}>
+        {/* Мои устройства: карточки-«таблетки» по две в ряд */}
+        <div style={{ marginTop: 26 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div className="ng-display" style={{ fontSize: 20, fontWeight: 500 }}>Мои устройства</div>
+            <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 16, fontWeight: 600 }}>
               <span>{onlineCount}</span>
-              <Dot color={C.green} />
+              <span className="nx-status-dot" style={{ color: C.green, background: C.green }} />
             </div>
           </div>
-          {empty && <div style={{ border: `1px solid ${C.border}`, borderRadius: 18 }}>{empty}</div>}
+          {empty && <div className="nx-pill-card" style={{ borderRadius: 32 }}>{empty}</div>}
           <div className="nx-stagger" style={{
             display: "grid",
             // minmax(0, 1fr) — длинное название не раздвигает колонку
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: 10, position: "relative",
+            gap: 12, position: "relative",
           }}>
-            {/* Карточка — кнопка: открывает окно устройства */}
             {devices.map((d) => (
               <div key={d.id} style={{ position: "relative", minWidth: 0, display: "flex" }}>
-              <button
-                type="button"
-                data-link-id={d.id}
-                className="nx-row-btn"
-                onClick={() => onOpenDevice(d.id)}
-                style={{
-                  ...btnReset,
-                  border: `1px solid ${C.border}`, borderRadius: 18,
-                  padding: 14, cursor: "pointer", position: "relative",
-                  display: "flex", flexDirection: "column", gap: 10,
-                  minHeight: 96, minWidth: 0, flex: 1,
-                }}
-              >
-                <div style={{ position: "absolute", top: 12, right: 12, display: "flex" }}>
-                  <Dot color={d.online ? C.green : C.red} />
-                </div>
-                <div style={{ width: 26, height: 26 }}>
-                  {d.icon({ c: C.text, s: 24 })}
-                </div>
-                <div style={{ marginTop: "auto", minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
-                  {/* Только что получен файл — отметка вместо статуса */}
-                  {received[d.id]
-                    ? <div style={{ marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></div>
-                    : <div style={{ fontSize: 13, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{statusOf(d)}</div>}
-                </div>
-              </button>
-              {findable(d) && (
-                <FindChip compact state={findState[d.device_id]} onClick={() => onFind(d)}
-                  style={{ position: "absolute", top: 8, right: 28 }} />
-              )}
+                <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-pill" data-online={d.online ? "1" : "0"}
+                  onClick={() => onOpenDevice(d.id)} style={{ ...btnReset, flex: 1, minWidth: 0, textAlign: "left", color: C.text }}>
+                  <span className="nx-dev-pill-icon" aria-hidden="true">{deviceArt(d, 26)}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 15, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+                    {/* Только что получен файл — отметка вместо статуса */}
+                    {received[d.id]
+                      ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
+                      : <span style={{ display: "block", fontSize: 11, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{statusOf(d)}</span>}
+                  </span>
+                  <span className="nx-status-dot" style={{ color: d.online ? C.green : C.red, background: d.online ? C.green : C.red }} />
+                </button>
+                {findable(d) && (
+                  <FindChip compact state={findState[d.device_id]} onClick={() => onFind(d)}
+                    style={{ position: "absolute", top: -8, right: 14 }} />
+                )}
               </div>
             ))}
-            {/* Последняя карточка — "Добавить": пунктирная рамка, мятный плюс */}
+            {/* Последняя — «Добавить устройство»: пунктирная таблетка, мятный плюс */}
             {devices.length > 0 && (
-              <button
-                type="button"
-                className="nx-row-btn"
-                onClick={onAddDevice}
-                style={{
-                  ...btnReset,
-                  border: `1px dashed ${C.borderStrong}`, borderRadius: 18,
-                  padding: 14, display: "flex", flexDirection: "column", gap: 10,
-                  minHeight: 96, minWidth: 0,
-                }}
-              >
-                <div style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {Icon.plus({ c: C.mint, s: 22 })}
-                </div>
-                <div style={{ marginTop: "auto", fontSize: 14, fontWeight: 500 }}>Добавить устройство</div>
+              <button type="button" className="nx-row-btn nx-dev-pill is-add" onClick={onAddDevice}
+                style={{ ...btnReset, textAlign: "left", color: C.text, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2 }}>
+                {Icon.plus({ c: C.mint, s: 18 })}
+                <span style={{ fontSize: 14, lineHeight: 1.25 }}>Добавить устройство</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* AI-карточка */}
-        <div
-          onClick={() => onNavigate("assistant")}
-          style={{
-            marginTop: 20,
-            border: `1px solid ${C.border}`, borderRadius: 20,
-            padding: "14px 16px",
-            display: "flex", alignItems: "center", gap: 14,
-            background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
-            cursor: "pointer",
-          }}
-        >
-          <div style={{
-            width: 40, height: 40, borderRadius: "50%",
-            background: C.mintDark,
+        {/* Ассистент — крупная таблетка */}
+        <button type="button" className="nx-row-btn nx-pill-card nx-ai-pill" onClick={() => onNavigate("assistant")}
+          style={{ ...btnReset, width: "100%", marginTop: 28, textAlign: "left", color: C.text }}>
+          <span aria-hidden="true" style={{
+            width: 46, height: 46, borderRadius: "50%", flexShrink: 0,
+            background: `linear-gradient(140deg, ${C.blue}, ${C.foldDeep})`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
           }}>
-            {Icon.sparkle({ c: C.mint, s: 20 })}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 500 }}>ИИ — Ассистент</div>
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Чем могу помочь?</div>
-          </div>
-          <div style={{
-            width: 34, height: 34, borderRadius: "50%",
-            border: `1px solid ${C.borderSoft}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-          }}>
-            {Icon.chevron({ c: C.text })}
-          </div>
-        </div>
-        {activityBlock && <div style={{ marginTop: 20 }}>{activityBlock}</div>}
+            {Icon.sparkle({ c: C.onFold, s: 22 })}
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span className="ng-display" style={{ display: "block", fontSize: 20, fontWeight: 500, lineHeight: 1.2 }}>ИИ — Ассистент</span>
+            <span style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
+          </span>
+          {Icon.chevron({ c: C.text, s: 20 })}
+        </button>
+        {/* Активность — крупная карточка с теми же краями */}
+        {activityBlock && <div className="nx-act-pill" style={{ marginTop: 18 }}>{activityBlock}</div>}
       </div>
 
     </div>
@@ -2343,9 +2323,9 @@ function RealDeviceActions({ d, act, st = {}, linkOnline }) {
     act.openLink(d, safe).then((ok) => { setUrlNote(ok ? null : "Не отправилось — попробуйте ещё раз"); if (ok) setUrl(""); });
   };
   return (
-    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+    <div style={{ marginTop: 18 }}>
       <div style={{ fontSize: 13, color: C.mutedSoft, marginBottom: 10 }}>Быстрые действия</div>
-      <div className="nx-quick-actions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+      <div className="nx-quick-actions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
         <FindChip state={st.find} onClick={() => act.find(d)} style={pushFindOk ? pill : off({ ...pill })} />
         <button type="button" className="nx-ghost-btn" disabled={!!why || st.lock === "locked"} onClick={() => act.lock(d)} style={off(pill)}>
           {Icon.lock({ c: why ? C.mutedSoft : C.text, s: 14 })} {st.lock === "locked" ? "Заблокировано" : "Заблокировать экран"}
@@ -6659,7 +6639,7 @@ function BtDeviceInfo({ d, onRename }) {
   const clean = name.trim().slice(0, 40);
   const changed = clean && clean !== d.name;
   return (
-    <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px" }}>
+    <div className="nx-dev-info-box" style={{ borderRadius: 28, padding: "18px 20px", background: `color-mix(in srgb, ${C.text} 7%, transparent)` }}>
       <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
         <label htmlFor="nx-bt-name" style={{ fontSize: 13, color: C.mutedSoft }}>Название</label>
         <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -6773,7 +6753,8 @@ function RealDeviceInfo({ d, onRename, actions }) {
   const clean = name.trim().slice(0, 40);
   const changed = clean && clean !== d.name;
   return (
-    <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px" }}>
+    <>
+    <div className="nx-dev-info-box" style={{ borderRadius: 28, padding: "18px 20px", background: `color-mix(in srgb, ${C.text} 7%, transparent)` }}>
       <form onSubmit={(e) => { e.preventDefault(); if (changed) onRename?.(clean); }}>
         <label htmlFor="nx-real-name" style={{ fontSize: 13, color: C.mutedSoft }}>Название</label>
         <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -6793,8 +6774,9 @@ function RealDeviceInfo({ d, onRename, actions }) {
         {peerLabel(d)} · подключено по коду{d.isSelf ? " · это устройство" : ""}
         <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Онлайн" : lastSeenText(d.seenAt)}</span>
       </div>
-      {actions}
     </div>
+    {actions}
+    </>
   );
 }
 
@@ -6885,6 +6867,8 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
     return () => ro.disconnect();
   }, []);
   const size = PREVIEW_SIZE[typeOf(d)] || PREVIEW_SIZE.buds;
+  // Телефон (подключённый по коду) — объёмная картинка из макета вместо нарисованного превью
+  const usePhoto = !d.bt && d.type === "phone";
   // На большом экране превью можно увеличить (до 1.5), на телефоне — уменьшаем
   const scale = stageSize.w ? Math.min(1.5, (stageSize.w - 40) / size.w, (stageSize.h - 48) / size.h) : 1;
 
@@ -6915,7 +6899,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   };
 
   return (
-    <div className="ng-screen nx-device-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080 }}>
+    <div className="ng-screen nx-device-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1440 }}>
       {/* «Назад» — такой же скошенный чипс, как путь в «Файлах» */}
       <div style={{ display: "flex" }}>
         <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
@@ -6924,8 +6908,8 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       {/* Шапка: крупное название и статус */}
       <div style={{ display: "flex", alignItems: "flex-end", flexWrap: "wrap", gap: "8px 16px", margin: "22px 0 22px" }}>
         <div className="ng-display nx-device-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{d.name}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted, paddingBottom: 6 }}>
-          <Dot color={d.online ? C.green : C.red} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.muted, paddingBottom: 8 }}>
+          <span className="nx-status-dot" style={{ width: 8, height: 8, color: d.online ? C.green : C.red, background: d.online ? C.green : C.red }} />
           {d.real || d.online ? deviceStatus(d) : `Не в сети · был в сети ${d.lastSeen}`}
           {received && <ReceivedTag name={received.name} />}
         </div>
@@ -6936,9 +6920,9 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           Во время поиска от устройства расходятся волны сигнала */}
       <div>
           <div ref={stageRef} className="nx-device-stage" style={{
-            position: "relative", height: 440, borderRadius: 16, overflow: "hidden",
-            border: `1px solid ${C.borderStrong}`,
-            background: `color-mix(in srgb, ${C.text} 4%, ${C.bg})`,
+            position: "relative", height: 500, borderRadius: 56, overflow: "hidden",
+            border: `1px solid ${C.lineBright}`,
+            background: C.panel,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             {/* Складка-«конверт»: четыре треугольника сходятся к центру.
@@ -6979,9 +6963,13 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             {ringing && [0, 1, 2].map((i) => (
               <span key={i} className="nx-ping" style={{ animationDelay: `${i * 400}ms` }} />
             ))}
+            {/* Телефон — объёмная картинка из макета (снизу обрезана краем сцены).
+                Остальные устройства — превью интерфейса, как раньше */}
+            {usePhoto && <img className="nx-device-photo" src="/art/device-phone.webp" alt="" draggable={false}
+              style={{ position: "absolute", left: "15%", top: 22, height: "112%", width: "auto", pointerEvents: "none" }} />}
             {/* Превью в «родном» размере, уменьшенное под сцену.
                 При подключении один раз проявляется (nx-icon-on) */}
-            <div
+            {!usePhoto && <div
               data-keep
               key={flip && flip.on ? `pv-${flip.n}` : "pv"}
               className={flip && flip.on ? "nx-icon-on" : undefined}
@@ -6990,18 +6978,18 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
               {/* Bluetooth-устройство: без выдуманного экрана — только его значок */}
               {d.bt ? <span style={{ opacity: d.online ? 1 : 0.5 }}>{d.icon({ c: C.text, s: 96 })}</span>
                 : <DevicePreview device={d} devices={devices} files={files} folders={folders} />}
-            </div>
+            </div>}
           </div>
       </div>
 
       {/* Под превью: слева статус, заряд и главные кнопки, справа настройки.
           На телефоне — одной колонкой */}
-      <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0 40px", alignItems: "start", marginTop: 8 }}>
+      <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.82fr) minmax(0, 1fr)", gap: "20px 36px", alignItems: "start", marginTop: 28 }}>
       <div data-keep>
         {/* Карточка «Состояние»: заряд, память, сеть и кнопки — как карточка справа */}
-        <div className="nx-dev-card" style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16, padding: 14 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
-          <span style={{ fontSize: 13, color: C.mutedSoft }}>Состояние</span>
+        <div className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px", background: C.panel }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 20 }}>
+          <span style={{ fontSize: 17, color: C.muted }}>Состояние</span>
           {/* Когда сведения получены: у отключённого — последние достоверные */}
           {d.real && (
             <span style={{ fontSize: 12, color: C.mutedSoft, textAlign: "right" }}>
@@ -7011,10 +6999,10 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
             </span>
           )}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           {bars.map((b) => (
-            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
-              <div style={{ width: 62, flexShrink: 0, color: C.mutedSoft }}>{b.label}</div>
+            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 15 }}>
+              <div style={{ width: 70, flexShrink: 0, color: C.muted }}>{b.label}</div>
               {/* Полоска-«таблетка»: толстая, со скруглёнными краями. У «Сети» полоски нет */}
               {b.noBar ? <div style={{ flex: 1 }} /> : (
                 <div style={{ flex: 1, height: 8, borderRadius: 999, background: `color-mix(in srgb, ${C.text} 10%, transparent)`, overflow: "hidden" }}>
@@ -7034,7 +7022,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         {/* Кнопки делят ширину поровну; «Подключить / Отключить» — на всю строку */}
         <div className="nx-device-actions" style={{
           display: "flex", flexWrap: "wrap",
-          gap: 10, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}`,
+          gap: 10, marginTop: 26,
         }}>
           {/* «В сети» решает само устройство; «Найти» — в быстрых действиях справа */}
           <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn, flex: "1 1 136px" }}>
@@ -7049,13 +7037,13 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
         )}
       </div>
 
-      <div data-keep>
+      <div data-keep className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: 22, background: C.panel }}>
         {/* Только настоящее: имя и что это за устройство. Выдуманных переключателей нет */}
         {d.real && <RealDeviceInfo d={d} onRename={onRename} actions={realActions} />}
         {d.bt && <BtDeviceInfo d={d} onRename={onRename} />}
 
         {/* Удаление устройства. Сначала спрашиваем прямо здесь: "Удалить?" */}
-        <div ref={delRef} style={{ padding: "14px 0 0" }}>
+        <div ref={delRef} style={{ padding: "18px 0 0" }}>
           {confirmDel ? (
             <div role="alert" className="nx-pop" style={{
               display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12,
@@ -9820,20 +9808,44 @@ function UpdateCard({ update, onLater, variant = "home" }) {
    Закрыть нельзя — только скачать новую.
    Без интернета проверка не проходит, и старая версия открывается как обычно */
 function ForceUpdateScreen({ update }) {
+  // Макет 2026-10: сверху знак и NEXA, в середине объёмная сцена (тумбы с фото, складкой
+  // и папкой), снизу шторка с текстом и кнопкой. Экран непрозрачный — под ним ничего не видно
   return (
-    <div className="nx-force-update" role="alertdialog" aria-modal="true" aria-label="Обновите приложение" style={{
-      position: "fixed", inset: 0, zIndex: 1000,
-      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
-      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
-      padding: "calc(var(--sat) + 24px) 28px calc(var(--sab) + 24px)",
+    <div className="nx-force-update" role="alertdialog" aria-modal="true" aria-labelledby="nx-force-title" style={{
+      position: "fixed", inset: 0, zIndex: 1000, background: C.bg, color: C.text,
+      display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", overflow: "hidden",
     }}>
-      <img src={foldSvg} alt="" style={{ width: 120, height: "auto", marginBottom: 28 }} />
-      <div className="ng-display" style={{ fontSize: 26, lineHeight: 1.2, marginBottom: 10 }}>Обновите приложение</div>
-      <div style={{ fontSize: 15, color: C.muted, maxWidth: 300, lineHeight: 1.5, marginBottom: 12 }}>
-        {`Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
+      {/* Лёгкий мятный свет сверху — как в макете */}
+      <div aria-hidden="true" style={{ position: "absolute", inset: "0 0 auto 0", height: "45%", pointerEvents: "none",
+        background: `radial-gradient(80% 60% at 50% 0%, color-mix(in srgb, ${C.mint} 12%, transparent), transparent 70%)` }} />
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 18, paddingTop: "calc(var(--sat) + 40px)" }}>
+        <LogoMark s={44} />
+        <Logo bare />
       </div>
-      <div style={{ width: "min(320px, 100%)" }}><UpdateActions update={update} big /></div>
+      {/* Сцена занимает всё свободное место, низ уходит под шторку */}
+      <div style={{ position: "relative", flex: 1, minHeight: 0, width: "100%", display: "flex", justifyContent: "center", alignItems: "flex-end", marginTop: 16 }}>
+        <img src="/art/update-stage.webp" alt="" draggable={false}
+          style={{ height: "100%", maxHeight: 520, width: "auto", maxWidth: "88%", objectFit: "contain", objectPosition: "bottom", marginBottom: -40, pointerEvents: "none" }} />
+      </div>
+      <div className="nx-force-sheet" style={{
+        position: "relative", width: "100%", maxWidth: 520, boxSizing: "border-box",
+        background: C.panel, borderRadius: "36px 36px 0 0", border: `1px solid ${C.border}`, borderBottom: "none",
+        padding: "28px 28px calc(var(--sab) + 28px)",
+      }}>
+        <div id="nx-force-title" className="ng-display" style={{ fontSize: 24, fontWeight: 500, lineHeight: 1.2, marginBottom: 10 }}>Обновите NEXA</div>
+        <div style={{ fontSize: 14, color: C.muted, maxWidth: 320, margin: "0 auto", lineHeight: 1.5 }}>
+          {`Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, color: C.muted, margin: "12px 0 18px" }}>
+          {/* Щит — данные на месте */}
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+            <path d="M8 1.5 13 3.5v4c0 3.2-2.1 5.6-5 7-2.9-1.4-5-3.8-5-7v-4L8 1.5Z" stroke={C.mint} strokeWidth="1.3" strokeLinejoin="round" />
+            <path d="m5.6 8 1.7 1.7 3.2-3.4" stroke={C.mint} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Ваши данные останутся на месте
+        </div>
+        <div style={{ width: "min(320px, 100%)", margin: "0 auto" }}><UpdateActions update={update} big /></div>
+      </div>
     </div>
   );
 }
@@ -11229,7 +11241,7 @@ function useKeyboardViewport() {
    в 24 px от края экрана (там системный «Назад»), при открытой клавиатуре.
    getCtx() → { tab, sub } (sub — открыт экран устройства или «Активность»);
    onSwipe(dir) — dir: "next" (палец влево) | "prev" (палец вправо) */
-const SWIPE_ORDER = ["assistant", "today", "home", "media", "files"];
+const SWIPE_ORDER = ["home", "assistant", "today", "media", "files"]; // как в нижней панели
 const SWIPE_MIN = 60, SWIPE_FLICK_MIN = 30, SWIPE_FLICK_SPEED = 0.5, SWIPE_FLICK_MS = 300, SWIPE_EDGE = 24, SWIPE_RATIO = 1.5;
 const SWIPE_SKIP = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe], [role="dialog"], [role="menu"], .nx-notes, .nx-viewer, .nx-hist-drawer';
 // Внутри горизонтально прокручиваемого блока свайп — это прокрутка блока
@@ -13155,6 +13167,7 @@ export default function NexaApp() {
           --hover: rgba(255, 255, 255, 0.05);  --pressed: rgba(255, 255, 255, 0.10);
           --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
           --border-strong: rgba(255, 255, 255, 0.28);
+          --line-bright: rgba(255, 255, 255, 0.62);
           --scrim: rgba(0, 0, 0, 0.6);
           --on-fold: #FFFFFF;  --photo-bg: #01060A;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
@@ -13181,6 +13194,7 @@ export default function NexaApp() {
           --hover: rgba(24, 32, 58, 0.06);  --pressed: rgba(24, 32, 58, 0.12);
           --input-glow: none;
           --border-strong: rgba(24, 32, 58, 0.24);
+          --line-bright: rgba(24, 32, 58, 0.34);
           --scrim: rgba(10, 16, 36, 0.38);
           --on-fold: #FFFFFF;  --photo-bg: #070B12; /* фото и в светлой теме — на тёмном */
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
@@ -13210,6 +13224,32 @@ export default function NexaApp() {
         .ng-hamburger { display: none; }
         /* Главная (компьютер): плашка устройства — рамка 1px, скругление 10px,
            слева ячейка значка, отделённая линией (как в макете) */
+        /* ═══ Карточки-«таблетки» мобильной Главной (макет 2026-10) ═══
+           Устройство: обводка 1px, заливка цветом статуса — зелёная у тех, что в сети,
+           красная у тех, что не в сети (слева гуще, к правому краю тает). */
+        .nx-dev-pill {
+          display: flex; align-items: center; gap: 8px; min-height: 72px; box-sizing: border-box;
+          padding: 10px 14px 10px 12px !important; border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
+          background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 16%, transparent), color-mix(in srgb, var(--green) 3%, transparent) 75%) !important;
+        }
+        .nx-dev-pill[data-online="0"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--red) 22%, transparent), color-mix(in srgb, var(--red) 4%, transparent) 75%) !important; }
+        .nx-dev-pill.is-add { border-style: dashed !important; background-image: none !important; padding-left: 22px !important; }
+        .nx-dev-pill-icon { width: 30px; display: flex; justify-content: center; flex-shrink: 0; }
+        /* Точка статуса со свечением (разрешено новым макетом) */
+        .nx-status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 8px 1px currentColor; }
+        /* Крупные карточки-таблетки: ассистент, пустой список */
+        .nx-pill-card { border: 1px solid var(--line-bright) !important; border-radius: 999px; }
+        .nx-ai-pill { display: flex; align-items: center; gap: 14px; min-height: 88px; box-sizing: border-box; padding: 14px 22px 14px 18px !important; border-radius: 999px !important;
+          background-image: linear-gradient(100deg, color-mix(in srgb, var(--blue) 10%, transparent), color-mix(in srgb, var(--mint) 6%, transparent)) !important; }
+        .nx-act-pill > section { border-color: var(--line-bright) !important; border-radius: 32px !important; padding: 18px 22px 8px !important; }
+        /* Экран «Обновите NEXA» всегда тёмный: объёмная сцена из макета нарисована под тёмный фон
+           (светлой версии макета нет). Цвета — те же, что у тёмной темы */
+        .nx-force-update {
+          --bg: #01090F; --panel: #0E1016; --border: #1C1E26; --border-soft: #22242C;
+          --text: #FFFFFF; --muted: #92A2AF; --muted-soft: #6B6B72; --mint: #00FFDF;
+          --border-strong: rgba(255, 255, 255, 0.28); --line-bright: rgba(255, 255, 255, 0.62);
+          --hover: rgba(255, 255, 255, 0.05); --pressed: rgba(255, 255, 255, 0.10); color-scheme: dark;
+        }
         .nx-dev-plate { border: 1px solid var(--border-strong) !important; border-radius: 16px !important; background: var(--panel) !important; min-height: 66px; transition: border-color 160ms ease; }
         .nx-dev-plate:hover { border-color: var(--mint) !important; }
         .nx-dev-plate.is-add { border-style: dashed !important; background: transparent !important; }
@@ -13951,6 +13991,8 @@ export default function NexaApp() {
           /* Связь устройств — одной колонкой */
           .nx-msg-grid { grid-template-columns: 1fr !important; }
           .nx-quick-actions { grid-template-columns: 1fr 1fr !important; }
+          /* Длинные подписи («Заблокировать экран») переносятся, а не обрезаются */
+          .nx-quick-actions > button { white-space: normal !important; text-align: center; line-height: 1.25; padding: 9px 10px !important; }
           .nx-link-col + .nx-link-col { border-left: none !important; border-top: 1px solid ${C.border}; }
           /* Строка синхронизации — над нижней панелью */
           .nx-sync-status { left: 16px !important; bottom: calc(var(--sab) + 96px) !important; }
@@ -14076,7 +14118,9 @@ export default function NexaApp() {
           .nx-transfer-label { display: none; }
           .nx-transfer-btn { padding: 9px !important; }
           /* Экран устройства: сцена ниже, статус и настройки одной колонкой */
-          .nx-device-stage { height: 360px !important; }
+          .nx-device-stage { height: 360px !important; border-radius: 32px !important; }
+          .nx-device-photo { left: 8% !important; height: 104% !important; }
+          .nx-dev-card { border-radius: 28px !important; padding: 18px !important; }
           /* На телефоне складка шире — за устройством, по центру сцены */
           .nx-device-fold { width: 86% !important; left: 7% !important; margin-top: calc(86% * -0.35) !important; }
           .nx-device-info { grid-template-columns: minmax(0, 1fr) !important; }
@@ -14201,10 +14245,17 @@ export default function NexaApp() {
             position: absolute !important;
             top: 0 !important;
             right: 0 !important;
-            padding: 28px 16px 0 0 !important;
+            padding: 22px 16px 0 0 !important;
             z-index: 50 !important;
-            gap: 6px !important;
+            gap: 2px !important;
           }
+          /* Макет 2026-10: поиск и профиль — крупные, между ними тонкая черта; профиль — в круге.
+             Молния и колокольчик — меньше (по просьбе автора) */
+          .ng-topbar > [aria-label="Поиск"] svg, .ng-topbar > [aria-label="Настройки"] svg { width: 22px !important; height: 22px !important; }
+          .ng-topbar > [aria-label="Настройки"] { position: relative; margin-left: 9px; width: 36px !important; height: 36px !important; }
+          .ng-topbar > [aria-label="Настройки"]::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 1px; background: var(--line-bright); }
+          .ng-topbar > [aria-label="Настройки"] svg { box-sizing: border-box; border: 1.4px solid var(--text); border-radius: 50%; padding: 3px; width: 28px !important; height: 28px !important; }
+          .ng-topbar > [aria-label="Быстрые действия"] svg, .ng-topbar > div > [aria-label^="Уведомления"] svg { width: 15px !important; height: 15px !important; }
 
            /* Поле ввода: 16px, чтобы iPhone не приближал страницу при вводе */
           .ng-assistant-inner input {
