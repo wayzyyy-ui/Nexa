@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.12";
+const VERSION = "0.9.13";
 
 
 const C = {
@@ -2145,32 +2145,157 @@ function LockOverlay({ from, onUnlock }) {
    Найти, заблокировать экран NEXA, отправить файл, открыть ссылку.
    act — действия из NexaApp: { find, lock, sendFile, cancelSend, openLink, reconnect },
    st — их состояние для этого устройства: { find, lock, send: { state, progress, error } } */
-/* Карта «где устройство»: Leaflet и подложка OpenStreetMap (подпись источника — требование
-   их лицензии). Грузится только когда понадобилась. Точка — где устройство, круг — точность */
+/* Карта «где устройство» — Яндекс Карты, JavaScript API v3.
+   Скрипт api-maps.yandex.ru/v3 подключается сам, при первом показе карты, и только один раз
+   на всё приложение (loadYmaps). Ключ — VITE_YANDEX_MAPS_KEY из переменных окружения:
+   ключ JS API публичный (он всё равно виден в адресе скрипта), защищает его ограничение
+   по HTTP Referer в кабинете разработчика Яндекса. Нет ключа, нет сети, API не ответил —
+   заглушка с координатами и ссылкой «Открыть в Яндекс Картах».
+   Условия Яндекса: логотип и ссылки на карте (copyrights) не прячем и ничем не закрываем */
+const YMAPS_KEY = import.meta.env.VITE_YANDEX_MAPS_KEY || "";
+const YMAPS_TIMEOUT_MS = 15000; // дольше 15 с скрипт не ждём
+let ymapsLoading = null;        // одна загрузка на всё приложение
+function loadYmaps() {
+  if (window.ymaps3) return window.ymaps3.ready.then(() => window.ymaps3);
+  if (!ymapsLoading) {
+    ymapsLoading = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(YMAPS_KEY)}&lang=ru_RU`;
+      s.async = true;
+      const timer = setTimeout(() => fail(new Error("timeout")), YMAPS_TIMEOUT_MS);
+      // Не загрузилось — убираем тег, чтобы следующая попытка (например, когда вернётся сеть) шла заново
+      const fail = (e) => { clearTimeout(timer); if (!window.ymaps3) { s.remove(); ymapsLoading = null; } reject(e); };
+      s.onload = () => {
+        if (!window.ymaps3) return fail(new Error("no-api"));
+        window.ymaps3.ready.then(() => { clearTimeout(timer); resolve(window.ymaps3); }, fail);
+      };
+      s.onerror = () => fail(new Error("network"));
+      document.head.appendChild(s);
+    });
+  }
+  return ymapsLoading;
+}
+// Тема карты — как у NEXA (читаем атрибут data-theme у <html>)
+const ymapsTheme = () => (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");
+// Круг точности: у JS API v3 нет готового круга — рисуем многоугольник из 64 точек.
+// Координаты у Яндекса — [долгота, широта]
+function accuracyRing(lat, lon, meters) {
+  const ring = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * 2 * Math.PI;
+    ring.push([
+      lon + (meters / (111320 * Math.cos((lat * Math.PI) / 180))) * Math.cos(a),
+      lat + (meters / 111320) * Math.sin(a),
+    ]);
+  }
+  return ring;
+}
+// Ссылка на эту точку в Яндекс Картах (метка pt и масштаб z)
+const yandexMapsUrl = (lat, lon) => `https://yandex.ru/maps/?pt=${lon.toFixed(6)},${lat.toFixed(6)}&z=17&l=map`;
+
 function LocateMap({ lat, lon, acc }) {
   const ref = useRef(null);
-  const [fail, setFail] = useState(false);
+  const mapRef = useRef(null);
+  // ready — карта на экране; loading — грузим; nokey / offline / error — заглушка
+  const [state, setState] = useState(YMAPS_KEY ? "loading" : "nokey");
+  const [attempt, setAttempt] = useState(0); // «Повторить» и возврат сети — новая попытка
+  // Сеть вернулась — пробуем ещё раз сами
   useEffect(() => {
-    let map = null, off = false;
-    (async () => {
-      try {
-        const L = (await import("leaflet")).default;
-        await import("leaflet/dist/leaflet.css");
-        if (off || !ref.current) return;
-        map = L.map(ref.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
-        map.attributionControl.setPrefix(false); // подпись — только источник карты, как требует его лицензия
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© участники OpenStreetMap" }).addTo(map);
-        const css = getComputedStyle(document.documentElement);
-        const mint = css.getPropertyValue("--mint").trim(), blue = css.getPropertyValue("--blue").trim();
-        L.circle([lat, lon], { radius: Math.max(acc, 10), color: mint, weight: 1, fillColor: mint, fillOpacity: 0.12 }).addTo(map);
-        L.circleMarker([lat, lon], { radius: 7, color: blue, weight: 2, fillColor: blue, fillOpacity: 1 }).addTo(map);
-        map.setView([lat, lon], acc > 2000 ? 12 : acc > 300 ? 15 : 17);
-      } catch { if (!off) setFail(true); }
-    })();
-    return () => { off = true; map?.remove(); };
-  }, [lat, lon, acc]);
-  if (fail) return <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10 }}>Карта не загрузилась — нет связи с сервисом карт. Координаты ниже</div>;
-  return <div ref={ref} className="nx-map" data-no-swipe role="img" aria-label="Карта: где устройство" style={{ height: 220, marginTop: 10, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.border}` }} />;
+    if (state !== "offline" && state !== "error") return;
+    const again = () => setAttempt((n) => n + 1);
+    window.addEventListener("online", again);
+    return () => window.removeEventListener("online", again);
+  }, [state]);
+  // Карта создаётся заново только при новых координатах или новой попытке
+  useEffect(() => {
+    if (!YMAPS_KEY) return;
+    if (navigator.onLine === false) { setState("offline"); return; }
+    setState("loading");
+    let off = false, map = null, ring = null, themeWatch = null;
+    loadYmaps()
+      // Один кадр — чтобы блок карты точно успел появиться (после заглушки при повторе)
+      .then((ymaps3) => new Promise((r) => requestAnimationFrame(() => r(ymaps3))))
+      .then((ymaps3) => {
+      if (off || !ref.current) return;
+      const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker, YMapFeature } = ymaps3;
+      const css = () => getComputedStyle(document.documentElement);
+      const ringStyle = () => {
+        const mint = css().getPropertyValue("--mint").trim();
+        return { fill: mint, fillOpacity: 0.12, stroke: [{ color: mint, width: 1 }] };
+      };
+      map = new YMap(ref.current, {
+        location: { center: [lon, lat], zoom: acc > 2000 ? 12 : acc > 300 ? 15 : 17 },
+        theme: ymapsTheme(),
+        // Как раньше: колёсико не крутит масштаб (страница прокручивается), остальное — как обычно
+        behaviors: ["drag", "pinchZoom", "dblClick"],
+      });
+      map.addChild(new YMapDefaultSchemeLayer({}));
+      map.addChild(new YMapDefaultFeaturesLayer({})); // без этого слоя маркер и круг не видны
+      ring = new YMapFeature({ geometry: { type: "Polygon", coordinates: [accuracyRing(lat, lon, Math.max(acc, 10))] }, style: ringStyle() });
+      map.addChild(ring);
+      // Точка устройства — свой элемент: синяя точка с обводкой, по центру координаты
+      const dot = document.createElement("div");
+      dot.style.cssText = `width:14px;height:14px;border-radius:50%;box-sizing:border-box;transform:translate(-50%,-50%);background:${C.blue};border:2px solid ${C.blue}`;
+      dot.setAttribute("aria-hidden", "true");
+      map.addChild(new YMapMarker({ coordinates: [lon, lat] }, dot));
+      mapRef.current = map;
+      // Сменили тему NEXA — меняется и тема карты (и цвет круга)
+      themeWatch = new MutationObserver(() => { map.update({ theme: ymapsTheme() }); ring.update({ style: ringStyle() }); });
+      themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+      setState("ready");
+    }).catch(() => { if (!off) setState(navigator.onLine === false ? "offline" : "error"); });
+    // Ушли с экрана или пришли новые координаты — карту уничтожаем целиком
+    return () => { off = true; themeWatch?.disconnect(); mapRef.current = null; map?.destroy(); };
+  }, [lat, lon, acc, attempt]);
+
+  const zoomBy = (d) => {
+    const map = mapRef.current;
+    if (map) map.update({ location: { zoom: map.zoom + d, duration: 200 } });
+  };
+  const coords = `${lat.toFixed(6).replace(".", ",")}, ${lon.toFixed(6).replace(".", ",")}`;
+  // Заглушка вместо пустого блока: почему нет карты, координаты текстом и ссылка
+  if (state === "nokey" || state === "offline" || state === "error") {
+    const why = { nokey: "Карта не настроена — нет ключа Яндекс Карт", offline: "Нет связи — карта загрузится, когда появится интернет", error: "Яндекс Карты не загрузились" }[state];
+    return (
+      <div className="nx-map nx-map-stub" role="status" style={{ marginTop: 10, minHeight: 160, boxSizing: "border-box", borderRadius: 14, border: `1px solid ${C.border}`, padding: 16, display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
+        <div style={{ fontSize: 13, color: C.mutedSoft }}>{why}</div>
+        <div style={{ fontSize: 15, color: C.text }}>{coords}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+          <a className="nx-ghost-btn" href={yandexMapsUrl(lat, lon)} target="_blank" rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", fontSize: 13, color: C.text, textDecoration: "none", border: `1px solid ${C.borderStrong}` }}>
+            {Icon.pin({ c: C.mint, s: 15 })} Открыть в Яндекс Картах
+          </a>
+          {state === "error" && (
+            <button type="button" className="nx-ghost-btn" onClick={() => setAttempt((n) => n + 1)}
+              style={{ ...btnReset, padding: "9px 14px", fontSize: 13, color: C.text, border: `1px solid ${C.borderStrong}` }}>
+              Повторить
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="nx-map" data-no-swipe role="region" aria-label="Карта: где устройство" style={{ position: "relative", height: 220, marginTop: 10, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.border}`, background: C.panel }}>
+      <div ref={ref} style={{ position: "absolute", inset: 0 }} />
+      {state === "loading" && (
+        <div role="status" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, color: C.muted }}>
+          <Spinner s={12} /> Загружаем карту…
+        </div>
+      )}
+      {/* «+ / −» — сверху справа: логотип и ссылки Яндекса внизу карты остаются открытыми */}
+      {state === "ready" && (
+        <div style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 6, zIndex: 1 }}>
+          {[["+", 1, "Приблизить"], ["−", -1, "Отдалить"]].map(([t, d, label]) => (
+            <button key={t} type="button" className="nx-icon-btn" onClick={() => zoomBy(d)} aria-label={label} title={label}
+              style={{ ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, lineHeight: 1, color: C.text, background: C.panel, border: `1px solid ${C.borderStrong}` }}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 // Ответ на «Где устройство?»: карта, точность, когда определено, «Открыть в картах»
 function LocateResult({ r }) {
@@ -2186,7 +2311,7 @@ function LocateResult({ r }) {
   );
   const when = new Date(r.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   const acc = r.acc < 1000 ? `±${Math.round(r.acc)} м` : `±${(r.acc / 1000).toFixed(1).replace(".", ",")} км`;
-  const url = `https://www.openstreetmap.org/?mlat=${r.lat.toFixed(6)}&mlon=${r.lon.toFixed(6)}#map=17/${r.lat.toFixed(6)}/${r.lon.toFixed(6)}`;
+  const url = yandexMapsUrl(r.lat, r.lon);
   return (
     <div style={{ marginTop: 6 }}>
       <LocateMap lat={r.lat} lon={r.lon} acc={r.acc} />
@@ -13349,9 +13474,6 @@ export default function NexaApp() {
         .nx-tab-in-right { animation: nx-tab-r 240ms cubic-bezier(0.16, 1, 0.3, 1); }
         .nx-tab-in-left { animation: nx-tab-l 240ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* Карта «где устройство»: в тёмной теме подложка затемнена, подписи — шрифтом NEXA */
-        :root[data-theme="dark"] .nx-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
-        .nx-map .leaflet-control-attribution { font-size: 10px; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--muted); }
-        .nx-map .leaflet-control-attribution a { color: var(--muted); }
         .nx-map { font-family: inherit; }
         /* Открыто окно — страница под ним стоит */
         html.nx-modal-open, html.nx-modal-open body { overflow: hidden !important; overscroll-behavior: none; }
