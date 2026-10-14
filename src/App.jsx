@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useId, startTransition, useSyncExternalStore } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useId, useCallback, startTransition, useSyncExternalStore } from "react";
 // flushSync нужен для плавной смены темы: React обновляет экран сразу,
 // пока браузер делает снимок для анимации
 import { flushSync, createPortal } from "react-dom";
@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.9.11";
+const VERSION = "0.9.12";
 
 
 const C = {
@@ -59,6 +59,7 @@ const C = {
   pressed: "var(--pressed)",     // подложка нажатой кнопки
   borderStrong: "var(--border-strong)", // заметная обводка карточек (Медиа, Файлы)
   onFold: "var(--on-fold)",      // белый текст на цветных складках (в обеих темах)
+  photoBg: "var(--photo-bg)",    // фон полноэкранного просмотра фото (в обеих темах тёмный)
   // Цвета складок-стёкол на экранах "Медиа" и "Файлы". Это как картинка,
   // поэтому в обеих темах они одинаковые
   foldDeep: "var(--fold-deep)",  // глубокий синий
@@ -440,6 +441,18 @@ const Icon = {
   close: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.8">
       <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+    </svg>
+  ),
+  // Развернуть на весь экран: уголки уходят наружу
+  expand: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.8">
+      <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Свернуть: уголки смотрят внутрь
+  shrink: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.8">
+      <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   trash: (p) => (
@@ -1056,6 +1069,8 @@ const loadNotes = () => {
    Категории — у каждой две настройки (nexa-note-prefs, на этом устройстве):
    app — в приложении (всплывающее + колокольчик), system — системное
    (Android-приложение; сайт на компьютере — пока вкладка открыта).
+   В Настройках это один переключатель на категорию (app; выключили — молчит везде)
+   и один общий «Системные уведомления» (system у всех включённых категорий).
    В колокольчик попадают только события этих категорий; ответы на действия
    человека («Файл переименован», «Тема переключена») — только всплывающие.
    Лента «Активность» — отдельно: журнал связи устройств, её не трогаем */
@@ -1072,7 +1087,7 @@ const loadNotePrefs = () => {
   const prefs = Object.fromEntries(NOTE_CATS.map((c) => [c.id, { app: true, system: false }]));
   try {
     const v = JSON.parse(localStorage.getItem(NOTE_PREFS_KEY));
-    if (v) for (const c of NOTE_CATS) if (v[c.id]) prefs[c.id] = { app: v[c.id].app !== false, system: !!v[c.id].system };
+    if (v) for (const c of NOTE_CATS) if (v[c.id]) prefs[c.id] = { app: v[c.id].app !== false, system: v[c.id].app !== false && !!v[c.id].system }; // выключенная категория молчит и в системе
   } catch {}
   return prefs;
 };
@@ -1433,21 +1448,7 @@ function DeviceCard({ device }) {
     </div>
   );
 }
-// Устройства пользователя. Лежат снаружи экранов, потому что ими
-// пользуются и «Главная», и общий поиск
-// battery — заряд в % (null — работает от сети), memory — объём памяти в ГБ,
-// alias — короткое имя, под которым устройство записано в данных файлов,
-// lastSeen — когда было в сети (показываем, если устройство отключено).
-// online здесь — состояние по умолчанию; в приложении его можно переключать.
-const DEVICES = [
-  { id: "phone",  icon: Icon.phone,  name: "Смартфон",  battery: 92,   memory: 256, online: true,  lastSeen: "только что" },
-  { id: "laptop", icon: Icon.laptop, name: "Ноутбук",   battery: 41,   memory: 512, online: false, lastSeen: "вчера в 22:14" },
-  { id: "watch",  icon: Icon.watch,  name: "Часы",      battery: 64,   memory: 32,  online: true,  lastSeen: "только что" },
-  { id: "tv",     icon: Icon.tv,     name: "Телевизор", battery: null, memory: 64,  online: true,  lastSeen: "только что", alias: "ТВ" },
-];
-
-// Какие устройства можно добавить. battery и memory — стартовые данные
-// нового устройства (battery: null — работает от сети)
+// Виды устройств: значок и название по type (phone, laptop, tablet…)
 const DEVICE_TYPES = [
   { type: "phone",  icon: Icon.phone,  name: "Смартфон",  battery: 100,  memory: 128 },
   { type: "laptop", icon: Icon.laptop, name: "Ноутбук",   battery: 78,   memory: 512 },
@@ -1466,8 +1467,6 @@ function uniqueDeviceName(base, names) {
   return `${base} ${i}`;
 }
 
-// Настройки устройства по умолчанию (переключатели в окне устройства)
-const DEVICE_DEFAULTS = { sync: true, dnd: false, saver: false };
 const DEVICES_KEY = "nexa-devices"; // ключ в localStorage
 
 /* Что лежит в localStorage под DEVICES_KEY:
@@ -1518,19 +1517,10 @@ const deviceStatus = (d) => d.bt
   ? [realStatus(d), d.online ? sysShort(d.sys) : ""].filter(Boolean).join(" • ")
   : !d.online ? "Не в сети" : d.battery != null ? `Онлайн • ${d.battery}%` : "Онлайн";
 
-// Сколько ГБ занимают файлы на устройстве.
-// Демо — по выдуманным цифрам хранилища, аккаунт — по своим файлам
-const deviceUsed = (d, files = [], demo = true) => demo
-  ? MEDIA_CATS.reduce((sum, c) => sum + c.devices
-    .filter(([n]) => n === d.name || n === d.alias)
-    .reduce((s, [, gb]) => s + gb, 0), 0)
-  : Math.round(files.filter((f) => f.device === d.name || f.device === d.alias).reduce((s, f) => s + f.mb, 0) / 100) / 10;
-
 // ЭКРАН "ГЛАВНАЯ" — список устройств + складка + карточка ассистента
 // devices — устройства с текущим состоянием (в сети или нет) из App,
 // onOpenDevice открывает окно устройства
 // onAddDevice — открыть окно добавления,
-// onRestoreDevices — вернуть исходные (canRestore — есть ли что возвращать)
 /* ═══ ЖИВЫЕ СВЯЗИ НА ГЛАВНОЙ ═══════════════════════════════
    Тонкие линии от каждого устройства в списке к складке-«хабу».
    В сети — сплошная мятная линия, не в сети — серый пунктир.
@@ -1667,7 +1657,7 @@ function LinkPulse({ p, onDone }) {
 // loading — устройства аккаунта ещё грузятся из облака
 // findState / onFind — «Найти» у реальных устройств (подключённых по коду)
 // activityBlock — компактная лента «Активность» (только у вошедшего)
-function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onRestoreDevices, canRestore, netState = "ok" }) {
+function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, netState = "ok" }) {
   // Подпись под заголовком — честная: «Синхронизировано» только когда облако всё подтвердило
   const tagline = { offline: "Нет сети. Работает на этом устройстве. Рядом с вами", pending: "Сохраняем изменения. Работает. Рядом с вами", ok: "Синхронизировано. Работает. Рядом с вами", local: "Работает на этом устройстве. Рядом с вами" }[netState];
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
@@ -1683,13 +1673,12 @@ function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, fi
     <EmptyState
       compact
       title="Устройств пока нет"
-      text="Подключите новое устройство, и оно появится здесь"
+      text="Откройте NEXA на другом устройстве и подключите его по коду или QR — оно появится здесь"
       action={
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           <StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>
             Добавить устройство
           </StateButton>
-          {canRestore && <StateButton onClick={onRestoreDevices}>Вернуть исходные</StateButton>}
         </div>
       }
     />
@@ -2447,7 +2436,7 @@ const mmss = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return `${Ma
 /* Окно «Подключить устройство» на устройстве, которое выдаёт код.
    session — { code, expiresAt, used, lockedUntil } (живёт в NexaApp) */
 // onClaim — ввели код с другого экрана; onScan — сканировать QR (только в приложении)
-function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onScan, onBt }) {
+function PairModal({ session, online, onNewCode, onClose, onClaim, onScan, onBt }) {
   const [mode, setModeNow] = useState("show"); // "show" — показать код, "enter" — ввести чужой
   const [slide, setSlide] = useState(null);    // откуда въезжает содержимое при смене вкладки
   const setMode = (m) => { if (m === mode) return; setSlide(m === "enter" ? "right" : "left"); setModeNow(m); };
@@ -2592,12 +2581,6 @@ function PairModal({ session, online, onNewCode, onDemo, onClose, onClaim, onSca
         </div>
 
         <BtEntry onOpen={onBt} />
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 13, color: C.mutedSoft }}>
-          Хотите просто посмотреть, как это выглядит?{" "}
-          <button type="button" onClick={onDemo} style={{ ...btnReset, fontSize: 13, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
-            Добавить демо-устройство
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -2978,7 +2961,7 @@ function FlowSendDialog({ initial, initialTo = null, link, devices, flowOn, user
   );
 }
 
-/* Настройки NEXA Flow (только у вошедшего): включение, автокопирование,
+/* Настройки NEXA Flow (только у вошедшего): включение,
    окно «Отправить в NEXA» и очистка истории передач на этом устройстве */
 function FlowSettings({ flow, setFlow, count, onSend, onClear }) {
   const [confirm, setConfirm] = useState(false);
@@ -2989,9 +2972,6 @@ function FlowSettings({ flow, setFlow, count, onSend, onClear }) {
         <SettingsRow icon={Icon.send({ c: C.mint, s: 18 })} title="Передача текста и ссылок"
           subtitle={flow.on ? "Между вашими устройствами. Буфер обмена читаем только по нажатию «Вставить скопированное»" : "Выключено — это устройство не отправляет и не принимает"}
           right={<Toggle on={flow.on} label="Передача текста и ссылок" onClick={() => setFlow((f) => ({ ...f, on: !f.on }))} />} />
-        <SettingsRow icon={Icon.copy({ c: C.text, s: 18 })} title="Сразу копировать полученное"
-          subtitle={isNative ? "Пришедший текст сам попадёт в буфер обмена телефона" : "Браузер разрешает это, только пока вкладка NEXA открыта и активна"}
-          right={<Toggle on={flow.on && flow.autoCopy} disabled={!flow.on} label="Сразу копировать полученное" onClick={() => setFlow((f) => ({ ...f, autoCopy: !f.autoCopy }))} />} />
         <SettingsRow icon={Icon.shareUp({ c: C.text, s: 18 })} title="Отправить в NEXA"
           subtitle={isNative ? "Или из любого приложения: «Поделиться» → «Отправить в NEXA»" : "Текст или ссылку — на другое ваше устройство"}
           right={<button type="button" className="nx-ghost-btn" disabled={!flow.on} onClick={onSend} style={{ ...btnReset, padding: "7px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text }}>Открыть</button>} />
@@ -4268,34 +4248,6 @@ const FOLDERS = [
   { id: "other", name: "Разное", parent: null },
 ];
 
-// Файлы. days — сколько дней назад (0 — сегодня), time — время,
-// mb — размер в мегабайтах. Даты считаются от сегодняшнего дня,
-// поэтому демо не "устаревает".
-const DEMO_FILES = [
-  { id: 1, name: "IMG_4291.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:43", mb: 5.5 },
-  { id: 2, name: "IMG_4290.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:42", mb: 4.3 },
-  { id: 3, name: "IMG_4289.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:42", mb: 5.6 },
-  { id: 4, name: "IMG_4287.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 0, time: "08:41", mb: 4.6 },
-  { id: 5, name: "IMG_4270.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 2, time: "18:05", mb: 6.1 },
-  { id: 6, name: "IMG_4244.jpg", cat: "photo", folder: "camera", device: "Смартфон", days: 5, time: "12:30", mb: 3.9 },
-  { id: 7, name: "Снимок экрана 14-22.png", cat: "photo", folder: "screens", device: "Ноутбук", days: 1, time: "14:22", mb: 1.2 },
-  { id: 8, name: "Снимок экрана 09-05.png", cat: "photo", folder: "screens", device: "Смартфон", days: 3, time: "09:05", mb: 0.8 },
-  { id: 9, name: "Отпуск_море.mp4", cat: "video", folder: "video", device: "Смартфон", days: 1, time: "20:14", mb: 1240 },
-  { id: 10, name: "Запись_экрана.mov", cat: "video", folder: "video", device: "Ноутбук", days: 2, time: "11:40", mb: 312 },
-  { id: 11, name: "День рождения.mp4", cat: "video", folder: "video", device: "Смартфон", days: 6, time: "19:02", mb: 864 },
-  { id: 12, name: "Отчёт_за_сентябрь.pdf", cat: "doc", folder: "docs", device: "Ноутбук", days: 0, time: "10:15", mb: 2.4 },
-  { id: 13, name: "Договор_аренды.pdf", cat: "doc", folder: "docs", device: "Ноутбук", days: 4, time: "16:48", mb: 0.9 },
-  { id: 14, name: "Бюджет_2026.xlsx", cat: "doc", folder: "docs", device: "Ноутбук", days: 1, time: "09:30", mb: 0.4 },
-  { id: 15, name: "Диплом_черновик.docx", cat: "doc", folder: "study", device: "Ноутбук", days: 0, time: "07:58", mb: 3.1 },
-  { id: 16, name: "Презентация_защиты.pptx", cat: "doc", folder: "study", device: "Ноутбук", days: 2, time: "22:10", mb: 18.4 },
-  { id: 17, name: "Список_литературы.docx", cat: "doc", folder: "study", device: "Ноутбук", days: 7, time: "15:00", mb: 0.1 },
-  { id: 18, name: "Утренний плейлист.mp3", cat: "music", folder: "music", device: "Смартфон", days: 3, time: "07:20", mb: 8.2 },
-  { id: 19, name: "Запись_голоса_012.m4a", cat: "music", folder: "music", device: "Часы", days: 0, time: "09:12", mb: 1.6 },
-  { id: 20, name: "Лекция_аудио.mp3", cat: "music", folder: "music", device: "Ноутбук", days: 5, time: "13:00", mb: 46 },
-  { id: 21, name: "Архив_проекта.zip", cat: "other", folder: "other", device: "Ноутбук", days: 1, time: "17:44", mb: 156 },
-  { id: 22, name: "Резервная копия часов.bak", cat: "other", folder: "other", device: "Часы", days: 8, time: "03:00", mb: 22 },
-];
-
 /* ---------- ЗАГРУЖЕННЫЕ ФАЙЛЫ (localStorage) ----------
    Под FILES_KEY лежат только сведения, без содержимого файлов
    (оно не влезет в браузерное хранилище):
@@ -5313,7 +5265,299 @@ function EmptyState({ title, text, action, compact }) {
 // devices — устройства с текущим статусом: отправить можно только на те, что в сети
 // folders — все папки (вместе с созданными), onRename(name) — новое имя,
 // onSent(устройство) — файл отправлен
-function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDelete, onRename, onSent, onToast }) {
+/* ПОЛНОЭКРАННЫЙ ПРОСМОТР ФОТО — открывается из окна файла (нажатие на превью).
+   photos — загруженные фото в том же порядке, что в списке; startId — с какого начать.
+   Листать: стрелки на экране и ← → на клавиатуре, на телефоне — свайп влево/вправо.
+   Приблизить: двойное нажатие (или двойной щелчок), щипок двумя пальцами, колёсико мыши;
+   приближенное фото двигается пальцем/мышью. Закрыть: крестик, Esc, «Назад» Android,
+   на телефоне — свайп вниз. Одиночное нажатие прячет/показывает панели.
+   На компьютере ещё есть кнопка «На весь экран» — браузерный полноэкранный режим.
+   Содержимое — то же, что у превью: копия в этом браузере или ссылка облака на час */
+const PHOTO_ZOOM = 2.5;   // во сколько раз приближает двойное нажатие
+const PHOTO_MAX = 5;      // больше не приближаем
+function PhotoFullscreen({ photos, startId, onClose }) {
+  const [idx, setIdx] = useState(() => Math.max(0, photos.findIndex((p) => p.id === startId)));
+  const photo = photos[Math.min(idx, photos.length - 1)];
+  const [load, setLoad] = useState({ url: null, state: "loading" }); // loading | ready | error
+  const [retry, setRetry] = useState(0);
+  const [chrome, setChrome] = useState(true);   // видны ли панели сверху и стрелки
+  const [zoomed, setZoomed] = useState(false);
+  const [isFull, setIsFull] = useState(false);  // браузерный полноэкранный режим
+  const rootRef = useRef(null);
+  const stageRef = useRef(null);
+  const imgRef = useRef(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  const reduce = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const canFull = !isNative && typeof document !== "undefined" && !!document.fullscreenEnabled;
+  const many = photos.length > 1;
+  const go = useCallback((d) => setIdx((i) => Math.min(photos.length - 1, Math.max(0, i + d))), [photos.length]);
+
+  // Положение картинки: масштаб и сдвиг. Меняется на каждый кадр жеста —
+  // поэтому в ref и сразу в style, без перерисовки React
+  const view = useRef({ s: 1, x: 0, y: 0 });
+  const apply = (anim) => {
+    const el = imgRef.current;
+    if (!el) return;
+    const { s, x, y } = view.current;
+    el.style.transition = anim && !reduce ? "transform 220ms cubic-bezier(0.16, 1, 0.3, 1)" : "none";
+    el.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+  };
+  // Сдвиг не больше, чем позволяет увеличение — фото не уезжает за край
+  const clamp = () => {
+    const st = stageRef.current?.getBoundingClientRect();
+    const v = view.current;
+    if (!st) return;
+    const mx = ((v.s - 1) * st.width) / 2, my = ((v.s - 1) * st.height) / 2;
+    v.x = Math.max(-mx, Math.min(mx, v.x));
+    v.y = Math.max(-my, Math.min(my, v.y));
+  };
+  // Приблизить к точке (px, py на экране) до масштаба s
+  const zoomTo = (s, px, py, anim = true) => {
+    const st = stageRef.current?.getBoundingClientRect();
+    const v = view.current;
+    s = Math.max(1, Math.min(PHOTO_MAX, s));
+    if (st && px != null) {
+      // Точка под пальцем остаётся на месте
+      const cx = st.left + st.width / 2, cy = st.top + st.height / 2;
+      const k = s / v.s;
+      v.x = (px - cx) - k * (px - cx - v.x);
+      v.y = (py - cy) - k * (py - cy - v.y);
+    }
+    v.s = s;
+    if (s === 1) { v.x = 0; v.y = 0; }
+    clamp();
+    apply(anim);
+    setZoomed(s > 1);
+  };
+  const resetView = (anim) => { view.current = { s: 1, x: 0, y: 0 }; apply(anim); setZoomed(false); };
+
+  // Новое фото: грузим содержимое, сбрасываем приближение
+  useEffect(() => {
+    let off = false;
+    setLoad({ url: null, state: "loading" });
+    view.current = { s: 1, x: 0, y: 0 };
+    setZoomed(false);
+    fileUrl(photo, FILE_SCOPE)
+      .then((url) => { if (!off) setLoad(url ? { url, state: "loading" } : { url: null, state: "error" }); })
+      .catch(() => { if (!off) setLoad({ url: null, state: "error" }); });
+    return () => { off = true; };
+  }, [photo?.id, retry]);
+  // Соседние фото заранее — листание без ожидания
+  useEffect(() => {
+    for (const p of [photos[idx - 1], photos[idx + 1]]) if (p) fileUrl(p, FILE_SCOPE).catch(() => {});
+  }, [idx, photos]);
+
+  // Клавиши. Слушаем раньше всех (capture): Esc закрывает только фото, а не окно файла под ним
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeRef.current(); }
+      else if (e.key === "ArrowLeft") { e.stopPropagation(); go(-1); }
+      else if (e.key === "ArrowRight") { e.stopPropagation(); go(1); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [go]);
+  // Фокус — на окно (клавиатура и экранный диктор сразу внутри); при закрытии — выйти из полноэкранного
+  useEffect(() => {
+    const prev = document.activeElement;
+    rootRef.current?.focus();
+    const onFull = () => setIsFull(document.fullscreenElement === rootRef.current);
+    document.addEventListener("fullscreenchange", onFull);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFull);
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      prev?.focus?.();
+    };
+  }, []);
+  const toggleFull = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else rootRef.current?.requestFullscreen?.().catch(() => {});
+  };
+
+  // ── Жесты: один палец/мышь — двигать или листать, два пальца — щипок ──
+  const ptrs = useRef(new Map());
+  const g = useRef(null);         // текущий жест
+  const lastTap = useRef({ t: 0, x: 0, y: 0 });
+  const tapTimer = useRef(0);
+  useEffect(() => () => clearTimeout(tapTimer.current), []);
+  const onDown = (e) => {
+    // Правая кнопка мыши и кнопки на сцене («Повторить») — не жест
+    if (e.button > 0 || e.target.closest?.("button")) return;
+    stageRef.current.setPointerCapture?.(e.pointerId);
+    ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const v = view.current;
+    if (ptrs.current.size === 2) {
+      const [a, b] = [...ptrs.current.values()];
+      g.current = { pinch: true, d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: v.s, moved: true };
+    } else if (ptrs.current.size === 1) {
+      g.current = { x0: e.clientX, y0: e.clientY, t0: Date.now(), vx: v.x, vy: v.y, moved: false };
+    }
+  };
+  const onMove = (e) => {
+    if (!ptrs.current.has(e.pointerId) || !g.current) return;
+    ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const v = view.current, G = g.current;
+    if (G.pinch && ptrs.current.size >= 2) {
+      const [a, b] = [...ptrs.current.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      zoomTo(G.s0 * (d / G.d0), (a.x + b.x) / 2, (a.y + b.y) / 2, false);
+      return;
+    }
+    if (G.pinch) return;
+    const dx = e.clientX - G.x0, dy = e.clientY - G.y0;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) G.moved = true;
+    if (v.s > 1) {             // приближено — двигаем фото
+      v.x = G.vx + dx; v.y = G.vy + dy; clamp(); apply(false);
+    } else if (G.moved && e.pointerType !== "mouse") {
+      // Обычный масштаб: фото идёт за пальцем — влево/вправо (листать) или вниз (закрыть)
+      if (Math.abs(dx) > Math.abs(dy)) { v.x = many ? dx : dx * 0.25; v.y = 0; }
+      else { v.x = 0; v.y = Math.max(0, dy); }
+      apply(false);
+      if (rootRef.current) rootRef.current.style.backgroundColor = v.y > 0 ? `color-mix(in srgb, ${C.photoBg} ${Math.max(40, 100 - v.y / 4)}%, transparent)` : "";
+    }
+  };
+  const onUp = (e) => {
+    if (!ptrs.current.has(e.pointerId)) return;
+    ptrs.current.delete(e.pointerId);
+    const G = g.current, v = view.current;
+    if (!G) return;
+    if (G.pinch) {
+      if (ptrs.current.size === 0) { g.current = null; if (v.s < 1.05) resetView(true); }
+      return;
+    }
+    g.current = null;
+    if (rootRef.current) rootRef.current.style.backgroundColor = "";
+    const dx = e.clientX - G.x0, dy = e.clientY - G.y0;
+    if (!G.moved) {
+      // Нажатие: два подряд — приблизить/отдалить, одно — спрятать/показать панели
+      const now = Date.now(), lt = lastTap.current;
+      if (now - lt.t < 300 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 30) {
+        clearTimeout(tapTimer.current);
+        lastTap.current = { t: 0, x: 0, y: 0 };
+        if (v.s > 1) resetView(true); else zoomTo(PHOTO_ZOOM, e.clientX, e.clientY);
+      } else {
+        lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+        clearTimeout(tapTimer.current);
+        tapTimer.current = setTimeout(() => setChrome((c) => !c), 300);
+      }
+      return;
+    }
+    if (v.s > 1 || e.pointerType === "mouse") return;
+    const fast = Date.now() - G.t0 < 300;
+    if (Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > 70 || (fast && Math.abs(dx) > 30))) {
+      const d = dx < 0 ? 1 : -1;
+      if (photos[idx + d]) { view.current = { s: 1, x: 0, y: 0 }; apply(false); go(d); return; }
+    } else if (dy > 110 || (fast && dy > 50)) { closeRef.current(); return; }
+    resetView(true);   // не засчитано — мягко на место
+  };
+  const onWheel = (e) => {
+    // Колёсико: приблизить/отдалить к курсору
+    e.preventDefault();
+    zoomTo(view.current.s * Math.exp(-e.deltaY * 0.0022), e.clientX, e.clientY, false);
+    if (view.current.s <= 1.01) resetView(false);
+  };
+
+  // Жесты вешаем на сцену напрямую (не через props React): так первое же касание
+  // после открытия доходит до обработчика. Свежие функции — через ref
+  const gestures = useRef({});
+  gestures.current = { onDown, onMove, onUp, onWheel };
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const on = (type, name, opts) => { const fn = (e) => gestures.current[name](e); el.addEventListener(type, fn, opts); return () => el.removeEventListener(type, fn, opts); };
+    const offs = [
+      on("pointerdown", "onDown"), on("pointermove", "onMove"), on("pointerup", "onUp"), on("pointercancel", "onUp"),
+      // Колёсико: preventDefault — чтобы не прокручивалась страница под фото
+      on("wheel", "onWheel", { passive: false }),
+    ];
+    return () => offs.forEach((f) => f());
+  }, []);
+
+  if (!photo) return null;
+  const onFoldC = C.onFold;
+  const pill = { ...btnReset, width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+    background: `color-mix(in srgb, ${C.photoBg} 55%, transparent)`, border: `1px solid color-mix(in srgb, ${onFoldC} 22%, transparent)` };
+  const fade = { opacity: chrome ? 1 : 0, pointerEvents: chrome ? "auto" : "none", transition: reduce ? "none" : "opacity 200ms ease" };
+
+  return createPortal(
+    <div ref={rootRef} className="nx-photo-full" role="dialog" aria-modal="true" aria-label={`Фото «${photo.name}»`} tabIndex={-1} data-no-swipe
+      // Нажатия внутри фото не доходят до окна файла под ним (портал «всплывает» по дереву React)
+      onClick={(e) => e.stopPropagation()}
+      style={{ position: "fixed", inset: 0, zIndex: 800, background: C.photoBg, color: onFoldC, outline: "none", display: "flex", flexDirection: "column", touchAction: "none" }}>
+      {/* Сцена с фото. Жесты ловим здесь */}
+      <div ref={stageRef}
+        style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: zoomed ? "grab" : "zoom-in" }}>
+        {load.url && load.state !== "error" && (
+          <img ref={imgRef} key={photo.id} src={load.url} alt={photo.name} draggable={false}
+            onLoad={() => { setLoad((l) => ({ ...l, state: "ready" })); apply(false); }}
+            onError={() => setLoad({ url: null, state: "error" })}
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", userSelect: "none", WebkitUserDrag: "none",
+              opacity: load.state === "ready" ? 1 : 0, transition: reduce ? "none" : "opacity 180ms ease", willChange: "transform" }} />
+        )}
+        {load.state === "loading" && (
+          <div role="status" style={{ position: "absolute", display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: onFoldC, opacity: 0.8 }}>
+            <Spinner s={16} /> Загружаем фото…
+          </div>
+        )}
+        {load.state === "error" && (
+          <div role="alert" style={{ position: "absolute", textAlign: "center", padding: 24, maxWidth: 320 }}>
+            <div style={{ fontSize: 15, marginBottom: 6 }}>Фото не загрузилось</div>
+            <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.45, marginBottom: 14 }}>
+              {navigator.onLine === false ? "Нет связи — фото лежит в облаке. Подключитесь к сети и повторите" : "Не удалось получить содержимое файла"}
+            </div>
+            <button type="button" className="nx-ghost-btn"
+              onClick={() => { forgetUrl(FILE_SCOPE, photo.id); setRetry((n) => n + 1); }}
+              style={{ ...btnReset, padding: "10px 18px", fontSize: 13, color: onFoldC, border: `1px solid color-mix(in srgb, ${onFoldC} 40%, transparent)` }}>
+              Повторить
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Верхняя панель: имя, номер, полноэкранный режим, закрыть */}
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, padding: "calc(var(--sat) + 12px) 16px 12px",
+        background: `linear-gradient(${C.photoBg}, transparent)`, ...fade }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.name}</div>
+          {many && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{idx + 1} из {photos.length}</div>}
+        </div>
+        {zoomed && (
+          <button type="button" className="nx-icon-btn" onClick={() => resetView(true)} aria-label="Показать фото целиком" title="Показать целиком" style={pill}>
+            {Icon.shrink({ c: onFoldC, s: 18 })}
+          </button>
+        )}
+        {canFull && (
+          <button type="button" className="nx-icon-btn" onClick={toggleFull} aria-label={isFull ? "Выйти из полноэкранного режима" : "На весь экран"} title={isFull ? "Выйти из полноэкранного режима" : "На весь экран"} style={pill}>
+            {(isFull ? Icon.shrink : Icon.expand)({ c: onFoldC, s: 18 })}
+          </button>
+        )}
+        <button type="button" className="nx-icon-btn" onClick={() => closeRef.current()} aria-label="Закрыть фото" title="Закрыть (Esc)" style={pill}>
+          {Icon.close({ c: onFoldC, s: 18 })}
+        </button>
+      </div>
+
+      {/* Стрелки листания — по краям, по центру высоты */}
+      {many && idx > 0 && (
+        <button type="button" className="nx-icon-btn nx-photo-arrow" onClick={() => go(-1)} aria-label="Предыдущее фото"
+          style={{ ...pill, position: "absolute", left: 16, top: "50%", marginTop: -22, ...fade }}>
+          {Icon.arrowLeft({ c: onFoldC, s: 18 })}
+        </button>
+      )}
+      {many && idx < photos.length - 1 && (
+        <button type="button" className="nx-icon-btn nx-photo-arrow" onClick={() => go(1)} aria-label="Следующее фото"
+          style={{ ...pill, position: "absolute", right: 16, top: "50%", marginTop: -22, ...fade }}>
+          <span style={{ display: "flex", transform: "scaleX(-1)" }}>{Icon.arrowLeft({ c: onFoldC, s: 18 })}</span>
+        </button>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+function FileViewer({ file, folders = FOLDERS, devices = [], photos = [], onClose, onDelete, onRename, onSent, onToast }) {
+  // Полноэкранный просмотр: только у загруженных фото (у демо-файлов нет содержимого)
+  const [fullPhoto, setFullPhoto] = useState(false);
+  const canFullPhoto = !!file.uploaded && file.cat === "photo";
   // Переименование: editing — открыто ли поле, draft — что сейчас введено
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(file.name);
@@ -5458,9 +5702,28 @@ function FileViewer({ file, folders = FOLDERS, devices = DEVICES, onClose, onDel
 
         {/* Превью: та же миниатюра, только крупно */}
         <div style={{ padding: "0 18px" }}>
-          <div className="nx-viewer-preview" style={{ display: "flex" }}>
-            <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
-          </div>
+          {canFullPhoto ? (
+            <button type="button" className="nx-viewer-preview nx-photo-open" onClick={() => setFullPhoto(true)}
+              aria-label="Открыть фото на весь экран" title="Открыть на весь экран"
+              style={{ ...btnReset, display: "flex", width: "100%", position: "relative", cursor: "zoom-in", borderRadius: 8 }}>
+              <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
+              {/* Подсказка в углу: превью открывается на весь экран */}
+              <span aria-hidden="true" style={{
+                position: "absolute", right: 10, bottom: 10, display: "flex", alignItems: "center", gap: 6,
+                padding: "6px 10px", borderRadius: 999, fontSize: 12, color: C.onFold,
+                background: `color-mix(in srgb, ${C.photoBg} 70%, transparent)`,
+              }}>
+                {Icon.expand({ c: C.onFold, s: 14 })} На весь экран
+              </span>
+            </button>
+          ) : (
+            <div className="nx-viewer-preview" style={{ display: "flex" }}>
+              <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
+            </div>
+          )}
+          {fullPhoto && (
+            <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} />
+          )}
           {/* Содержимое: открыть и скачать (только у загруженных; у демо-файлов его нет) */}
           {file.uploaded
             ? <FileContentActions file={file} onToast={onToast} />
@@ -6188,12 +6451,6 @@ function DevicePreview({ device, devices, files, folders }) {
    устройстве (на складке-конверте), ниже статус, заряд и действия.
    Всё в демо-режиме: состояние (в сети ли, переключатели) живёт в App
    и запоминается в браузере. */
-const DEVICE_SETTINGS = [
-  { key: "sync",  icon: Icon.refresh, title: "Синхронизация",    sub: "Файлы и уведомления на всех устройствах" },
-  { key: "dnd",   icon: Icon.dnd,     title: "Не беспокоить",    sub: "Без звуков и всплывающих уведомлений" },
-  { key: "saver", icon: Icon.battery, title: "Энергосбережение", sub: "Реже синхронизируется, дольше работает", battery: true },
-];
-const FIND_MS = 3600; // сколько "звонит" устройство при поиске
 
 /* Складка-«конверт» в окне устройства (как в макете): скошенный
    четырёхугольник, разрезанный на 4 треугольника от центра.
@@ -6222,9 +6479,6 @@ const DEVICE_FOLD_FACETS = [
 // разрыв выглядит как щелчок, а не плавное расползание
 const TEAR_EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 
-const CONNECT_MS = 1400;    // сколько длится подключение (столько же идёт полоса по складке)
-const DISCONNECT_MS = 600;  // отключение быстрее
-const RESULT_MS = 1600;     // сколько кнопка показывает «Подключено» / «Отключено»
 
 // onBack — вернуться назад, onRemove — удалить устройство из списка,
 // devices / files / folders — данные для превью, received — только что получен файл
@@ -6419,7 +6673,7 @@ function RealDeviceInfo({ d, onRename, actions }) {
   );
 }
 
-function DeviceScreen({ device: d, fileCount, devices, files, folders, received, demo = true, onBack, onSetOnline, onSetting, onOpenFiles, onRemove, onToast, onFind, findState, onRename, link, realActions, flowOn = true }) {
+function DeviceScreen({ device: d, fileCount, devices, files, folders, received, onBack, onOpenFiles, onRemove, onToast, onFind, findState, onRename, link, realActions, flowOn = true }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const delRef = useRef(null);
@@ -6452,7 +6706,6 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       { duration: 520, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }
     );
   }, [flip]);
-  const used = deviceUsed(d, files, demo);
 
   // Таймеры подключения: при закрытии окна их нужно отменить
   const timers = useRef([]);
@@ -6510,41 +6763,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
   // На большом экране превью можно увеличить (до 1.5), на телефоне — уменьшаем
   const scale = stageSize.w ? Math.min(1.5, (stageSize.w - 40) / size.w, (stageSize.h - 48) / size.h) : 1;
 
-  // Сигнал звучит FIND_MS, потом кнопка "Найти" снова доступна
-  useEffect(() => {
-    if (!ringing) return;
-    const t = setTimeout(() => setRinging(false), FIND_MS);
-    return () => clearTimeout(t);
-  }, [ringing]);
-
-  const find = () => {
-    setRinging(true);
-    onToast?.({ title: `${d.name} подаёт сигнал`, text: "Звук слышно, даже если включён беззвучный режим" });
-  };
-
-  // Подключить / отключить: сначала «загрузка» (по складке идёт полоса),
-  // потом статус меняется, складка анимированно меняет цвет, кнопка
-  // на секунду показывает результат и возвращается в обычный вид
-  const toggleOnline = () => {
-    if (power === "loading") return;
-    const on = !d.online;
-    turningOn.current = on;
-    setRinging(false);
-    setPower("loading");
-    later(() => {
-      onSetOnline(on);
-      setFlip({ on, n: Date.now() });
-      setPower("success");
-      onToast?.(on
-        ? { title: `${d.name}: подключено`, text: "Устройство снова в системе NEXA" }
-        : { title: `${d.name}: отключено`, text: "Синхронизация на паузе до следующего подключения" });
-      later(() => setPower("idle"), RESULT_MS);
-    }, on ? CONNECT_MS : DISCONNECT_MS);
-  };
   const connecting = power === "loading" && turningOn.current;
-  const powerLabels = turningOn.current
-    ? { loading: "Подключение…", success: "Подключено" }
-    : { loading: "Отключение…", success: "Отключено" };
 
   // Полоски заряда и памяти. Мало заряда — полоска красная.
   // У отключённого устройства полоски серые: данные на момент отключения.
@@ -6561,15 +6780,7 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       pct: sys?.diskTotal ? ((sys.diskTotal - sys.diskFree) / sys.diskTotal) * 100 : 0,
     },
     { label: "Сеть", value: netText(sys), noBar: true },
-  ] : [
-    {
-      label: "Заряд",
-      value: d.battery == null ? "от сети" : `${d.battery}%`,
-      pct: d.battery == null ? 100 : d.battery,
-      low: d.battery != null && d.battery < 20,
-    },
-    { label: "Память", value: `${used} из ${d.memory} ГБ`, pct: Math.min(100, (used / d.memory) * 100) },
-  ];
+  ] : [];
   // Кнопки окна устройства — «таблетки», как в макете
   const pillBtn = { borderRadius: 999, minHeight: 46, padding: "10px 16px", justifyContent: "center", whiteSpace: "nowrap" };
 
@@ -6700,42 +6911,12 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
           display: "flex", flexWrap: "wrap",
           gap: 10, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}`,
         }}>
-          {/* Главная кнопка экрана — подключить / отключить, на всю ширину.
-              У реального устройства «в сети» решает само устройство — кнопки нет */}
-          {!d.real && !d.bt && <StateButton
-            state={power}
-            labels={powerLabels}
-            icon={Icon.power({ c: d.online ? C.red : C.green, s: 16 })}
-            onClick={toggleOnline}
-            style={{ ...pillBtn, flex: "1 1 100%" }}
-          >
-            {d.online ? "Отключить устройство" : "Подключить устройство"}
-          </StateButton>}
-          {/* Пока устройство звонит, кнопка в состоянии «загрузка».
-              У реального устройства «Найти» — в быстрых действиях справа, здесь не повторяем */}
-          {!d.real && !d.bt && <StateButton
-            variant="primary"
-            state={d.real
-              ? ({ ringing: "loading", found: "success", timeout: "error" }[findState] || "idle")
-              : ringing ? "loading" : "idle"}
-            labels={d.real ? { loading: "Ищем…", success: "Нашлось", error: "Не ответило" } : { loading: "Звонит…" }}
-            icon={Icon.search({ c: C.onFold, s: 16 })}
-            disabled={!d.online || power === "loading" || d.isSelf}
-            onClick={d.real ? () => onFind?.(d) : find}
-            style={{ ...pillBtn, flex: "1 1 136px" }}
-          >
-            Найти
-          </StateButton>}
+          {/* «В сети» решает само устройство; «Найти» — в быстрых действиях справа */}
           <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn, flex: "1 1 136px" }}>
             {Icon.folder({ c: C.text, s: 16 })} Файлы · {fileCount}
           </button>
         </div>
         </div>
-        {!d.real && !d.bt && !d.online && power === "idle" && (
-          <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
-            Найти можно только устройство в сети
-          </div>
-        )}
         {d.isSelf && (
           <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
             Это устройство — вы держите его в руках
@@ -6744,25 +6925,9 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       </div>
 
       <div data-keep>
-        {/* Реальное устройство: имя и что это за устройство. Выдуманных переключателей нет */}
+        {/* Только настоящее: имя и что это за устройство. Выдуманных переключателей нет */}
         {d.real && <RealDeviceInfo d={d} onRename={onRename} actions={realActions} />}
-        {/* Переключатели. Энергосбережение — только у устройств с батареей */}
         {d.bt && <BtDeviceInfo d={d} onRename={onRename} />}
-        {!d.real && !d.bt && <div style={{ margin: "20px 0 0", border: `1px solid ${C.border}`, borderRadius: 16 }}>
-          {DEVICE_SETTINGS.filter((s) => !s.battery || d.battery != null).map((s, i) => (
-            <div key={s.key} style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-              borderTop: i ? `1px solid ${C.border}` : "none",
-            }}>
-              <div style={{ display: "flex", flexShrink: 0 }}>{s.icon({ c: C.muted, s: 18 })}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14 }}>{s.title}</div>
-                <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>{s.sub}</div>
-              </div>
-              <Toggle on={d[s.key]} onClick={() => onSetting(s.key)} />
-            </div>
-          ))}
-        </div>}
 
         {/* Удаление устройства. Сначала спрашиваем прямо здесь: "Удалить?" */}
         <div ref={delRef} style={{ padding: "14px 0 0" }}>
@@ -6801,283 +6966,6 @@ function DeviceScreen({ device: d, fileCount, devices, files, folders, received,
       </div>
       {/* Реальное устройство: передать текст / ссылку и что от него пришло */}
       {d.real && link && <DeviceMessages d={d} link={link} flowOn={flowOn} />}
-    </div>
-  );
-}
-
-/* ОКНО "ДОБАВИТЬ УСТРОЙСТВО" — три шага и финал:
-   1) тип устройства → 2) поиск (≈2 с) и найденное → 3) название → "Готово".
-   Всё понарошку: поиск и подключение только изображаются таймерами.
-   Закрывается крестиком, Esc или кликом по затемнению.
-   names — названия, которые уже есть (чтобы не было двух одинаковых),
-   onAdd(type, name) — добавить устройство в список */
-const SEARCH_MS = 1800; // сколько идёт "поиск устройства"
-const PAIR_MS = 900;    // сколько идёт "подключение" после ввода названия
-const ADD_STEPS = ["Тип", "Поиск", "Название"];
-const NAME_MAX = 24;    // самое длинное название, чтобы влезало в карточку
-
-function AddDeviceModal({ names, onAdd, onClose, onBt }) {
-  // step: "type" | "search" | "found" | "name" | "done"
-  const [step, setStep] = useState("type");
-  const [type, setType] = useState(null);
-  const [name, setName] = useState("");
-  const [pairing, setPairing] = useState(false); // идёт ли подключение
-  const inputRef = useRef(null);
-  const t = type && deviceType(type);
-
-  // Таймеры поиска и подключения: отменяем при "Назад" и при закрытии окна
-  const timers = useRef([]);
-  const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
-  const stopTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
-  useEffect(() => stopTimers, []);
-
-  // Esc закрывает окно; страница под окном не скроллится (как в окне устройства)
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
-  // На шаге названия сразу ставим курсор в поле
-  useEffect(() => { if (step === "name") inputRef.current?.focus(); }, [step]);
-
-  const pickType = (tp) => {
-    setType(tp);
-    setStep("search");
-    later(() => setStep("found"), SEARCH_MS);
-  };
-  const toName = () => { setName(uniqueDeviceName(t.name, names)); setStep("name"); };
-  const back = () => {
-    stopTimers();
-    setPairing(false);
-    setStep(step === "name" ? "found" : "type");
-  };
-  const again = () => { setType(null); setName(""); setStep("type"); };
-
-  // Проверка названия: не пустое и не повторяет уже существующее
-  const trimmed = name.trim();
-  const nameError = !trimmed ? "Введите название" : names.includes(trimmed) ? "Такое название уже есть" : null;
-  const connect = () => {
-    if (nameError || pairing) return;
-    setPairing(true);
-    later(() => { onAdd(type, trimmed); setPairing(false); setStep("done"); }, PAIR_MS);
-  };
-
-  // Номер шага для полоски сверху: поиск и "найдено" — это один шаг
-  const stepIndex = { type: 0, search: 1, found: 1, name: 2, done: 3 }[step];
-  const titles = {
-    type: "Что подключаем?",
-    search: "Поиск устройства…",
-    found: "Устройство найдено",
-    name: "Как назвать?",
-    done: "Готово",
-  };
-
-  // Сцена с устройством — для поиска, найденного и финала
-  const stage = (
-    <div style={{
-      position: "relative", height: 170, borderRadius: 10, overflow: "hidden",
-      // Подключено — сцена окрашивается в цвета бренда: это и есть "связь есть"
-      background: step === "done"
-        ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})`
-        : `color-mix(in srgb, ${C.text} 6%, ${C.panel})`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-    }}>
-      {/* Пока ищем — от устройства расходятся квадратные волны */}
-      {step === "search" && [0, 1, 2].map((i) => (
-        <span key={i} className="nx-ping" style={{ animationDelay: `${i * 300}ms` }} />
-      ))}
-      <div
-        key={step}
-        className={step === "search" ? undefined : "nx-icon-on"}
-        style={{ position: "relative", display: "flex" }}
-      >
-        {t && t.icon({ c: step === "done" ? C.onFold : step === "search" ? C.muted : C.text, s: 56 })}
-      </div>
-    </div>
-  );
-
-  const ghostBtn = {
-    ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 12,
-    padding: "10px 16px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-  };
-  const footer = { display: "flex", gap: 10, marginTop: 20 };
-
-  return (
-    <div className="nx-viewer" onClick={onClose} style={{
-      position: "fixed", inset: 0, zIndex: 300,
-      // Фон под окном слегка размыт — внимание на устройстве
-      background: `color-mix(in srgb, ${C.bg} 55%, transparent)`,
-      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-    }}>
-      {/* stopPropagation — клик внутри окна не должен его закрывать */}
-      <div
-        role="dialog" aria-modal="true" aria-labelledby="nx-add-title"
-        className="nx-viewer-panel nx-pop nx-scroll"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(460px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18,
-          boxSizing: "border-box", textAlign: "left", padding: "20px 22px 22px",
-        }}
-      >
-        {/* Шапка: номер шага, заголовок и крестик */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: C.mutedSoft, letterSpacing: "0.04em" }}>
-              {step === "done" ? "Новое устройство" : `Шаг ${stepIndex + 1} из 3`}
-            </div>
-            <div id="nx-add-title" style={{ fontFamily: fontDisplay, fontSize: 24, lineHeight: 1.15, marginTop: 4 }}>
-              {titles[step]}
-            </div>
-          </div>
-          <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
-            ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            {Icon.close({ c: C.muted, s: 18 })}
-          </button>
-        </div>
-
-        {/* Полоска шагов: пройденные и текущий — синие, впереди — серые */}
-        <div style={{ display: "flex", gap: 6, margin: "16px 0 20px" }} aria-hidden="true">
-          {ADD_STEPS.map((label, i) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div style={{
-                height: 2, background: i <= stepIndex ? C.blue : C.border,
-                transition: "background-color 240ms ease",
-              }} />
-              <div style={{ fontSize: 11, marginTop: 6, color: i === stepIndex ? C.text : C.mutedSoft }}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Содержимое шага. key — чтобы каждый шаг мягко появлялся заново */}
-        <div key={step === "found" ? "search" : step} className="nx-pop">
-          {step === "type" && onBt && <div style={{ marginBottom: 14 }}><BtEntry onOpen={onBt} /></div>}
-          {step === "type" && (
-            <div className="nx-add-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-              {DEVICE_TYPES.map((dt) => (
-                <button key={dt.type} type="button" className="nx-cat-card" onClick={() => pickType(dt.type)} style={{
-                  ...btnReset, border: `1px solid ${C.border}`, borderRadius: 10,
-                  padding: "18px 8px 14px", display: "flex", flexDirection: "column",
-                  alignItems: "center", gap: 10, textAlign: "center",
-                }}>
-                  {dt.icon({ c: C.text, s: 28 })}
-                  <span style={{ fontSize: 13 }}>{dt.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {(step === "search" || step === "found") && (
-            <>
-              {stage}
-              <div role="status" style={{ marginTop: 14, minHeight: 42 }}>
-                {step === "search" ? (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
-                      <Spinner /> Ищем {t.name.toLowerCase()} рядом с вами
-                    </div>
-                    <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 4 }}>
-                      Устройство должно быть включено и лежать рядом
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
-                      <Dot color={C.green} /> {t.name} · рядом с вами
-                    </div>
-                    <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 4 }}>
-                      Сигнал хороший, можно подключать
-                    </div>
-                  </>
-                )}
-              </div>
-              <div style={footer}>
-                <button type="button" className="nx-ghost-btn" onClick={back} style={ghostBtn}>
-                  {Icon.arrowLeft({ c: C.text, s: 16 })} Назад
-                </button>
-                <StateButton variant="primary" disabled={step !== "found"} onClick={toName} style={{ flex: 1, padding: "10px 16px" }}>
-                  Дальше
-                </StateButton>
-              </div>
-            </>
-          )}
-
-          {step === "name" && (
-            // form — чтобы "Подключить" срабатывало и по Enter
-            <form onSubmit={(e) => { e.preventDefault(); connect(); }}>
-              <label htmlFor="nx-add-name" style={{ fontSize: 13, color: C.muted }}>Название</label>
-              <input
-                id="nx-add-name"
-                ref={inputRef}
-                className="nx-input"
-                value={name}
-                maxLength={NAME_MAX}
-                disabled={pairing}
-                onChange={(e) => setName(e.target.value)}
-                aria-invalid={!!nameError}
-                aria-describedby="nx-add-hint"
-                style={{
-                  display: "block", width: "100%", boxSizing: "border-box", marginTop: 8,
-                  background: "transparent", color: C.text, fontSize: 16, fontFamily: "inherit",
-                  border: `1px solid ${nameError ? C.red : C.borderStrong}`, borderRadius: 10,
-                  padding: "12px 14px", outline: "none",
-                }}
-              />
-              <div id="nx-add-hint" style={{ fontSize: 13, marginTop: 8, color: nameError ? C.red : C.mutedSoft }}>
-                {nameError || "Под этим названием устройство появится в списке"}
-              </div>
-              <div style={footer}>
-                <button type="button" className="nx-ghost-btn" onClick={back} disabled={pairing} style={ghostBtn}>
-                  {Icon.arrowLeft({ c: C.text, s: 16 })} Назад
-                </button>
-                <StateButton
-                  variant="primary"
-                  state={pairing ? "loading" : "idle"}
-                  labels={{ loading: "Подключение…" }}
-                  disabled={!!nameError}
-                  onClick={connect}
-                  style={{ flex: 1, padding: "10px 16px" }}
-                >
-                  Подключить
-                </StateButton>
-              </div>
-            </form>
-          )}
-
-          {step === "done" && (
-            <>
-              {stage}
-              <div role="status" style={{ marginTop: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
-                  <Dot color={C.green} /> {trimmed} · Онлайн
-                </div>
-                <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 4 }}>
-                  Устройство подключено и уже есть в списке
-                </div>
-              </div>
-              <div style={footer}>
-                <button type="button" className="nx-ghost-btn" onClick={again} style={ghostBtn}>
-                  {Icon.plus({ c: C.text, s: 15 })} Ещё одно
-                </button>
-                <StateButton variant="primary" onClick={onClose} style={{ flex: 1, padding: "10px 16px" }}>
-                  Готово
-                </StateButton>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -7314,7 +7202,7 @@ function QuickPanel({ commands, note, onClose: closeNow, onSearch, label = "Бы
   );
 }
 
-function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = DEVICES, onOpenDevice, onClose: closeNow, onOpenFile, onOpenFolder, onOpenChat, onNavigate, initialQuery = "" }) {
+function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = [], onOpenDevice, onClose: closeNow, onOpenFile, onOpenFolder, onOpenChat, onNavigate, initialQuery = "" }) {
   const [leaving, onClose] = useLeave(closeNow);
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef(null);
@@ -8571,7 +8459,7 @@ useEffect(() => {
     if (action === "devices") return say(buildDevicesSummary(devices), { actionLabel: "Устройства" });
     if (action === "addDevice") {
       onAddDevice?.();
-      return say("Открываю добавление устройства — выберите тип, и я найду его рядом", { actionLabel: "Добавление устройства" });
+      return say("Открываю подключение устройства: покажу код и QR — откройте NEXA на другом устройстве и введите код", { actionLabel: "Подключение устройства" });
     }
     if (action === "upload") {
       onUploadFiles?.();
@@ -10913,9 +10801,99 @@ function ThisDeviceSettings({ sys }) {
   );
 }
 
-/* Настройки уведомлений: по каждой категории — «В NEXA» (всплывающее и колокольчик)
-   и «Системные». Где системные невозможны, так и пишем, а не обещаем */
-function NoteSettings({ prefs, setPrefs, perm, onAsk }) {
+/* НАСТРОЙКИ АККАУНТА: какие категории уведомлений включены — одинаково на всех
+   устройствах аккаунта. Лежат в профиле Supabase (user_metadata.nexa_settings =
+   { notes: { files: true, flow: false, … }, at }) — отдельная таблица и миграция не нужны.
+   В браузере — обычная копия (nexa-note-prefs) и время последней правки здесь
+   (nexa-settings-at@<uid>, стирается при выходе). При входе, возвращении в NEXA,
+   возврате связи и сигнале с другого устройства сверяемся с облаком: новее облако —
+   берём его, новее здесь — отправляем. Без сети правка ждёт и уйдёт, когда сеть вернётся.
+   У каждого устройства свои: системные уведомления (разрешение даёт само устройство),
+   фон от наклона, Flow и «Поиск этого устройства» */
+const SETTINGS_AT_KEY = "nexa-settings-at@";
+const SETTINGS_PULL_MS = 30 * 1000; // при возвращении в NEXA — не чаще раза в 30 с
+const notesOnly = (p) => Object.fromEntries(NOTE_CATS.map((c) => [c.id, !!p[c.id]?.app]));
+function useAccountSettings(uid, notePrefs, setNotePrefs, onPushed) {
+  const atKey = SETTINGS_AT_KEY + uid;
+  const readAt = () => { try { return Number(localStorage.getItem(atKey)) || 0; } catch (e) { return 0; } };
+  const writeAt = (t) => { try { localStorage.setItem(atKey, String(t)); } catch (e) {} };
+  const prefsRef = useRef(notePrefs); prefsRef.current = notePrefs;
+  const pushedRef = useRef(onPushed); pushedRef.current = onPushed;
+  const pending = useRef(false);   // правка ещё не дошла до облака
+  const lastSig = useRef(null);    // какие категории были включены в прошлый раз
+  const fromCloud = useRef(false); // изменение пришло из облака — назад не отправляем
+  const lastPull = useRef(0);
+  const timer = useRef(0);
+
+  const push = async () => {
+    if (!uid || !supabase) return;
+    if (!navigator.onLine) { pending.current = true; return; }
+    const at = readAt() || Date.now();
+    const { error } = await supabase.auth.updateUser({ data: { nexa_settings: { notes: notesOnly(prefsRef.current), at } } });
+    if (error) { pending.current = true; return; } // повторим при возврате связи / в NEXA
+    pending.current = false;
+    pushedRef.current?.();
+  };
+  const pull = async (force) => {
+    if (!uid || !supabase || !navigator.onLine) return;
+    if (!force && Date.now() - lastPull.current < SETTINGS_PULL_MS) return;
+    lastPull.current = Date.now();
+    const { data, error } = await supabase.auth.getUser();
+    if (error || data?.user?.id !== uid) return;
+    const cloud = data.user.user_metadata?.nexa_settings;
+    const localAt = readAt();
+    if (cloud?.notes && (cloud.at || 0) > localAt && !pending.current) {
+      // В облаке новее — берём. Системные остаются, как были на этом устройстве
+      fromCloud.current = true;
+      setNotePrefs((p) => Object.fromEntries(NOTE_CATS.map((c) => {
+        const on = cloud.notes[c.id] !== false;
+        return [c.id, { app: on, system: on && !!p[c.id]?.system }];
+      })));
+      writeAt(cloud.at);
+    } else if (!cloud?.notes || localAt > (cloud.at || 0) || pending.current) {
+      // В облаке ещё пусто (первый вход) или здесь новее — отправляем своё
+      if (!localAt) writeAt(Date.now());
+      push();
+    }
+  };
+
+  // Человек переключил категорию (здесь или в другой вкладке) — запоминаем время и отправляем
+  useEffect(() => {
+    const sig = JSON.stringify(notesOnly(notePrefs));
+    const prev = lastSig.current;
+    lastSig.current = sig;
+    if (prev === null || prev === sig) return;
+    if (fromCloud.current) { fromCloud.current = false; return; }
+    if (!uid) return;
+    writeAt(Date.now());
+    pending.current = true;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(push, 800); // несколько щелчков подряд — одна отправка
+  }, [notePrefs, uid]);
+
+  // Вход, возвращение в NEXA, возврат связи
+  useEffect(() => {
+    if (!uid) return;
+    pull(true);
+    const onVisible = () => { if (document.visibilityState === "visible") pull(false); };
+    const onOnline = () => (pending.current ? push() : pull(true));
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    return () => {
+      clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [uid]);
+  return { pull: () => pull(true) };
+}
+
+/* Настройки уведомлений — просто: один переключатель на категорию («уведомлять о …»)
+   и один общий «Системные уведомления» (показывать ли их ещё и в системе, когда NEXA
+   не на экране). Внутри прежние поля: prefs[кат] = { app, system } —
+   выключенная категория молчит везде, системные идут только у включённых.
+   Где системные невозможны, так и пишем, а не обещаем */
+function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   const kind = systemNotifyKind();
   const sysOn = perm === "granted";
   const where = kind === "none"
@@ -10923,27 +10901,36 @@ function NoteSettings({ prefs, setPrefs, perm, onAsk }) {
     : kind === "web"
       ? "Браузер покажет их, пока вкладка NEXA открыта (можно свёрнутой). Закрытая вкладка ничего не присылает"
       : "Приходят, пока приложение запущено. Напоминания о делах ставятся заранее и придут, даже если NEXA закрыта (в режиме экономии Android может их задержать)";
-  const flip = (id, field) => setPrefs((p) => ({ ...p, [id]: { ...p[id], [field]: !p[id][field] } }));
+  // Системные «включены», если включены хоть у одной категории
+  const sysAll = sysOn && NOTE_CATS.some((c) => prefs[c.id]?.app && prefs[c.id]?.system);
+  // Категория: вкл/выкл целиком; при включении системные — как общий переключатель
+  const flipCat = (id) => setPrefs((p) => {
+    const on = !p[id]?.app;
+    return { ...p, [id]: { app: on, system: on && sysAll } };
+  });
+  // Общий переключатель системных — сразу для всех включённых категорий
+  const flipSystem = () => setPrefs((p) => {
+    const next = { ...p };
+    for (const c of NOTE_CATS) next[c.id] = { ...p[c.id], system: !sysAll && !!p[c.id]?.app };
+    return next;
+  });
   const permRight = kind === "none" ? <span style={{ fontSize: 13, color: C.mutedSoft }}>Недоступны</span>
-    : perm === "granted" ? <span style={{ fontSize: 13, color: C.green }}>Разрешены</span>
+    : perm === "granted" ? <Toggle on={sysAll} onClick={flipSystem} label="Системные уведомления" />
     : perm === "denied" ? <span style={{ fontSize: 13, color: C.red, maxWidth: 220, textAlign: "right", lineHeight: 1.35 }}>Запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
     : <button type="button" className="nx-ghost-btn" onClick={onAsk} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Разрешить</button>;
-  const sw = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, whiteSpace: "nowrap" };
   return (
     <div id="nx-note-settings" style={{ scrollMarginTop: 80 }}>
       <SectionTitle>Уведомления</SectionTitle>
+      <div style={{ fontSize: T.fs.sub, color: C.muted, lineHeight: 1.45, margin: `-${T.sp[1]}px 0 ${T.sp[3]}px`, maxWidth: 640, textAlign: "left" }}>
+        {account
+          ? "О чём уведомлять — одинаково на всех ваших устройствах. Системные уведомления у каждого устройства свои: их разрешает само устройство"
+          : "Переключатели запоминаются в этом браузере. Войдите — и они будут одинаковыми на всех ваших устройствах"}
+      </div>
       <SettingsGroup>
         <SettingsRow wrap icon={Icon.bell({ c: C.muted, s: 18 })} title="Системные уведомления" subtitle={where} right={permRight} />
         {NOTE_CATS.map((c, i) => (
-          <SettingsRow key={c.id} wrap last={i === NOTE_CATS.length - 1} icon={c.icon({ c: C.muted, s: 18 })} title={c.label} subtitle={c.sub}
-            right={(
-              <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-                <span style={sw}>В NEXA <Toggle on={prefs[c.id]?.app} onClick={() => flip(c.id, "app")} label={`${c.label}: в NEXA`} /></span>
-                {kind !== "none" && (
-                  <span style={{ ...sw, opacity: sysOn ? 1 : 0.6 }}>Системные <Toggle on={sysOn && prefs[c.id]?.system} disabled={!sysOn} onClick={() => flip(c.id, "system")} label={`${c.label}: системные`} /></span>
-                )}
-              </div>
-            )} />
+          <SettingsRow key={c.id} last={i === NOTE_CATS.length - 1} icon={c.icon({ c: C.muted, s: 18 })} title={c.label} subtitle={c.sub}
+            right={<Toggle on={!!prefs[c.id]?.app} onClick={() => flipCat(c.id)} label={c.label} />} />
         ))}
       </SettingsGroup>
     </div>
@@ -10983,29 +10970,12 @@ function ScreenSettings({ onOpenSearch, user, onLogin, onDeleteData, onApproveLo
   );
 
   return (
-    <div className="ng-screen nx-stagger" style={{ padding: "28px 40px 40px", maxWidth: 1000 }}>
-      {/* Колонка настроек не шире 1000px: на широком экране переключатели не уезжают
-          далеко от подписей. Справа у шапки — отступ под значки верхней строки
-          (быстрые действия, колокольчик, поиск, профиль ≈ 200px), если колонка до них
-          достаёт. Колонка во всю ширину (окно уже 1176px) — отступ 200px; шире —
-          значки правее колонки, отступ сходит на нет: 1374px − ширина окна */}
-      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingRight: "max(0px, min(200px, calc(1374px - 100vw)))" }}>
+    <div className="ng-screen nx-stagger nx-settings" style={{ padding: "28px 40px 40px", maxWidth: 920, marginInline: "auto", boxSizing: "border-box" }}>
+      {/* Колонка настроек не шире 920px и стоит по центру свободного места:
+          переключатели рядом с подписями, по краям — ровные поля.
+          Поиск — значок в верхней строке (отдельное поле здесь его повторяло) */}
+      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
         <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>Настройки</div>
-        {/* Поиск по настройкам. Открывает общий поиск по всему приложению.
-            На телефоне скрыт: там есть иконка поиска в верхней строке */}
-        <button
-          type="button"
-          className="nx-settings-search nx-ghost-btn"
-          onClick={onOpenSearch}
-          style={{
-            ...btnReset,
-            display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.border}`,
-            borderRadius: 999, padding: "8px 16px", width: 220,
-          }}
-        >
-          {Icon.search({ c: C.mutedSoft, s: 15 })}
-          <span style={{ fontSize: 13, color: C.mutedSoft }}>Поиск</span>
-        </button>
         </div>
 
       <AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} />
@@ -11303,10 +11273,9 @@ export default function NexaApp() {
 
   // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
   const auth = useAuth();
-  /* Демо-данные (выдуманные устройства, файлы, цифры хранилища) — только без входа.
-     У аккаунта своё хранилище в браузере: ключи с id пользователя (nexa-devices@…),
-     сначала пустое. Гостевое демо при этом не трогаем — после выхода оно на месте */
-  const demo = !auth.user;
+  /* Демо-режима нет: и у гостя, и у аккаунта — только настоящее (свои файлы,
+     подключённые устройства). У аккаунта своё хранилище в браузере — ключи с id
+     пользователя (nexa-devices@…), у гостя — без суффикса */
   const scope = auth.user ? `@${auth.user.id}` : "";
 
   // Общие данные для "Медиа" и "Файлов": список файлов, фильтр по категории
@@ -11328,12 +11297,12 @@ export default function NexaApp() {
   FILE_SCOPE = auth.user?.id || "guest";
   // Загрузки: [{ id, fileId, name, folder, progress 0…1, status "uploading" | "error", error, file }]
   const [uploads, setUploads] = useState([]);
-  // В аккаунте — только основные папки (Фото, Видео, Документы…), без выдуманных вложенных
-  const folders = [...(demo ? FOLDERS : FOLDERS.filter((f) => !f.parent)), ...fileStore.folders];
-  const files = [
-    ...(demo ? DEMO_FILES.filter((f) => !fileStore.removed.includes(f.id)) : []),
-    ...fileStore.added.map((f) => ({ ...withWhen(f), uploaded: true })),
-  ].map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name }));
+  // Папки: основные (Фото, Видео, Документы…) и созданные самим человеком
+  const folders = [...FOLDERS.filter((f) => !f.parent), ...fileStore.folders];
+  // Файлы — только загруженные (выдуманных демо-файлов больше нет)
+  const files = fileStore.added
+    .map((f) => ({ ...withWhen(f), uploaded: true }))
+    .map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name }));
   const [filesFilter, setFilesFilter] = useState(null);
   const [openFile, setOpenFile] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -11404,7 +11373,7 @@ export default function NexaApp() {
   const askNotePerm = async () => {
     const p = await systemNotifyPermission(true);
     setNotePerm(p);
-    if (p === "granted") setNotePrefs((prev) => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { ...prev[c.id], system: true }])));
+    if (p === "granted") setNotePrefs((prev) => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { ...prev[c.id], system: !!prev[c.id]?.app }])));
   };
   const openTargetRef = useRef(null); // ставится ниже, когда готовы переходы
   const realRowRef = useRef(() => null); // запись устройства по device_id — ставится ниже
@@ -11433,8 +11402,9 @@ export default function NexaApp() {
         target: { device: realRowRef.current(item.from_device)?.id },
         ...(!copied && !item.sensitive ? { action: { label: "Копировать", onClick: () => clipboardWrite(item.text).then((ok) => ok || copyText(item.text)) }, duration: 9000 } : {}),
       });
-      if (flowRef.current.autoCopy && !item.sensitive && document.visibilityState === "visible") clipboardWrite(item.text).then(show);
-      else show(false);
+      // Автокопирования больше нет (переключатель убран из Настроек): полученное копируют кнопкой.
+      // Старое значение autoCopy из хранилища ничего не включает
+      show(false);
       // В ленту — без содержимого сообщения
       onTextActivity.current?.(item);
     },
@@ -11469,12 +11439,14 @@ export default function NexaApp() {
   // чтобы после перезагрузки всё осталось как было
   // Здесь же — добавленные и удалённые устройства (см. loadDeviceStore)
   const [deviceStore, setDeviceStore] = useSharedState(DEVICES_KEY + scope, loadDeviceStore);
-  // Итоговый список: исходные (кроме удалённых) + добавленные,
-  // поверх — настройки по умолчанию и сохранённое состояние
-  const devices = [
-    ...(demo ? DEVICES.filter((d) => !deviceStore.removed.includes(d.id)) : []),
-    ...deviceStore.added.map((d) => ({ ...d, icon: deviceType(d.type).icon })),
-  ].map((d) => ({ ...d, ...DEVICE_DEFAULTS, ...deviceStore.state[d.id] }))
+  // Итоговый список — только настоящие: подключённые по коду/QR (real) и Bluetooth (bt).
+  // Выдуманные (старый мастер «демо-устройство») в списке не показываем — в данных они
+  // могут остаться у тех, кто добавлял их раньше, но на экраны не попадают
+  const devices = deviceStore.added
+    .map((d) => ({ ...d, icon: deviceType(d.type).icon }))
+    .map((d) => ({ ...d, ...deviceStore.state[d.id] }))
+    // Пометки real / bt лежат в состоянии устройства — фильтруем, когда оно уже подставлено
+    .filter((d) => d.real || d.bt)
     // Реальные устройства (подключены по коду): «в сети» — по Presence
     // Сведения: своё — прямо с устройства; онлайн — из Presence; не в сети — последние сохранённые
     .map((d) => {
@@ -11491,16 +11463,6 @@ export default function NexaApp() {
     ...s, state: { ...s.state, [id]: { ...s.state[id], ...patch } },
     updated: { ...s.updated, [id]: Date.now() },
   }));
-  // Новое устройство: сразу в сети
-  const addDevice = (type, name) => {
-    const t = deviceType(type);
-    const d = {
-      id: newId(), type, name, createdAt: Date.now(),
-      battery: t.battery, memory: t.memory, online: true, lastSeen: "только что",
-    };
-    setDeviceStore((s) => ({ ...s, added: [...s.added, d], updated: { ...s.updated, [d.id]: d.createdAt } }));
-    logEvent({ title: "Устройство подключено", text: name, kind: "device" });
-  };
 
   /* Расписание на сегодня: можно добавлять свои дела и удалять.
      Хранится в браузере (общее для вкладок), по умолчанию — пример.
@@ -11546,7 +11508,6 @@ export default function NexaApp() {
       return {
         ...s, state,
         added: s.added.filter((d) => !ids.includes(d.id)),
-        removed: [...new Set([...s.removed, ...ids.filter((id) => DEVICES.some((d) => d.id === id))])],
       };
     });
     if (ids.includes(openDeviceId)) setOpenDeviceId(null);
@@ -11556,8 +11517,6 @@ export default function NexaApp() {
       text: `${ids.length === 1 ? "Его" : "Их"} можно подключить заново через «Добавить устройство»`,
     });
   };
-  // Вернуть исходные устройства, если их удалили
-  const restoreDevices = () => setDeviceStore((s) => ({ ...s, removed: [] }));
 
   /* Облако аккаунта: устройства и чаты (src/lib/sync.js). Гостю — ничего не меняется.
      syncState — что сейчас с синхронизацией у каждой таблицы */
@@ -11761,10 +11720,15 @@ export default function NexaApp() {
   // Несколько сигналов подряд (например, ответ ассистента) — перечитываем один раз
   const refreshTimers = useRef({});
   const refreshTableSoon = (table) => {
+    if (table === "settings") return settingsSync.pull(); // категории уведомлений поменяли на другом устройстве
     clearTimeout(refreshTimers.current[table]);
     const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync }[table] || devicesSync;
     refreshTimers.current[table] = setTimeout(() => hook.retry(), 400);
   };
+
+  // Категории уведомлений — общие для аккаунта (см. useAccountSettings)
+  const settingsSync = useAccountSettings(auth.user?.id || null, notePrefs, setNotePrefs,
+    () => link.emit("sync.changed", { table: "settings" }));
 
   /* ── Подключение: это устройство выдаёт код ── */
   const pairRef = useRef(null);                  // { code, expiresAt, used, wrong, lockedUntil } — только в памяти
@@ -11777,7 +11741,13 @@ export default function NexaApp() {
   const openPair = () => { newPairCode(); setPairOpen(true); };
   const closePair = () => { pairRef.current = null; setPairView(null); setPairOpen(false); };
   // «Добавить устройство»: вошли — подключение по коду, гость — демо-мастер
-  const onAddDevice = () => (auth.user ? openPair() : setAddOpen(true));
+  // Подключить можно только настоящее устройство — по коду/QR, а это нужен аккаунт.
+  // Гость — сначала вход (после входа окно подключения откроется по той же кнопке)
+  const onAddDevice = () => {
+    if (auth.user) return openPair();
+    showToast({ title: "Подключение устройств — с аккаунтом", text: "Войдите по почте: устройства аккаунта видят друг друга" });
+    setAuthOpen(true);
+  };
 
   // Реальное устройство в списке (повторное подключение — обновляем, не дублируем)
   const addRealDevice = (p) => setDeviceStore((s) => {
@@ -12265,7 +12235,6 @@ export default function NexaApp() {
     showToast({ title: "Данные удалены", text: "Устройства и чаты аккаунта стёрты" });
     return null;
   };
-  const [addOpen, setAddOpen] = useState(false);            // открыто ли окно добавления
   /* ── Bluetooth (приложение Android): сопряжённые часы, наушники… ──
      Карточка — обычная запись устройств (уходит в облако аккаунта), в state:
      bt, bt_id (отпечаток адреса), host (device_id телефона, где сопряжено), connected, battery, checkedAt.
@@ -13062,7 +13031,7 @@ export default function NexaApp() {
           --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
           --border-strong: rgba(255, 255, 255, 0.28);
           --scrim: rgba(0, 0, 0, 0.6);
-          --on-fold: #FFFFFF;
+          --on-fold: #FFFFFF;  --photo-bg: #01060A;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
           /* Грани складки Главной (те же цвета, что в fold.svg) */
@@ -13088,7 +13057,7 @@ export default function NexaApp() {
           --input-glow: none;
           --border-strong: rgba(24, 32, 58, 0.24);
           --scrim: rgba(10, 16, 36, 0.38);
-          --on-fold: #FFFFFF;
+          --on-fold: #FFFFFF;  --photo-bg: #070B12; /* фото и в светлой теме — на тёмном */
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
           /* Грани складки Главной (те же цвета, что в fold.svg) */
@@ -13623,6 +13592,9 @@ export default function NexaApp() {
           .nx-icon-btn:not([style*="position"]), .nx-toggle:not([style*="position"]) { position: relative; }
           .nx-icon-btn::after, .nx-toggle::after { content: ""; position: absolute; inset: -5px; }
           .nx-toggle::after { inset: -10px -2px; }
+          /* Полноэкранное фото: на сенсорном экране листают свайпом. Стрелки у краёв
+             ловили палец в начале свайпа — там их нет */
+          .nx-photo-arrow { display: none !important; }
         }
         /* Градиент — на всю кнопку вместе с рамкой. Иначе под прозрачной рамкой 1px
            браузер повторяет градиент с другого края: по бокам видны тонкие полоски
@@ -14191,7 +14163,7 @@ export default function NexaApp() {
       {/* Подключение по коду: окно с кодом и окно «Подключаем…» */}
       {btOpen && <BluetoothPicker added={btIds} onAdd={addBtDevice} onClose={() => setBtOpen(false)} />}
       {pairOpen && <PairModal session={pairView} online={link.status === "online"} onNewCode={newPairCode} onBt={() => { closePair(); setBtOpen(true); }}
-        onDemo={() => { closePair(); setAddOpen(true); }} onClose={closePair}
+        onClose={closePair}
         onClaim={claimPair} onScan={canScanQr ? scanAndHandle : null} />}
       {claim && <PairStatusDialog claim={claim} onClose={() => setClaim(null)} />}
       {approve && auth.user && <ApproveLoginModal key={approve.n} initialCode={approve.code} onClose={() => setApprove(null)} onScan={canScanQr ? scanAndHandle : null} />}
@@ -14232,11 +14204,8 @@ export default function NexaApp() {
         files={files}
         folders={folders}
         received={received[openDevice.id]}
-        demo={demo}
         fileCount={files.filter(onDeviceFile(openDevice)).length}
         onBack={() => setOpenDeviceId(null)}
-        onSetOnline={(online) => patchDevice(openDevice.id, { online })}
-        onSetting={(key) => patchDevice(openDevice.id, { [key]: !openDevice[key] })}
         onOpenFiles={() => openDeviceFiles(openDevice.id)}
         onRemove={() => { const real = openDevice.real; removeDevices([openDevice.id]); if (real) setTimeout(() => link.emit("devices.changed", {}), 2000); }}
         onToast={showToast}
@@ -14287,7 +14256,6 @@ export default function NexaApp() {
           onNavigate={goTab}
           onOpenDevice={showDevice}
           onAddDevice={onAddDevice}
-          onRestoreDevices={restoreDevices}
           netState={!online ? "offline" : !uid ? "local" : syncLoading || syncPending || syncError ? "pending" : "ok"}
           activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
           findState={findState}
@@ -14314,7 +14282,7 @@ export default function NexaApp() {
         />
       )}
       {tab === "settings" && <ScreenSettings onOpenSearch={() => openSearch()}
-        noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} />}
+        noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
         updateBlock={isNative && (
           <>
             <SectionTitle>Обновление</SectionTitle>
@@ -14371,6 +14339,7 @@ export default function NexaApp() {
         <FileViewer
           key={openFile.id}
           file={files.find((f) => f.id === openFile.id)}
+          photos={sortByRecent(files.filter((f) => f.uploaded && f.cat === "photo"))}
           folders={folders}
           devices={devices}
           onClose={closeViewer}
@@ -14382,15 +14351,6 @@ export default function NexaApp() {
       )}
       {/* Окно устройства поверх всего. key — чтобы для другого устройства
           окно открывалось "с нуля" (без идущего поиска от прошлого) */}
-      {/* Окно добавления устройства: тип → поиск → название → готово */}
-      {addOpen && (
-        <AddDeviceModal
-          onBt={btAvailable ? () => { setAddOpen(false); setBtOpen(true); } : null}
-          names={devices.map((d) => d.name)}
-          onAdd={addDevice}
-          onClose={() => setAddOpen(false)}
-        />
-      )}
       {/* Меню «Передать на…» и полёт карточки к устройству */}
       {transfer && (
         <TransferMenu
