@@ -1,0 +1,404 @@
+// Экран «Файлы»: папки, загрузки, очередь
+import { useState, useRef, useEffect } from "react";
+import { C, fontDisplay } from "../ui/theme.js";
+import { Icon } from "../ui/icons.jsx";
+import { plural } from "../lib/format.js";
+import { btnReset, Spinner, EmptyState } from "../ui/base.jsx";
+import { FOLDERS, MEDIA_CATS, sortByRecent, folderName, fileMeta } from "../lib/fileStore.js";
+import { MediaLayout, MediaTitle, Crumb } from "../ui/layout.jsx";
+import { FolderThumb, FileThumb } from "../ui/files.jsx";
+import { TransferBtn } from "../ui/FileViewer.jsx";
+
+// ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
+// filter — id категории, если пришли сюда из "Медиа" (тогда показываем
+// плоский список файлов этой категории из всех папок).
+// device — устройство, если пришли из окна устройства (тогда показываем
+// плоский список файлов с этого устройства).
+// folders — все папки (демо + созданные), uploads — идущие загрузки,
+// onAddFiles(список, папка) — добавить файлы, onCreateFolder(имя, родитель) — новая папка
+// onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
+// onUploadAction(id, "cancel" | "retry" | "dismiss") — управление строкой загрузки
+export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction }) {
+  // Текущая папка (null — корень хранилища)
+  const [folder, setFolder] = useState(initialFolder || null);
+  const fileInput = useRef(null);
+  // Новая папка: newFolder — введённое имя (null — поле закрыто)
+  const [newFolder, setNewFolder] = useState(null);
+  // Тащат ли сейчас файлы над окном (для подсветки зоны)
+  const [dragging, setDragging] = useState(false);
+  // Строка поиска: ищет только в текущей папке (или категории)
+  const [query, setQuery] = useState("");
+  // Положение прокрутки строки пути: для полоски под чипсами и затухания справа
+  const [scroll, setScroll] = useState({ left: 0, ratio: 1, more: false });
+  const crumbsRef = useRef(null);
+
+  const cat = MEDIA_CATS.find((c) => c.id === filter);
+  const folderById = (id) => folders.find((f) => f.id === id);
+
+  const measure = () => {
+    const el = crumbsRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setScroll({
+      left: max > 0 ? el.scrollLeft / el.scrollWidth : 0,
+      ratio: el.clientWidth / el.scrollWidth,
+      more: el.scrollLeft < max - 2,
+    });
+  };
+
+  // При смене папки: прокручиваем путь к текущей папке и чистим поиск
+  useEffect(() => {
+    const el = crumbsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+    measure();
+    setQuery("");
+  }, [folder, filter, device]);
+
+  // Ширина окна поменялась — пересчитываем полоску прокрутки
+  useEffect(() => {
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  // Путь от корня до текущей папки: идём от папки вверх по parent
+  const path = [];
+  for (let id = folder; id; id = folderById(id).parent) path.unshift(folderById(id));
+
+  const q = query.trim().toLowerCase();
+  const match = (name) => !q || name.toLowerCase().includes(q);
+  // flat — включён отбор (по категории или устройству): показываем
+  // все подходящие файлы из всех папок одним списком
+  const flat = Boolean(cat || device);
+  const onDevice = (f) => f.device === device.name || f.device === device.alias;
+  const subfolders = flat ? [] : folders.filter((f) => f.parent === folder && match(f.name));
+  const list = sortByRecent((flat
+    ? files.filter((f) => (!cat || f.cat === cat.id) && (!device || onDevice(f)))
+    : files.filter((f) => f.folder === folder)).filter((f) => match(f.name)));
+  // Сколько всего лежит внутри папки (подпапки + файлы)
+  const countIn = (id) => folders.filter((f) => f.parent === id).length + files.filter((f) => f.folder === id).length;
+
+  // Куда попадут новые файлы: в открытую папку. Если включён отбор
+  // по категории или устройству — в корень "Хранилище"
+  const target = flat ? null : folder;
+  const targetName = folderName(folders, target);
+  const upload = (list) => { if (list && list.length) onAddFiles?.(list, target); };
+
+  // Проверка имени новой папки: не пустое и не повторяет соседнюю папку
+  const nfName = (newFolder || "").trim();
+  const nfError = !nfName ? null
+    : folders.some((f) => f.parent === folder && f.name.toLowerCase() === nfName.toLowerCase()) ? "Такая папка уже есть" : null;
+  const saveFolder = () => {
+    if (!nfName || nfError) return;
+    onCreateFolder?.(nfName, folder);
+    setNewFolder(null);
+  };
+  // Сменили папку — поле новой папки закрываем
+  useEffect(() => { setNewFolder(null); }, [folder, filter, device]);
+
+  /* Перетаскивание файлов прямо в окно (на компьютере).
+     Слушаем всё окно: пока над ним держат файлы — показываем рамку,
+     отпустили — загружаем. depth нужен, потому что dragenter/dragleave
+     приходят от каждого вложенного элемента */
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+    const enter = (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; setDragging(true); };
+    const over = (e) => { if (hasFiles(e)) e.preventDefault(); }; // без этого браузер откроет файл сам
+    const leave = (e) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) setDragging(false); };
+    const drop = (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      uploadRef.current(e.dataTransfer.files);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
+
+  const heading = device ? `${device.name} · все папки` : cat ? `${cat.label} · все папки` : folder ? folderById(folder).name : "Хранилище";
+
+  const rowStyle = {
+    ...btnReset, width: "100%", boxSizing: "border-box",
+    borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)`, padding: "12px 4px",
+    display: "flex", alignItems: "center", gap: 14,
+  };
+
+  return (
+    <MediaLayout>
+      <MediaTitle title="Файлы" subtitle="Ваши файлы, документы и медиа — всегда под рукой" />
+
+      <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-start", gap: 28, marginBottom: 26 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Путь навигации. Если включён фильтр — вместо пути
+              показываем фильтр и кнопку, чтобы его сбросить.
+              Справа путь плавно затухает, если дальше есть ещё чипсы */}
+          <div
+            ref={crumbsRef} onScroll={measure} className="ng-crumbs nx-no-scrollbar"
+            style={{
+              display: "flex", gap: 6, overflowX: "auto",
+              maskImage: scroll.more ? "linear-gradient(90deg, black 82%, transparent)" : "none",
+              WebkitMaskImage: scroll.more ? "linear-gradient(90deg, black 82%, transparent)" : "none",
+            }}
+          >
+            {flat ? (
+              <>
+                <Crumb onClick={onClearFilter}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Все папки</Crumb>
+                <Crumb active>
+                  {(device || cat).icon({ c: C.onFold, s: 15 })} {device ? device.name : cat.label} · {list.length} {plural(list.length, ["файл", "файла", "файлов"])}
+                </Crumb>
+              </>
+            ) : (
+              <>
+                {folder && (
+                  <Crumb onClick={() => setFolder(folderById(folder).parent)}>
+                    {Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад
+                  </Crumb>
+                )}
+                <Crumb active={!folder} onClick={() => setFolder(null)}>{Icon.drive({ c: C.onFold, s: 15 })} Хранилище</Crumb>
+                {path.map((p, i) => (
+                  <Crumb key={p.id} active={i === path.length - 1} onClick={() => setFolder(p.id)}>
+                    {Icon.folder({ c: C.onFold, s: 15 })} {p.name}
+                  </Crumb>
+                ))}
+              </>
+            )}
+          </div>
+          {/* Полоска под путём: показывает, какая часть пути сейчас видна */}
+          <div style={{ position: "relative", height: 2, background: C.border, marginTop: 14 }}>
+            <div style={{
+              position: "absolute", top: 0, bottom: 0,
+              left: `${scroll.left * 100}%`, width: `${scroll.ratio * 100}%`,
+              background: C.muted,
+            }} />
+          </div>
+        </div>
+
+        <label className="nx-files-search" style={{
+          width: 200, flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
+          borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 6, marginTop: 4,
+        }}>
+          {Icon.search({ c: C.muted, s: 16 })}
+          <input
+            value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder={device ? "Поиск по устройству…" : cat ? "Поиск в категории…" : "Поиск в этой папке…"}
+            style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 13, padding: 0 }}
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" style={{ ...btnReset, display: "flex" }}>
+              {Icon.close({ c: C.muted, s: 14 })}
+            </button>
+          )}
+        </label>
+      </div>
+
+      {/* Заголовок папки, справа — "Новая папка" и "Добавить файл".
+          На телефоне кнопки встают под заголовок на всю ширину */}
+      <div className="nx-files-head" style={{
+        display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12,
+        paddingBottom: 10, borderBottom: `1px solid ${C.borderStrong}`,
+      }}>
+        <div style={{
+          // Как заголовок раздела (SectionTitle): тот же размер и вес, без капса
+          fontFamily: fontDisplay, fontSize: 22, fontWeight: 600,
+          minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {heading}
+        </div>
+        <div className="nx-files-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          {!flat && (
+            <button type="button" className="nx-ghost-btn" onClick={() => setNewFolder("")} disabled={newFolder !== null} style={{
+              ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
+            }}>
+              {Icon.folder({ c: C.text, s: 15 })} Новая папка
+            </button>
+          )}
+          <button type="button" className="nx-primary" onClick={() => fileInput.current?.click()} style={{
+            ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
+            border: "1px solid transparent", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500,
+            color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          }}>
+            {Icon.plus({ c: C.onFold, s: 15 })} Добавить файл
+          </button>
+          {/* Обычный выбор файлов системы. value сбрасываем,
+              чтобы тот же файл можно было выбрать ещё раз */}
+          <input
+            ref={fileInput} type="file" multiple hidden
+            onChange={(e) => { upload(e.target.files); e.target.value = ""; }}
+          />
+        </div>
+      </div>
+
+      {/* Загрузки: имя, настоящий процент, отмена; ошибка — «Повторить» и «Убрать» */}
+      {uploads.map((u) => {
+        const failed = u.status === "error";
+        // Ждёт в очереди (нет сети или пауза перед повтором) — содержимое сохранено на устройстве
+        const waiting = u.status === "queued";
+        const waitText = navigator.onLine === false ? "Нет сети — загрузится, когда связь вернётся (пока NEXA открыта)"
+          : u.nextAt ? `Не вышло — повторим в ${new Date(u.nextAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Скоро отправим";
+        const small = { ...btnReset, fontSize: 13, padding: "4px 10px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
+        return (
+          <div key={u.id} role={failed ? "alert" : "status"} className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+              {failed ? Icon.alert({ c: C.red, s: 16 }) : waiting ? Icon.refresh({ c: C.muted, s: 16 }) : <Spinner />}
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {failed ? `Не загрузилось: «${u.name}»` : waiting ? `Ждёт отправки: «${u.name}»` : `Загружаем «${u.name}»`}
+              </span>
+              <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                {!failed && !waiting && <span style={{ fontSize: 12, color: C.mutedSoft, fontFamily: fontDisplay }}>{Math.round(u.progress * 100)}%</span>}
+                {(failed || (waiting && navigator.onLine !== false)) && <button type="button" className="nx-ghost-btn" onClick={() => onUploadAction?.(u.id, "retry")} style={small}>{waiting ? "Сейчас" : "Повторить"}</button>}
+                <button type="button" className="nx-icon-btn" onClick={() => onUploadAction?.(u.id, failed || waiting ? "dismiss" : "cancel")}
+                  aria-label={failed || waiting ? "Убрать" : "Отменить загрузку"} title={failed || waiting ? "Убрать" : "Отменить"} style={{
+                    ...btnReset, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                  {Icon.close({ c: C.muted, s: 13 })}
+                </button>
+              </span>
+            </div>
+            {failed
+              ? <div style={{ fontSize: 12, color: C.red, marginTop: 6, paddingLeft: 26 }}>{u.error}</div>
+              : waiting ? <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6, paddingLeft: 26 }}>{waitText}</div>
+              : (
+                <div style={{ height: 2, background: C.border, marginTop: 10, overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%", width: `${Math.max(2, u.progress * 100)}%`, transition: "width 200ms linear",
+                    background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+                  }} />
+                </div>
+              )}
+          </div>
+        );
+      })}
+
+      {/* Рамка "отпустите файлы": видна, пока над окном держат файлы */}
+      {dragging && (
+        <div className="nx-drop-zone" aria-hidden="true" style={{
+          position: "fixed", inset: 12, zIndex: 250, pointerEvents: "none",
+          border: `1px dashed ${C.mint}`, borderRadius: 10,
+          background: `color-mix(in srgb, ${C.bg} 82%, transparent)`,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+        }}>
+          <div style={{
+            width: 56, height: 56, border: `1px solid ${C.mint}`, borderRadius: 10,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {Icon.up({ c: C.mint, s: 26 })}
+          </div>
+          <div className="ng-display" style={{ fontSize: 22 }}>Отпустите, чтобы добавить</div>
+          <div style={{ fontSize: 13, color: C.muted }}>Файлы попадут в папку «{targetName}»</div>
+        </div>
+      )}
+
+      {/* Список прокручивается внутри себя, как в макете.
+          key меняется при смене папки — список появляется заново с анимацией */}
+      <div key={device ? `dev-${device.id}` : cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-stagger nx-scroll nx-files-list" style={{
+        maxHeight: "calc(100vh - 400px)", minHeight: 260, overflowY: "auto", paddingRight: 14,
+      }}>
+        {/* Новая папка: строка с полем имени. Enter — создать, Esc — отменить */}
+        {newFolder !== null && (
+          <form className="nx-pop" onSubmit={(e) => { e.preventDefault(); saveFolder(); }} style={{ ...rowStyle, cursor: "default" }}>
+            <FolderThumb />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <input
+                autoFocus
+                className="nx-input"
+                value={newFolder}
+                maxLength={40}
+                placeholder="Название папки"
+                aria-label="Название новой папки"
+                aria-invalid={!!nfError}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setNewFolder(null); }}
+                style={{
+                  width: "100%", boxSizing: "border-box", background: "transparent", color: C.text,
+                  fontFamily: "inherit", fontSize: 16, padding: "6px 10px", borderRadius: 10, outline: "none",
+                  border: `1px solid ${nfError ? C.red : C.borderStrong}`,
+                }}
+              />
+              {nfError && <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>{nfError}</div>}
+            </div>
+            <button type="submit" className="nx-icon-btn" aria-label="Создать папку" disabled={!nfName || !!nfError} style={{
+              ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {Icon.check({ c: C.green, s: 18 })}
+            </button>
+            <button type="button" className="nx-icon-btn" aria-label="Отменить" onClick={() => setNewFolder(null)} style={{
+              ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {Icon.close({ c: C.muted, s: 16 })}
+            </button>
+          </form>
+        )}
+        {subfolders.map((sf) => {
+          const n = countIn(sf.id);
+          return (
+            <button type="button" key={sf.id} className="nx-row-btn" onClick={() => setFolder(sf.id)} style={rowStyle}>
+              <FolderThumb />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14 }}>{sf.name}</div>
+                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
+                  Папка · {n} {plural(n, ["объект", "объекта", "объектов"])}
+                </div>
+              </div>
+              {Icon.chevron({ s: 18 })}
+            </button>
+          );
+        })}
+        {/* Строка файла: сама строка открывает файл, справа — «Передать на…».
+            data-transfer-card — отсюда полетит карточка при передаче */}
+        {list.map((f) => (
+          <div key={f.id} data-transfer-card style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
+            <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
+              <FileThumb file={f} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {fileMeta(f)}{flat ? ` · ${folderName(folders, f.folder)}` : ""}
+                </div>
+              </div>
+            </button>
+            {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
+          </div>
+        ))}
+        {subfolders.length === 0 && list.length === 0 && (
+          q ? (
+            <EmptyState
+              title="Ничего не нашлось"
+              text={`По запросу «${query.trim()}» здесь ничего нет. Попробуйте другое слово.`}
+              action={
+                <button type="button" className="nx-ghost-btn" onClick={() => setQuery("")} style={{
+                  ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 12, padding: "8px 14px", fontSize: 13,
+                }}>
+                  Очистить поиск
+                </button>
+              }
+            />
+          ) : (
+            <EmptyState
+              title={device ? `На устройстве «${device.name}» пока нет файлов` : "Здесь пока пусто"}
+              text={device ? "Файлы появятся, когда устройство что-нибудь сохранит." : "Нажмите «Добавить файл» или перетащите файлы в окно."}
+            />
+          )
+        )}
+      </div>
+    </MediaLayout>
+  );
+}
+
+/* ═══ СОСТОЯНИЯ: загрузка, успех, ошибка, пусто ═══════════════
+   Общие детали, чтобы эти состояния везде выглядели одинаково.
+   hover / pressed / focus / disabled задаются классами в блоке <style>
+   (см. «ЕДИНАЯ СИСТЕМА СОСТОЯНИЙ»). */
