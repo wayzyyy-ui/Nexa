@@ -382,6 +382,8 @@ export const APP_CSS = `
   /* Телефон: горизонтальное движение пальца браузер отдаёт нам (вертикальная
      прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
   @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
+  /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
+  @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(68px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
   @keyframes nx-swipe-next { from { opacity: 0; transform: translateX(72px); } to { opacity: 1; transform: none; } }
   @keyframes nx-swipe-prev { from { opacity: 0; transform: translateX(-72px); } to { opacity: 1; transform: none; } }
   /* Без движения — экран просто меняется */

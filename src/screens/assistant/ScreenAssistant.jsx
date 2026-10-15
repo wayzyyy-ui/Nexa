@@ -22,7 +22,7 @@ import { VERSION } from "../../version.js";
 import { FileThumb } from "../../ui/files.jsx";
 import { LiveAnswer, AttachChip, MessageBubble, AssistantSkeleton } from "./messages.jsx";
 
-export function ScreenAssistant({ initialChatId, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync, files = [], uid = null, onAddFiles }) {
+export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -286,6 +286,13 @@ useEffect(() => {
     return () => window.removeEventListener("nexa-new-chat", onNew);
   }, []);
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
+  // Открыть диалог по просьбе извне (продолжение с другого устройства), даже если экран уже открыт
+  useEffect(() => {
+    if (!openRequest?.id || !chats.some((c) => c.id === openRequest.id)) return;
+    openChat(openRequest.id); setIsHistoryOpen(false);
+  }, [openRequest?.n]);
+  // Какой диалог открыт — NexaApp (для «Продолжить на устройстве» в быстрых действиях)
+  useEffect(() => { onCurrentChat?.(currentChatId); }, [currentChatId]);
   // Удаление (уже после подтверждения в меню диалога)
   const deleteChat = (id) => {
     setChats(prev => prev.filter(c => c.id !== id));
@@ -743,6 +750,7 @@ const menuBlock = (
   // ─── ПАНЕЛЬ ИСТОРИИ (см. ChatHistory) ─────────────────────
   const historyPanel = (
     <ChatHistory
+      onContinue={onContinueChat}
       chats={chats}
       setChats={setChats}
       currentChatId={currentChatId}

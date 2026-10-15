@@ -32,8 +32,11 @@ const GENERATION = { temperature: 0.4, maxOutputTokens: 400 };
 // Без «обдумывания» перед ответом. MODEL — псевдоним «последняя Flash-Lite»: Google
 // переводит его на новые модели, а новые по умолчанию сначала молча думают —
 // первые слова приходят через несколько секунд, а мысли съедают maxOutputTokens.
-// Для коротких ответов ассистента это не нужно
-const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
+// Для коротких ответов ассистента это не нужно.
+// Новые модели (Gemini 3) понимают только thinkingLevel; старое thinkingBudget: 0 они
+// отклоняют ошибкой 400 «Request contains an invalid argument» — так ассистент и сломался,
+// когда Google перевёл псевдоним на новую модель. Пробуем по очереди: minimal → budget 0 → без настройки
+const THINKING_TRIES = [{ thinkingConfig: { thinkingLevel: 'minimal' } }, { thinkingConfig: { thinkingBudget: 0 } }, {}];
 
 // Команды выполняются в самом приложении (до обращения к серверу), но модель
 // должна о них знать, чтобы правильно отвечать на «что ты умеешь» в любой форме
@@ -154,12 +157,15 @@ export default async function handler(req, res) {
     // С файлом ответ может быть длиннее: пересказ, список пунктов
     const config = { systemInstruction: SYSTEM_INSTRUCTION, ...GENERATION, ...(hasAttachment ? { maxOutputTokens: 1200 } : {}) };
     let stream;
-    try {
-      stream = await ai.models.generateContentStream({ model: MODEL, contents, config: { ...config, ...NO_THINKING } });
-    } catch (e) {
-      // Модель не умеет отключать обдумывание — спрашиваем как раньше, без этой настройки
-      if (e?.status !== 400 || !/thinking/i.test(String(e?.message || ''))) throw e;
-      stream = await ai.models.generateContentStream({ model: MODEL, contents, config });
+    for (let i = 0; i < THINKING_TRIES.length; i++) {
+      try {
+        stream = await ai.models.generateContentStream({ model: MODEL, contents, config: { ...config, ...THINKING_TRIES[i] } });
+        break;
+      } catch (e) {
+        // 400 — модель не понимает эту настройку обдумывания, пробуем следующую.
+        // Последняя попытка (без настройки) или другая ошибка — обрабатываем ниже, как раньше
+        if (e?.status !== 400 || i === THINKING_TRIES.length - 1) throw e;
+      }
     }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');

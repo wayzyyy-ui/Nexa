@@ -48,6 +48,8 @@ import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
 import { ScreenAbout } from "./screens/About.jsx";
 import { ScreenSecurity } from "./screens/Security.jsx";
+import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
+import { CONT_TTL_MS, CONT_ACK_MS, CONT_CONNECT_MS, CONT_FAIL, contDone, contWhat, contFresh } from "./lib/continuity.js";
 import { ActivityBlock, ScreenActivity } from "./screens/Activity.jsx";
 import { ScreenToday } from "./screens/Today.jsx";
 import { FileThumb } from "./ui/files.jsx";
@@ -212,6 +214,8 @@ export default function NexaApp() {
      (подключение, сцены, поиск) разбирает handleLinkEvent ниже */
   const uid = auth.user?.id || null;
   const logSecurityRef = useRef(null); // журнал безопасности — для обработчиков, объявленных выше него
+  const contHandlers = useRef({}); // продолжение работы — обработчики событий канала (объявлены ниже)
+  const peerIdsRef = useRef(new Set()); // кто сейчас в канале аккаунта (для проверок в обработчиках)
   /* NEXA Flow на этом устройстве: { on, autoCopy } (у каждого аккаунта своё) */
   const [flow, setFlow] = useSharedState("nexa-flow" + scope, loadFlow);
   const flowRef = useRef(flow); flowRef.current = flow;
@@ -519,6 +523,14 @@ export default function NexaApp() {
     // Центр безопасности: сигналу не верим — сеанс проверяем у сервера
     if (event === "session.check") {
       if (p.target_device_id === me) verifySessionRef.current?.(true);
+      return;
+    }
+    // Продолжение работы: только адресованное этому устройству
+    if (event === "continue.offer" || event === "continue.reply" || event === "continue.cancel") {
+      if (p.to_device !== me) return;
+      if (event === "continue.offer") contHandlers.current.offer?.(p);
+      else if (event === "continue.reply") contHandlers.current.reply?.(p);
+      else contHandlers.current.cancel?.(p);
       return;
     }
     if (event === "lock.on") {
@@ -954,6 +966,147 @@ export default function NexaApp() {
     } else showToast({ title: "Не получилось", text: DISCONNECT_FAIL[r.kind] || DISCONNECT_FAIL.server, duration: 7000 });
     return r;
   };
+
+  /* ── Продолжение работы на другом устройстве (src/lib/continuity.js, src/ui/continuity.jsx) ──
+     Отправитель: contSend — открытое окно { kind, ref, title }; contJob — текущая попытка
+     { id, device_id, name, item, status, reason, exp }. Получатель: contOffer — карточка «Продолжить здесь?» */
+  const [contSend, setContSend] = useState(null);
+  const [contJob, setContJob] = useState(null);
+  const [contOffer, setContOffer] = useState(null);
+  const contTimers = useRef({});
+  const linkStatusRef = useRef(link.status); linkStatusRef.current = link.status;
+  const contJobRef = useRef(contJob); contJobRef.current = contJob;
+  const contOfferRef = useRef(contOffer); contOfferRef.current = contOffer;
+  const chatsRef = useRef(chats); chatsRef.current = chats;
+  const filesRef = useRef(files); filesRef.current = files;
+  // Объект своего аккаунта по номеру: диалог из chats, файл — только загруженный в облако
+  const contFind = (kind, ref) => kind === "chat"
+    ? chatsRef.current.find((c) => c.id === ref)
+    : filesRef.current.find((f) => f.id === ref && f.path);
+  const contTitle = (kind, obj) => (kind === "chat" ? obj?.title : obj?.name);
+  peerIdsRef.current = peerIds;
+  /* Куда можно продолжить: свои устройства из списка и те, что сейчас в сети в канале аккаунта,
+     но в списке их нет (например, устройство, которое выдавало код подключения, само в список не попадает) */
+  const contTargets = (() => {
+    const known = new Set(devices.flatMap((d) => (d.parts || [d]).map((x) => x.device_id)).filter(Boolean));
+    const extra = link.peers.filter((p) => p.device_id && p.device_id !== link.self?.device_id && !known.has(p.device_id))
+      .map((p) => ({ id: `peer:${p.device_id}`, device_id: p.device_id, name: p.name || "Устройство", kind: p.kind, platform: p.platform,
+        type: p.platform === "desktop" ? "laptop" : "phone", icon: p.platform === "desktop" ? Icon.laptop : Icon.phone, real: true, online: true, isSelf: false }));
+    return [...devices, ...extra];
+  })();
+  const clearContTimers = (id) => { clearTimeout(contTimers.current[id]); delete contTimers.current[id]; };
+  // Попытка закончилась. Окно закрыто — говорим итог всплывающим
+  const finishJob = (id, status, reason) => {
+    const j = contJobRef.current;
+    if (!j || j.id !== id || contDone(j.status)) return;
+    clearContTimers(id);
+    const next = { ...j, status, reason };
+    setContJob(next);
+    if (status === "opened") logActivity("sent", `Продолжено на «${j.name}»`, contWhat(j.item.kind, j.item.title));
+    if (!contSendRef.current) showToast(status === "opened"
+      ? { title: `Открыто на «${j.name}»`, text: contWhat(j.item.kind, j.item.title), kind: "device" }
+      : { title: `Не удалось продолжить на «${j.name}»`, text: CONT_FAIL[reason] || CONT_FAIL.send, duration: 6000 });
+  };
+  const contSendRef = useRef(contSend); contSendRef.current = contSend;
+  const startContinue = async (card, item) => {
+    const target = actTarget(card); // у сайта и приложения одного телефона — та часть, что в сети
+    if (!target?.device_id) return;
+    const id = newId(), exp = Date.now() + CONT_TTL_MS;
+    setContJob({ id, device_id: target.device_id, name: card.name, item, status: linkStatusRef.current === "online" ? "sending" : "connecting", exp });
+    contJobRef.current = { id, device_id: target.device_id, name: card.name, item, status: "connecting", exp };
+    // Канал ещё не подключён — подождём, но недолго
+    const t0 = Date.now();
+    while (linkStatusRef.current !== "online" && Date.now() - t0 < CONT_CONNECT_MS) await new Promise((r) => setTimeout(r, 400));
+    if (contJobRef.current?.id !== id) return; // отменили, пока ждали
+    if (linkStatusRef.current !== "online") return finishJob(id, "failed", "offline");
+    setContJob((j) => (j?.id === id ? { ...j, status: "sending" } : j));
+    const ok = await link.emit("continue.offer", { id, to_device: target.device_id, kind: item.kind, ref: item.ref, exp });
+    if (!ok) return finishJob(id, "failed", "send");
+    contTimers.current[id] = setTimeout(() => finishJob(id, "failed", "noanswer"), CONT_ACK_MS);
+  };
+  const cancelContinue = () => {
+    const j = contJobRef.current;
+    if (!j || contDone(j.status)) return;
+    clearContTimers(j.id);
+    link.emit("continue.cancel", { id: j.id, to_device: j.device_id });
+    setContJob(null);
+    showToast({ title: "Передача отменена", text: contWhat(j.item.kind, j.item.title) });
+  };
+  // Устройство пропало из сети, пока ждали ответа
+  useEffect(() => {
+    const j = contJobRef.current;
+    if (j && !contDone(j.status) && link.status === "online" && !peerIds.has(j.device_id)) finishJob(j.id, "failed", "left");
+  }, [[...peerIds].sort().join(",")]);
+  // Ответ получателя (только от того устройства, которому предлагали)
+  const onContReply = (p) => {
+    const j = contJobRef.current;
+    if (!j || j.id !== p.id || p.from_device !== j.device_id || contDone(j.status)) return;
+    if (p.status === "shown") {
+      clearContTimers(j.id);
+      setContJob({ ...j, status: "shown" });
+      contTimers.current[j.id] = setTimeout(() => finishJob(j.id, "failed", "expired"), Math.max(1000, j.exp - Date.now()));
+      return;
+    }
+    if (p.status === "opened") return finishJob(j.id, "opened");
+    finishJob(j.id, "failed", p.status);
+  };
+  /* Получатель. Предложение принимаем только от своего подключённого устройства и только
+     если сам объект есть в этом аккаунте (по номеру; содержимое по каналу не идёт) */
+  const contReply = (p, status) => link.emit("continue.reply", { id: p.id, to_device: p.from_device, status });
+  const onContOffer = async (p) => {
+    // Принимаем только от устройства, которое сейчас в закрытом канале аккаунта (Presence):
+    // туда пускает только этот же аккаунт (правила realtime-policies.sql). Имени не верим
+    if (!peerIdsRef.current.has(p.from_device)) return;
+    if (!contFresh(p.exp)) return contReply(p, "expired");
+    const cur = contOfferRef.current;
+    if (cur && cur.id !== p.id && cur.exp > Date.now()) return contReply(p, "busy");
+    let obj = contFind(p.kind, p.ref);
+    if (!obj) {
+      // Возможно, ещё не синхронизировалось — перечитываем из облака и смотрим ещё раз
+      refreshTableSoon(p.kind === "chat" ? "chats" : "files");
+      await new Promise((r) => setTimeout(r, 3000));
+      obj = contFind(p.kind, p.ref);
+      if (!obj) return contReply(p, "missing");
+    }
+    const from = realNames[p.from_device] || link.peers.find((x) => x.device_id === p.from_device)?.name || p.from_name || "Устройство";
+    setContOffer({ id: p.id, from_device: p.from_device, fromName: from, kind: p.kind, ref: p.ref, exp: p.exp, title: contTitle(p.kind, obj) });
+    contReply(p, "shown");
+    clearContTimers(`in:${p.id}`);
+    contTimers.current[`in:${p.id}`] = setTimeout(() => setContOffer((o) => (o?.id === p.id ? null : o)), Math.max(1000, p.exp - Date.now()));
+  };
+  const onContCancel = (p) => {
+    const o = contOfferRef.current;
+    if (!o || o.id !== p.id || o.from_device !== p.from_device) return;
+    clearContTimers(`in:${p.id}`);
+    setContOffer(null);
+    showToast({ title: "Предложение отменено", text: `На «${o.fromName}» передумали` });
+  };
+  const [chatOpenReq, setChatOpenReq] = useState(null); // { id, n } — открыть диалог на экране ассистента
+  const acceptContinue = () => {
+    const o = contOfferRef.current;
+    if (!o) return;
+    clearContTimers(`in:${o.id}`);
+    setContOffer(null);
+    const obj = contFind(o.kind, o.ref);
+    if (!obj || !contFresh(o.exp)) { contReply(o, obj ? "expired" : "missing"); showToast({ title: "Не получилось открыть", text: obj ? "Время предложения вышло" : "Этого больше нет в аккаунте" }); return; }
+    contReply(o, "opened");
+    if (o.kind === "chat") {
+      setSearchChatId(o.ref); // если экран ассистента ещё не открыт — откроется сразу с этим диалогом
+      navTransition(navDir("assistant"), () => goTab("assistant"));
+      setChatOpenReq({ id: o.ref, n: Date.now() });
+    } else setOpenFile({ id: o.ref });
+    logActivity("text", `Продолжено с «${o.fromName}»`, contWhat(o.kind, o.title));
+  };
+  const declineContinue = () => {
+    const o = contOfferRef.current;
+    if (!o) return;
+    clearContTimers(`in:${o.id}`);
+    setContOffer(null);
+    contReply(o, "declined");
+  };
+  contHandlers.current = { offer: onContOffer, reply: onContReply, cancel: onContCancel };
+  // Текущий диалог ассистента (для «Продолжить на устройстве» из быстрых действий)
+  const currentChatRef = useRef(null);
 
   // Кто подключился / отключился: сравниваем Presence с прошлым разом.
   // Первые 3 секунды после подключения к каналу не считаем — это просто «кто уже был»
@@ -1875,7 +2028,7 @@ export default function NexaApp() {
   useEffect(() => {
     const open = () => {
       // Уходящее окно (анимация закрытия) уже не считается открытым
-      if (quickBlocked.current || document.querySelector('[role="dialog"]:not(.nx-hist-drawer):not(.nx-leaving), .nx-auth-gate')) return;
+      if (quickBlocked.current || document.querySelector('[role="dialog"]:not(.nx-hist-drawer):not(.nx-leaving):not(.nx-cont-offer), .nx-auth-gate')) return;
       setQuickOpen(true);
     };
     const onKey = (e) => {
@@ -1924,6 +2077,13 @@ export default function NexaApp() {
     const list = [
       { id: "chat", title: "Новый диалог с ассистентом", sub: "ИИ-ассистент NEXA", icon: Icon.sparkle,
         keywords: ["ассистент", "ии", "чат", "диалог", "вопрос", "спросить"], run: newChatQuick },
+      // Продолжить диалог на другом своём устройстве: сначала какой (открытый сейчас — первым), потом окно выбора устройства
+      !!uid && online && contTargets.some((d) => d.real && !d.isSelf && !d.bt && d.online) && chats.length > 0 && { id: "continue", title: "Продолжить диалог на другом устройстве", sub: "Откроется там после «Открыть»", icon: Icon.chat,
+        keywords: ["продолжить", "continuity", "диалог", "чат", "на телефоне", "на компьютере", "другом устройстве"],
+        pick: { title: "Какой диалог?", placeholder: "Найти диалог…", empty: "Диалогов нет",
+          items: [...chats].sort((p, q) => (q.id === currentChatRef.current) - (p.id === currentChatRef.current) || (q.updatedAt || 0) - (p.updatedAt || 0)).slice(0, 30)
+            .map((c) => ({ id: c.id, title: c.title || "Без названия", sub: c.id === currentChatRef.current ? "Открыт сейчас" : `${c.messages?.length || 0} сообщ.`, icon: Icon.chat,
+              run: () => setContSend({ kind: "chat", ref: c.id, title: c.title }) })) } },
       canLink && flow.on && { id: "flow", title: "Передать текст или ссылку", sub: "NEXA Flow · на устройство в сети", icon: Icon.shareUp,
         keywords: ["flow", "буфер", "текст", "ссылка", "передать", "отправить", "скопировать"],
         pick: pickDevice("Куда передать?", (d) => setFlowSend({ text: "", to: d.id })) },
@@ -2087,6 +2247,9 @@ export default function NexaApp() {
   ) : tab === "assistant" ? (
     <ScreenAssistant
       initialChatId={searchChatId}
+      openRequest={chatOpenReq}
+      onCurrentChat={(id) => { currentChatRef.current = id; }}
+      onContinueChat={uid ? (c) => setContSend({ kind: "chat", ref: c.id, title: c.title }) : null}
       chats={chats}
       setChats={setChats}
       onToast={showToast}
@@ -2195,6 +2358,7 @@ export default function NexaApp() {
           onDelete={deleteFile}
           onRename={(name) => renameFile(openFile.id, name)}
           onSent={(device) => finishTransfer(files.find((f) => f.id === openFile.id), device)}
+          onContinue={uid ? (f) => { setOpenFile(null); setContSend({ kind: "file", ref: f.id, title: f.name }); } : null}
           onToast={showToast}
         />
       )}
@@ -2230,6 +2394,11 @@ export default function NexaApp() {
       {/* «Отправить в NEXA» — с любого экрана (Настройки, «Поделиться» Android, быстрые действия) */}
       {flowSend && <FlowSendDialog initial={flowSend.text} initialTo={flowSend.to} link={link} devices={devices} flowOn={flow.on} user={auth.user}
         onLogin={() => { setFlowSend(null); setAuthOpen(true); }} onClose={() => setFlowSend(null)} />}
+      {/* Продолжить на другом устройстве (отправитель) и «Продолжить здесь?» (получатель) */}
+      {contSend && <ContinueDialog item={contSend} devices={contTargets} user={auth.user} online={online} linkOnline={link.status === "online"}
+        job={contJob} onSend={startContinue} onCancelJob={cancelContinue} onClose={() => setContSend(null)}
+        onLogin={() => { setContSend(null); setAuthOpen(true); }} />}
+      {contOffer && <ContinueOffer key={contOffer.id} offer={contOffer} onOpen={acceptContinue} onDecline={declineContinue} />}
       {/* Панель быстрых действий */}
       {quickOpen && <QuickPanel commands={quick.list} note={quick.note} onClose={() => setQuickOpen(false)} onSearch={openSearch} closeRef={quickCloseRef} />}
       {/* Быстрые действия → «Отправить файл» → «Выбрать на этом устройстве» */}

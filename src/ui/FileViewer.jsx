@@ -310,7 +310,7 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
   );
 }
 
-export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [], onClose, onDelete, onRename, onSent, onToast }) {
+export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [], onClose, onDelete, onRename, onSent, onToast, onContinue }) {
   // Полноэкранный просмотр: только у загруженных фото (у демо-файлов нет содержимого)
   const [fullPhoto, setFullPhoto] = useState(false);
   const canFullPhoto = !!file.uploaded && file.cat === "photo";
@@ -519,6 +519,12 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
                 }}>
                   {Icon.send({ c: C.onFold, s: 16 })} Отправить на устройство
                 </button>
+                {/* Открыть этот же файл на другом своём устройстве (только файлы в облаке аккаунта) */}
+                {onContinue && file.path && (
+                  <button type="button" className="nx-ghost-btn" onClick={() => onContinue(file)} style={ghostBtn}>
+                    {Icon.shareUp({ c: C.text, s: 16 })} Продолжить на устройстве
+                  </button>
+                )}
                 <button type="button" className="nx-ghost-btn" onClick={share} style={ghostBtn}>
                   {Icon.share({ c: C.text, s: 16 })} Поделиться
                 </button>

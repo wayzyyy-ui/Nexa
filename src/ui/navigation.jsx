@@ -272,7 +272,7 @@ export function useTabSwipe(getCtx, onSwipe) {
       if (!el || t.clientX < SWIPE_EDGE || t.clientX > window.innerWidth - SWIPE_EDGE) return;
       if (document.body.classList.contains("kb-open")) return;
       // Открыто окно, меню или шторка — жесты у них свои (шторку истории — см. ниже)
-      const layer = document.querySelector('[role="dialog"]:not(.nx-hist-drawer), [role="menu"], .nx-notes, .nx-viewer');
+      const layer = document.querySelector('[role="dialog"]:not(.nx-hist-drawer):not(.nx-cont-offer), [role="menu"], .nx-notes, .nx-viewer');
       if (layer || el.closest(SWIPE_SKIP) || inHorizontalScroll(el)) return;
       const c = ctx.current();
       if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», Настройки

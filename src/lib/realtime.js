@@ -8,7 +8,8 @@
      не чаще раза в 30 секунд и только когда что-то изменилось.
    - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
      pair.fail, find.ring, find.stop, lock.on, lock.off, file.send, link.open,
-     devices.changed, sync.changed, session.check (центр безопасности: «проверь свой сеанс у сервера»).
+     devices.changed, sync.changed, session.check (центр безопасности: «проверь свой сеанс у сервера»),
+     continue.offer / continue.reply / continue.cancel (продолжение работы на другом устройстве).
      Ко всем сообщениям добавляются from_device, from_name и ts.
    Протокол описан в CLAUDE.md, раздел «Связь устройств». */
 import { useEffect, useRef, useState } from "react";
@@ -137,6 +138,15 @@ const SCHEMAS = {
   "lock.off": (p) => base(p) && isId(p.target_device_id),
   // Центр безопасности: «проверь свой сеанс» — устройство не верит сигналу, а спрашивает сервер
   "session.check": (p) => base(p) && isId(p.target_device_id),
+  // Продолжение работы (Continuity): предложение открыть диалог или файл на другом устройстве.
+  // Передаётся только вид и номер объекта — само содержимое получатель берёт из своего аккаунта
+  "continue.offer": (p) => base(p) && isId(p.id) && isId(p.to_device) && ["chat", "file"].includes(p.kind) && isId(p.ref)
+    && isTs(p.exp),
+  // Ответ получателя: shown — показали предложение; opened — открыли; declined — «Не сейчас»;
+  // missing — такого у него нет (ещё не синхронизировалось); expired — срок вышел; busy — занят другим
+  "continue.reply": (p) => base(p) && isId(p.id) && isId(p.to_device) && ["shown", "opened", "declined", "missing", "expired", "busy"].includes(p.status),
+  // Отправитель передумал — убрать предложение
+  "continue.cancel": (p) => base(p) && isId(p.id) && isId(p.to_device),
   // Файл уже лежит в облаке аккаунта (путь <uid>/<id>) — получатель открывает его сам
   "file.send": (p) => base(p) && isId(p.id) && isId(p.to_device) && isStr(p.name, 255)
     && Number.isFinite(p.size) && p.size >= 0 && (p.mime == null || (typeof p.mime === "string" && p.mime.length <= 255)),

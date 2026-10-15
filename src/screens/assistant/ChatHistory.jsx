@@ -56,7 +56,7 @@ export function historyGroup(c, now) {
   return "older";
 }
 
-export function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onDelete, mobile, open, onClose, account, sync, onSettings, leaving }) {
+export function ChatHistory({ onContinue, chats, setChats, currentChatId, onOpen, onNew, onDelete, mobile, open, onClose, account, sync, onSettings, leaving }) {
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(null);         // меню диалога: { id, top | bottom, right, confirm }
   const [renaming, setRenaming] = useState(null); // { id, text } — строка превратилась в поле
@@ -286,6 +286,11 @@ export function ChatHistory({ chats, setChats, currentChatId, onOpen, onNew, onD
           <button type="button" role="menuitem" onClick={() => startRename(menuChat)}>
             {Icon.edit({ c: C.text, s: 14 })} Переименовать
           </button>
+          {onContinue && (
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); onContinue(menuChat); }}>
+              {Icon.send({ c: C.text, s: 14 })} Продолжить на устройстве…
+            </button>
+          )}
           <button type="button" role="menuitem" className="is-danger" onClick={() => setMenu({ ...menu, confirm: true })}>
             {Icon.trash({ c: C.red, s: 14 })} Удалить
           </button>
