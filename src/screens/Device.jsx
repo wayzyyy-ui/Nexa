@@ -228,7 +228,7 @@ export function DeviceTitle({ name, onRename }) {
   );
 }
 
-export function DeviceScreen({ device: d, fileCount, devices, files, folders, received, onBack, onOpenFiles, onRemove, onToast, onFind, findState, onRename, link, realActions, flowOn = true }) {
+export function DeviceScreen({ device: d, fileCount, devices, files, folders, received, onBack, onOpenFiles, onRemove, canRevoke, onToast, onFind, findState, onRename, link, realActions, flowOn = true }) {
   const [ringing, setRinging] = useState(false); // идёт ли сейчас поиск
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const delRef = useRef(null);
@@ -500,8 +500,12 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
               background: `color-mix(in srgb, ${C.red} 8%, transparent)`,
             }}>
               <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                <div style={{ fontSize: 14 }}>Удалить «{d.name}»?</div>
-                <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2 }}>Его можно будет подключить заново</div>
+                <div style={{ fontSize: 14 }}>{d.bt || d.isSelf ? `Удалить «${d.name}»?` : `Отключить «${d.name}» от аккаунта?`}</div>
+                <div style={{ fontSize: 12, color: d.bt || d.isSelf || canRevoke ? C.mutedSoft : C.red, marginTop: 2, lineHeight: 1.45 }}>
+                  {d.bt || d.isSelf ? "Его можно будет подключить заново"
+                    : canRevoke ? "Вход на нём завершится, устройство пропадёт из списка. 5 секунд на «Отменить»"
+                    : "Его сеанс неизвестен — уберём только из списка, вход на нём останется. Закрыть доступ: Настройки → Безопасность → «Выйти на всех других устройствах»"}
+                </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>

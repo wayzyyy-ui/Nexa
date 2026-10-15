@@ -23,7 +23,8 @@ import { readManualCity, TODAY } from "./lib/weather.js";
 import { plural, toMb, fileBytes, formatSize, mmss } from "./lib/format.js";
 import { SCHEDULE_KEY, dayKey, dayFromKey, sortSchedule, itemsOn, nextScheduleItem, scheduleDayLabel, SCHEDULE_MIGRATED_KEY, scheduleMigrated, loadSchedule } from "./lib/schedule.js";
 import { updResume } from "./lib/updates.js";
-import { CHATS_KEY, loadChats, chatMigration, readGuest, saveGuest, useAuth } from "./lib/auth.js";
+import { CHATS_KEY, loadChats, chatMigration, readGuest, saveGuest, useAuth, takeManualSignOut, clearLocalAccountData } from "./lib/auth.js";
+import { sessionIdOf, securityKey, loadSecurity, SECURITY_MAX, clientLabel, checkOwnSession, revokeSession, signOutOthers } from "./lib/security.js";
 import { deviceType, uniqueDeviceName, DEVICES_KEY, loadDeviceStore, devicesToList, devicesFromList, deviceStatus, mergeSamePhone, peerLabel } from "./lib/devices.js";
 import { ACTIVITY_MAX, loadActivity } from "./lib/activity.js";
 import { PAIR_TTL_MS, PAIR_MAX_TRIES, PAIR_LOCK_MS, PAIR_ANSWER_MS, parseNexaQr, makePairCode, readPairLock, savePairLock } from "./lib/pairing.js";
@@ -46,6 +47,7 @@ import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, withWhen, uploadDevice,
 import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
 import { ScreenAbout } from "./screens/About.jsx";
+import { ScreenSecurity } from "./screens/Security.jsx";
 import { ActivityBlock, ScreenActivity } from "./screens/Activity.jsx";
 import { ScreenToday } from "./screens/Today.jsx";
 import { FileThumb } from "./ui/files.jsx";
@@ -209,6 +211,7 @@ export default function NexaApp() {
      Пришёл текст — короткое уведомление (только как текст); остальные события
      (подключение, сцены, поиск) разбирает handleLinkEvent ниже */
   const uid = auth.user?.id || null;
+  const logSecurityRef = useRef(null); // журнал безопасности — для обработчиков, объявленных выше него
   /* NEXA Flow на этом устройстве: { on, autoCopy } (у каждого аккаунта своё) */
   const [flow, setFlow] = useSharedState("nexa-flow" + scope, loadFlow);
   const flowRef = useRef(flow); flowRef.current = flow;
@@ -326,7 +329,7 @@ export default function NexaApp() {
   };
   // Удаление нескольких устройств сразу. Исходные запоминаем в removed,
   // добавленные просто убираем; их настройки тоже стираем
-  const removeDevices = (ids0) => {
+  const removeDevices = (ids0, { quiet = false } = {}) => {
     // У склеенного устройства (сайт + приложение одного телефона) удаляем все его записи
     const ids = [...new Set(ids0.flatMap((id) => devices.find((d) => d.id === id)?.members || [id]))];
     setDeviceStore((s) => {
@@ -339,7 +342,7 @@ export default function NexaApp() {
     });
     if (ids.includes(openDeviceId)) setOpenDeviceId(null);
     if (ids.includes(filesDevice)) setFilesDevice(null);
-    showToast({
+    if (!quiet) showToast({
       title: ids.length === 1 ? "Устройство удалено" : `Удалено ${ids.length} ${plural(ids.length, ["устройство", "устройства", "устройств"])}`,
       text: `${ids.length === 1 ? "Его" : "Их"} можно подключить заново через «Добавить устройство»`,
     });
@@ -487,7 +490,9 @@ export default function NexaApp() {
   const handleLinkEvent = (event, p) => {
     if (event === "pair.claim") return answerClaim(p);
     if (event === "pair.ok" || event === "pair.fail") return onPairAnswer(event, p);
-    if (event === "devices.changed") return refreshDevicesSoon();
+    // Список устройств изменился (могли отключить и это устройство) — заодно проверяем свой сеанс:
+    // вторая возможность, если сигнал session.check потерялся
+    if (event === "devices.changed") { verifySessionRef.current?.(true); return refreshDevicesSoon(); }
     // На другом устройстве что-то поменяли и уже отправили в облако — перечитываем эту таблицу
     if (event === "sync.changed") return refreshTableSoon(p.table);
     if (event === "find.ring") {
@@ -511,6 +516,11 @@ export default function NexaApp() {
     }
     const me = link.self?.device_id;
     const from = realNames[p.from_device] || p.from_name || "Устройство";
+    // Центр безопасности: сигналу не верим — сеанс проверяем у сервера
+    if (event === "session.check") {
+      if (p.target_device_id === me) verifySessionRef.current?.(true);
+      return;
+    }
     if (event === "lock.on") {
       if (p.target_device_id === me) { setLocked({ from }); logActivityOnce(`lock:${p.id}`, "lock", `«${from}» заблокировало экран NEXA`, "Демонстрация"); }
       return;
@@ -607,6 +617,7 @@ export default function NexaApp() {
     }
     sess.used = true; // код сразу недействителен
     addRealDevice(p);
+    logSecurityRef.current?.("device-on", `Подключено «${p.name || "Устройство"}»`, "По коду с этого устройства");
     link.emit("pair.ok", { device_id: p.device_id, name: p.name || "Устройство" });
     notifyRef.current({ cat: "devices", key: `newdev:${p.device_id}`, source: "Это устройство", title: "Подключено новое устройство", text: p.name || "Устройство", target: { tab: "home" } });
     closePair();
@@ -778,6 +789,172 @@ export default function NexaApp() {
       document.removeEventListener("visibilitychange", away);
     };
   }, [uid, !!selfRow]);
+
+  /* ── Центр безопасности (src/lib/security.js, экран ScreenSecurity) ──
+     mySid — номер сеанса этого устройства (из его пропуска). Устройство пишет его в свою
+     строку (state.sid) — так «Отключить устройство» завершает именно его вход */
+  const mySid = sessionIdOf(auth.session);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [secLog, setSecLog] = useSharedState(uid ? securityKey(uid) : "nexa-security-guest", loadSecurity);
+  const logSecurity = (kind, title, text = "", extra = {}) => {
+    if (!uid) return;
+    setSecLog((list) => [{ id: `s${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), kind, title, text, ...extra }, ...list].slice(0, SECURITY_MAX));
+  };
+  logSecurityRef.current = logSecurity;
+  // Вход на этом устройстве — одна запись на сеанс (и на все вкладки браузера).
+  // Вход был давно (журнала тогда ещё не было) — так и пишем, время входа не выдумываем
+  useEffect(() => {
+    if (!uid || !mySid || secLog.some((e) => e.sid === mySid)) return;
+    claimNote(`sec-login:${mySid}`).then((ok) => {
+      if (!ok) return;
+      const signedAt = Date.parse(auth.user?.last_sign_in_at || "") || 0;
+      const fresh = Date.now() - signedAt < 5 * 60000;
+      logSecurity("login", fresh ? "Вход на этом устройстве" : "Журнал начат — вход на этом устройстве был раньше", clientLabel(navigator.userAgent), { sid: mySid });
+    });
+  }, [uid, mySid]);
+  // Свой сеанс — в свою строку устройства (уходит в облако вместе с остальным)
+  const selfSid = selfRow ? deviceStore.state[selfRow.id]?.sid : null;
+  useEffect(() => {
+    if (uid && mySid && selfRow && selfSid !== mySid) patchDevice(selfRow.id, { sid: mySid });
+  }, [uid, mySid, selfRow?.id, selfSid]);
+  /* Жив ли сеанс этого устройства — спрашиваем сервер: при входе, возвращении в NEXA
+     (не чаще раза в минуту), возврате связи и по сигналу session.check. Завершён —
+     выходим здесь; дальше — как при любом выходе не по кнопке (см. ниже) */
+  const sessionCheckedAt = useRef(0);
+  const verifySession = async (force) => {
+    if (!uid || (!force && Date.now() - sessionCheckedAt.current < 60000)) return;
+    sessionCheckedAt.current = Date.now();
+    if ((await checkOwnSession()) === "revoked") { try { await supabase?.auth.signOut({ scope: "local" }); } catch {} }
+  };
+  const verifySessionRef = useRef(verifySession); verifySessionRef.current = verifySession;
+  useEffect(() => {
+    if (!uid) return;
+    verifySessionRef.current(true);
+    const again = () => { if (document.visibilityState === "visible") verifySessionRef.current(false); };
+    document.addEventListener("visibilitychange", again);
+    window.addEventListener("online", again);
+    // Страховка, если сигналы потерялись: раз в 10 минут, пока NEXA на экране
+    const timer = setInterval(() => { if (document.visibilityState === "visible") verifySessionRef.current(true); }, 10 * 60000);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", again); window.removeEventListener("online", again); };
+  }, [uid]);
+  /* Вышли не по кнопке «Выйти» (сеанс завершили с другого устройства или он истёк) —
+     стираем данные аккаунта с этого устройства, как при обычном выходе, и говорим почему */
+  const prevUidRef = useRef(uid);
+  useEffect(() => {
+    const was = prevUidRef.current;
+    prevUidRef.current = uid;
+    if (!was || uid) return;
+    if (takeManualSignOut()) return;
+    setSecurityOpen(false);
+    setTimeout(() => clearLocalAccountData(was), 400);
+    showToast({ title: "Сеанс этого устройства завершён", text: "Вход отозван с другого устройства или истёк. Данные аккаунта убраны отсюда — в облаке они на месте", duration: 9000 });
+  }, [uid]);
+  /* Опасное действие — через 5 секунд, с «Отменить» во всплывающем.
+     run() возвращает результат; отменили — { ok: false, kind: "cancelled" } */
+  const runCritical = ({ title, text, run }) => new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(async () => { done = true; resolve(await run()); }, 5000);
+    showToast({ title, text, duration: 5000, action: { label: "Отменить", onClick: () => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      resolve({ ok: false, kind: "cancelled" });
+      showToast({ title: "Отменено", text: "Ничего не изменилось" });
+    } } });
+  });
+  // Сеансы, которые можно завершить у устройства (у склеенного — у всех его записей)
+  const deviceRows = (id) => {
+    const d = devices.find((x) => x.id === id);
+    return d ? (d.members || [id]).map((rid) => ({ rid, st: deviceStore.state[rid] || {} })) : [];
+  };
+  const deviceSids = (id) => deviceRows(id).map((r) => r.st.sid).filter((s) => s && s !== mySid);
+  /* Отключить устройство от аккаунта:
+     1) завершить его сеанс(ы) в базе (nexa_revoke_session — только свои, проверяет база);
+     2) попросить его проверить сеанс (если в сети — выйдет сразу, но только убедившись у сервера);
+     3) убрать из списка.
+     mode "full" — без отзыва сеанса не убираем (возвращаем причину); "list" — человек
+     согласился только убрать из списка. Bluetooth-устройства своего входа не имеют */
+  const disconnectDevice = async (id, mode = "full") => {
+    const d = devices.find((x) => x.id === id);
+    if (!d) return { ok: false, kind: "gone" };
+    const rows = deviceRows(id);
+    if (rows.some((r) => r.st.device_id && r.st.device_id === link.self?.device_id)) return { ok: false, kind: "self" };
+    let revoked = 0;
+    const full = mode === "full" && !d.bt;
+    if (full) {
+      const sids = deviceSids(id);
+      if (!sids.length) return { ok: false, kind: "nosid" };
+      for (const sid of sids) {
+        const r = await revokeSession(sid);
+        if (r.ok) revoked++;
+        else if (r.kind !== "gone") return { ok: false, kind: r.kind };
+      }
+    }
+    rows.forEach((r) => { if (r.st.device_id) link.emit("session.check", { target_device_id: r.st.device_id }); });
+    removeDevices([id], { quiet: true });
+    setTimeout(() => link.emit("devices.changed", {}), 2000);
+    logSecurity("device-off", `Отключено «${d.name}»`,
+      d.bt ? "Убрано из списка" : full ? (revoked ? "Вход на нём завершён" : "Его сеанс уже был завершён") : "Только убрано из списка — вход на нём не отозван");
+    return { ok: true, revoked, listOnly: !full, bt: !!d.bt };
+  };
+  const DISCONNECT_FAIL = {
+    offline: "Нет связи — доступ не отозван. Попробуйте, когда вернётся интернет",
+    network: "Сервер не ответил — доступ не отозван. Попробуйте ещё раз",
+    setup: "Завершение сеансов ещё не настроено (security-sessions.sql) — доступ не отозван",
+    auth: "Ваш вход устарел — войдите заново",
+    denied: "Нет прав завершить этот сеанс — доступ не отозван",
+    server: "Не получилось — доступ не отозван",
+    nosid: "Неизвестно, какой у него сеанс (давно не открывалось) — доступ не отозван",
+    self: "Это устройство — для него есть «Выйти»",
+  };
+  const disconnectWithUndo = async (id, mode = "full") => {
+    const d = devices.find((x) => x.id === id);
+    if (!d) return { ok: false, kind: "gone" };
+    const r = await runCritical({
+      title: `Отключаем «${d.name}» через 5 секунд`,
+      text: d.bt || mode !== "full" ? "Уберём из списка" : "Завершим вход на нём и уберём из списка",
+      run: () => disconnectDevice(id, mode),
+    });
+    if (r.kind === "cancelled") return r;
+    if (r.ok) showToast({
+      title: r.listOnly && !r.bt ? `«${d.name}» убрано из списка` : `«${d.name}» отключено`,
+      text: r.bt ? "Его можно добавить снова" : r.listOnly
+        ? "Вход на нём не отозван — завершите его сеанс в «Сеансах входа» или выйдите на всех других устройствах"
+        : "Вход завершён. В сети — выйдет сразу; иначе старый пропуск перестанет действовать в течение часа",
+      duration: 7000,
+    });
+    else showToast({ title: `Не удалось отключить «${d.name}»`, text: DISCONNECT_FAIL[r.kind] || DISCONNECT_FAIL.server, duration: 7000 });
+    return r;
+  };
+  // Завершить сеанс из списка «Сеансы входа»
+  const endSessionWithUndo = async (sid, label) => {
+    const r = await runCritical({ title: `Завершаем «${label}» через 5 секунд`, text: "Это устройство больше не продлит вход", run: () => revokeSession(sid) });
+    if (r.kind === "cancelled") return r;
+    if (r.ok || r.kind === "gone") {
+      const rows = deviceStore.added.filter((x) => deviceStore.state[x.id]?.sid === sid);
+      const ping = () => rows.forEach((x) => { const dev = deviceStore.state[x.id]?.device_id; if (dev) link.emit("session.check", { target_device_id: dev }); });
+      ping(); setTimeout(ping, 2500); // ещё раз — сообщение канала может потеряться
+      logSecurity("revoke", `Завершён сеанс «${label}»`, r.ok ? "Устройство больше не продлит вход" : "Сеанс уже был завершён");
+      showToast({ title: "Сеанс завершён", text: "В сети — выйдет сразу; иначе старый пропуск перестанет действовать в течение часа", duration: 7000 });
+      return { ok: true };
+    }
+    showToast({ title: "Сеанс не завершён", text: DISCONNECT_FAIL[r.kind] || DISCONNECT_FAIL.server, duration: 7000 });
+    return r;
+  };
+  const signOutOthersWithUndo = async () => {
+    const r = await runCritical({ title: "Выходим на всех других устройствах через 5 секунд", text: "Это устройство останется в аккаунте", run: signOutOthers });
+    if (r.kind === "cancelled") return r;
+    if (r.ok) {
+      // «Проверь свой сеанс» — каждому устройству, и ещё раз через 2,5 с (сообщение канала может потеряться)
+      const targets = devices.filter((x) => x.real && !x.isSelf)
+        .flatMap((x) => (x.members || [x.id]).map((rid) => deviceStore.state[rid]?.device_id)).filter(Boolean);
+      const ping = () => targets.forEach((dev) => link.emit("session.check", { target_device_id: dev }));
+      ping(); setTimeout(ping, 2500);
+      logSecurity("others", "Выход на всех других устройствах", "Их входы завершены");
+      showToast({ title: "Готово", text: "На других устройствах вход завершён. В сети — выйдут сразу; иначе в течение часа", duration: 7000 });
+    } else showToast({ title: "Не получилось", text: DISCONNECT_FAIL[r.kind] || DISCONNECT_FAIL.server, duration: 7000 });
+    return r;
+  };
+
   // Кто подключился / отключился: сравниваем Presence с прошлым разом.
   // Первые 3 секунды после подключения к каналу не считаем — это просто «кто уже был»
   const presenceReady = useRef(false);
@@ -1168,9 +1345,21 @@ export default function NexaApp() {
   useSmoothScroll(tab !== "assistant");
 
   // Переход по меню закрывает и экран устройства
-  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setTab(t); };
+  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setTab(t); };
   // «Подробнее о системе» — с любого экрана (ассистент — через Главную, как «Активность»)
-  const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(true); };
+  const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setSecurityOpen(false); setAboutOpen(true); };
+  // Центр безопасности открывается из Настроек поверх раздела (как «О системе»)
+  // «Поиск этого устройства» — в центре безопасности (раньше был отдельной группой в Настройках)
+  const locateBlock = uid ? (
+    <SettingsGroup>
+      <SettingsRow last icon={Icon.pin({ c: C.muted, s: 18 })} title="Показывать, где это устройство"
+        subtitle="Только вашим устройствам и только по кнопке «Где устройство?». Место определяется один раз на запрос и нигде не хранится. Пока NEXA открыта или свёрнута"
+        right={<Toggle on={!!locateAllow.allow} onClick={toggleLocateAllow} label="Показывать, где это устройство" />} />
+    </SettingsGroup>
+  ) : null;
+  const openSecurity = () => { setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(true); scrollTopNow(); };
+  // Открыли устройство, «Активность» или «О системе» (например, из уведомления) — центр закрывается
+  useEffect(() => { if (openDeviceId || activityOpen || aboutOpen) setSecurityOpen(false); }, [openDeviceId, activityOpen, aboutOpen]);
   // Переход по меню (боковое на компьютере, нижняя панель на телефоне): новый раздел
   // въезжает с той стороны, где он стоит в меню — как при свайпе (тот же body[data-swipe])
   /* Плавная смена экрана без рывков. Браузер делает снимок старого экрана и держит его,
@@ -1204,7 +1393,7 @@ export default function NexaApp() {
     return a >= 0 && b >= 0 && a !== b ? (b > a ? "next" : "prev") : null;
   };
   const navTo = (t) => {
-    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen) return;
+    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen && !securityOpen) return;
     navTransition(navDir(t), () => goTab(t));
   };
   // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
@@ -1216,7 +1405,7 @@ export default function NexaApp() {
      свайп влево (по самой шторке — её собственный жест, по затемнению — здесь) */
   const [swipeDir, setSwipeDir] = useState(null); // откуда въезжает новый экран: "next" | "prev"
   useTabSwipe(
-    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen }),
+    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen }),
     (dir) => {
       if (tab === "assistant") {
         if (document.querySelector(".nx-hist-drawer.is-open")) {
@@ -1307,7 +1496,7 @@ export default function NexaApp() {
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
-  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, aboutOpen, locked: !!locked };
+  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, aboutOpen, securityOpen, locked: !!locked };
   useEffect(() => {
     if (!isNative) return;
     const sub = CapApp.addListener("backButton", () => {
@@ -1325,12 +1514,13 @@ export default function NexaApp() {
         target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         return;
       }
-      const { openDeviceId: dev, tab: cur, activityOpen: act, aboutOpen: about, locked: lk } = backState.current;
+      const { openDeviceId: dev, tab: cur, activityOpen: act, aboutOpen: about, securityOpen: sec, locked: lk } = backState.current;
       // Экран NEXA заблокирован (демонстрация) — «Назад» только сворачивает
       if (lk) { CapApp.minimizeApp(); return; }
       // Открыта «Активность» — назад к Главной
       if (act) { setActivityOpen(false); return; }
       if (about) { setAboutOpen(false); return; }
+      if (sec) { setSecurityOpen(false); return; }
       // 2) Открыт экран устройства — назад к списку
       if (dev) { setOpenDeviceId(null); return; }
       // 3) Был другой раздел — возвращаемся в него
@@ -1809,7 +1999,8 @@ export default function NexaApp() {
         onClose={closePair}
         onClaim={claimPair} onScan={canScanQr ? scanAndHandle : null} />}
       {claim && <PairStatusDialog claim={claim} onClose={() => setClaim(null)} />}
-      {approve && auth.user && <ApproveLoginModal key={approve.n} initialCode={approve.code} onClose={() => setApprove(null)} onScan={canScanQr ? scanAndHandle : null} />}
+      {approve && auth.user && <ApproveLoginModal key={approve.n} initialCode={approve.code} onClose={() => setApprove(null)} onScan={canScanQr ? scanAndHandle : null}
+        onApproved={() => logSecurity("approve", "Разрешён вход на новом устройстве", "По QR-коду или коду с экрана")} />}
       {/* Это устройство ищут */}
       {locked && <LockOverlay from={locked.from} onUnlock={unlockSelf} />}
       {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
@@ -1834,7 +2025,19 @@ export default function NexaApp() {
             обычное окно браузера */}
         <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
     {/* Открыт экран устройства — показываем его вместо текущего раздела */}
-    {aboutOpen ? (
+    {securityOpen ? (
+    <div key="security" className="ng-screen-anim">
+      <ScreenSecurity onBack={() => setSecurityOpen(false)} user={auth.user} onLogin={() => setAuthOpen(true)} online={online} mySid={mySid}
+        devices={devices.map((d) => ({ ...d, sids: (d.members || [d.id]).map((rid) => deviceStore.state[rid]?.sid).filter(Boolean), canRevoke: deviceSids(d.id).length > 0 }))}
+        onRename={renameDevice} onDisconnect={disconnectWithUndo} onEndSession={endSessionWithUndo} onSignOutOthers={signOutOthersWithUndo}
+        syncLine={!online ? { title: "Нет сети", text: syncPending ? `Изменений ждут отправки: ${syncPending}. Уйдут, когда вернётся интернет` : "Всё сохраняется на этом устройстве" }
+          : syncError ? { title: "Есть сбой синхронизации", text: syncError }
+          : syncLoading || syncPending ? { title: "Синхронизируем…", text: syncPending ? `Ждут подтверждения облака: ${syncPending}` : "Сверяем данные с облаком" }
+          : { ok: true, title: "Всё сохранено в облаке", text: "Устройства, диалоги, файлы и расписание подтверждены облаком" }}
+        locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog}
+        onOpenFlow={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-flow-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }} />
+    </div>
+  ) : aboutOpen ? (
     <div key="about" className="ng-screen-anim">
       <ScreenAbout onBack={() => setAboutOpen(false)} installed={installedVersion} />
     </div>
@@ -1854,7 +2057,14 @@ export default function NexaApp() {
         fileCount={files.filter(onDeviceFile(openDevice)).length}
         onBack={() => setOpenDeviceId(null)}
         onOpenFiles={() => openDeviceFiles(openDevice.id)}
-        onRemove={() => { const real = openDevice.real; removeDevices([openDevice.id]); if (real) setTimeout(() => link.emit("devices.changed", {}), 2000); }}
+        // Удалить = отключить от аккаунта: завершить вход на нём (если знаем его сеанс) и убрать из списка.
+        // Своё устройство (и запись без входа) — просто убрать из списка, как раньше
+        canRevoke={!openDevice.isSelf && !openDevice.bt && deviceSids(openDevice.id).length > 0}
+        onRemove={() => {
+          const d = openDevice;
+          if (d.isSelf) { removeDevices([d.id]); if (d.real) setTimeout(() => link.emit("devices.changed", {}), 2000); return; }
+          disconnectWithUndo(d.id, d.bt || deviceSids(d.id).length ? "full" : "list");
+        }}
         onToast={showToast}
         onFind={findDevice}
         findState={openDevice.real ? findState[openDevice.device_id] : undefined}
@@ -1929,7 +2139,7 @@ export default function NexaApp() {
           onTransfer={openTransfer}
         />
       )}
-      {tab === "settings" && <ScreenSettings onAbout={openAbout} onOpenSearch={() => openSearch()}
+      {tab === "settings" && <ScreenSettings onAbout={openAbout}
         noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
         updateBlock={isNative && (
           <>
@@ -1943,16 +2153,7 @@ export default function NexaApp() {
             </SettingsGroup>
           </>
         )}
-        locateBlock={uid && (
-          <>
-            <SectionTitle>Поиск этого устройства</SectionTitle>
-            <SettingsGroup>
-              <SettingsRow last icon={Icon.pin({ c: C.muted, s: 18 })} title="Показывать, где это устройство"
-                subtitle="Только вашим устройствам и только по кнопке «Где устройство?». Место определяется один раз на запрос и нигде не хранится. Пока NEXA открыта или свёрнута"
-                right={<Toggle on={!!locateAllow.allow} onClick={toggleLocateAllow} label="Показывать, где это устройство" />} />
-            </SettingsGroup>
-          </>
-        )} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+        onSecurity={openSecurity} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
         flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
           onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
     </div>
@@ -1968,7 +2169,7 @@ export default function NexaApp() {
   }}>
     <Logo small />
     <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-      {tab === "home" && !aboutOpen && !activityOpen && !openDevice && (
+      {tab === "home" && !aboutOpen && !activityOpen && !securityOpen && !openDevice && (
         <button type="button" className="nx-link-btn nx-about-link" onClick={openAbout} style={{ ...btnReset, fontSize: 13, color: C.mutedSoft }}>
           Подробнее о системе →
         </button>

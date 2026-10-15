@@ -440,6 +440,17 @@ export const APP_CSS = `
            Старый снимок уезжает и тает (200 мс), новый въезжает с той же стороны (320 мс).
            Анимируются только transform и opacity — их рисует видеокарта, без рывков */
         html[data-nav-dir] .ng-main-content { view-transition-name: nx-screen; }
+        /* Нижняя панель и строка синхронизации закреплены поверх экрана. Без своих снимков
+           они попадали в общий снимок страницы, а он лежит ПОД уезжающим экраном —
+           экран наезжал на панель и прятал её фон. Свои снимки рисуются над экраном и стоят на месте */
+        html[data-nav-dir] .ng-mobile-tabbar { view-transition-name: nx-tabbar; }
+        html[data-nav-dir] .nx-sync-status { view-transition-name: nx-syncbar; }
+        html[data-nav-dir]::view-transition-group(nx-tabbar),
+        html[data-nav-dir]::view-transition-group(nx-syncbar) { animation: none; z-index: 10; }
+        html[data-nav-dir]::view-transition-old(nx-tabbar),
+        html[data-nav-dir]::view-transition-old(nx-syncbar) { animation: none; opacity: 0; }
+        html[data-nav-dir]::view-transition-new(nx-tabbar),
+        html[data-nav-dir]::view-transition-new(nx-syncbar) { animation: none; }
         html[data-nav-dir]::view-transition-old(root), html[data-nav-dir]::view-transition-new(root) { animation: none; }
         html[data-nav-dir]::view-transition-group(nx-screen) { animation-duration: 320ms; }
         html[data-nav-dir="next"]::view-transition-old(nx-screen) { animation: nx-vt-out-left 200ms cubic-bezier(0.4, 0, 1, 1) both; }

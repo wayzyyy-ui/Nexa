@@ -8,7 +8,7 @@
      не чаще раза в 30 секунд и только когда что-то изменилось.
    - Broadcast — сообщения между устройствами: text.send, pair.claim, pair.ok,
      pair.fail, find.ring, find.stop, lock.on, lock.off, file.send, link.open,
-     devices.changed, sync.changed.
+     devices.changed, sync.changed, session.check (центр безопасности: «проверь свой сеанс у сервера»).
      Ко всем сообщениям добавляются from_device, from_name и ts.
    Протокол описан в CLAUDE.md, раздел «Связь устройств». */
 import { useEffect, useRef, useState } from "react";
@@ -135,6 +135,8 @@ const SCHEMAS = {
   // Демонстрационная блокировка экрана NEXA (не системная блокировка телефона)
   "lock.on": (p) => base(p) && isId(p.target_device_id) && isId(p.id),
   "lock.off": (p) => base(p) && isId(p.target_device_id),
+  // Центр безопасности: «проверь свой сеанс» — устройство не верит сигналу, а спрашивает сервер
+  "session.check": (p) => base(p) && isId(p.target_device_id),
   // Файл уже лежит в облаке аккаунта (путь <uid>/<id>) — получатель открывает его сам
   "file.send": (p) => base(p) && isId(p.id) && isId(p.to_device) && isStr(p.name, 255)
     && Number.isFinite(p.size) && p.size >= 0 && (p.mime == null || (typeof p.mime === "string" && p.mime.length <= 255)),

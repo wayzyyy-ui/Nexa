@@ -78,7 +78,11 @@ export function useAuth() {
 }
 
 // Выйти: только на этом устройстве. Сессия стирается даже без интернета
-export const signOut = () => supabase?.auth.signOut({ scope: "local" });
+// manualOut — выход сделал сам человек (кнопка «Выйти»). Иначе (сеанс завершили с другого
+// устройства, ключ обновления отозван) NexaApp сам стирает данные аккаунта и говорит почему
+let manualOut = false;
+export const signOut = () => { manualOut = true; return supabase?.auth.signOut({ scope: "local" }); };
+export const takeManualSignOut = () => { const m = manualOut; manualOut = false; return m; };
 
 /* После выхода стираем из браузера копии данных аккаунта: устройства, файлы,
    чаты, входящие и служебные отметки синхронизации (ключи nexa-…@<id>).

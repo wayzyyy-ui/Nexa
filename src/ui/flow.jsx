@@ -199,7 +199,7 @@ export function FlowSendDialog({ initial, initialTo = null, link, devices, flowO
 export function FlowSettings({ flow, setFlow, count, onSend, onClear }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <>
+    <div id="nx-flow-settings" style={{ scrollMarginTop: 80 }}>
       <SectionTitle>NEXA Flow</SectionTitle>
       <SettingsGroup>
         <SettingsRow icon={Icon.send({ c: C.mint, s: 18 })} title="Передача текста и ссылок"
@@ -219,6 +219,6 @@ export function FlowSettings({ flow, setFlow, count, onSend, onClear }) {
             <button type="button" className="nx-ghost-btn" disabled={!count} onClick={() => setConfirm(true)} style={{ ...btnReset, padding: "7px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: count ? C.text : C.mutedSoft }}>Очистить</button>
           )} />
       </SettingsGroup>
-    </>
+    </div>
   );
 }

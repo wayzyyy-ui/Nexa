@@ -110,7 +110,7 @@ export function QrLoginView({ onBack }) {
 /* Вошедшее устройство разрешает вход на другом: сканирует QR (в приложении)
    или вводит код, видит, что за устройство просит, и нажимает «Разрешить».
    initialCode — код из QR (если уже есть), onScan — открыть сканер */
-export function ApproveLoginModal({ initialCode, onClose, onScan }) {
+export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) {
   const [code, setCode] = useState(initialCode || "");
   const [st, setSt] = useState({ phase: "enter" }); // enter | checking | confirm | approving | done
   const [error, setError] = useState(null);
@@ -150,7 +150,7 @@ export function ApproveLoginModal({ initialCode, onClose, onScan }) {
     setError(null); setSt((x) => ({ ...x, phase: "approving" }));
     try {
       const { ok, data } = await qrApi("approve", { code: st.code }, await token());
-      if (ok) setSt({ phase: "done" });
+      if (ok) { setSt({ phase: "done" }); onApproved?.(); }
       else { setError(data.error || "Не получилось разрешить вход"); setSt({ phase: "enter" }); }
     } catch { setError("Нет связи с сервером. Проверьте интернет."); setSt({ phase: "enter" }); }
   };

@@ -84,7 +84,7 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   );
 }
 
-export function ScreenSettings({ onAbout, onOpenSearch, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, locateBlock, updateBlock }) {
+export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, updateBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -127,6 +127,14 @@ export function ScreenSettings({ onAbout, onOpenSearch, user, onLogin, onDeleteD
 
       <AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} />
 
+      {/* Центр безопасности: устройства, сеансы входа, приватность, журнал (экран ScreenSecurity) */}
+      <SectionTitle>Безопасность и приватность</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow last icon={Icon.lock({ c: C.mint, s: 18 })} title="Устройства, входы и приватность"
+          subtitle={user ? "Где выполнен вход, отключить потерянное устройство, поиск этого устройства, журнал" : "Что доступно без аккаунта и что даёт вход"}
+          right={Icon.chevron({})} onClick={onSecurity} />
+      </SettingsGroup>
+
       <SectionTitle>Внешний вид</SectionTitle>
       <SettingsGroup>
         <SettingsRow
@@ -160,8 +168,6 @@ export function ScreenSettings({ onAbout, onOpenSearch, user, onLogin, onDeleteD
       {noteBlock}
 
       {flowBlock}
-
-      {locateBlock}
 
       <ThisDeviceSettings sys={sys} />
 
