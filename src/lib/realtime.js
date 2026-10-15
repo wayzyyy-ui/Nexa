@@ -155,7 +155,7 @@ const SCHEMAS = {
   // Список устройств аккаунта изменился — перечитать из облака
   "devices.changed": (p) => base(p),
   // В облаке новое (устройства или чаты) — перечитать эту таблицу сразу
-  "sync.changed": (p) => base(p) && ["devices", "chats", "files", "file_folders", "schedule", "settings"].includes(p.table),
+  "sync.changed": (p) => base(p) && ["devices", "chats", "files", "file_folders", "schedule", "settings", "memory"].includes(p.table),
 };
 export const LINK_EVENTS = Object.keys(SCHEMAS);
 

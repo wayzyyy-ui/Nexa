@@ -14,15 +14,16 @@ import { flushSync } from "react-dom";
 import { API_CHAT_URL } from "../../native.js";
 import { newId } from "../../lib/sync.js";
 import { fileBlob, signedFileUrl } from "../../lib/files.js";
-import { fileBytes } from "../../lib/format.js";
+import { fileBytes, plural } from "../../lib/format.js";
 import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSummary, ASSISTANT_HELP, parseCommand } from "../../lib/commands.js";
+import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
 import { useMediaQuery } from "../../lib/hooks.js";
 import { FILE_SCOPE, sortByRecent, catOf } from "../../lib/fileStore.js";
 import { VERSION } from "../../version.js";
 import { FileThumb } from "../../ui/files.jsx";
 import { LiveAnswer, AttachChip, MessageBubble, AssistantSkeleton } from "./messages.jsx";
 
-export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync, files = [], uid = null, onAddFiles }) {
+export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -351,12 +352,14 @@ useEffect(() => {
           // Был файл — модель узнаёт только об этом, не о содержимом (его здесь уже нет)
           parts: [{ text: m.file ? `[К этому сообщению был приложен файл «${m.file.name}»]\n${m.text}` : m.text }],
         }));
+      // Память: только подходящие к вопросу записи (подбор здесь, без лишних запросов к модели)
+      const memoryPick = memoryOn ? pickMemory(memory, text, previousMessages.filter((m) => !m.action)) : [];
 
       // На сайте — /api/chat, в приложении — полный адрес (см. src/native.js)
       const res = await fetch(API_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history, ...(attachment ? { attachment } : {}) }),
+        body: JSON.stringify({ message: text, history, ...(attachment ? { attachment } : {}), ...(memoryPick.length ? { memory: memoryPick } : {}) }),
         signal: ctl.signal,
       });
 
@@ -412,9 +415,10 @@ useEffect(() => {
      на сервер), actionLabel — подпись на плашке, undo — как отменить.
      ВАЖНО: всё до первого await выполняется сразу по нажатию — поэтому
      окно выбора файлов браузер откроет без вопросов */
-  const runCommand = async (chatId, { action, params }) => {
+  const runCommand = async (chatId, { action, params, text: memText }) => {
     const id = `a${Date.now()}`;
     const say = (text, extra) => pushMsg(chatId, { role: 'ai', text, action: true, id, ...extra });
+    if (action.startsWith("mem")) return runMemory(chatId, action, memText, say);
     if (action === "theme") {
       const prev = readTheme();
       const next = params.mode === "toggle" ? (prev === "dark" ? "light" : "dark") : params.mode;
@@ -449,7 +453,51 @@ useEffect(() => {
   };
 
   // «Отменить» на плашке: тема — вернуть прежнюю, переход — не переходить
+  /* Команды памяти. Пишется только то, что человек сам сказал запомнить; модель в память не пишет.
+     «Запомни это» без текста — прошлое сообщение человека в этом диалоге */
+  const runMemory = (chatId, action, memText, say) => {
+    const chatMsgs = chats.find((c) => c.id === chatId)?.messages || [];
+    const label = "Память ассистента";
+    const where = "Посмотреть и изменить — Настройки → «Память ассистента»";
+    if (!memoryApi) return say("Память сейчас недоступна", { actionLabel: label });
+    if (action === "memList") {
+      if (!memory.length) return say("Пока ничего не помню. Скажите, например: «Запомни: отвечай кратко»" + (memoryOn ? "" : ". Память сейчас выключена"), { actionLabel: label });
+      const list = memory.slice(0, 20).map((m) => "• " + m.text).join("\n") + (memory.length > 20 ? `\n…и ещё ${memory.length - 20}` : "");
+      return say(`${memoryOn ? "Вот что я помню" : "Память выключена, но записи сохранены"}:\n${list}\n\n${where}`, { actionLabel: label });
+    }
+    // Последнее, что запомнили в этом диалоге (для «Не запоминай» и «Забудь это»)
+    const lastAdd = [...chatMsgs].reverse().find((m) => m.undo?.kind === "memory" && !m.undone && memory.some((x) => x.id === m.undo.id));
+    if (action === "memUndo" || (action === "memForget" && !memText)) {
+      if (!lastAdd) return say(action === "memUndo" ? "Я ничего не запоминаю сам — только когда вы просите «Запомни…»" : "Что забыть? Напишите, например: «Забудь, что я учусь в КФУ»", { actionLabel: label });
+      const item = memory.find((x) => x.id === lastAdd.undo.id);
+      memoryApi.remove(item.id);
+      patchMsg(chatId, lastAdd.id, { undone: true });
+      return say(`Хорошо, не помню: «${item.text}»`, { actionLabel: label, undo: { kind: "memoryRestore", items: [item] } });
+    }
+    if (action === "memForget") {
+      const item = findMemoryToForget(memory, memText);
+      if (!item) return say(`Не нашёл в памяти «${memText}». ${where}`, { actionLabel: label });
+      memoryApi.remove(item.id);
+      return say(`Забыл: «${item.text}»`, { actionLabel: label, undo: { kind: "memoryRestore", items: [item] } });
+    }
+    if (action === "memClear") {
+      if (!memory.length) return say("Память и так пуста", { actionLabel: label });
+      const items = memory;
+      memoryApi.clear();
+      return say(`Память очищена — забыл ${items.length} ${plural(items.length, ["запись", "записи", "записей"])}`, { actionLabel: label, undo: { kind: "memoryRestore", items } });
+    }
+    // memAdd
+    if (!memoryOn) return say(MEMORY_REFUSE.off, { actionLabel: label });
+    const source = memText ?? [...chatMsgs].reverse().find((m) => m.role === "user" && !m.action)?.text ?? "";
+    const r = memoryApi.add(source);
+    if (r.ok) return say(`Запомнил: «${r.item.text}». Буду учитывать в ответах. ${where}`, { actionLabel: label, undo: { kind: "memory", id: r.item.id } });
+    if (r.reason === "same") return say(`Это я уже помню: «${r.item.text}»`, { actionLabel: label });
+    return say(MEMORY_REFUSE[r.reason] || MEMORY_REFUSE.empty, { actionLabel: label });
+  };
+
   const undoAction = (chatId, msg) => {
+    if (msg.undo?.kind === "memory") memoryApi?.remove(msg.undo.id);
+    if (msg.undo?.kind === "memoryRestore") memoryApi?.restore(msg.undo.items);
     if (msg.undo?.kind === "theme") switchTheme(msg.undo.prev);
     if (msg.undo?.kind === "nav") { clearTimeout(navTimer.current); navTimer.current = null; setPendingNavId(null); }
     patchMsg(chatId, msg.id, { undone: true });
@@ -465,7 +513,7 @@ useEffect(() => {
     if (!text || isLoading) return;
 
     // Сначала проверяем, не команда ли это (с файлом — это всегда вопрос по файлу)
-    const cmd = withFile ? null : parseCommand(text);
+    const cmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text));
     if (isEmpty) rememberInputPos();
     // at — когда написано (мс): по нему история делится на «Сегодня», «Вчера»…
     // file — только сведения (имя, формат, размер), содержимое в историю не пишем
@@ -525,7 +573,7 @@ useEffect(() => {
     if (isLoading || !currentChatId) return;
 
     const previous = messages.slice(0, index);
-    const cmd = messages[index].file ? null : parseCommand(newText); // вопрос по файлу — не команда
+    const cmd = messages[index].file ? null : (parseMemoryCommand(newText) || parseCommand(newText)); // вопрос по файлу — не команда
     setChats(prev => prev.map(c => {
       if (c.id !== currentChatId) return c;
       return {
@@ -876,7 +924,7 @@ const menuBlock = (
                     actionLabel={m.action && m.role === 'ai' ? m.actionLabel : null}
                     undone={m.undone}
                     // «Отменить»: тему можно вернуть всегда, переход — пока он ещё не случился
-                    undoable={!!m.undo && !m.undone && (m.undo.kind === "theme" || pendingNavId === m.id)}
+                    undoable={!!m.undo && !m.undone && (m.undo.kind === "theme" || m.undo.kind === "memory" || m.undo.kind === "memoryRestore" || pendingNavId === m.id)}
                     onUndo={() => undoAction(currentChatId, m)}
                     isLastAi={m.role === 'ai' && i === messages.length - 1 && !m.action}
                     disabled={isLoading}

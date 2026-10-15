@@ -66,6 +66,16 @@ export const Icon = {
       <path d="M12 19V6M6 11l6-6 6 6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  // QR: рамка сканера (четыре уголка) и точки внутри — вход по QR
+  qr: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 8V5.5a2 2 0 0 1 2-2H8M16 3.5h2.5a2 2 0 0 1 2 2V8M20.5 16v2.5a2 2 0 0 1-2 2H16M8 20.5H5.5a2 2 0 0 1-2-2V16" />
+      <circle cx="9.5" cy="9.5" r="1.7" />
+      <circle cx="14.5" cy="9.5" r="1.7" />
+      <circle cx="9.5" cy="14.5" r="1.7" />
+      <path d="M13.3 13.3l2.4 2.4M15.7 13.3l-2.4 2.4" />
+    </svg>
+  ),
   phone: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <rect x="7" y="3" width="10" height="18" rx="2" />

@@ -48,6 +48,8 @@ import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
 import { ScreenAbout } from "./screens/About.jsx";
 import { ScreenSecurity } from "./screens/Security.jsx";
+import { MemorySettings } from "./ui/memory.jsx";
+import { memoryKey, memoryOnKey, loadMemory, loadMemoryOn, MEMORY_ROWS, MEMORY_MAX, checkMemoryText, findSameMemory, isStyleMemory } from "./lib/memory.js";
 import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
 import { CONT_TTL_MS, CONT_ACK_MS, CONT_CONNECT_MS, CONT_FAIL, contDone, contWhat, contFresh } from "./lib/continuity.js";
 import { ActivityBlock, ScreenActivity } from "./screens/Activity.jsx";
@@ -215,6 +217,7 @@ export default function NexaApp() {
   const uid = auth.user?.id || null;
   const logSecurityRef = useRef(null); // журнал безопасности — для обработчиков, объявленных выше него
   const contHandlers = useRef({}); // продолжение работы — обработчики событий канала (объявлены ниже)
+  const memorySyncRef = useRef(null); // синхронизация памяти (объявлена ниже обработчиков)
   const peerIdsRef = useRef(new Set()); // кто сейчас в канале аккаунта (для проверок в обработчиках)
   /* NEXA Flow на этом устройстве: { on, autoCopy } (у каждого аккаунта своё) */
   const [flow, setFlow] = useSharedState("nexa-flow" + scope, loadFlow);
@@ -463,6 +466,50 @@ export default function NexaApp() {
     onConflict: conflictNote("schedule", SCHEDULE_ROWS),
     onPushed: () => link.emit("sync.changed", { table: "schedule" }),
   });
+  /* ── Память ассистента (src/lib/memory.js): только то, что человек сам попросил запомнить.
+     Гость — этот браузер, вошедший — ещё и облако (таблица memory). Включено ли — у каждого устройства своё */
+  const [memory, setMemoryStore] = useSharedState(memoryKey(uid), loadMemory);
+  const [memoryOn, setMemoryOn] = useSharedState(memoryOnKey(uid), loadMemoryOn);
+  const memoryRef = useRef(memory); memoryRef.current = memory;
+  const memorySync = useCloudList({
+    uid, table: "memory", value: memory, setValue: setMemoryStore,
+    toList: (list) => list.map((m) => ({ ...m, createdAt: m.createdAt || 0, updatedAt: m.updatedAt || m.createdAt || 0 })),
+    fromList: (list) => MEMORY_ROWS.sort(list),
+    rows: MEMORY_ROWS,
+    // Таблицы памяти ещё нет (memory.sql не запущен) — память живёт только здесь, это не ошибка
+    onStatus: (st) => setSyncState((s) => ({ ...s, memory: st.error && isMissingTable(st.error) ? { ok: true, pending: 0, localOnly: true } : st })),
+    onConflict: conflictNote("memory", MEMORY_ROWS),
+    onPushed: () => link.emit("sync.changed", { table: "memory" }),
+  });
+  memorySyncRef.current = memorySync;
+  // Действия с памятью — для ассистента (команды «Запомни» / «Забудь»), Настроек и центра безопасности
+  const memoryApi = {
+    add: (raw) => {
+      const c = checkMemoryText(raw);
+      if (!c.ok) return { ok: false, reason: c.reason };
+      const same = findSameMemory(memoryRef.current, c.text);
+      if (same) return { ok: false, reason: "same", item: same };
+      if (memoryRef.current.length >= MEMORY_MAX) return { ok: false, reason: "full" };
+      const item = { id: newId(), text: c.text, always: isStyleMemory({ text: c.text }), createdAt: Date.now(), updatedAt: Date.now() };
+      memoryRef.current = [item, ...memoryRef.current];
+      setMemoryStore((list) => [item, ...list]);
+      return { ok: true, item };
+    },
+    update: (id, raw) => {
+      const c = checkMemoryText(raw);
+      if (!c.ok) return { ok: false, reason: c.reason };
+      const same = findSameMemory(memoryRef.current.filter((m) => m.id !== id), c.text);
+      if (same) return { ok: false, reason: "same", item: same };
+      setMemoryStore((list) => list.map((m) => (m.id === id ? { ...m, text: c.text, updatedAt: Date.now() } : m)));
+      return { ok: true };
+    },
+    setAlways: (id, always) => setMemoryStore((list) => list.map((m) => (m.id === id ? { ...m, always, updatedAt: Date.now() } : m))),
+    remove: (id) => { memoryRef.current = memoryRef.current.filter((m) => m.id !== id); setMemoryStore((list) => list.filter((m) => m.id !== id)); },
+    clear: () => { memoryRef.current = []; setMemoryStore([]); },
+    // Вернуть удалённое (кнопка «Отменить» после «Забудь …»): те же id — без повторов
+    restore: (items) => setMemoryStore((list) => [...items.filter((x) => !list.some((m) => m.id === x.id)), ...list].slice(0, MEMORY_MAX)),
+  };
+
   // Удаления из хранилища, которые не прошли без сети, — повторяем при входе и когда связь вернулась
   useEffect(() => {
     if (!uid) return;
@@ -474,7 +521,7 @@ export default function NexaApp() {
 
   const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
-  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); runUploadQueue("all"); };
+  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry(); runUploadQueue("all"); };
   // Сколько изменений ещё не подтверждено облаком (по всем таблицам) и что с повторами
   const syncPending = uid ? Object.values(syncState).reduce((n, st) => n + (st?.pending || 0), 0) : 0;
   const syncNextAt = uid ? Math.min(Infinity, ...Object.values(syncState).map((st) => st?.nextAt || Infinity)) : Infinity;
@@ -571,7 +618,7 @@ export default function NexaApp() {
   const refreshTableSoon = (table) => {
     if (table === "settings") return settingsSync.pull(); // категории уведомлений поменяли на другом устройстве
     clearTimeout(refreshTimers.current[table]);
-    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync }[table] || devicesSync;
+    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync, memory: memorySyncRef.current }[table] || devicesSync;
     refreshTimers.current[table] = setTimeout(() => hook.retry(), 400);
   };
 
@@ -1655,10 +1702,10 @@ export default function NexaApp() {
     const sub = CapApp.addListener("backButton", () => {
       // 0) Версия устарела — экран обновления не закрывается, просто сворачиваем
       if (backState.current.blocked) { CapApp.minimizeApp(); return; }
-      // Экран входа при первом запуске, панель почты ещё не открыта — сворачиваем
-      // (открыта — Esc ниже вернёт с кода к почте, с почты свернёт приложение)
+      // Экран первого запуска на приветствии — сворачиваем. На шаге входа (почта, код, QR)
+      // Esc ниже вернёт на шаг назад: с кода — к почте, с почты или QR — к приветствию
       const gate = document.querySelector(".nx-auth-gate");
-      if (gate && !gate.querySelector(".nx-auth-step")) { CapApp.minimizeApp(); return; }
+      if (gate && gate.querySelector(".nx-gate-hello")) { CapApp.minimizeApp(); return; }
       // 1) Открыто окно, меню, уведомления или история чатов — закрываем его.
       //    У всех них закрытие уже работает по Esc — нажимаем его за пользователя
       const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes');
@@ -2148,8 +2195,8 @@ export default function NexaApp() {
       )}
       {syncOpen && <SyncDetails online={online} uid={uid} syncState={syncState} uploads={uploads} trash={uid ? trashCount(uid) : 0}
         onRetry={retrySync} onUploadAction={uploadAction} onLogin={() => { setSyncOpen(false); setAuthOpen(true); }} onClose={() => setSyncOpen(false)} />}
-      {/* Первый запуск: войти или продолжить без аккаунта */}
-      {showGate && <AuthGate onGuest={() => { saveGuest(true); setGuest(true); }} />}
+      {/* Первый запуск: экран входа (гостевого входа на нём нет — решение автора) */}
+      {showGate && <AuthGate />}
       {authOpen && !auth.user && <AuthModal onClose={() => { setAuthOpen(false); setPendingPair(null); setPendingLogin(null); }}
         hint={pendingPair ? "Войдите той же почтой, что и на другом устройстве, — потом подключим это устройство"
           : pendingLogin ? "Чтобы разрешить вход на другом устройстве, сначала войдите здесь" : null} />}
@@ -2194,7 +2241,8 @@ export default function NexaApp() {
           : syncError ? { title: "Есть сбой синхронизации", text: syncError }
           : syncLoading || syncPending ? { title: "Синхронизируем…", text: syncPending ? `Ждут подтверждения облака: ${syncPending}` : "Сверяем данные с облаком" }
           : { ok: true, title: "Всё сохранено в облаке", text: "Устройства, диалоги, файлы и расписание подтверждены облаком" }}
-        locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog}
+        locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog} memoryInfo={{ on: memoryOn, count: memory.length }}
+        onOpenMemory={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-memory-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }}
         onOpenFlow={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-flow-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }} />
     </div>
   ) : aboutOpen ? (
@@ -2249,6 +2297,7 @@ export default function NexaApp() {
       initialChatId={searchChatId}
       openRequest={chatOpenReq}
       onCurrentChat={(id) => { currentChatRef.current = id; }}
+      memory={memory} memoryOn={memoryOn} memoryApi={memoryApi}
       onContinueChat={uid ? (c) => setContSend({ kind: "chat", ref: c.id, title: c.title }) : null}
       chats={chats}
       setChats={setChats}
@@ -2316,7 +2365,8 @@ export default function NexaApp() {
             </SettingsGroup>
           </>
         )}
-        onSecurity={openSecurity} user={auth.user} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+        onSecurity={openSecurity} user={auth.user}
+        memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
         flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
           onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
     </div>

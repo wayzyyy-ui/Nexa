@@ -118,6 +118,9 @@ export const APP_CSS = `
           --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
           --border-strong: rgba(255, 255, 255, 0.28);
           --line-bright: rgba(255, 255, 255, 0.62);
+          /* Экран входа (макет 2026-10): тёмное «стекло» поверх рендера */
+          --gate-card: rgba(38, 38, 40, 0.72); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.66);
+          --gate-border: rgba(255, 255, 255, 0.4); --gate-field: rgba(20, 20, 22, 0.55); --gate-field-text: #ffffff; --gate-scene: #070708;
           --scrim: rgba(0, 0, 0, 0.6);
           --on-fold: #FFFFFF;  --photo-bg: #01060A;
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
@@ -145,6 +148,9 @@ export const APP_CSS = `
           --input-glow: none;
           --border-strong: rgba(24, 32, 58, 0.24);
           --line-bright: rgba(24, 32, 58, 0.34);
+          /* Экран входа (макет 2026-10): серое «стекло» поверх светлого рендера, текст белый */
+          --gate-card: rgba(128, 128, 128, 0.62); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.82);
+          --gate-border: rgba(255, 255, 255, 0.45); --gate-field: rgba(230, 230, 230, 0.86); --gate-field-text: #15181f; --gate-scene: #d9d9db;
           --scrim: rgba(10, 16, 36, 0.38);
           --on-fold: #FFFFFF;  --photo-bg: #070B12; /* фото и в светлой теме — на тёмном */
           --fold-deep: #0B1F7A;  --fold-blue: #2563FF;  --fold-cyan: #22C7E8;
@@ -384,6 +390,72 @@ export const APP_CSS = `
   @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
   @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(68px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
+  /* ─── Экран первого запуска (AuthGate, макет 2026-10) ───────────────────
+     Фон — рендер устройств под тему, справа «стеклянная» карточка. Размытие под
+     карточкой разрешено только здесь (решение автора, см. CLAUDE.md «Визуальный язык»).
+     Внутри карточки подменяем цвета текста и обводок — так шаги кода и входа по QR
+     тоже получают вид макета, без отдельной вёрстки */
+  .nx-auth-gate { position: fixed; inset: 0; z-index: 900; overflow-y: auto; background: var(--gate-scene); color: var(--gate-text); }
+  .nx-gate-scene { position: fixed; inset: 0; pointer-events: none; }
+  .nx-gate-scene img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left center; user-select: none; }
+  :root[data-theme="dark"] .nx-gate-light, :root[data-theme="light"] .nx-gate-dark { display: none; }
+  .nx-gate-card {
+    --text: var(--gate-text); --muted: var(--gate-muted); --muted-soft: var(--gate-muted);
+    --border: var(--gate-border); --border-strong: var(--gate-border); --border-soft: var(--gate-border);
+    position: absolute; right: 8.3vw; top: 50%; transform: translateY(-50%);
+    width: min(800px, 44vw); min-height: min(800px, 76vh); box-sizing: border-box;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(28px, 3.4vw, 66px); border-radius: 56px; text-align: left;
+    background: var(--gate-card); color: var(--gate-text);
+    border: 1px solid color-mix(in srgb, var(--gate-text) 10%, transparent);
+    -webkit-backdrop-filter: blur(28px) saturate(1.15); backdrop-filter: blur(28px) saturate(1.15);
+  }
+  .nx-gate-hello { display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .nx-gate-logo { display: flex; align-items: center; gap: clamp(20px, 3vw, 64px); }
+  .nx-gate-logo svg:first-child { width: clamp(56px, 5vw, 96px); height: auto; }
+  .nx-gate-logo svg:last-child { height: clamp(28px, 2.6vw, 50px); width: auto; }
+  .nx-gate-text { font-size: clamp(18px, 1.9vw, 36px); line-height: 1.28; margin-top: clamp(28px, 4.5vh, 64px); max-width: 640px; }
+  .nx-gate-actions { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: clamp(28px, 5vh, 72px); }
+  .nx-gate-enter {
+    border: none; cursor: pointer; font-family: inherit; color: var(--on-fold);
+    font-size: clamp(16px, 1.5vw, 28px); height: clamp(52px, 5.2vw, 100px); padding: 0 clamp(48px, 5.4vw, 104px); border-radius: 999px;
+    background: linear-gradient(90deg, var(--fold-blue), var(--fold-cyan));
+  }
+  .nx-gate-qr {
+    border: 1px solid var(--gate-border); cursor: pointer; background: color-mix(in srgb, var(--gate-text) 6%, transparent);
+    width: clamp(52px, 5.2vw, 100px); height: clamp(52px, 5.2vw, 100px); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nx-gate-qr svg { width: clamp(24px, 2.3vw, 44px); height: clamp(24px, 2.3vw, 44px); }
+  .nx-gate-title { font-size: clamp(30px, 3.4vw, 64px); line-height: 1.1; }
+  .nx-gate-sub { font-size: clamp(13px, 1vw, 19px); color: var(--gate-muted); margin: 8px 0 clamp(20px, 3.4vh, 44px); }
+  .nx-gate-card .nx-input {
+    background: var(--gate-field) !important; color: var(--gate-field-text) !important;
+    border: 1px solid var(--mint) !important; border-radius: 22px !important;
+    font-size: clamp(16px, 1.4vw, 26px) !important; padding: clamp(14px, 1.5vw, 26px) clamp(16px, 1.4vw, 28px) !important;
+  }
+  .nx-gate-card .nx-input::placeholder { color: color-mix(in srgb, var(--gate-field-text) 55%, transparent); }
+  .nx-gate-card .nx-auth-step .nx-primary, .nx-gate-card .nx-auth-step .nx-ghost-btn {
+    font-size: clamp(15px, 1.4vw, 26px) !important; min-height: clamp(48px, 5.2vw, 100px) !important;
+  }
+  .nx-gate-card .nx-auth-or { font-size: clamp(13px, 0.95vw, 18px) !important; }
+  .nx-gate-card #nx-auth-hint, .nx-gate-card #nx-auth-code-hint, .nx-gate-card .nx-auth-note { font-size: clamp(13px, 1vw, 19px) !important; }
+  .nx-gate-card .nx-auth-step .nx-ghost-btn svg { width: 1.1em; height: 1.1em; }
+  .nx-sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* Телефон: сверху рендер (сцена с устройствами), снизу — шторка с карточкой */
+  @media ${PHONE_MQ} {
+    .nx-gate-scene { position: absolute; inset: 0 0 auto 0; height: 52vh; }
+    .nx-gate-scene img { object-position: 28% 55%; }
+    .nx-gate-card {
+      position: relative; right: auto; top: auto; transform: none; width: 100%; min-height: 56vh;
+      margin-top: 44vh; border-radius: 32px 32px 0 0; padding: 30px 22px calc(var(--sab) + 28px);
+      border-bottom: none; justify-content: flex-start;
+    }
+    .nx-gate-logo svg:first-child { width: 52px; } .nx-gate-logo svg:last-child { height: 26px; }
+    .nx-gate-text { font-size: 18px; margin-top: 22px; }
+    .nx-gate-actions { margin-top: 26px; }
+    .nx-gate-title { font-size: 30px; }
+  }
   @keyframes nx-swipe-next { from { opacity: 0; transform: translateX(72px); } to { opacity: 1; transform: none; } }
   @keyframes nx-swipe-prev { from { opacity: 0; transform: translateX(-72px); } to { opacity: 1; transform: none; } }
   /* Без движения — экран просто меняется */

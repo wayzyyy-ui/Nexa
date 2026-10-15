@@ -84,7 +84,7 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   );
 }
 
-export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, updateBlock }) {
+export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, updateBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -166,6 +166,8 @@ export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteDat
       </SettingsGroup>
 
       {noteBlock}
+
+      {memoryBlock}
 
       {flowBlock}
 

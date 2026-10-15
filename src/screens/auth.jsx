@@ -10,7 +10,7 @@ import { C, fontDisplay } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { mmss } from "../lib/format.js";
 import { qrApi, QR_LOGIN_TTL_MS, QR_POLL_MS, loginUrl, APPROVE_LOCK_KEY, RESEND_SECONDS, authErrorText, CODE_MIN, CODE_MAX, signOut, clearLocalAccountData } from "../lib/auth.js";
-import { StateNote, QrCode, Spinner, CodeCells, btnReset, authLink, authField, StateButton, SectionTitle, SettingsGroup, SettingsRow, Dot } from "../ui/base.jsx";
+import { StateNote, QrCode, Spinner, CodeCells, btnReset, authLink, authField, StateButton, SectionTitle, SettingsGroup, SettingsRow, Dot, Logo, LogoMark } from "../ui/base.jsx";
 
 /* Новое устройство: QR и код, ждём подтверждения с вошедшего.
    onBack — вернуться ко входу по почте */
@@ -236,8 +236,9 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
    onEscape — что делать по Esc на шаге почты (на шаге кода Esc возвращает к почте).
    Сама панель ничего не закрывает: после входа Supabase сообщит о сессии,
    и экран входа уберёт тот, кто его показал */
-export function AuthPanel({ onEscape }) {
-  const [step, setStep] = useState("email"); // "email" | "code" | "qr" (вход по QR с другого устройства)
+export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
+  const gate = variant === "gate";
+  const [step, setStep] = useState(initialStep); // "email" | "code" | "qr" (вход по QR с другого устройства)
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -260,7 +261,7 @@ export function AuthPanel({ onEscape }) {
   // Esc: с кода — назад к почте, с почты — решает тот, кто показал панель
   const escRef = useRef();
   escRef.current = () => {
-    if (step === "code" || step === "qr") { setStep("email"); setCode(""); setError(null); }
+    if (step === "code" || (step === "qr" && !(gate && initialStep === "qr"))) { setStep("email"); setCode(""); setError(null); }
     else onEscape?.();
   };
   useEffect(() => {
@@ -311,12 +312,12 @@ export function AuthPanel({ onEscape }) {
     );
   }
 
-  if (step === "qr") return <QrLoginView onBack={() => setStep("email")} />;
+  if (step === "qr") return <QrLoginView onBack={() => (gate && initialStep === "qr" ? onEscape?.() : setStep("email"))} />;
 
   return step === "email" ? (
     // form — чтобы кнопка срабатывала и по Enter
     <form className="nx-auth-step" data-step="email" onSubmit={(e) => { e.preventDefault(); sendCode(); }} noValidate>
-      <label htmlFor="nx-auth-email" style={{ fontSize: 13, color: C.muted }}>Почта</label>
+      <label htmlFor="nx-auth-email" className={gate ? "nx-sr-only" : undefined} style={{ fontSize: 13, color: C.muted }}>Почта</label>
       <input
         id="nx-auth-email" type="email" inputMode="email" autoComplete="email" autoFocus
         className="nx-input" value={email} disabled={busy}
@@ -334,16 +335,16 @@ export function AuthPanel({ onEscape }) {
         Получить код
       </StateButton>
       {/* Уже вошли на телефоне — можно без письма: QR или код */}
-      <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0", fontSize: 12, color: C.mutedSoft }}>
-        <span style={{ flex: 1, height: 1, background: C.border }} />или<span style={{ flex: 1, height: 1, background: C.border }} />
+      <div aria-hidden="true" className="nx-auth-or" style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0", fontSize: 12, color: C.mutedSoft }}>
+        {!gate && <span style={{ flex: 1, height: 1, background: C.border }} />}<span style={{ flex: gate ? 1 : "none", textAlign: "center" }}>или</span>{!gate && <span style={{ flex: 1, height: 1, background: C.border }} />}
       </div>
       <button type="button" className="nx-ghost-btn" onClick={() => { setError(null); setStep("qr"); }} style={{
         ...btnReset, width: "100%", padding: "11px 16px", fontSize: 14, borderRadius: 999,
         border: `1px solid ${C.borderStrong}`, color: C.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
       }}>
-        {Icon.phone({ c: C.text, s: 15 })} Войти по QR с телефона
+        {gate ? <>Войти по QR {Icon.qr({ c: C.text, s: 22 })}</> : <>{Icon.phone({ c: C.text, s: 15 })} Войти по QR с телефона</>}
       </button>
-      <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
+      <div className="nx-auth-note" style={{ fontSize: 12, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
         Проект учебный. Данные хранятся для демонстрации и удаляются по запросу.
       </div>
     </form>
@@ -380,47 +381,46 @@ export function AuthPanel({ onEscape }) {
   );
 }
 
-/* Экран входа при первом запуске: «Войти» (панель с почтой) или
-   «Продолжить без аккаунта» — гостевой режим, запоминаем в nexa-guest.
+/* Экран первого запуска (макет 2026-10). Фон — рендер устройств (public/art/gate-dark|light.webp
+   под тему), справа «стеклянная» карточка (на телефоне — шторка снизу).
+   Шаг 1: знак NEXA, что это такое, «Войти» и круглая кнопка QR. Шаг 2: «Вход в NEXA» —
+   почта и код (AuthPanel variant="gate") или вход по QR с другого устройства.
+   Гостевого входа здесь нет (решение автора); гостевой режим остаётся у тех, кто уже гость.
+   Esc / «Назад» Android на шаге 2 — к шагу 1, на шаге 1 приложение сворачивается.
    Показывается, только если аккаунты доступны (есть настройки Supabase) */
-export function AuthGate({ onGuest }) {
-  const [open, setOpen] = useState(false); // нажали «Войти» — видна панель с почтой
+export function AuthGate() {
+  const [step, setStep] = useState(null); // null — приветствие; "email" | "qr" — вход
   return (
-    <div className="nx-auth-gate nx-scroll" role="dialog" aria-modal="true" aria-labelledby="nx-auth-title" style={{
-      position: "fixed", inset: 0, zIndex: 900, background: C.bg, overflowY: "auto",
-      display: "flex", flexDirection: "column", alignItems: "center",
-      padding: "calc(var(--sat) + 32px) 20px calc(var(--sab) + 32px)", boxSizing: "border-box",
-    }}>
-      <div style={{ margin: "auto 0", width: "min(400px, 100%)", textAlign: "left" }}>
-        <img src={foldSvg} alt="" style={{ width: 96, height: "auto", display: "block", marginBottom: 28 }} />
-        <div id="nx-auth-title" className="ng-display" style={{ fontSize: 30, lineHeight: 1.15 }}>Добро пожаловать в NEXA</div>
-        <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.5, marginTop: 10, marginBottom: 26 }}>
-          Войдите по почте — без пароля, по коду из письма. Или загляните без аккаунта.
-        </div>
-        {open ? (
-          <div className="nx-pop" style={{ border: `1px solid ${C.border}`, borderRadius: 18, padding: "18px 18px 20px", background: C.panel }}>
-            {/* Esc / «Назад» на шаге почты: на телефоне сворачиваем, на сайте — назад к выбору */}
-            <AuthPanel onEscape={() => (isNative ? CapApp.minimizeApp() : setOpen(false))} />
+    <div className="nx-auth-gate nx-scroll" role="dialog" aria-modal="true" aria-labelledby="nx-auth-title">
+      {/* Фон: две картинки, видна та, что под текущую тему (см. .nx-gate-scene в стилях) */}
+      <div className="nx-gate-scene" aria-hidden="true">
+        <img className="nx-gate-dark" src="/art/gate-dark.webp" alt="" draggable={false} />
+        <img className="nx-gate-light" src="/art/gate-light.webp" alt="" draggable={false} />
+      </div>
+      <div className="nx-gate-card">
+        {step ? (
+          <div key="login" className="nx-pop nx-gate-login">
+            <div id="nx-auth-title" className="nx-gate-title">Вход в NEXA</div>
+            <div className="nx-gate-sub">По коду из письма, без пароля</div>
+            <AuthPanel variant="gate" initialStep={step} onEscape={() => setStep(null)} />
           </div>
         ) : (
-          <button type="button" className="nx-primary" onClick={() => setOpen(true)} style={{
-            ...btnReset, width: "100%", padding: "13px 16px", fontSize: 15, fontWeight: 500,
-            border: "1px solid transparent", color: C.onFold,
-            background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}>
-            {Icon.mail({ c: C.onFold, s: 17 })} Войти
-          </button>
+          <div key="hello" className="nx-pop nx-gate-hello">
+            <div className="nx-gate-logo" role="img" aria-label="NEXA">
+              <LogoMark s={88} color={C.gateText} />
+              <Logo bare h={44} color={C.gateText} />
+            </div>
+            <div id="nx-auth-title" className="nx-gate-text">
+              NEXA — ваша личная экосистема устройств, синхронизированных друг с другом. Всё, что вам нужно, в одном пространстве.
+            </div>
+            <div className="nx-gate-actions">
+              <button type="button" className="nx-primary nx-gate-enter" onClick={() => setStep("email")}>Войти</button>
+              <button type="button" className="nx-icon-btn nx-gate-qr" onClick={() => setStep("qr")} aria-label="Войти по QR с другого устройства" title="Войти по QR">
+                {Icon.qr({ c: C.gateText, s: 30 })}
+              </button>
+            </div>
+          </div>
         )}
-        <button type="button" className="nx-ghost-btn" onClick={onGuest} style={{
-          ...btnReset, width: "100%", marginTop: 12, padding: "12px 16px", fontSize: 14,
-          border: `1px solid ${C.borderStrong}`, color: C.text, textAlign: "center",
-        }}>
-          Продолжить без аккаунта
-        </button>
-        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 14, lineHeight: 1.5 }}>
-          Войти можно и потом — в Настройках.
-        </div>
       </div>
     </div>
   );
