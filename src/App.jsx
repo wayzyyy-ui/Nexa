@@ -29,7 +29,7 @@ import {
   enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount,
 } from "./lib/files.js";
 import { prepareAttachment, attachUnsupported, formatLabel, extOf, SUPPORTED_HINT } from "./lib/attach.js";
-const VERSION = "0.10.0";
+const VERSION = "0.10.1";
 
 
 const C = {
@@ -650,6 +650,11 @@ function HomeFold({ size, count = 0 }) {
    как обычно. При «уменьшении движения» выключено */
 // Внутри этих элементов колёсико работает по-обычному
 const NATIVE_SCROLL = '.nx-scroll, .nx-viewer, [role="dialog"], [role="menu"], .nx-notes, textarea';
+// Сразу наверх — без плавной прокрутки (новый раздел начинается сверху, без прыжка посреди анимации)
+function scrollTopNow() {
+  try { window.__nxLenis?.scrollTo(0, { immediate: true, force: true }); } catch {}
+  window.scrollTo(0, 0);
+}
 function useSmoothScroll(enabled) {
   useEffect(() => {
     const mq = window.matchMedia;
@@ -659,7 +664,8 @@ function useSmoothScroll(enabled) {
       lerp: 0.12, // насколько быстро догоняет: меньше — мягче
       prevent: (node) => document.body.style.overflow === "hidden" || !!node.closest?.(NATIVE_SCROLL),
     });
-    return () => lenis.destroy();
+    window.__nxLenis = lenis; // scrollTopNow сбрасывает и его, иначе он «доехал» бы до старого места
+    return () => { if (window.__nxLenis === lenis) window.__nxLenis = null; lenis.destroy(); };
   }, [enabled]);
 }
 
@@ -901,7 +907,7 @@ function MobileTabBar({ active, onChange }) {
     setPos(index); // подсветка поехала сразу
     // Экран меняем со следующего кадра и в режиме «перехода»: React рисует
     // тяжёлый новый экран по кусочкам и не замораживает анимацию подсветки
-    requestAnimationFrame(() => startTransition(() => onChange(item.id)));
+    requestAnimationFrame(() => onChange(item.id));
   };
 
   const shownIndex = pos >= 0 ? pos : lastPos.current;
@@ -2080,6 +2086,7 @@ const ABOUT_FEATURES = [
 ];
 // История обновлений — новые сверху. Добавляя версию, впишите её сюда (и в release-notes.md)
 const ABOUT_UPDATES = [
+  { v: "0.10.1", items: ["Плавная смена разделов без рывков", "Город для погоды — через Яндекс"] },
   { v: "0.10.0", items: ["Экран «О системе»", "Переименование устройства — карандаш у названия", "Снова определение города для погоды"] },
   { v: "0.9.15", items: ["Погода от Gismeteo с подписью источника", "Уведомления — одной кнопкой", "Плавные переходы между разделами"] },
   { v: "0.9.14", items: ["Новый дизайн Главной и экрана устройства", "Новый экран «Обновите NEXA»"] },
@@ -3590,7 +3597,47 @@ const IP_SERVICES = [
 ];
 const IP_SERVICE_MS = 4000; // один сервис ждём не дольше 4 секунд — потом следующий
 let ipFailedAt = 0;          // все сервисы не ответили — 10 минут не спрашиваем снова
+/* Место и город силами Яндекса (JS API v3, тот же скрипт, что у карты; ключ VITE_YANDEX_MAPS_KEY).
+   ymaps3.geolocation.getPosition() — { coords: [долгота, широта], accuracy }: по описанию Яндекса
+   берёт место из браузера и/или по IP (своя база адресов, по России обычно точнее сторонних).
+   ymaps3.search({ text: "долгота,широта", type: ["toponyms"] }) — название места; поиску нужен
+   отдельный ключ VITE_YANDEX_SEARCH_KEY (setApikeys({ search })). Нет ключей или Яндекс молчит —
+   прежние сервисы (ipapi, ipwho, geojs; BigDataCloud, Nominatim) */
+const YMAPS_SEARCH_KEY = import.meta.env.VITE_YANDEX_SEARCH_KEY || "";
+const YANDEX_LOC_MS = 7000; // первый раз скрипт карт ещё грузится — ждём дольше
+const withLimit = (promise, ms) => Promise.race([promise.catch(() => null), new Promise((r) => setTimeout(() => r(null), ms))]);
+async function yandexLocation() {
+  if (!YMAPS_KEY) return null;
+  const ymaps3 = await withLimit(loadYmaps(), YANDEX_LOC_MS);
+  if (!ymaps3 || !ymaps3.geolocation) return null;
+  const r = await withLimit(ymaps3.geolocation.getPosition(), YANDEX_LOC_MS);
+  const c = r && r.coords;
+  if (!c || !Number.isFinite(c[0]) || !Number.isFinite(c[1])) return null;
+  return { lat: c[1], lon: c[0] };
+}
+// Город из найденного объекта: у самого города в описании — регион и страна («Республика Татарстан,
+// Россия»), у улицы или дома — город первым («Казань, Россия»)
+const REGION_RE = /област|республик|край|округ|район|росси|автоном/i;
+function cityFromFeature(p) {
+  const name = String(p.name || "").trim();
+  const parts = String(p.description || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (!parts.length || REGION_RE.test(parts[0])) return name || null;
+  return parts[0];
+}
+async function yandexCityName(lat, lon) {
+  if (!YMAPS_KEY || !YMAPS_SEARCH_KEY) return null;
+  const ymaps3 = await withLimit(loadYmaps(), YANDEX_LOC_MS);
+  if (!ymaps3 || !ymaps3.search) return null;
+  try { ymaps3.getDefaultConfig().setApikeys({ search: YMAPS_SEARCH_KEY }); } catch { return null; }
+  const res = await withLimit(ymaps3.search({ text: `${lon},${lat}`, type: ["toponyms"], limit: 1 }), YANDEX_LOC_MS);
+  const p = Array.isArray(res) && res[0] && res[0].properties;
+  return p ? cityFromFeature(p) : null;
+}
+
 async function ipLocation(signal) {
+  // Сначала Яндекс (если есть ключ карт), потом прежние сервисы по очереди
+  const ya = await yandexLocation().catch(() => null);
+  if (ya || signal?.aborted) return ya;
   if (Date.now() - ipFailedAt < 10 * 60 * 1000) return null;
   for (const [url, pick] of IP_SERVICES) {
     // Свой «стоп» на каждый сервис: зависший сервис не держит очередь
@@ -3675,9 +3722,11 @@ function nearestKnownCity(lat, lon) {
 }
 
 // Название города по координатам, по-русски. Пробуем по очереди:
-// 1) BigDataCloud (city или locality), 2) OpenStreetMap (Nominatim),
+// 0) поиск Яндекса (если есть ключи), 1) BigDataCloud (city или locality), 2) OpenStreetMap (Nominatim),
 // 3) ближайший крупный город из списка выше. Пустым не бывает никогда
 async function cityByCoords(lat, lon, signal) {
+  const ya = await yandexCityName(lat, lon).catch(() => null);
+  if (ya) return ya;
   const bdc = await withTimeout(
     fetch("https://api.bigdatacloud.net/data/reverse-geocode-client" +
       `?latitude=${lat}&longitude=${lon}&localityLanguage=ru`, { signal })
@@ -11371,7 +11420,13 @@ function useTabSwipe(getCtx, onSwipe) {
         if (ok) act.current(dir);
         return;
       }
-      // Раздел меняется: старый экран доезжает в сторону свайпа и тает, потом —
+      // Есть View Transitions: снимок экрана (вместе со сдвигом пальца) уедет сам — сразу меняем раздел
+      if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        act.current(dir);
+        requestAnimationFrame(() => { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; });
+        return;
+      }
+      // Без них: старый экран доезжает в сторону свайпа и тает, потом —
       // новый раздел (он въезжает с той же стороны, см. nx-swipe-*)
       el.style.transition = `transform ${SWIPE_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1), opacity ${SWIPE_OUT_MS}ms linear`;
       el.style.transform = `translateX(${dir === "next" ? -72 : 72}px)`;
@@ -12532,11 +12587,39 @@ export default function NexaApp() {
   const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(true); };
   // Переход по меню (боковое на компьютере, нижняя панель на телефоне): новый раздел
   // въезжает с той стороны, где он стоит в меню — как при свайпе (тот же body[data-swipe])
-  const navTo = (t) => {
+  /* Плавная смена экрана без рывков. Браузер делает снимок старого экрана и держит его,
+     пока рисуется новый (тяжёлый экран больше не «съедает» кадры анимации), потом снимок
+     уезжает, а новый экран въезжает — двигается только область экрана (.ng-main-content),
+     меню и нижняя панель стоят. Прокрутка обнуляется до снимка нового экрана — без прыжка
+     посреди анимации. dir: "next" | "prev" | null (просто растворение).
+     Нет View Transitions или «уменьшение движения» — прежний въезд сбоку (body[data-swipe]) или без движения */
+  const navTransition = (dir, update) => {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!document.startViewTransition || reduce || document.hidden) {
+      if (!reduce && dir) setSwipeDir(dir);
+      update(); scrollTopNow();
+      return;
+    }
+    const root = document.documentElement;
+    root.dataset.navDir = dir || "fade";
+    const t = document.startViewTransition(() => {
+      flushSync(update);
+      scrollTopNow();
+      // Своё появление нового экрана (ng-screen-in) не нужно — его показывает переход.
+      // Ставим прямо на элемент, чтобы оно не запустилось, когда пометка навигации снимется
+      document.querySelectorAll(".ng-screen-anim, .ng-assistant-anim").forEach((el) => { el.style.animation = "none"; });
+    });
+    t.ready?.catch(() => {});
+    (t.finished || Promise.resolve()).catch(() => {}).finally(() => { if (root.dataset.navDir) delete root.dataset.navDir; });
+  };
+  const navDir = (t) => {
     const order = matchMedia(PHONE_MQ).matches ? SWIPE_ORDER : NAV.map((n) => n.id);
     const a = order.indexOf(tab), b = order.indexOf(t);
-    if (a >= 0 && b >= 0 && a !== b) setSwipeDir(b > a ? "next" : "prev");
-    goTab(t);
+    return a >= 0 && b >= 0 && a !== b ? (b > a ? "next" : "prev") : null;
+  };
+  const navTo = (t) => {
+    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen) return;
+    navTransition(navDir(t), () => goTab(t));
   };
   // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
   useEffect(() => onSharedText((text) => setFlowSend({ text })), []);
@@ -12558,8 +12641,7 @@ export default function NexaApp() {
       }
       const i = SWIPE_ORDER.indexOf(tab) + (dir === "next" ? 1 : -1);
       if (i < 0 || i >= SWIPE_ORDER.length) return; // крайняя вкладка — дальше некуда
-      // Новый экран рисуется «переходом» (по кусочкам) — анимация не дёргается
-      startTransition(() => { setSwipeDir(dir); goTab(SWIPE_ORDER[i]); });
+      navTransition(dir, () => goTab(SWIPE_ORDER[i]));
     },
   );
   // Направление — пометка у body (до отрисовки нового экрана): по ней CSS
@@ -13546,6 +13628,28 @@ export default function NexaApp() {
           animation-duration: 380ms;
           animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
         }
+        /* ─── Смена разделов (navTransition) ─────────────────────
+           Двигается только область экрана; меню, нижняя панель и шапка — как есть.
+           Старый снимок уезжает и тает (200 мс), новый въезжает с той же стороны (320 мс).
+           Анимируются только transform и opacity — их рисует видеокарта, без рывков */
+        html[data-nav-dir] .ng-main-content { view-transition-name: nx-screen; }
+        html[data-nav-dir]::view-transition-old(root), html[data-nav-dir]::view-transition-new(root) { animation: none; }
+        html[data-nav-dir]::view-transition-group(nx-screen) { animation-duration: 320ms; }
+        html[data-nav-dir="next"]::view-transition-old(nx-screen) { animation: nx-vt-out-left 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+        html[data-nav-dir="next"]::view-transition-new(nx-screen) { animation: nx-vt-in-right 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        html[data-nav-dir="prev"]::view-transition-old(nx-screen) { animation: nx-vt-out-right 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+        html[data-nav-dir="prev"]::view-transition-new(nx-screen) { animation: nx-vt-in-left 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        html[data-nav-dir="fade"]::view-transition-old(nx-screen) { animation: nx-vt-fade-out 180ms ease both; }
+        html[data-nav-dir="fade"]::view-transition-new(nx-screen) { animation: nx-vt-fade-in 260ms ease both; }
+        @keyframes nx-vt-out-left { to { opacity: 0; transform: translateX(-48px); } }
+        @keyframes nx-vt-out-right { to { opacity: 0; transform: translateX(48px); } }
+        @keyframes nx-vt-in-right { from { opacity: 0; transform: translateX(64px); } }
+        @keyframes nx-vt-in-left { from { opacity: 0; transform: translateX(-64px); } }
+        @keyframes nx-vt-fade-out { to { opacity: 0; } }
+        @keyframes nx-vt-fade-in { from { opacity: 0; } }
+        /* Въезжающий сбоку экран (запасной путь) не должен вылезать за край окна —
+           иначе мелькает горизонтальная прокрутка и страница вздрагивает */
+        .ng-main-content { overflow-x: clip; }
         /* Запасной способ для браузеров без View Transitions:
            на время смены у всех элементов плавно меняются цвета */
         .nx-theme-anim, .nx-theme-anim *, .nx-theme-anim *::before, .nx-theme-anim *::after {
