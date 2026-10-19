@@ -58,7 +58,7 @@ export function MobileTabBar({ active, onChange }) {
   return (
     <div
       className="ng-mobile-tabbar"
-      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 200, display: "none", padding: "0 16px calc(var(--sab) + 10px)", pointerEvents: "none" }}
+      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 200, display: "none", padding: "0 22px calc(var(--sab) + 14px)", pointerEvents: "none" }}
     >
       {/* Сама панель (макет 2026-10): плавающая «таблетка» с отступами от краёв экрана,
           над системной полоской телефона */}
@@ -71,7 +71,7 @@ export function MobileTabBar({ active, onChange }) {
         pointerEvents: "auto",
         WebkitBackdropFilter: "blur(14px)", backdropFilter: "blur(14px)",
       }}>
-        <div style={{ position: "relative", flex: 1, display: "flex", height: 62 }}>
+        <div style={{ position: "relative", flex: 1, display: "flex", height: 56 }}>
 
           {/* Движущаяся подсветка: один элемент, который едет к нужной ячейке */}
           <div className="nx-tab-move" style={{
@@ -92,7 +92,7 @@ export function MobileTabBar({ active, onChange }) {
           }}>
             <div style={{
               width: 52,
-              height: 44,
+              height: 42,
               boxSizing: "border-box",
               borderRadius: 999,
               background: C.chip,

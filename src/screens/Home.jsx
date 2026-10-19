@@ -290,7 +290,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
       <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.mint, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="ng-display nx-ai-pill-title">ИИ — Ассистент</span>
-        <span style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
+        <span className="nx-ai-pill-sub" style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
       </span>
       {Icon.chevron({ c: C.text, s: 20 })}
     </button>
@@ -335,8 +335,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
         {activityBlock && <div className="nx-home-act">{activityBlock}</div>}
         {onAbout && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
-            <button type="button" className="nx-link-btn nx-about-link" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" className="nx-link-btn nx-about-link nx-home-about" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
               <span aria-hidden="true">→</span> Подробнее о системе
             </button>
           </div>

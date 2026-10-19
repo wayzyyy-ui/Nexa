@@ -30,10 +30,10 @@ export function ActivityList({ items, limit }) {
               {(ACTIVITY_ICON[it.kind] || ACTIVITY_ICON.sent)(tone)}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+              <div className="nx-act-title" style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
               {it.text && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>}
             </div>
-            <span style={{ fontSize: 12, color: C.mutedSoft, flexShrink: 0, whiteSpace: "nowrap" }}>{activityTime(it.at)}</span>
+            <span className="nx-act-time" style={{ fontSize: 12, color: C.mutedSoft, flexShrink: 0, whiteSpace: "nowrap" }}>{activityTime(it.at)}</span>
           </div>
         );
       })}
