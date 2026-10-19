@@ -118,6 +118,8 @@ export const APP_CSS = `
           --input-glow: 0 0 60px color-mix(in srgb, #4A6FFF 50%, transparent);
           --border-strong: rgba(255, 255, 255, 0.28);
           --line-bright: rgba(255, 255, 255, 0.62);
+          /* Свечение фона Главной (макет 2026-10): мятное слева сверху, синее справа */
+          --home-glow-a: rgba(0, 180, 160, 0.20); --home-glow-b: rgba(40, 80, 255, 0.16);
           /* Экран входа (макет 2026-10): тёмное «стекло» поверх рендера */
           --gate-card: rgba(38, 38, 40, 0.72); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.66);
           --gate-border: rgba(255, 255, 255, 0.4); --gate-field: rgba(20, 20, 22, 0.55); --gate-field-text: #ffffff; --gate-scene: #070708;
@@ -148,6 +150,7 @@ export const APP_CSS = `
           --input-glow: none;
           --border-strong: rgba(24, 32, 58, 0.24);
           --line-bright: rgba(24, 32, 58, 0.34);
+          --home-glow-a: rgba(0, 190, 170, 0.14); --home-glow-b: rgba(60, 100, 255, 0.10);
           /* Экран входа (макет 2026-10): серое «стекло» поверх светлого рендера, текст белый */
           --gate-card: rgba(128, 128, 128, 0.62); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.82);
           --gate-border: rgba(255, 255, 255, 0.45); --gate-field: rgba(230, 230, 230, 0.86); --gate-field-text: #15181f; --gate-scene: #d9d9db;
@@ -169,10 +172,7 @@ export const APP_CSS = `
         body { display: block !important; place-items: unset !important; }
         /* Главная на компьютере: высота почти на всё окно (минус футер
            и отступы), содержимое по центру по вертикали */
-        .ng-home-desktop {
-          display: flex; flex-direction: column; justify-content: center;
-          min-height: calc(100vh - 170px);
-        }
+        .ng-home-desktop { display: block; }
         .ng-home-mobile { display: none; }
 
         /* ─── Десктопные показы ─────────────────────────────── */
@@ -198,6 +198,100 @@ export const APP_CSS = `
         .nx-ai-pill { display: flex; align-items: center; gap: 14px; min-height: 88px; box-sizing: border-box; padding: 14px 22px 14px 18px !important; border-radius: 999px !important;
           background-image: linear-gradient(100deg, color-mix(in srgb, var(--blue) 10%, transparent), color-mix(in srgb, var(--mint) 6%, transparent)) !important; }
         .nx-act-pill > section { border-color: var(--line-bright) !important; border-radius: 32px !important; padding: 18px 22px 8px !important; }
+
+        /* ═══ Главная, макет 2026-10 (второй вариант) ═══════════════════════
+           Компьютер: знак NEXA сверху слева, карточка «Мои устройства» (плашки-таблетки),
+           справа объёмная складка и ассистент со свечением, ниже «Активность» во всю ширину.
+           Свечение ассистента и фона — по макету автора */
+        .ng-home { position: relative; z-index: 1; }
+        .nx-home-glow {
+          position: fixed; inset: 0; z-index: 0; pointer-events: none;
+          background: radial-gradient(48vw 40vh at 0% 0%, var(--home-glow-a), transparent 70%),
+                      radial-gradient(40vw 46vh at 100% 18%, var(--home-glow-b), transparent 70%),
+                      radial-gradient(36vw 30vh at 8% 100%, var(--home-glow-a), transparent 70%);
+        }
+        .nx-home-brand-desk { margin: 6px 0 46px; }
+        .nx-home-brand-desk svg:first-child { display: block; }
+        .nx-home-eco { font-size: 19px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--text); margin-top: 22px; padding-left: 4px; }
+        .nx-home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.48fr); gap: 24px; align-items: stretch; }
+        .nx-home-card {
+          border: 1px solid var(--line-bright); border-radius: 48px; padding: 38px 40px 30px; box-sizing: border-box;
+          background: color-mix(in srgb, var(--panel) 55%, transparent);
+        }
+        .nx-home-card-title { font-size: 20px; margin-bottom: 30px; }
+        .nx-home-devices { display: flex; flex-direction: column; min-height: 480px; }
+        .nx-home-all {
+          align-self: center; margin-top: auto; padding: 9px 18px !important; font-size: 18px !important; border-radius: 999px !important;
+          border: 1px solid var(--border-strong) !important; background: color-mix(in srgb, var(--text) 8%, transparent) !important; color: var(--text) !important;
+          transform: translateY(14px);
+        }
+        .nx-home-devices > .nx-stagger { margin-bottom: 26px; }
+        .nx-home-side { display: flex; flex-direction: column; justify-content: flex-end; gap: 30px; min-width: 0; }
+        .nx-home-fold { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 300px; pointer-events: none; }
+        /* Края картинки растворяются: свечение не обрывается прямоугольником на любом фоне */
+        .nx-home-fold-art { width: min(100%, 400px); height: auto; display: block; user-select: none;
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 16%), linear-gradient(to bottom, transparent, #000 6%);
+          -webkit-mask-composite: source-in;
+          mask-image: linear-gradient(to right, transparent, #000 16%), linear-gradient(to bottom, transparent, #000 6%);
+          mask-composite: intersect; }
+        .nx-home-act { margin-top: 56px; }
+        .nx-home-act > section { border-color: var(--line-bright) !important; border-radius: 48px !important; padding: 28px 40px 20px !important; background: color-mix(in srgb, var(--panel) 55%, transparent) !important; }
+        .nx-home-act > section > div:first-child > span { font-size: 20px !important; font-weight: 400 !important; }
+        /* Плашка устройства — «таблетка» во всю ширину, заливка цветом статуса */
+        .nx-dev-row {
+          display: flex; align-items: center; gap: 22px; min-height: 92px; box-sizing: border-box; padding: 0 34px 0 30px !important;
+          border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
+          background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 14%, transparent), color-mix(in srgb, var(--green) 3%, transparent) 80%) !important;
+          transition: border-color 160ms ease;
+        }
+        .nx-dev-row[data-online="0"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--red) 22%, transparent), color-mix(in srgb, var(--red) 5%, transparent) 80%) !important; }
+        .nx-dev-row:hover { border-color: var(--mint) !important; }
+        .nx-dev-row.is-add { border-style: dashed !important; background-image: none !important; }
+        .nx-dev-row-icon { width: 40px; display: flex; justify-content: center; flex-shrink: 0; }
+        .nx-dev-row-name { display: block; font-size: 22px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-sub { display: block; font-size: 13px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Ассистент: значок, заголовок; на компьютере — мягкое сине-мятное свечение (макет) */
+        .nx-ai-pill-icon { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; background: var(--mint-dark); display: flex; align-items: center; justify-content: center; }
+        .nx-ai-pill-title { display: block; font-size: 20px; font-weight: 500; line-height: 1.2; }
+        .nx-ai-glow { min-height: 96px !important; padding: 18px 34px 18px 32px !important;
+          box-shadow: 0 0 22px color-mix(in srgb, var(--mint) 28%, transparent), 0 0 46px color-mix(in srgb, var(--blue) 22%, transparent); }
+        /* Верхняя строка (компьютер): поиск таблеткой, значки крупнее */
+        .nx-top-search { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 240px; height: 50px; box-sizing: border-box;
+          border-radius: 999px !important; border: 1px solid var(--border-strong) !important; background: color-mix(in srgb, var(--text) 9%, transparent) !important;
+          color: var(--text) !important; font-size: 17px !important; font-family: inherit; cursor: pointer; }
+        .nx-top-search-icon { display: none; }
+        .ng-topbar { gap: 26px !important; }
+        .ng-topbar [aria-label="Настройки"] svg, .ng-topbar [aria-label="Быстрые действия"] svg, .ng-topbar [aria-label^="Уведомления"] svg { width: 30px !important; height: 30px !important; }
+        /* Телефон: шапка Главной и поиск */
+        .nx-home-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 6px -6px 18px; }
+        .nx-home-head > :first-child { justify-self: start; }
+        .nx-home-search { display: flex !important; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 34px; box-sizing: border-box;
+          border-radius: 999px !important; border: 1px solid var(--border-strong) !important; background: color-mix(in srgb, var(--text) 8%, transparent) !important;
+          color: var(--text) !important; font-size: 14px; font-family: inherit; cursor: pointer; }
+        .nx-home-more { display: flex !important; align-items: center; justify-content: center; width: 100%; margin-top: 18px; min-height: 44px; box-sizing: border-box;
+          font-size: 16px; color: var(--text) !important; background: transparent !important; font-family: inherit; cursor: pointer; }
+        @media ${PHONE_MQ} {
+          .ng-topbar[data-tab="home"] { display: none !important; }
+          .nx-top-search { display: none !important; }
+          .nx-top-search-icon { display: inline-flex; }
+          .ng-topbar { gap: 2px !important; }
+          .ng-topbar [aria-label="Настройки"] svg, .ng-topbar .nx-top-search-icon svg { width: 22px !important; height: 22px !important; }
+          .ng-topbar [aria-label="Быстрые действия"] svg, .ng-topbar [aria-label^="Уведомления"] svg { width: 15px !important; height: 15px !important; }
+          .nx-home-head [aria-label="Быстрые действия"] svg, .nx-home-head [aria-label^="Уведомления"] svg { width: 20px !important; height: 20px !important; }
+          .nx-act-pill > section { border-radius: 40px !important; min-height: 140px; }
+          .nx-act-pill > section > div:first-child { justify-content: center !important; position: relative; }
+          .nx-act-pill > section > div:first-child > span { font-size: 20px !important; font-weight: 400 !important; }
+          .nx-act-pill > section > div:first-child > button { position: absolute; right: 0; }
+          .nx-dev-row { min-height: 72px; gap: 14px; padding: 0 20px 0 18px !important; }
+          .nx-dev-row-name { font-size: 17px; }
+        }
+        /* Ноутбуки: чуть компактнее */
+        @media (max-width: 1500px) and (min-width: 769px) {
+          .nx-dev-row { min-height: 78px; }
+          .nx-dev-row-name { font-size: 19px; }
+          .nx-home-eco { font-size: 16px; }
+          .nx-top-search { width: 200px; height: 44px; font-size: 15px !important; }
+        }
         /* Экран «Обновите NEXA» всегда тёмный: объёмная сцена из макета нарисована под тёмный фон
            (светлой версии макета нет). Цвета — те же, что у тёмной темы */
         .nx-force-update {
@@ -389,7 +483,7 @@ export const APP_CSS = `
      прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
   @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
-  @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(68px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
+  @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(76px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
   /* ─── Экран первого запуска (AuthGate, макет 2026-10) ───────────────────
      Фон — рендер устройств под тему, справа «стеклянная» карточка. Размытие под
      карточкой разрешено только здесь (решение автора, см. CLAUDE.md «Визуальный язык»).
@@ -1221,11 +1315,11 @@ export const APP_CSS = `
           }
 
           /* Ассистент: переписке — всё место между шапкой и полем ввода.
-             Снизу запас ровно под нижнюю панель: её 68 px + системная полоса
-             (--sab) + 4 px. Клавиатура открыта — панели нет, запас минимальный */
+             Снизу запас ровно под нижнюю панель: она плавает (64 px + отступ 10 px
+             + системная полоса --sab) + 6 px. Клавиатура открыта — панели нет, запас минимальный */
           .ng-assistant-wrapper { left: 0 !important; }
           .ng-assistant-inner {
-            --chat-bottom: calc(72px + var(--sab));
+            --chat-bottom: calc(80px + var(--sab));
             padding: 8px 14px var(--chat-bottom) 14px !important;
           }
           body.kb-open .ng-assistant-inner { --chat-bottom: 6px; }
@@ -1314,8 +1408,7 @@ export const APP_CSS = `
             gap: 2px !important;
           }
           /* Макет 2026-10: поиск и профиль — крупнее; молния и колокольчик — меньше (по просьбе автора) */
-          .ng-topbar > [aria-label="Поиск"] svg, .ng-topbar > [aria-label="Настройки"] svg { width: 22px !important; height: 22px !important; }
-          .ng-topbar > [aria-label="Быстрые действия"] svg, .ng-topbar > div > [aria-label^="Уведомления"] svg { width: 15px !important; height: 15px !important; }
+
 
            /* Поле ввода: 16px, чтобы iPhone не приближал страницу при вводе */
           .ng-assistant-inner input {

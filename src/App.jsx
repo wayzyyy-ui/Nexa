@@ -48,6 +48,7 @@ import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
 import { ScreenAbout } from "./screens/About.jsx";
 import { ScreenSecurity } from "./screens/Security.jsx";
+import { ScreenDevices } from "./screens/Devices.jsx";
 import { MemorySettings } from "./ui/memory.jsx";
 import { memoryKey, memoryOnKey, loadMemory, loadMemoryOn, MEMORY_ROWS, MEMORY_MAX, checkMemoryText, findSameMemory, isStyleMemory } from "./lib/memory.js";
 import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
@@ -838,6 +839,7 @@ export default function NexaApp() {
     [{ id: `a${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), kind, title, text }, ...list].slice(0, ACTIVITY_MAX));
   const [activityOpen, setActivityOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false); // экран «О системе»
+  const [devicesOpen, setDevicesOpen] = useState(false); // экран «Все устройства»
   // То же событие ещё раз (повтор сигнала, вторая вкладка этого браузера) — в ленту не пишем
   const logActivityOnce = (key, ...args) => claimNote(`act:${key}`).then((ok) => ok && logActivity(...args));
   onTextActivity.current = (item) => logActivityOnce(`text:${item.id}`, "text", `Получен текст от «${realNames[item.from_device] || item.from_name || "Устройство"}»`, safeUrl(item.text) ? "Ссылка" : "Сообщение");
@@ -1593,7 +1595,7 @@ export default function NexaApp() {
   useSmoothScroll(tab !== "assistant");
 
   // Переход по меню закрывает и экран устройства
-  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setTab(t); };
+  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setTab(t); };
   // «Подробнее о системе» — с любого экрана (ассистент — через Главную, как «Активность»)
   const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setSecurityOpen(false); setAboutOpen(true); };
   // Центр безопасности открывается из Настроек поверх раздела (как «О системе»)
@@ -1605,9 +1607,12 @@ export default function NexaApp() {
         right={<Toggle on={!!locateAllow.allow} onClick={toggleLocateAllow} label="Показывать, где это устройство" />} />
     </SettingsGroup>
   ) : null;
+  const openAllDevices = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(true); scrollTopNow(); };
   const openSecurity = () => { setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(true); scrollTopNow(); };
   // Открыли устройство, «Активность» или «О системе» (например, из уведомления) — центр закрывается
   useEffect(() => { if (openDeviceId || activityOpen || aboutOpen) setSecurityOpen(false); }, [openDeviceId, activityOpen, aboutOpen]);
+  // «Все устройства» закрывается, когда открыли что-то другое поверх раздела (кроме экрана устройства — с него «Назад» вернёт к списку)
+  useEffect(() => { if (activityOpen || aboutOpen || securityOpen) setDevicesOpen(false); }, [activityOpen, aboutOpen, securityOpen]);
   // Переход по меню (боковое на компьютере, нижняя панель на телефоне): новый раздел
   // въезжает с той стороны, где он стоит в меню — как при свайпе (тот же body[data-swipe])
   /* Плавная смена экрана без рывков. Браузер делает снимок старого экрана и держит его,
@@ -1641,7 +1646,7 @@ export default function NexaApp() {
     return a >= 0 && b >= 0 && a !== b ? (b > a ? "next" : "prev") : null;
   };
   const navTo = (t) => {
-    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen && !securityOpen) return;
+    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen && !securityOpen && !devicesOpen) return;
     navTransition(navDir(t), () => goTab(t));
   };
   // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
@@ -1653,7 +1658,7 @@ export default function NexaApp() {
      свайп влево (по самой шторке — её собственный жест, по затемнению — здесь) */
   const [swipeDir, setSwipeDir] = useState(null); // откуда въезжает новый экран: "next" | "prev"
   useTabSwipe(
-    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen }),
+    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen }),
     (dir) => {
       if (tab === "assistant") {
         if (document.querySelector(".nx-hist-drawer.is-open")) {
@@ -1744,7 +1749,7 @@ export default function NexaApp() {
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
-  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, aboutOpen, securityOpen, locked: !!locked };
+  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, aboutOpen, securityOpen, devicesOpen, locked: !!locked };
   useEffect(() => {
     if (!isNative) return;
     const sub = CapApp.addListener("backButton", () => {
@@ -1762,7 +1767,7 @@ export default function NexaApp() {
         target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         return;
       }
-      const { openDeviceId: dev, tab: cur, activityOpen: act, aboutOpen: about, securityOpen: sec, locked: lk } = backState.current;
+      const { openDeviceId: dev, tab: cur, activityOpen: act, aboutOpen: about, securityOpen: sec, devicesOpen: devs, locked: lk } = backState.current;
       // Экран NEXA заблокирован (демонстрация) — «Назад» только сворачивает
       if (lk) { CapApp.minimizeApp(); return; }
       // Открыта «Активность» — назад к Главной
@@ -1771,6 +1776,7 @@ export default function NexaApp() {
       if (sec) { setSecurityOpen(false); return; }
       // 2) Открыт экран устройства — назад к списку
       if (dev) { setOpenDeviceId(null); return; }
+      if (devs) { setDevicesOpen(false); return; }
       // 3) Был другой раздел — возвращаемся в него
       const prev = tabHistory.current.pop();
       if (prev && prev !== cur) { goingBack.current = true; setFilesFilter(null); setFilesDevice(null); setTab(prev); return; }
@@ -2231,6 +2237,8 @@ export default function NexaApp() {
             <style>{APP_CSS}</style>
       {/* Фон за содержимым: на «Настройках» — сетка-чертёж, на остальных — грани складки */}
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
+      {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
+      {tab === "home" && !openDevice && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}
@@ -2266,11 +2274,16 @@ export default function NexaApp() {
         {/* На экране "Ассистент" своя правая панель вместо обычной
             строки времени/поиска/профиля, поэтому TopBar тут не рисуем */}
         {tab !== "assistant" && (
-          <TopBar>
+          <TopBar tab={tab}>
+            {/* Компьютер (макет 2026-10): поиск таблеткой, часы, уведомления, быстрые действия, профиль.
+                Телефон: поиск значком (таблетка спрятана стилями); на мобильной Главной строки нет — там своя шапка */}
+            <button type="button" className="nx-ghost-btn nx-top-search" onClick={() => openSearch()} aria-label="Поиск">
+              {Icon.search({ c: C.text, s: 16 })} Поиск
+            </button>
             {tab === "settings" ? null : <TimeDate />}
-            <QuickBtn />
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
-            <IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" />
+            <QuickBtn />
+            <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
             <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
           </TopBar>
         )}
@@ -2292,6 +2305,11 @@ export default function NexaApp() {
         locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog} memoryInfo={{ on: memoryOn, count: memory.length }}
         onOpenMemory={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-memory-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }}
         onOpenFlow={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-flow-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }} />
+    </div>
+  ) : devicesOpen && !openDevice ? (
+    <div key="devices" className="ng-screen-anim">
+      <ScreenDevices devices={devices} received={received} findState={findState} onOpenDevice={showDevice} onFind={findDevice}
+        onAddDevice={onAddDevice} onBack={() => setDevicesOpen(false)} />
     </div>
   ) : aboutOpen ? (
     <div key="about" className="ng-screen-anim">
@@ -2374,7 +2392,10 @@ export default function NexaApp() {
           onOpenDevice={showDevice}
           onAddDevice={onAddDevice}
           onAbout={openAbout}
-          netState={!online ? "offline" : !uid ? "local" : syncLoading || syncPending || syncError ? "pending" : "ok"}
+          onAllDevices={openAllDevices}
+          onSearch={() => openSearch()}
+          onProfile={() => setTab("settings")}
+          bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
           activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
           findState={findState}
           onFind={findDevice}
@@ -2422,7 +2443,7 @@ export default function NexaApp() {
 </div>
         {/* Нижняя строка: слева логотип, справа ссылка "Подробнее о системе".
     justifyContent: "space-between" разводит их по разным краям строки. */}
-    {tab !== "assistant" && (
+    {tab !== "assistant" && !(tab === "home" && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && !openDevice) && (
     <div className="ng-footer" style={{
     padding: "0 40px 30px", width: "100%", maxWidth: 1440, margin: "0 auto",
     boxSizing: "border-box",
@@ -2430,11 +2451,6 @@ export default function NexaApp() {
   }}>
     <Logo small />
     <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-      {tab === "home" && !aboutOpen && !activityOpen && !securityOpen && !openDevice && (
-        <button type="button" className="nx-link-btn nx-about-link" onClick={openAbout} style={{ ...btnReset, fontSize: 13, color: C.mutedSoft }}>
-          Подробнее о системе →
-        </button>
-      )}
       <div style={{ fontSize: 11, color: C.mutedSoft, opacity: 0.6, fontFamily: "monospace" }}>
         v{VERSION}
       </div>

@@ -153,7 +153,7 @@ export function TimeDate() {
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
-    }, 1000);
+    }, 10000); // минуты без секунд — раз в 10 с достаточно
 
     return () => clearInterval(timer);
   }, []);
@@ -162,23 +162,22 @@ export function TimeDate() {
     timeZone: "Europe/Moscow",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
     hour12: false,
   }).format(now);
 
   const date = new Intl.DateTimeFormat("ru-RU", {
     timeZone: "Europe/Moscow",
-    weekday: "long",
+    weekday: "short",
     day: "numeric",
-    month: "long",
-  }).format(now);
+    month: "short",
+  }).format(now).replace(/^./, (c) => c.toUpperCase()); // «Пт, 12 сент.» (макет 2026-10)
 
  return (
   <div className="ng-timedate" style={{ textAlign: "right" }}>
     <div
       style={{
-        fontSize: 14,
-        fontWeight: 600,
+        fontSize: 20,
+        fontWeight: 400,
         color: C.text,
       }}
     >
@@ -187,9 +186,8 @@ export function TimeDate() {
 
     <div
       style={{
-        fontSize: 12,
-        color: C.muted,
-        textTransform: "capitalize",
+        fontSize: 17,
+        color: C.text,
       }}
     >
       {date}

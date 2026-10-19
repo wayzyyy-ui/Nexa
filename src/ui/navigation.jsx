@@ -58,19 +58,20 @@ export function MobileTabBar({ active, onChange }) {
   return (
     <div
       className="ng-mobile-tabbar"
-      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 200, display: "none" }}
+      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 200, display: "none", padding: "0 16px calc(var(--sab) + 10px)", pointerEvents: "none" }}
     >
-      {/* Сама панель: во всю ширину, прижата к низу, скруглены только верхние углы.
-          Снизу отступ под системную полоску телефона */}
+      {/* Сама панель (макет 2026-10): плавающая «таблетка» с отступами от краёв экрана,
+          над системной полоской телефона */}
       <div style={{
-        background: C.panel,
+        background: `color-mix(in srgb, ${C.panel} 92%, transparent)`,
         border: `1px solid ${C.borderStrong}`,
-        borderBottom: "none",
-        borderRadius: "24px 24px 0 0",
-        padding: "0 12px var(--sab)",
+        borderRadius: 999,
+        padding: "0 8px",
         display: "flex",
+        pointerEvents: "auto",
+        WebkitBackdropFilter: "blur(14px)", backdropFilter: "blur(14px)",
       }}>
-        <div style={{ position: "relative", flex: 1, display: "flex", height: 68 }}>
+        <div style={{ position: "relative", flex: 1, display: "flex", height: 62 }}>
 
           {/* Движущаяся подсветка: один элемент, который едет к нужной ячейке */}
           <div className="nx-tab-move" style={{
@@ -91,9 +92,9 @@ export function MobileTabBar({ active, onChange }) {
           }}>
             <div style={{
               width: 52,
-              height: 42,
+              height: 44,
               boxSizing: "border-box",
-              borderRadius: 18,
+              borderRadius: 999,
               background: C.chip,
               // На Главной рамка подсветки мятная
               border: `1px solid ${shownIndex === homeIndex ? `color-mix(in srgb, ${C.mint} 55%, transparent)` : C.borderStrong}`,
@@ -194,9 +195,9 @@ export function Sidebar({ active, onChange }) {
 // передаём внутрь при вызове компонента (см. использование в App).
 // Лежит поверх экрана в правом верхнем углу и не занимает свою полосу,
 // поэтому заголовки всех экранов стоят на одной высоте с часами.
-export function TopBar({ children }) {
+export function TopBar({ children, tab }) {
   return (
-    <div className="ng-topbar" style={{
+    <div className="ng-topbar" data-tab={tab} style={{
       position: "absolute", top: 0, right: 0, zIndex: 50,
       display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
     }}>

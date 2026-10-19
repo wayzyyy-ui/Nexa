@@ -1,9 +1,10 @@
-// Главная: устройства, ассистент, активность; линии к складке (компьютер)
+// Главная (макет 2026-10, второй вариант): устройства, складка, ассистент, активность
 import { useRef, useState, useLayoutEffect, useEffect } from "react";
 import { C } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { deviceStatus } from "../lib/devices.js";
-import { EmptyState, StateButton, Dot, btnReset, Logo } from "../ui/base.jsx";
+import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.jsx";
+import { QuickBtn } from "../ui/QuickPanel.jsx";
 import { HomeFold } from "../ui/backdrop.jsx";
 import { FindChip } from "../ui/overlays.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
@@ -217,274 +218,204 @@ export function LinkPulse({ p, onDone }) {
 // loading — устройства аккаунта ещё грузятся из облака
 // findState / onFind — «Найти» у реальных устройств (подключённых по коду)
 // activityBlock — компактная лента «Активность» (только у вошедшего)
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, netState = "ok" }) {
-  // Подпись под заголовком — честная: «Синхронизировано» только когда облако всё подтвердило
-  const tagline = { offline: "Нет сети. Работает на этом устройстве. Рядом с вами", pending: "Сохраняем изменения. Работает. Рядом с вами", ok: "Синхронизировано. Работает. Рядом с вами", local: "Работает на этом устройстве. Рядом с вами" }[netState];
-  // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
-  const onlineCount = devices.filter((d) => d.online).length;
-  // Подпись под устройством: статус и «это устройство»
-  const statusOf = (d) => [deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ");
-  // «Найти» — только у реального устройства в сети и не у себя
-  const findable = (d) => d.real && d.online && !d.isSelf && onFind;
+/* Плашка устройства (компьютер и экран «Все устройства»): «таблетка» во всю ширину,
+   слева рисунок устройства, справа точка статуса; заливка цветом статуса */
+export function DeviceRow({ d, received, findState, onOpen, onFind }) {
+  const findable = d.real && d.online && !d.isSelf && onFind;
+  return (
+    <div style={{ position: "relative" }}>
+      <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-row" data-online={d.online || d.isSelf ? "1" : "0"} onClick={() => onOpen(d.id)}
+        style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
+        <span className="nx-dev-row-icon" aria-hidden="true">{deviceArt(d, 34)}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span className="nx-dev-row-name">{d.name}</span>
+          {received?.[d.id]
+            ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
+            : <span className="nx-dev-row-sub">{[deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ")}</span>}
+        </span>
+        {findable && <span style={{ width: 108, flexShrink: 0 }} />}
+        <span className="nx-status-dot" style={{ color: d.online || d.isSelf ? C.green : C.red, background: d.online || d.isSelf ? C.green : C.red }} />
+      </button>
+      {findable && (
+        <FindChip state={findState?.[d.device_id]} onClick={() => onFind(d)}
+          style={{ position: "absolute", right: 56, top: "50%", transform: "translateY(-50%)" }} />
+      )}
+    </div>
+  );
+}
 
-  // Пустой список: добавить новое или вернуть исходные.
-  // Пока грузим из облака — вместо «Устройств пока нет» заготовка строк
+// «Добавить устройство» — пунктирная таблетка
+function AddDeviceRow({ onClick }) {
+  return (
+    <button type="button" className="nx-row-btn nx-dev-row is-add" onClick={onClick} style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
+      <span className="nx-dev-row-icon" aria-hidden="true">{Icon.plus({ c: C.mint, s: 30 })}</span>
+      <span className="nx-dev-row-name">Добавить устройство</span>
+    </button>
+  );
+}
+
+/* Складка Главной (компьютер): объёмный рендер из макета public/art/home-fold.webp.
+   Пока файла нет или он не загрузился — наша анимированная складка */
+function HomeFoldArt({ count }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <div data-link-hub style={{ transform: "scale(1.3)" }}><HomeFold size={300} count={count} /></div>;
+  return <img data-link-hub className="nx-home-fold-art" src="/art/home-fold.webp" alt="" draggable={false} onError={() => setFailed(true)} />;
+}
+
+// Сколько устройств видно на Главной; остальные — «Все устройства»
+const HOME_DESK_MAX = 4, HOME_MOB_MAX = 6;
+
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, onProfile }) {
+  // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
+  const onlineCount = devices.filter((d) => d.online || d.isSelf).length;
+  const deskList = devices.slice(0, HOME_DESK_MAX);
+  const mobList = devices.slice(0, HOME_MOB_MAX);
+
+  // Пустой список. Пока грузим из облака — вместо «Устройств пока нет» заготовка строк
   const empty = devices.length === 0 && (loading ? <DevicesSkeleton /> : (
     <EmptyState
       compact
       title="Устройств пока нет"
-      text="Откройте NEXA на другом устройстве и подключите его по коду или QR — оно появится здесь"
+      text="Войдите в ту же почту на другом устройстве — оно появится здесь само"
       action={
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>
-            Добавить устройство
-          </StateButton>
-        </div>
+        <StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>
       }
     />
   ));
 
+  // Ассистент — крупная таблетка (на компьютере со свечением по макету)
+  const aiPill = (cls) => (
+    <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill ${cls || ""}`} onClick={() => onNavigate("assistant")}
+      style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
+      <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.mint, s: 22 })}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className="ng-display nx-ai-pill-title">ИИ — Ассистент</span>
+        <span style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
+      </span>
+      {Icon.chevron({ c: C.text, s: 20 })}
+    </button>
+  );
+
   return (
     <div className="ng-screen ng-home" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
 
-      {/* ══════════ ДЕСКТОПНАЯ ВЕРСИЯ ══════════ */}
-      {/* Высота — почти на всё окно (минус футер и отступы), а содержимое
-          стоит по центру по вертикали, чтобы снизу не было пустоты */}
+      {/* ══════════ КОМПЬЮТЕР ══════════ */}
       <div className="ng-home-desktop">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 40, position: "relative" }}>
-          {/* Связи рисуются первыми — складка и карточки лежат поверх линий */}
-          <DeviceLinks devices={devices} received={received} />
-          {/* Левая колонка: заголовок + список. Список тянется до низа ряда —
-              его нижний край совпадает с карточкой ассистента справа */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{
-              fontSize: 30, letterSpacing: "0.2em",
-              color: C.text, marginBottom: 14,
-            }}>
-              ВАША ЭКОСИСТЕМА
-            </div>
-            <div className="ng-display" style={{ fontSize: 30, fontWeight: 600, lineHeight: 1 }}>
-              Все устройства в одной системе
-            </div>
-            <div style={{ fontSize: 14, color: C.muted, marginTop: 14, marginBottom: 30 }}>
-              {tagline}
-            </div>
-            {/* В приложении на планшете: баннер обновления над списком устройств */}
-            {update && <div style={{ marginTop: -12, marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
+        {/* Знак и NEXA, под ними «Ваша экосистема». Справа сверху — общая верхняя строка */}
+        <div className="nx-home-brand-desk">
+          <span style={{ display: "flex", alignItems: "center", gap: 36 }} role="img" aria-label="NEXA">
+            <LogoMark s={58} />
+            <Logo bare h={40} />
+          </span>
+          <div className="nx-home-eco">Ваша экосистема</div>
+        </div>
+        {update && <div style={{ marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
 
-            {/* Карточка «Устройства»: у каждого устройства своя плашка */}
-            <div className="nx-stagger nx-home-devices" style={{ flex: 1, border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "4px 18px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{
-                display: "flex", justifyContent: "space-between",
-                alignItems: "center", padding: "14px 0 6px",
-              }}>
-                <span style={{ fontSize: 16, fontWeight: 500 }}>Устройства</span>
-                <span title="В сети" style={{
-                  display: "flex", alignItems: "center",
-                  gap: 6, fontSize: 13, color: C.muted,
-                }}>
-                  {onlineCount} <Dot color={C.green} />
-                </span>
-              </div>
+        <div className="nx-home-grid">
+          {/* Мои устройства */}
+          <section className="nx-home-card nx-home-devices" aria-label="Мои устройства">
+            <div className="nx-home-card-title">Мои устройства</div>
+            <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {empty}
-              {/* Каждая строка — кнопка: открывает окно устройства */}
-              {devices.map((d) => (
-                // Обёртка: «Найти» — отдельная кнопка рядом, а не внутри строки-кнопки
-                <div key={d.id} style={{ position: "relative" }}>
-                  <button data-link-id={d.id} type="button" className="nx-row-btn nx-dev-plate" onClick={() => onOpenDevice(d.id)}
-                    style={{ ...btnReset, display: "flex", alignItems: "stretch", width: "100%", textAlign: "left", color: C.text }}>
-                    {/* Ячейка значка, отделённая тонкой линией */}
-                    <span className="nx-dev-plate-icon">{d.icon({ c: C.text, s: 24 })}</span>
-                    <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, padding: "12px 18px" }}>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.name}</span>
-                        <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statusOf(d)}</span>
-                      </span>
-                      {received[d.id] && <ReceivedTag name={received[d.id].name} />}
-                      {findable(d) && <span style={{ width: 108, flexShrink: 0 }} />}
-                      <Dot color={d.online ? C.green : C.red} />
-                    </span>
-                  </button>
-                  {findable(d) && (
-                    <FindChip state={findState[d.device_id]} onClick={() => onFind(d)}
-                      style={{ position: "absolute", right: 36, top: "50%", transform: "translateY(-50%)" }} />
-                  )}
-                </div>
-              ))}
-              {/* Последняя строка — "Добавить устройство" */}
-              {devices.length > 0 && (
-                <button type="button" className="nx-row-btn nx-dev-plate is-add" onClick={onAddDevice}
-                  style={{ ...btnReset, display: "flex", alignItems: "stretch", width: "100%", textAlign: "left", color: C.text }}>
-                  <span className="nx-dev-plate-icon">{Icon.plus({ c: C.mint, s: 22 })}</span>
-                  <span style={{ flex: 1, minWidth: 0, padding: "12px 18px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <span style={{ fontSize: 16 }}>Добавить устройство</span>
-                    <span style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Смартфон, планшет, часы и другие</span>
-                  </span>
-                </button>
-              )}
+              {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} findState={findState} onOpen={onOpenDevice} onFind={onFind} />)}
+              {devices.length > 0 && <AddDeviceRow onClick={onAddDevice} />}
             </div>
+            {devices.length > 0 && (
+              <button type="button" className="nx-ghost-btn nx-home-all" onClick={onAllDevices}>
+                {devices.length > HOME_DESK_MAX ? `Все устройства · ${devices.length}` : "Все устройства"}
+              </button>
+            )}
+          </section>
+          {/* Справа: складка и ассистент */}
+          <div className="nx-home-side">
+            <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
+            {aiPill("nx-ai-glow")}
           </div>
+        </div>
 
-          {/* Правая колонка: складка сверху, AI-карточка снизу.
-              Отступ сверху — чтобы складка не залезала под часы */}
-          <div style={{ display: "flex", flexDirection: "column", paddingTop: 48 }}>
-            {/* Складка крупнее за счёт scale: место в раскладке остаётся
-                прежним (340px), поэтому остальные блоки не сдвигаются.
-                Края картинки прозрачные, так что на соседей она не «наезжает» */}
-            <div style={{ display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-              <div data-link-hub style={{ transform: "scale(1.4)", transformOrigin: "center" }}>
-                <HomeFold size={340} count={devices.length} />
-              </div>
-            </div>
-            <button type="button" className="nx-row-btn"
-              onClick={() => onNavigate("assistant")}
-              style={{
-                ...btnReset, width: "100%", textAlign: "left", color: C.text, marginTop: "auto",
-                border: `1px solid ${C.borderStrong}`, borderRadius: 18,
-                padding: "16px 18px",
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                background: `linear-gradient(90deg, color-mix(in srgb, ${C.blueDark} 33%, transparent), color-mix(in srgb, ${C.mintDark} 33%, transparent))`,
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: "50%",
-                  background: C.mintDark,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  {Icon.sparkle({ c: C.mint, s: 18 })}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 500 }}>ИИ — Ассистент</div>
-                  <div style={{ fontSize: 13, color: C.muted }}>Чем могу помочь?</div>
-                </div>
-              </div>
-              <div style={{
-                width: 34, height: 34, borderRadius: "50%",
-                border: `1px solid ${C.borderSoft}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                {Icon.chevron({ c: C.text })}
-              </div>
+        {activityBlock && <div className="nx-home-act">{activityBlock}</div>}
+        {onAbout && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
+            <button type="button" className="nx-link-btn nx-about-link" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
+              <span aria-hidden="true">→</span> Подробнее о системе
             </button>
           </div>
-        </div>
-        {activityBlock && <div style={{ marginTop: 36 }}>{activityBlock}</div>}
+        )}
       </div>
 
-      {/* ══════════ МОБИЛЬНАЯ ВЕРСИЯ (макет 2026-10: таблетки, знак NEXA) ══════════ */}
+      {/* ══════════ ТЕЛЕФОН ══════════ */}
       <div className="ng-home-mobile">
-        {/* Знак + слово NEXA, под ним «Ваша экосистема». Значки справа — общая верхняя строка */}
-        <div className="nx-home-brand" style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0 26px" }}>
-          <div style={{ minWidth: 0 }}>
-            <Logo small bare />
-            <div style={{ fontSize: 10, letterSpacing: "0.24em", color: C.muted, marginTop: 5, textTransform: "uppercase" }}>
-              Ваша экосистема
-            </div>
-          </div>
+        {/* Шапка: профиль слева, NEXA по центру, уведомления и быстрые действия справа */}
+        <div className="nx-home-head">
+          <button type="button" className="nx-icon-btn" onClick={onProfile} aria-label="Настройки" style={{ ...btnReset, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {Icon.user({ c: C.text, s: 22 })}
+          </button>
+          <span style={{ justifySelf: "center" }}><Logo bare h={22} /></span>
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+            {bell}
+            <QuickBtn />
+          </span>
         </div>
+        {/* Поиск — широкая таблетка */}
+        <button type="button" className="nx-row-btn nx-home-search" onClick={() => onSearch?.()}>
+          {Icon.search({ c: C.text, s: 15 })} Поиск
+        </button>
 
-        {/* Заголовок, под ним тонкая линия; справа — складка */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ng-display nx-home-hero" style={{ fontSize: 24, fontWeight: 500, lineHeight: 1.25 }}>
-              Все устройства в одной системе
-            </div>
-            <div aria-hidden="true" style={{ width: 108, height: 1, background: C.lineBright, margin: "14px 0 10px" }} />
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>{tagline}</div>
-          </div>
-          <div style={{ flexShrink: 0, margin: "-30px -14px 0 -10px" }}>
-            <HomeFold size={160} count={devices.length} />
-          </div>
-        </div>
-
-        {/* В приложении: вышла новая версия — предлагаем обновиться */}
         {update && <div style={{ marginTop: 18 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
-        {/* Предложение установить приложение (только телефон в браузере) */}
         <InstallBanner onHowTo={() => {
           onNavigate("settings");
           setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
         }} />
 
-        {/* Мои устройства: карточки-«таблетки» по две в ряд */}
-        <div style={{ marginTop: 26 }}>
+        {/* Мои устройства: таблетки по две в ряд */}
+        <div style={{ marginTop: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div className="ng-display" style={{ fontSize: 20, fontWeight: 500 }}>Мои устройства</div>
-            <div title="В сети" style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 16, fontWeight: 600 }}>
+            <div className="ng-display" style={{ fontSize: 22, fontWeight: 500 }}>Мои устройства</div>
+            <button type="button" className="nx-row-btn" title="В сети · все устройства" onClick={onAllDevices}
+              style={{ ...btnReset, display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 18, fontWeight: 600 }}>
               <span>{onlineCount}</span>
               <span className="nx-status-dot" style={{ color: C.green, background: C.green }} />
-            </div>
+            </button>
           </div>
           {empty && <div className="nx-pill-card" style={{ borderRadius: 32 }}>{empty}</div>}
-          <div className="nx-stagger" style={{
-            display: "grid",
-            // minmax(0, 1fr) — длинное название не раздвигает колонку
-            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: 12, position: "relative",
-          }}>
-            {devices.map((d) => (
+          <div className="nx-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, position: "relative" }}>
+            {mobList.map((d) => (
               <div key={d.id} style={{ position: "relative", minWidth: 0, display: "flex" }}>
-                <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-pill" data-online={d.online ? "1" : "0"}
+                <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-pill" data-online={d.online || d.isSelf ? "1" : "0"}
                   onClick={() => onOpenDevice(d.id)} style={{ ...btnReset, flex: 1, minWidth: 0, textAlign: "left", color: C.text }}>
-                  <span className="nx-dev-pill-icon" aria-hidden="true">{deviceArt(d, 26)}</span>
+                  <span className="nx-dev-pill-icon" aria-hidden="true">{deviceArt(d, 28)}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 15, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
-                    {/* Только что получен файл — отметка вместо статуса */}
                     {received[d.id]
                       ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
-                      : <span style={{ display: "block", fontSize: 11, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{statusOf(d)}</span>}
+                      : <span style={{ display: "block", fontSize: 11, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ")}</span>}
                   </span>
-                  <span className="nx-status-dot" style={{ color: d.online ? C.green : C.red, background: d.online ? C.green : C.red }} />
+                  <span className="nx-status-dot" style={{ color: d.online || d.isSelf ? C.green : C.red, background: d.online || d.isSelf ? C.green : C.red }} />
                 </button>
-                {findable(d) && (
-                  <FindChip compact state={findState[d.device_id]} onClick={() => onFind(d)}
-                    style={{ position: "absolute", top: -8, right: 14 }} />
+                {d.real && d.online && !d.isSelf && onFind && (
+                  <FindChip compact state={findState[d.device_id]} onClick={() => onFind(d)} style={{ position: "absolute", top: -8, right: 14 }} />
                 )}
               </div>
             ))}
-            {/* Последняя — «Добавить устройство»: пунктирная таблетка, мятный плюс */}
             {devices.length > 0 && (
               <button type="button" className="nx-row-btn nx-dev-pill is-add" onClick={onAddDevice}
-                style={{ ...btnReset, textAlign: "left", color: C.text, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2 }}>
-                {Icon.plus({ c: C.mint, s: 18 })}
-                <span style={{ fontSize: 14, lineHeight: 1.25 }}>Добавить устройство</span>
+                style={{ ...btnReset, textAlign: "left", color: C.text, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 4, minHeight: 88 }}>
+                {Icon.plus({ c: C.mint, s: 20 })}
+                <span style={{ fontSize: 15, lineHeight: 1.2 }}>Добавить устройство</span>
               </button>
             )}
           </div>
+          {devices.length > HOME_MOB_MAX && (
+            <button type="button" className="nx-row-btn nx-pill-card nx-home-more" onClick={onAllDevices}>Все устройства · {devices.length}</button>
+          )}
         </div>
 
-        {/* Ассистент — крупная таблетка */}
-        <button type="button" className="nx-row-btn nx-pill-card nx-ai-pill" onClick={() => onNavigate("assistant")}
-          style={{ ...btnReset, width: "100%", marginTop: 28, textAlign: "left", color: C.text }}>
-          <span aria-hidden="true" style={{
-            width: 46, height: 46, borderRadius: "50%", flexShrink: 0,
-            background: C.mintDark,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            {Icon.sparkle({ c: C.mint, s: 22 })}
-          </span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span className="ng-display" style={{ display: "block", fontSize: 20, fontWeight: 500, lineHeight: 1.2 }}>ИИ — Ассистент</span>
-            <span style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
-          </span>
-          {Icon.chevron({ c: C.text, s: 20 })}
-        </button>
-        {/* Активность — крупная карточка с теми же краями */}
+        <div style={{ marginTop: 24 }}>{aiPill()}</div>
         {activityBlock && <div className="nx-act-pill" style={{ marginTop: 18 }}>{activityBlock}</div>}
-        {/* О системе: что такое NEXA, что умеет, обновления и планы */}
         {onAbout && (
-          <button type="button" className="nx-row-btn nx-pill-card" onClick={onAbout}
-            style={{ ...btnReset, width: "100%", marginTop: 18, padding: "16px 22px", boxSizing: "border-box", display: "flex", alignItems: "center", gap: 14, color: C.text, textAlign: "left" }}>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 16, fontWeight: 500 }}>О системе</span>
-              <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 3 }}>Что умеет NEXA, обновления и планы</span>
-            </span>
-            {Icon.chevron({ c: C.text, s: 18 })}
-          </button>
+          <button type="button" className="nx-row-btn nx-pill-card nx-home-more" onClick={onAbout}>О системе</button>
         )}
       </div>
-
     </div>
   );
 }
