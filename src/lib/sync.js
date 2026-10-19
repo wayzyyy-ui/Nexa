@@ -304,6 +304,7 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
   latest.current = value;
   const ready = useRef(false);        // сводка с облаком прошла — можно отправлять изменения
   const timer = useRef(null);
+  const pendingSend = useRef(null); // отправка, которая ждёт паузы SAVE_DELAY_MS (её можно запустить сразу)
   const retryTimer = useRef(null);
   const attempts = useRef(0);         // сколько повторов подряд уже было
   const lastStatus = useRef({});
@@ -431,7 +432,8 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
     report();
     if (!ready.current) return;
     clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
+    const send = async () => {
+      pendingSend.current = null;
       const list = toList(latest.current);
       const m0 = readMeta(uid, table);
       // Ждёт отправки: версия не совпадает с подтверждённой облаком; удаления — из заметок
@@ -455,12 +457,28 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
       } catch (e) {
         failed(e);
       }
-    }, SAVE_DELAY_MS);
+    };
+    pendingSend.current = send;
+    timer.current = setTimeout(send, SAVE_DELAY_MS);
   }, [value, uid]);
+
+  // NEXA уходит в фон (свернули, заблокировали экран, закрывают): не ждём паузу —
+  // Android вскоре «замораживает» приложение, и отложенная отправка ушла бы только при следующем открытии
+  useEffect(() => {
+    const now = () => {
+      if (!pendingSend.current) return;
+      clearTimeout(timer.current);
+      pendingSend.current();
+    };
+    const hidden = () => { if (document.visibilityState === "hidden") now(); };
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("pagehide", now);
+    return () => { document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", now); };
+  }, []);
 
   // Ушли из аккаунта — неотправленное не теряется: оно в локальном списке,
   // при следующем входе сводка отправит его
-  useEffect(() => () => { clearTimeout(timer.current); clearTimeout(retryTimer.current); }, [uid]);
+  useEffect(() => () => { clearTimeout(timer.current); pendingSend.current = null; clearTimeout(retryTimer.current); }, [uid]);
 
   return { retry: () => { attempts.current = 0; setRetry((n) => n + 1); } };
 }

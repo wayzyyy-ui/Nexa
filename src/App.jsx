@@ -13,10 +13,11 @@ import { useCloudList, CHAT_ROWS, DEVICE_ROWS, SCHEDULE_ROWS, newId, deleteAllMi
 import { useThisDeviceSys, sameSys, thisDeviceKind } from "./lib/deviceInfo.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, PAIR_CODE_RE, cleanSys, isHw } from "./lib/realtime.js";
+import { useReturnToApp } from "./lib/lifecycle.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
 import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
 // Свои модули: lib — логика без интерфейса, ui — общие элементы, screens — экраны
-import { useSharedState } from "./lib/shared.js";
+import { useSharedState, TAB_ID } from "./lib/shared.js";
 import { C, fontBody, PHONE_MQ } from "./ui/theme.js";
 import { Icon } from "./ui/icons.jsx";
 import { readManualCity, TODAY } from "./lib/weather.js";
@@ -1413,7 +1414,7 @@ export default function NexaApp() {
     // Не в сети — только push; в сети — канал связи, а приложению ещё и push (вдруг экран выключен)
     if (!d.online || canPush(d)) {
       pushFind(d, ringId).then((r) => {
-        if (r.sent) { if (!d.online) showToast({ title: `«${d.name}»: отправили уведомление`, text: "Телефон зазвонит, даже если NEXA на нём закрыта" }); return; }
+        if (r.sent) { if (!d.online) showToast({ title: `«${d.name}»: отправили уведомление`, text: "Телефон зазвонит, даже если NEXA на нём закрыта, — если на нём разрешены уведомления NEXA и приложение не остановлено в настройках" }); return; }
         if (d.online) return; // в сети — сигнал и так пришёл по каналу
         setFindState((st) => ({ ...st, [d.device_id]: "timeout" })); clearFindLater(d.device_id);
         showToast({ title: "Не получилось позвать устройство", text: {
@@ -1878,7 +1879,8 @@ export default function NexaApp() {
     const done = (extra) => {
       setUploads((list) => list.filter((u) => u.id !== upId));
       delete uploadCtl.current[upId];
-      setFileStore((s) => ({ ...s, added: [...s.added, { ...meta, ...extra, updatedAt: meta.addedAt }] }));
+      // Уже есть (догрузила очередь в другой вкладке) — не дублируем
+      setFileStore((s) => (s.added.some((f) => f.id === id) ? s : { ...s, added: [...s.added, { ...meta, ...extra, updatedAt: meta.addedAt }] }));
       showToast({ title: "Файл добавлен", text: `${name} → ${folderName(folders, folder)}` });
     };
     setUploads((list) => [...list, { id: upId, fileId: id, name, folder, progress: 0, status: "uploading", file }]);
@@ -1898,15 +1900,20 @@ export default function NexaApp() {
       loadQueueRows();
     };
     if (navigator.onLine === false) { toQueue(); return; }
+    // Страховка на время загрузки: копия в очереди (status "active" этой вкладки — очередь её не трогает).
+    // Android выгрузил NEXA посреди загрузки — при следующем открытии файл догрузится из очереди
+    // (через ACTIVE_STALE_MS; тот же id — без дублей). Не сохранилась копия — загружаем всё равно
+    const backup = enqueueUpload(uid, { ...meta, attempts: 0, status: "active", owner: TAB_ID, nextAt: Date.now() + ACTIVE_STALE_MS }, file).catch(() => false);
+    const dropBackup = () => backup.then(() => dequeueUpload(uid, id)).catch(() => {});
     const ctl = uploadToCloud({ uid, id, file, onProgress: (pr) => patch({ progress: pr }) });
     uploadCtl.current[upId] = ctl;
     ctl.promise
-      .then(({ path }) => { rememberLocal(uid, id, file); done({ path }); })
+      .then(({ path }) => { rememberLocal(uid, id, file); done({ path }); dropBackup(); })
       .catch((err) => {
         delete uploadCtl.current[upId];
-        if (err?.kind === "abort") setUploads((list) => list.filter((u) => u.id !== upId));
-        else if (err?.kind === "network") toQueue(); // связь оборвалась посреди загрузки
-        else fail(err?.text || "Не загрузилось — попробуйте ещё раз");
+        if (err?.kind === "abort") { setUploads((list) => list.filter((u) => u.id !== upId)); dropBackup(); }
+        else if (err?.kind === "network") backup.then(toQueue); // связь оборвалась посреди загрузки
+        else { fail(err?.text || "Не загрузилось — попробуйте ещё раз"); dropBackup(); }
       });
   };
 
@@ -1916,11 +1923,14 @@ export default function NexaApp() {
      Повторы: 3 раза с паузами 5, 20 и 60 с, потом — только «Повторить».
      Перед отправкой проверяем, что вошёл тот же человек, чей файл в очереди */
   const QUEUE_DELAYS = [5000, 20000, 60000];
+  // Копия идущей загрузки другой вкладки / прошлого запуска считается брошенной через 2 минуты
+  const ACTIVE_STALE_MS = 120000;
+  const ownActive = (it) => it.status === "active" && it.owner === TAB_ID; // её сейчас грузит эта вкладка
   const queueBusy = useRef(false);
   const queueTimer = useRef(null);
   const loadQueueRows = () => {
     if (!uid) return;
-    const q = readUploadQueue(uid);
+    const q = readUploadQueue(uid).filter((it) => !ownActive(it));
     setUploads((list) => [
       ...list.filter((u) => !u.queued),
       ...q.map((it) => ({ id: `q-${it.id}`, fileId: it.id, name: it.name, folder: it.folder, queued: true,
@@ -1933,10 +1943,10 @@ export default function NexaApp() {
     queueBusy.current = true; clearTimeout(queueTimer.current);
     try {
       if (reset) readUploadQueue(uid).forEach((it) => {
-        if (reset === "all" || it.status === "queued") patchUploadQueue(uid, it.id, { status: "queued", attempts: reset === "all" ? 0 : it.attempts, error: null, nextAt: null });
+        if (!ownActive(it) && (reset === "all" || it.status === "queued")) patchUploadQueue(uid, it.id, { status: "queued", attempts: reset === "all" ? 0 : it.attempts, error: null, nextAt: null });
       });
       for (const it of readUploadQueue(uid)) {
-        if (it.status === "error" || (it.nextAt && it.nextAt > Date.now())) continue;
+        if (it.status === "error" || ownActive(it) || (it.nextAt && it.nextAt > Date.now())) continue;
         // Сессия того же аккаунта — иначе не отправляем (вышли / вошли другим)
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user?.id !== uid) break;
@@ -1948,11 +1958,11 @@ export default function NexaApp() {
             onProgress: (pr) => setUploads((list) => list.map((u) => (u.fileId === it.id && u.queued ? { ...u, progress: pr } : u))) }).promise
             .catch((e) => { if (e?.kind === "exists") return { path: `${uid}/${it.id}` }; throw e; }); // уже в облаке — не дублируем
           rememberLocal(uid, it.id, blob);
-          const { attempts, status, error, nextAt, ...meta } = it;
+          const { attempts, status, error, nextAt, owner, ...meta } = it;
           setFileStore((st) => (st.added.some((f) => f.id === it.id) ? st
             : { ...st, added: [...st.added, { ...meta, path, updatedAt: Date.now() }] }));
           await dequeueUpload(uid, it.id);
-          notify({ cat: "files", key: `upload:${it.id}`, source: "Это устройство", title: "Файл загружен", text: `«${it.name}» — после восстановления связи`, target: { tab: "files" } });
+          notify({ cat: "files", key: `upload:${it.id}`, source: "Это устройство", title: "Файл загружен", text: owner ? `«${it.name}» — загрузка продолжилась после перезапуска NEXA` : `«${it.name}» — после восстановления связи`, target: { tab: "files" } });
         } catch (e) {
           const n = (it.attempts || 0) + 1;
           if ((e?.kind === "network" || e?.kind === "server") && n < QUEUE_DELAYS.length + 1) {
@@ -1967,12 +1977,21 @@ export default function NexaApp() {
       queueBusy.current = false;
       loadQueueRows();
       // Ближайший повтор по расписанию
-      const next = Math.min(Infinity, ...readUploadQueue(uid).filter((it) => it.status === "queued" && it.nextAt).map((it) => it.nextAt));
+      const next = Math.min(Infinity, ...readUploadQueue(uid).filter((it) => (it.status === "queued" || (it.status === "active" && !ownActive(it))) && it.nextAt).map((it) => it.nextAt));
       if (next < Infinity) queueTimer.current = setTimeout(() => runUploadQueue(), Math.max(500, next - Date.now()));
     }
   };
   const runQueueRef = useRef(runUploadQueue); runQueueRef.current = runUploadQueue;
   const loadQueueRef = useRef(loadQueueRows); loadQueueRef.current = loadQueueRows;
+  // Вернулись в NEXA после фона (30 с и дольше, не чаще раза в 30 с): пока NEXA была «заморожена»,
+  // другие устройства могли что-то поменять, а соединение — оборваться. Перечитываем облако
+  // (заодно уйдёт неотправленное), проверяем канал связи и очередь загрузок — один раз, без дублей
+  useReturnToApp(() => {
+    if (!uid) return;
+    devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry();
+    link.refresh();
+    runQueueRef.current("waiting");
+  }, { native: isNative, appPlugin: CapApp });
   // Вошли / перезапуск: строки очереди на экран, есть сеть — отправляем; связь вернулась — тоже
   useEffect(() => {
     if (!uid) return;

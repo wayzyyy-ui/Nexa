@@ -261,6 +261,8 @@ export function useDeviceLink(uid, handlers) {
   });
   useEffect(() => () => Object.values(ackTimers.current).forEach(clearTimeout), []);
 
+  // gen — номер подключения: увеличили — канал создаётся заново (см. refresh)
+  const [gen, setGen] = useState(0);
   useEffect(() => {
     if (!uid || !supabase) { setStatus("off"); setPeers([]); return; }
     let closed = false;
@@ -372,7 +374,33 @@ export function useDeviceLink(uid, handlers) {
       channelRef.current = null;
       setPeers([]);
     };
-  }, [uid]);
+  }, [uid, gen]);
+
+  // Вернулись в NEXA после долгого фона. Пока приложение было «заморожено», соединение
+  // могло тихо умереть, а его таймер переподключения — не сработать.
+  // - канала нет или он закрыт — создаём заново;
+  // - соединения нет — поднимаем его: канал сам войдёт снова (придёт SUBSCRIBED, см. выше).
+  //   Пересоздавать канал тут нельзя: библиотека вернёт тот же «сломанный» канал по имени,
+  //   пока старый не отпущен (а отпустить его без связи она не может);
+  // - всё живо — освежаем «кто в сети» и свои сведения
+  const refresh = () => {
+    if (!uid || !supabase || navigator.onLine === false) return;
+    const ch = channelRef.current;
+    if (!ch || ch.state === "closed") { setGen((g) => g + 1); return; }
+    const rt = supabase.realtime;
+    if (rt?.isConnected?.() === false) {
+      if (rt.isConnecting?.() || rt.isDisconnecting?.()) return; // уже переподключается
+      setStatus((s) => (s === "online" ? "connecting" : s));
+      // Мёртвое соединение библиотека считает существующим и connect() пропускает —
+      // сначала закрываем его (без связи это мгновенно), потом подключаемся
+      Promise.resolve(rt.disconnect?.()).catch(() => {}).then(() => { try { rt.connect(); } catch {} });
+      return;
+    }
+    if (ch.state === "joined") {
+      setPeers(flattenPresence(ch.presenceState()));
+      ch.track(presence()).catch(() => {});
+    }
+  };
 
   /* Отправить событие протокола. Пауза 300 мс между сообщениями соблюдается
      сама: если отправляли только что — ждём. Возвращает true, если дошло до сервера */
@@ -443,5 +471,5 @@ export function useDeviceLink(uid, handlers) {
   };
   useEffect(() => () => clearTimeout(sysTimer.current), []);
 
-  return { status, self: self.current, peers, inbox, sent, send, emit, removeInbox, removeSent, clearInbox, clearFlow, shareSys };
+  return { status, self: self.current, peers, inbox, sent, send, emit, removeInbox, removeSent, clearInbox, clearFlow, shareSys, refresh };
 }

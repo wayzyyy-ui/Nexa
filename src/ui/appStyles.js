@@ -322,10 +322,15 @@ export const APP_CSS = `
           .nx-ai-pill { min-height: 90px; }
           .nx-ai-pill-title { font-size: 19px; }
           .nx-act-pill > section { border-radius: 64px !important; min-height: 140px; padding: 18px 26px 10px !important; }
-          /* Заголовок «Активность» по центру, «Вся активность →» — отдельной строкой под ним (раньше наезжала на заголовок) */
-          .nx-act-pill > section > div:first-child { flex-direction: column !important; align-items: center !important; justify-content: center !important; gap: 6px !important; margin-bottom: 8px !important; }
+          /* Макет: только заголовок «Активность» по центру. Ссылки «Вся активность →» не видно —
+             её кнопка растянута невидимой на всю карточку: нажатие в любое место открывает ленту */
+          .nx-act-pill > section { position: relative; }
+          .nx-act-pill > section > div:first-child { justify-content: center !important; margin-bottom: 8px !important; }
           .nx-act-pill > section > div:first-child > span { font-size: 18px !important; font-weight: 400 !important; }
-          .nx-act-pill > section > div:first-child > button { position: static; font-size: 12px !important; }
+          .nx-act-pill > section > div:first-child > button { position: absolute !important; inset: 0; z-index: 1; padding: 0 !important; border: 0 !important;
+            border-radius: inherit; font-size: 0 !important; color: transparent !important; background: transparent !important; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+          .nx-act-pill > section > div:first-child > button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+          .nx-act-pill > section:active { background: color-mix(in srgb, var(--text) 4%, var(--bg)) !important; }
           .nx-dev-row { min-height: 66px; gap: 14px; padding: 0 20px 0 18px !important; }
           .nx-dev-row-name { font-size: 16px; }
           .nx-dev-row-icon { width: 30px; }

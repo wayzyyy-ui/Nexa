@@ -47,7 +47,7 @@ export function ActivityBlock({ items, onOpen }) {
     <section aria-label="Активность" style={{ border: `1px solid ${C.border}`, borderRadius: 18, padding: "14px 18px 6px", background: C.bg, textAlign: "left" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
         <span style={{ fontSize: 16, fontWeight: 500 }}>Активность</span>
-        <button type="button" className="nx-link-btn" onClick={onOpen} style={{
+        <button type="button" className="nx-link-btn" aria-label="Вся активность" onClick={onOpen} style={{
           ...btnReset, fontSize: 13, color: C.mutedSoft, borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 2,
         }}>
           Вся активность →
