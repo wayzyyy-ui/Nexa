@@ -1640,7 +1640,7 @@ export default function NexaApp() {
   // никто не вошёл и «без аккаунта» ещё не выбирали
   const showGate = authAvailable && auth.ready && !auth.user && !guest;
   // Вошли — гостевой режим больше не нужен, окно входа закрываем.
-  // Вышли — остаёмся гостем, экран первого запуска не возвращаем
+  // Вышли — снова экран входа (решение автора): гостем после выхода не остаёмся
   const prevUser = useRef(null);
   const authSettled = useRef(false); // первый ответ Supabase уже был (вход из прошлого раза — не новость)
   useEffect(() => {
@@ -1650,8 +1650,8 @@ export default function NexaApp() {
       saveGuest(false); setGuest(false); setAuthOpen(false);
       if (authSettled.current) showToast({ title: "Вы вошли", text: now.email, kind: "success" });
     } else if (!now && was) {
-      saveGuest(true); setGuest(true);
-      showToast({ title: "Вы вышли из аккаунта", text: "NEXA работает без входа", kind: "info" });
+      saveGuest(false); setGuest(false); setAuthOpen(false);
+      showToast({ title: "Вы вышли из аккаунта", text: "Данные аккаунта остались в облаке — войдите снова, чтобы их увидеть", kind: "info" });
     }
     prevUser.current = now;
     authSettled.current = true;
