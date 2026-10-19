@@ -51,7 +51,7 @@ export function PairModal({ session, online, onNewCode, onClose, onClaim, onScan
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div id="nx-pair-title" style={{ fontFamily: fontDisplay, fontSize: 24, lineHeight: 1.15 }}>Подключить устройство</div>
-            <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6, lineHeight: 1.45 }}>Телефон или другой компьютер — с входом в ту же почту</div>
+            <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6, lineHeight: 1.45 }}>Проще всего — войдите в ту же почту на другом устройстве: оно появится в списке само. Код ниже — если там уже выполнен вход</div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
             ...btnReset, width: 34, height: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",

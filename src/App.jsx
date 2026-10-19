@@ -10,7 +10,7 @@ import "lenis/dist/lenis.css";
 import { supabase, authAvailable } from "./lib/supabase.js";
 // Синхронизация устройств и чатов аккаунта с облаком
 import { useCloudList, CHAT_ROWS, DEVICE_ROWS, SCHEDULE_ROWS, newId, deleteAllMine, isLocalPin, isMissingTable } from "./lib/sync.js";
-import { useThisDeviceSys, sameSys } from "./lib/deviceInfo.js";
+import { useThisDeviceSys, sameSys, thisDeviceKind } from "./lib/deviceInfo.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, PAIR_CODE_RE, cleanSys, isHw } from "./lib/realtime.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
@@ -388,6 +388,54 @@ export default function NexaApp() {
     // Правки ушли в облако — остальные устройства аккаунта перечитают их сразу
     onPushed: () => link.emit("sync.changed", { table: "devices" }),
   });
+  /* Это устройство само записывает себя в список устройств аккаунта.
+     Раньше в список попадал только тот, кто ВВОДИЛ код, а устройство, показавшее код,
+     не попадало никогда — из двух устройств в списке оставалось одно. Теперь любое
+     устройство, где выполнен вход, есть в списке (вход в тот же аккаунт и есть доступ).
+     Ждём первую сводку с облаком — иначе можно создать запись, которая уже есть там.
+     Своя запись: тип (смартфон / планшет / компьютер), вид (сайт / приложение) — по факту;
+     название, если его меняли, не трогаем */
+  const devicesLoaded = !!uid && !!syncState.devices && !syncState.devices.loading;
+  useEffect(() => {
+    const me = link.self;
+    if (!devicesLoaded || !me?.device_id) return;
+    const type = { phone: "phone", tablet: "tablet", computer: "laptop" }[thisDeviceKind()] || "phone";
+    setDeviceStore((s) => {
+      const now = Date.now();
+      const info = { real: true, device_id: me.device_id, kind: me.kind, platform: me.platform, ...(isHw(me.hw) ? { hw: me.hw } : {}) };
+      const old = s.added.find((d) => s.state[d.id]?.device_id === me.device_id);
+      if (old) {
+        const st = s.state[old.id] || {};
+        const same = st.real && st.kind === info.kind && st.platform === info.platform && old.type === type && (!info.hw || st.hw === info.hw);
+        if (same) return s;
+        return {
+          ...s, added: s.added.map((d) => (d.id === old.id ? { ...d, type } : d)),
+          state: { ...s.state, [old.id]: { ...st, ...info } }, updated: { ...s.updated, [old.id]: now },
+        };
+      }
+      const label = me.kind === "app" ? (type === "tablet" ? "Приложение на планшете" : "Приложение")
+        : type === "tablet" ? "Сайт на планшете" : me.name;
+      const d = { id: newId(), type, name: uniqueDeviceName(label, s.added.map((x) => x.name)), createdAt: now, battery: null, memory: deviceType(type).memory, online: false, lastSeen: "" };
+      return { ...s, added: [...s.added, d], state: { ...s.state, [d.id]: info }, updated: { ...s.updated, [d.id]: now } };
+    });
+  }, [devicesLoaded, uid, link.self?.device_id]);
+  /* Повторы одного устройства (одинаковый device_id в нескольких записях — оставались после
+     старых подключений). Оставляем самую раннюю запись, лишние убираем — и в облаке тоже */
+  const dupKey = deviceStore.added.map((d) => `${d.id}:${deviceStore.state[d.id]?.device_id || ""}`).join(",");
+  useEffect(() => {
+    if (!devicesLoaded) return;
+    const seen = new Map(), extra = [];
+    [...deviceStore.added].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).forEach((d) => {
+      const dev = deviceStore.state[d.id]?.real && deviceStore.state[d.id]?.device_id;
+      if (!dev) return;
+      if (seen.has(dev)) extra.push(d.id); else seen.set(dev, d.id);
+    });
+    if (!extra.length) return;
+    setDeviceStore((s) => {
+      const state = { ...s.state }; extra.forEach((id) => delete state[id]);
+      return { ...s, state, added: s.added.filter((d) => !extra.includes(d.id)) };
+    });
+  }, [devicesLoaded, dupKey]);
   const chatsSync = useCloudList({
     uid, table: "chats", value: chats, setValue: setChatsStore,
     toList: (list) => list.map((c) => ({ ...c, updatedAt: c.updatedAt || c.createdAt || 0 })),
