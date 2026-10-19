@@ -18,14 +18,25 @@ begin new.updated_at := now(); return new; end; $$;
 drop trigger if exists memory_touch on public.memory;
 create trigger memory_touch before insert or update on public.memory for each row execute function public.nexa_memory_touch();
 
--- Не больше 50 записей на аккаунт
+-- Не больше 50 записей на аккаунт. Обновление существующей записи (в том числе через upsert,
+-- который вызывает BEFORE INSERT ещё до проверки конфликта) лимит не трогает; одновременные
+-- добавления одного аккаунта проверяются по очереди (см. supabase/limits-fix.sql)
 create or replace function public.nexa_memory_limit() returns trigger language plpgsql security definer set search_path = '' as $$
 begin
+  -- Чужая строка (вошедший пишет не от своего имени): не считаем и не блокируем — её отклонит RLS
+  if auth.uid() is not null and new.user_id is distinct from auth.uid() then
+    return new;
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('nexa:memory:' || new.user_id::text, 0));
+  if exists (select 1 from public.memory where id = new.id and user_id = new.user_id) then
+    return new;
+  end if;
   if (select count(*) from public.memory where user_id = new.user_id) >= 50 then
     raise exception 'memory_limit' using errcode = '23514';
   end if;
   return new;
 end; $$;
+revoke all on function public.nexa_memory_limit() from public, anon, authenticated;
 drop trigger if exists memory_limit on public.memory;
 create trigger memory_limit before insert on public.memory for each row execute function public.nexa_memory_limit();
 
