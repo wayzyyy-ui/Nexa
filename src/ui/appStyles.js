@@ -133,9 +133,8 @@ export const APP_CSS = `
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
           /* Грани складки Главной (те же цвета, что в fold.svg) */
           --fold-hf-a1: #0C336D; --fold-hf-a2: #139CB4; --fold-hf-b1: #00FFDF; --fold-hf-b2: #2DD4BF; --fold-hf-c1: #9DB1FD; --fold-hf-c2: #042AA5;
-          /* Объёмная складка (FoldArt, макет 2026-10): синяя грань, мятная, глубокая нижняя, свечение */
-          --f3-a1: #6A80E6; --f3-a2: #2340C4; --f3-a3: #142E9E; --f3-b1: #27D3C2; --f3-b2: #0D7484;
-          --f3-c1: #173F8E; --f3-c2: #1F7AA6; --f3-hi: rgba(255, 255, 255, 0.28); --f3-edge: rgba(255, 255, 255, 0.22); --f3-glow: #2F5BFF;
+          /* Объёмная складка (FoldArt, SVG автора): грани — --fold-hf-*, свечение и тень под гранями */
+          --hf-glow: #0558FF; --hf-shade: #000000;
           color-scheme: dark;
         }
         :root[data-theme="light"] {
@@ -173,9 +172,8 @@ export const APP_CSS = `
           --fold-mint: #19E3C8;  --fold-green: #0E8F62;
           /* Грани складки Главной (те же цвета, что в fold.svg) */
           --fold-hf-a1: #0C336D; --fold-hf-a2: #139CB4; --fold-hf-b1: #00FFDF; --fold-hf-b2: #2DD4BF; --fold-hf-c1: #9DB1FD; --fold-hf-c2: #042AA5;
-          /* Объёмная складка в светлой теме — светлее и прозрачнее (макет) */
-          --f3-a1: #9CB0F5; --f3-a2: #5570DC; --f3-a3: #3E58C6; --f3-b1: #6FE0D4; --f3-b2: #2BA3AA;
-          --f3-c1: #4C6FBF; --f3-c2: #5E9FCB; --f3-hi: rgba(255, 255, 255, 0.45); --f3-edge: rgba(255, 255, 255, 0.55); --f3-glow: #7C95FF;
+          /* Объёмная складка (FoldArt): те же цвета — грани полупрозрачны, на светлом фоне сами светлее */
+          --hf-glow: #0558FF; --hf-shade: #000000;
           color-scheme: light;
         }
         body { transition: background-color 200ms ease, color 200ms ease; }
@@ -267,7 +265,7 @@ export const APP_CSS = `
         .nx-home-side { display: flex; flex-direction: column; justify-content: flex-end; gap: calc(42 * var(--mk)); min-width: 0; margin-top: calc(-66 * var(--mk)); }
         .nx-home-fold { flex: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; }
         /* Края картинки растворяются: свечение не обрывается прямоугольником на любом фоне */
-        .nx-home-fold-art { width: calc(400 * var(--mk)); height: auto; display: block; user-select: none; overflow: visible; }
+        .nx-home-fold-art { height: calc(400 * var(--mk)); width: auto; display: block; user-select: none; overflow: visible; }
         /* Светлая тема: объёмная складка светлее и прозрачнее (макет) — рендер нарисован под тёмный фон */
         /* Светлая Главная (макет 2026-10): белая панель меню, «стеклянные» серые карточки,
            сплошная белая «Добавить устройство», насыщенная заливка «не в сети», ассистент от белого к мятному */
@@ -286,7 +284,7 @@ export const APP_CSS = `
           .nx-media-grid { grid-template-columns: minmax(0, 1120px) minmax(300px, 1fr) !important; }
         }
         /* Складка справа на «Сегодня», «Медиа», «Файлах»: крупно, обрезана правым краем окна */
-        .nx-media-fold { width: 560px; max-width: none; height: auto; display: block; margin-right: -90px; user-select: none; pointer-events: none; overflow: visible; }
+        .nx-media-fold { width: 600px; max-width: none; height: auto; display: block; margin-right: -130px; user-select: none; pointer-events: none; overflow: visible; }
 
         .nx-home-act { margin-top: calc(35 * var(--mk)); }
         .nx-home-act > section { border-color: var(--line-bright) !important; border-radius: calc(48 * var(--mk)) !important;

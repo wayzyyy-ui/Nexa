@@ -10,45 +10,54 @@ import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
    она чёткая на любом размере экрана.
    size — задаёт ширину картинки в пикселях, высота считается сама
    пропорционально (чтобы форма не искажалась). */
-/* Объёмная складка из макета 2026-10 — векторная (SVG) вместо картинки: чёткая на любом экране
-   и в обеих темах (цвета — токены --f3-*). Три стеклянные грани: большая синяя, мятная справа
-   и глубокая нижняя; полупрозрачны, на стыке — светлый блик; позади мягкое свечение.
-   Справа складка уходит за край — рисуем с запасом под свечение (viewBox шире граней) */
-const F3 = {
-  a: "M155 8 L10 205 L68 332 L213 195 Z",
-  b: "M261 70 L298 312 L150 252 Z",
-  c: "M68 332 L267 366 L232 262 L150 252 Z",
+/* Объёмная складка — SVG автора из Figma (Group 66.svg), перенесённая в код один в один:
+   три грани с градиентами и прозрачностью 40 %, мягкое синее свечение влево-вверх
+   (четыре слоя тени, как в Figma) и лёгкая тень под мятной и синей гранями.
+   Цвета граней — токены --fold-hf-* (те же, что в файле), свечения — --hf-glow, тени — --hf-shade.
+   viewBox — область граней с запасом под свечение; справа складка уходит за край экрана */
+const HF = {
+  bottom: "M502.269 561.291L435.974 357.619L270.346 519.785L502.269 561.291Z",
+  mint: "M494.686 214.986L537.137 498.722L270.189 393.618L494.686 214.986Z",
+  blue: "M202.567 311.552L371.692 144.172L439.849 353.566L270.359 519.826L202.567 311.552Z",
 };
+// Свечение из Figma: [сдвиг, размытие, непрозрачность]
+const HF_GLOW = [[-7.99, 12.71, 0.1], [-31.95, 22.87, 0.09], [-72.6, 30.86, 0.05], [-129.24, 36.67, 0.01]];
 export function FoldArt({ className, style }) {
   const id = useId().replace(/:/g, "");
   const g = (n) => `${id}-${n}`;
-  const stop = (o, v, a = 1) => <stop offset={o} style={{ stopColor: `var(${v})`, stopOpacity: a }} />;
+  const stop = (o, v) => <stop offset={o} style={{ stopColor: `var(${v})` }} />;
+  const lift = (n) => (
+    <filter id={g(n)} x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2.9" stdDeviation="1.45" style={{ floodColor: "var(--hf-shade)" }} floodOpacity="0.25" />
+    </filter>
+  );
   return (
-    <svg className={className} style={style} viewBox="-50 -50 400 470" aria-hidden="true" focusable="false">
+    <svg className={className} style={style} viewBox="130 80 430 500" aria-hidden="true" focusable="false">
       <defs>
-        <linearGradient id={g("a")} x1="0.2" y1="0" x2="0.6" y2="1">{stop(0, "--f3-a1", 0.95)}{stop(0.55, "--f3-a2", 0.92)}{stop(1, "--f3-a3", 0.95)}</linearGradient>
-        <linearGradient id={g("b")} x1="0.9" y1="0" x2="0.2" y2="1">{stop(0, "--f3-b1", 0.95)}{stop(1, "--f3-b2", 0.9)}</linearGradient>
-        <linearGradient id={g("c")} x1="0" y1="0.2" x2="1" y2="0.8">{stop(0, "--f3-c1", 0.95)}{stop(1, "--f3-c2", 0.9)}</linearGradient>
-        <linearGradient id={g("hi")} x1="0" y1="0" x2="1" y2="1">{stop(0, "--f3-hi", 1)}{stop(0.5, "--f3-hi", 0)}</linearGradient>
-        {/* Светлая мятная полоса внутри синей грани — свет мятной грани сквозь стекло */}
-        <linearGradient id={g("streak")} x1="0.1" y1="0.78" x2="0.95" y2="0.42">{stop(0.3, "--f3-b1", 0)}{stop(0.68, "--f3-b1", 0.5)}{stop(0.9, "--f3-b1", 0)}</linearGradient>
-        <filter id={g("blur")} x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="22" /></filter>
+        <filter id={g("glow")} x="-60%" y="-60%" width="180%" height="180%">
+          {/* Каждый слой — своя тень от формы граней; потом все слои и сами грани сверху */}
+          {HF_GLOW.map(([d, b, o], i) => [
+            <feOffset key={"o" + i} in="SourceAlpha" dx={d} dy={d} result={"o" + i} />,
+            <feGaussianBlur key={"b" + i} in={"o" + i} stdDeviation={b} result={"b" + i} />,
+            <feFlood key={"f" + i} style={{ floodColor: "var(--hf-glow)" }} floodOpacity={o} result={"f" + i} />,
+            <feComposite key={"c" + i} in={"f" + i} in2={"b" + i} operator="in" result={"s" + i} />,
+          ])}
+          <feMerge>
+            {HF_GLOW.map((_, i) => <feMergeNode key={i} in={"s" + (HF_GLOW.length - 1 - i)} />)}
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        {lift("lift-m")}
+        {lift("lift-b")}
+        <linearGradient id={g("bottom")} x1="360.658" y1="436.049" x2="502.269" y2="561.291" gradientUnits="userSpaceOnUse">{stop(0, "--fold-hf-a1")}{stop(1, "--fold-hf-a2")}</linearGradient>
+        <linearGradient id={g("mint")} x1="494.686" y1="214.986" x2="442.426" y2="461.047" gradientUnits="userSpaceOnUse">{stop(0, "--fold-hf-b1")}{stop(1, "--fold-hf-b2")}</linearGradient>
+        <linearGradient id={g("blue")} x1="372.892" y1="147.858" x2="269.135" y2="516.066" gradientUnits="userSpaceOnUse">{stop(0, "--fold-hf-c1")}{stop(1, "--fold-hf-c2")}</linearGradient>
       </defs>
-      {/* Свечение позади граней */}
-      <g filter={`url(#${g("blur")})`} style={{ opacity: 0.5 }}>
-        <path d={F3.a} style={{ fill: "var(--f3-glow)" }} />
-        <path d={F3.b} style={{ fill: "var(--f3-b1)", opacity: 0.6 }} />
+      <g filter={`url(#${g("glow")})`}>
+        <path d={HF.bottom} fill={`url(#${g("bottom")})`} fillOpacity="0.4" />
+        <g filter={`url(#${g("lift-m")})`}><path d={HF.mint} fill={`url(#${g("mint")})`} fillOpacity="0.39" /></g>
+        <g filter={`url(#${g("lift-b")})`}><path d={HF.blue} fill={`url(#${g("blue")})`} fillOpacity="0.4" /></g>
       </g>
-      {/* Грани: сначала нижняя и мятная, поверх — большая синяя (как в рендере) */}
-      <path d={F3.c} fill={`url(#${g("c")})`} />
-      <path d={F3.b} fill={`url(#${g("b")})`} />
-      <path d={F3.a} fill={`url(#${g("a")})`} />
-      <path d={F3.a} fill={`url(#${g("hi")})`} />
-      <path d={F3.a} fill={`url(#${g("streak")})`} />
-      {/* Тонкие светлые рёбра — граница стекла */}
-      {[F3.a, F3.b].map((d) => (
-        <path key={d} d={d} fill="none" strokeWidth="1" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ stroke: "var(--f3-edge)" }} />
-      ))}
     </svg>
   );
 }
