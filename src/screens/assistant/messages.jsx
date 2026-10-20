@@ -5,6 +5,7 @@ import { formatLabel } from "../../lib/attach.js";
 import { C } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { useVoiceOutput, speak, stopSpeaking } from "../../lib/voiceOutput.js";
+import { enterAction, readEnterSends } from "../../lib/composer.js";
 import { useLiveText } from "../../lib/live.js";
 import { Spinner, btnReset, SkeletonLine } from "../../ui/base.jsx";
 
@@ -201,7 +202,8 @@ export function MessageBubble({ role, text, file, error, actionLabel, undoable, 
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                // Enter — как в поле ввода (src/lib/composer.js): на телефоне новая строка, сохранить — кнопкой
+                if (enterAction(e, readEnterSends()) === "send") { e.preventDefault(); saveEdit(); }
                 if (e.key === 'Escape') cancelEdit();
               }}
               rows={Math.min(8, Math.max(2, draft.split('\n').length))}

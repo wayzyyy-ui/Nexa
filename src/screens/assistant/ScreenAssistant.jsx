@@ -19,6 +19,7 @@ import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSumm
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
 import { useMediaQuery } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
+import { enterAction, useEnterSends } from "../../lib/composer.js";
 import { stopSpeaking, useVoiceOutput } from "../../lib/voiceOutput.js";
 import { FILE_SCOPE, sortByRecent, catOf } from "../../lib/fileStore.js";
 import { VERSION } from "../../version.js";
@@ -526,13 +527,19 @@ useEffect(() => {
   };
 
   // Отправка сообщения: из поля ввода или по нажатию на подсказку
+  // Название диалога из вопроса: переносы и лишние пробелы → один пробел, до 40 знаков
+  const chatTitle = (t) => { const s = t.replace(/\s+/g, " ").trim(); return s.length > 40 ? s.slice(0, 40) + "…" : s; };
+  // Два быстрых нажатия (Enter + кнопка, двойное касание) — одна отправка
+  const sendLock = useRef(0);
   const sendMessage = async (preset) => {
+    if (Date.now() - sendLock.current < 400) return;
     // Вложение: пока готовится или с ошибкой — не отправляем; готово — уходит с вопросом.
     // Без текста — просим краткое содержание
     if (att && att.status !== "ready") return;
     const withFile = att?.status === "ready" ? att : null;
     const text = (typeof preset === "string" ? preset : input).trim() || (withFile ? "Кратко перескажи этот файл" : "");
     if (!text || isLoading) return;
+    sendLock.current = Date.now();
 
     // Сначала проверяем, не команда ли это (с файлом — это всегда вопрос по файлу)
     const cmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text));
@@ -548,7 +555,8 @@ useEffect(() => {
       chatId = newId(); // uuid — такой же id будет у диалога в облаке
       setChats(prev => [{
         id: chatId,
-        title: fileInfo && !input.trim() ? `Файл «${fileInfo.name.slice(0, 30)}»` : text.length > 40 ? text.slice(0, 40) + '…' : text,
+        // Название — в одну строку (переносы в самом сообщении сохраняются)
+        title: fileInfo && !input.trim() ? `Файл «${fileInfo.name.slice(0, 30)}»` : chatTitle(text),
         messages: [userMsg],
         createdAt: Date.now(),
       }, ...prev]);
@@ -602,7 +610,7 @@ useEffect(() => {
         ...c,
         // Если правим самое первое сообщение, обновляем и название чата в истории
         title: index === 0
-          ? (newText.length > 40 ? newText.slice(0, 40) + '…' : newText)
+          ? chatTitle(newText)
           : c.title,
         messages: [...previous, { role: 'user', text: newText, at: Date.now(), ...(cmd ? { action: true } : {}), ...(messages[index].file ? { file: messages[index].file } : {}) }],
       };
@@ -611,8 +619,12 @@ useEffect(() => {
     else streamAnswer(currentChatId, previous, newText, fileFor(messages[index]));
   };
   
+  // Enter: на компьютере — отправить (Shift+Enter — новая строка), на телефоне — новая строка
+  // (отправка кнопкой); Ctrl+Enter — отправить везде; набор IME не трогаем (src/lib/composer.js)
+  const [enterSends] = useEnterSends();
   const onKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); voice.release(); sendMessage(); }
+    if (enterAction(e, enterSends) !== "send") return;
+    e.preventDefault(); voice.release(); sendMessage();
   };
 
 
@@ -735,14 +747,15 @@ const menuBlock = (
           style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {Icon.clip({ c: att ? C.mint : C.muted, s: 18 })}
         </button>
-        {/* Многострочное поле: длинный текст переносится, Enter — отправить,
-            Shift+Enter — новая строка */}
+        {/* Многострочное поле: длинный текст переносится. Что делает Enter — onKeyDown выше
+            (и настройка «Enter отправляет сообщение»). enterKeyHint — подпись клавиши на телефоне */}
         <textarea
           ref={taRef}
           rows={1}
           value={input}
           onChange={(e) => { voice.release(); setInput(e.target.value); }}
           onKeyDown={onKeyDown}
+          enterKeyHint={enterSends ? "send" : "enter"}
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
           placeholder="Написать сообщение..."

@@ -11,6 +11,7 @@ import { AccountSettings } from "./auth.jsx";
 import { NOTE_CATS } from "../lib/notes.js";
 import { VERSION } from "../version.js";
 import { InstallSettings } from "../ui/install.jsx";
+import { useEnterSends, touchLike } from "../lib/composer.js";
 
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
 /* «Это устройство» в Настройках: только настоящие сведения (src/lib/deviceInfo.js).
@@ -81,6 +82,24 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
           right={<Toggle on={on} onClick={flipAll} label="Уведомления" />} />
       </SettingsGroup>
     </div>
+  );
+}
+
+/* «ИИ — Ассистент»: что делает Enter в поле ввода (src/lib/composer.js). По умолчанию —
+   по устройству: компьютер отправляет, телефон ставит новую строку. Хранится на этом устройстве */
+function AssistantInputSettings() {
+  const [on, setOn] = useEnterSends();
+  return (
+    <>
+      <SectionTitle>ИИ — Ассистент</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow last icon={Icon.send({ c: on ? C.mint : C.muted, s: 18 })} title="Enter отправляет сообщение"
+          subtitle={touchLike()
+            ? (on ? "Клавиша ввода на клавиатуре отправляет сообщение" : "Клавиша ввода ставит новую строку, отправить — кнопкой")
+            : (on ? "Новая строка — Shift + Enter. Ctrl + Enter тоже отправляет" : "Enter ставит новую строку, отправить — кнопкой или Ctrl + Enter")}
+          right={<Toggle on={on} onClick={() => setOn(!on)} label="Enter отправляет сообщение" />} />
+      </SettingsGroup>
+    </>
   );
 }
 
@@ -166,6 +185,8 @@ export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteDat
       </SettingsGroup>
 
       {noteBlock}
+
+      <AssistantInputSettings />
 
       {memoryBlock}
 
