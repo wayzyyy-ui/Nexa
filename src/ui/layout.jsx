@@ -1,12 +1,10 @@
 // Общая раскладка экранов: шапка раздела с путём (Crumb), колонки «Медиа» / «Сегодня» / «Файлы»
 import { T, C } from "./theme.js";
 import { btnReset } from "./base.jsx";
-import { useState } from "react";
-import { FoldHero } from "./backdrop.jsx";
+import { FoldArt } from "./backdrop.jsx";
 
 /* Общая раскладка «Сегодня», «Медиа» и «Файлов»: слева контент, справа объёмная складка
-   из макета 2026-10 (та же картинка, что на Главной, крупно и обрезана правым краем).
-   Нет картинки — прежняя плоская складка. На узком экране складка прячется (см. .nx-media-art). */
+   из макета 2026-10 (векторная, как на Главной, крупно и обрезана правым краем). На узком экране складка прячется (см. .nx-media-art). */
 // hideArt — плавно спрятать складку (например, когда справа открыт прогноз)
 export function MediaLayout({ children, hideArt }) {
   return (
@@ -24,10 +22,9 @@ export function MediaLayout({ children, hideArt }) {
   );
 }
 
+// Складка справа — та же векторная, что на Главной (FoldArt), крупнее
 function MediaFold() {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <FoldHero size={440} />;
-  return <img className="nx-media-fold" src="/art/home-fold.webp" alt="" draggable={false} onError={() => setFailed(true)} />;
+  return <FoldArt className="nx-media-fold" />;
 }
 
 // Заголовок экрана: крупный и лёгкий, как в макете.

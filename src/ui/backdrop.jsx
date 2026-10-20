@@ -10,6 +10,49 @@ import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
    она чёткая на любом размере экрана.
    size — задаёт ширину картинки в пикселях, высота считается сама
    пропорционально (чтобы форма не искажалась). */
+/* Объёмная складка из макета 2026-10 — векторная (SVG) вместо картинки: чёткая на любом экране
+   и в обеих темах (цвета — токены --f3-*). Три стеклянные грани: большая синяя, мятная справа
+   и глубокая нижняя; полупрозрачны, на стыке — светлый блик; позади мягкое свечение.
+   Справа складка уходит за край — рисуем с запасом под свечение (viewBox шире граней) */
+const F3 = {
+  a: "M155 8 L10 205 L68 332 L213 195 Z",
+  b: "M261 70 L298 312 L150 252 Z",
+  c: "M68 332 L267 366 L232 262 L150 252 Z",
+};
+export function FoldArt({ className, style }) {
+  const id = useId().replace(/:/g, "");
+  const g = (n) => `${id}-${n}`;
+  const stop = (o, v, a = 1) => <stop offset={o} style={{ stopColor: `var(${v})`, stopOpacity: a }} />;
+  return (
+    <svg className={className} style={style} viewBox="-50 -50 400 470" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={g("a")} x1="0.2" y1="0" x2="0.6" y2="1">{stop(0, "--f3-a1", 0.95)}{stop(0.55, "--f3-a2", 0.92)}{stop(1, "--f3-a3", 0.95)}</linearGradient>
+        <linearGradient id={g("b")} x1="0.9" y1="0" x2="0.2" y2="1">{stop(0, "--f3-b1", 0.95)}{stop(1, "--f3-b2", 0.9)}</linearGradient>
+        <linearGradient id={g("c")} x1="0" y1="0.2" x2="1" y2="0.8">{stop(0, "--f3-c1", 0.95)}{stop(1, "--f3-c2", 0.9)}</linearGradient>
+        <linearGradient id={g("hi")} x1="0" y1="0" x2="1" y2="1">{stop(0, "--f3-hi", 1)}{stop(0.5, "--f3-hi", 0)}</linearGradient>
+        {/* Светлая мятная полоса внутри синей грани — свет мятной грани сквозь стекло */}
+        <linearGradient id={g("streak")} x1="0.1" y1="0.78" x2="0.95" y2="0.42">{stop(0.3, "--f3-b1", 0)}{stop(0.68, "--f3-b1", 0.5)}{stop(0.9, "--f3-b1", 0)}</linearGradient>
+        <filter id={g("blur")} x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="22" /></filter>
+      </defs>
+      {/* Свечение позади граней */}
+      <g filter={`url(#${g("blur")})`} style={{ opacity: 0.5 }}>
+        <path d={F3.a} style={{ fill: "var(--f3-glow)" }} />
+        <path d={F3.b} style={{ fill: "var(--f3-b1)", opacity: 0.6 }} />
+      </g>
+      {/* Грани: сначала нижняя и мятная, поверх — большая синяя (как в рендере) */}
+      <path d={F3.c} fill={`url(#${g("c")})`} />
+      <path d={F3.b} fill={`url(#${g("b")})`} />
+      <path d={F3.a} fill={`url(#${g("a")})`} />
+      <path d={F3.a} fill={`url(#${g("hi")})`} />
+      <path d={F3.a} fill={`url(#${g("streak")})`} />
+      {/* Тонкие светлые рёбра — граница стекла */}
+      {[F3.a, F3.b].map((d) => (
+        <path key={d} d={d} fill="none" strokeWidth="1" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ stroke: "var(--f3-edge)" }} />
+      ))}
+    </svg>
+  );
+}
+
 export function FoldHero({ size = 340 }) {
   return (
     <img

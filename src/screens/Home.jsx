@@ -5,7 +5,7 @@ import { Icon } from "../ui/icons.jsx";
 import { deviceStatus } from "../lib/devices.js";
 import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.jsx";
 import { QuickBtn } from "../ui/QuickPanel.jsx";
-import { HomeFold } from "../ui/backdrop.jsx";
+import { FoldArt } from "../ui/backdrop.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner } from "../ui/install.jsx";
 
@@ -247,12 +247,9 @@ function AddDeviceRow({ onClick }) {
   );
 }
 
-/* Складка Главной (компьютер): объёмный рендер из макета public/art/home-fold.webp.
-   Пока файла нет или он не загрузился — наша анимированная складка */
-function HomeFoldArt({ count }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <div data-link-hub style={{ transform: "scale(1.3)" }}><HomeFold size={300} count={count} /></div>;
-  return <img data-link-hub className="nx-home-fold-art" src="/art/home-fold.webp" alt="" draggable={false} onError={() => setFailed(true)} />;
+/* Складка Главной (компьютер): объёмная складка из макета, векторная (FoldArt в backdrop.jsx) */
+function HomeFoldArt() {
+  return <span data-link-hub style={{ display: "block" }}><FoldArt className="nx-home-fold-art" /></span>;
 }
 
 // Сколько устройств видно на Главной; остальные — «Все устройства».
@@ -322,7 +319,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           </section>
           {/* Справа: складка и ассистент */}
           <div className="nx-home-side">
-            <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
+            <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt /></div>
             {aiPill("nx-ai-glow")}
           </div>
         </div>
