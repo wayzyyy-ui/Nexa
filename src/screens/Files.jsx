@@ -136,7 +136,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
 
   return (
     <MediaLayout>
-      <MediaTitle title="Файлы" subtitle="Ваши файлы, документы и медиа — всегда под рукой" />
+      <MediaTitle title="Файлы" />
 
       <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-start", gap: 28, marginBottom: 26 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -208,9 +208,9 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12,
         paddingBottom: 10, borderBottom: `1px solid ${C.borderStrong}`,
       }}>
-        <div style={{
-          // Как заголовок раздела (SectionTitle): тот же размер и вес, без капса
-          fontFamily: fontDisplay, fontSize: 22, fontWeight: 600,
+        <div className="nx-files-heading" style={{
+          // Как в макете 2026-10: название папки прописными, без жирности
+          fontFamily: fontDisplay, fontSize: 18, fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em",
           minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
           {heading}
@@ -353,7 +353,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
                   Папка · {n} {plural(n, ["объект", "объекта", "объектов"])}
                 </div>
               </div>
-              {Icon.chevron({ s: 18 })}
+              {Icon.chevron({ c: C.text, s: 20 })}
             </button>
           );
         })}
@@ -371,6 +371,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
               </div>
             </button>
             {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
+            <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7, paddingRight: 4 }}>{Icon.chevron({ c: C.text, s: 20 })}</span>
           </div>
         ))}
         {subfolders.length === 0 && list.length === 0 && (

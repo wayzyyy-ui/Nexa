@@ -1,10 +1,12 @@
 // Общая раскладка экранов: шапка раздела с путём (Crumb), колонки «Медиа» / «Сегодня» / «Файлы»
 import { T, C } from "./theme.js";
 import { btnReset } from "./base.jsx";
+import { useState } from "react";
 import { FoldHero } from "./backdrop.jsx";
 
-/* Общая раскладка "Медиа" и "Файлов": слева контент, справа фирменная
-   складка, как в макете. На узком экране складка прячется (см. .nx-media-art). */
+/* Общая раскладка «Сегодня», «Медиа» и «Файлов»: слева контент, справа объёмная складка
+   из макета 2026-10 (та же картинка, что на Главной, крупно и обрезана правым краем).
+   Нет картинки — прежняя плоская складка. На узком экране складка прячется (см. .nx-media-art). */
 // hideArt — плавно спрятать складку (например, когда справа открыт прогноз)
 export function MediaLayout({ children, hideArt }) {
   return (
@@ -12,14 +14,20 @@ export function MediaLayout({ children, hideArt }) {
       <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>{children}</div>
         <div className="nx-media-art" aria-hidden={hideArt || undefined} style={{
-          position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 60, marginRight: -40,
+          position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 40, marginRight: -40,
           opacity: hideArt ? 0 : 1, transition: "opacity 240ms ease",
         }}>
-          <FoldHero size={440} />
+          <MediaFold />
         </div>
       </div>
     </div>
   );
+}
+
+function MediaFold() {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <FoldHero size={440} />;
+  return <img className="nx-media-fold" src="/art/home-fold.webp" alt="" draggable={false} onError={() => setFailed(true)} />;
 }
 
 // Заголовок экрана: крупный и лёгкий, как в макете.
@@ -29,7 +37,9 @@ export function MediaTitle({ title, subtitle }) {
   return (
     <>
       <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{title}</div>
-      <div className="nx-page-sub" style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
+      {subtitle
+        ? <div className="nx-page-sub" style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
+        : <div className="nx-page-gap" style={{ height: 40 }} />}
     </>
   );
 }
@@ -41,9 +51,9 @@ export function Crumb({ children, active, onClick }) {
     <button type="button" disabled={active} onClick={onClick} className={active ? undefined : "nx-crumb"} style={{
       ...btnReset,
       cursor: active ? "default" : "pointer",
-      height: 30, padding: "0 20px 0 18px", fontSize: 13, whiteSpace: "nowrap", flexShrink: 0,
+      height: 40, padding: "0 26px 0 22px", fontSize: 15, whiteSpace: "nowrap", flexShrink: 0,
       // Скос задаём в пикселях, чтобы угол был одинаковым у коротких и длинных чипсов
-      clipPath: "polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)",
+      clipPath: "polygon(13px 0, 100% 0, calc(100% - 13px) 100%, 0 100%)",
       background: active
         ? `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`
         : `linear-gradient(90deg, ${C.foldDeep}, color-mix(in srgb, ${C.foldBlue} 70%, ${C.foldDeep}))`,

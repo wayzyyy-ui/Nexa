@@ -6,7 +6,7 @@ import { App as CapApp } from "@capacitor/app";
 import { supabase, authAvailable } from "../lib/supabase.js";
 import { looksLikeEmail, isAllowedEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "../lib/allowedEmailDomains.js";
 import { deviceIdentity, PAIR_CODE_RE } from "../lib/realtime.js";
-import { C, fontDisplay } from "../ui/theme.js";
+import { C, fontDisplay, PHONE_MQ } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { mmss } from "../lib/format.js";
 import { qrApi, QR_LOGIN_TTL_MS, QR_POLL_MS, loginUrl, APPROVE_LOCK_KEY, RESEND_SECONDS, authErrorText, CODE_MIN, CODE_MAX, signOut, clearLocalAccountData } from "../lib/auth.js";
@@ -394,8 +394,9 @@ export function AuthGate() {
     <div className="nx-auth-gate nx-scroll" role="dialog" aria-modal="true" aria-labelledby="nx-auth-title">
       {/* Фон: две картинки, видна та, что под текущую тему (см. .nx-gate-scene в стилях) */}
       <div className="nx-gate-scene" aria-hidden="true">
-        <img className="nx-gate-dark" src="/art/gate-dark.webp" alt="" draggable={false} />
-        <img className="nx-gate-light" src="/art/gate-light.webp" alt="" draggable={false} />
+        {/* На телефоне — свой вертикальный рендер (макет 2026-10), грузится только он */}
+        <picture className="nx-gate-dark"><source media={PHONE_MQ} srcSet="/art/gate-dark-m.webp" /><img src="/art/gate-dark.webp" alt="" draggable={false} /></picture>
+        <picture className="nx-gate-light"><source media={PHONE_MQ} srcSet="/art/gate-light-m.webp" /><img src="/art/gate-light.webp" alt="" draggable={false} /></picture>
       </div>
       <div className="nx-gate-card">
         {step ? (
@@ -406,6 +407,8 @@ export function AuthGate() {
           </div>
         ) : (
           <div key="hello" className="nx-pop nx-gate-hello">
+            {/* Телефон: заголовок «Вход в NEXA» вместо знака (макет) */}
+            <div className="nx-gate-mtitle" aria-hidden="true">Вход в NEXA</div>
             <div className="nx-gate-logo" role="img" aria-label="NEXA">
               <LogoMark s={88} color={C.gateText} />
               <Logo bare h={44} color={C.gateText} />

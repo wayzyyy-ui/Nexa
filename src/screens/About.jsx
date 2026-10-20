@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { C, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
-import { HomeFold } from "../ui/backdrop.jsx";
 import { VERSION } from "../version.js";
 import { Crumb } from "../ui/layout.jsx";
 
@@ -26,6 +25,7 @@ export const ABOUT_FEATURES = [
 
 // История обновлений — новые сверху. Добавляя версию, впишите её сюда (и в release-notes.md)
 export const ABOUT_UPDATES = [
+  { v: "0.11.9", items: ["Календарь на месяц в «Сегодня»", "Новый вид «Сегодня», «Медиа» и «Файлов»", "Новый экран входа на телефоне и светлая Главная"] },
   { v: "0.11.8", items: ["Главная на компьютере целиком помещается в экран, как в макете", "Аккуратнее карточки на телефоне", "Логотип в светлой теме — фирменный синий"] },
   { v: "0.11.7", items: ["Облако честно следит за местом: 2 ГБ не превысить даже одновременными загрузками", "Когда место закончилось, NEXA так и пишет"] },
   { v: "0.11.6", items: ["Надёжнее в фоне: после возврата в NEXA данные и связь обновляются сами", "Файл, который грузился при закрытии NEXA, догружается при следующем открытии", "Карточка «Активность» по новому макету"] },
@@ -90,7 +90,6 @@ export function ScreenAbout({ onBack, installed }) {
             а ассистент помогает с делами. Это дипломный проект: всё, что вы видите, — настоящие данные ваших устройств.
           </div>
         </div>
-        <div aria-hidden="true" style={{ flexShrink: 0 }}><HomeFold size={150} count={0} /></div>
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: C.muted }}>
         <span style={{ padding: "6px 14px", borderRadius: 999, border: `1px solid ${C.borderStrong}` }}>Версия {installed || VERSION}</span>

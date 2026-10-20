@@ -2257,7 +2257,8 @@ export default function NexaApp() {
       {/* Фон за содержимым: на «Настройках» — сетка-чертёж, на остальных — грани складки */}
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
-      {tab === "home" && !openDevice && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && <div className="nx-home-glow" aria-hidden="true" />}
+      {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа» и «Файлах» */}
+      {["home", "today", "media", "files"].includes(tab) && !openDevice && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}

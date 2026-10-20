@@ -60,12 +60,18 @@ export function ScheduleForm({ existing, day, onSave, onCancel }) {
 }
 
 export function DayStrip({ value, onChange, all }) {
-  const days = Array.from({ length: DAYS_AHEAD }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; });
+  // Обычно — сегодня и 6 дней вперёд. Выбрали в календаре день вне этой недели — полоса начинается с него
+  const today = dayKey();
+  const inWeek = Array.from({ length: DAYS_AHEAD }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return dayKey(d); }).includes(value);
+  const start = inWeek ? new Date() : dayFromKey(value);
+  const days = Array.from({ length: DAYS_AHEAD }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d; });
+  const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return dayKey(d); })();
   return (
     <div role="tablist" aria-label="День" className="nx-day-strip nx-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 18 }}>
       {days.map((d, i) => {
         const key = dayKey(d), on = key === value, has = all.some((it) => it.date === key);
-        const top = i === 0 ? "Сегодня" : i === 1 ? "Завтра" : d.toLocaleDateString("ru-RU", { weekday: "short" });
+        const top = key === today ? "Сегодня" : key === tomorrow ? "Завтра"
+          : inWeek ? d.toLocaleDateString("ru-RU", { weekday: "short" }) : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }).replace(".", "");
         return (
           <button key={key} type="button" role="tab" aria-selected={on} onClick={() => onChange(key)} className="nx-day-chip" style={{
             ...btnReset, flexShrink: 0, minWidth: 64, padding: "8px 14px 7px", borderRadius: 18, textAlign: "center",
@@ -74,11 +80,66 @@ export function DayStrip({ value, onChange, all }) {
             color: on ? C.onFold : C.text,
           }}>
             <span style={{ display: "block", fontSize: 12, opacity: on ? 0.9 : 0.7, whiteSpace: "nowrap" }}>{top}</span>
-            <span style={{ display: "block", fontFamily: fontDisplay, fontSize: 18, lineHeight: 1.2, marginTop: 1 }}>{d.getDate()}</span>
+            <span className="nx-day-num" style={{ display: "block", fontFamily: fontDisplay, fontSize: 18, lineHeight: 1.2, marginTop: 1 }}>{d.getDate()}</span>
             <span style={{ display: "block", width: 4, height: 4, margin: "3px auto 0", borderRadius: "50%", background: has ? (on ? C.onFold : C.mint) : "transparent" }} />
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* Календарь на месяц: листать месяцы, точка — в этот день есть дела, мятная рамка — сегодня.
+   Выбор дня открывает его расписание. Окно — role="dialog", Esc и «Назад» Android закрывают */
+const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+export function MonthCalendar({ value, all, onPick, onClose }) {
+  const [month, setMonth] = useState(() => { const d = dayFromKey(value); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const today = dayKey();
+  const busy = new Set(all.map((it) => it.date));
+  const first = (month.getDay() + 6) % 7; // сколько пустых клеток до 1-го числа (неделя с понедельника)
+  const total = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const cells = [...Array(first).fill(null), ...Array.from({ length: total }, (_, i) => new Date(month.getFullYear(), month.getMonth(), i + 1))];
+  const shift = (n) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
+  const title = month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(" г.", "");
+  const navBtn = { ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" };
+  return (
+    <div role="dialog" aria-label="Календарь" className="nx-pop nx-month" style={{ border: "1px solid " + C.lineBright, borderRadius: 24, padding: "14px 16px 16px", marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <button type="button" className="nx-icon-btn" onClick={() => shift(-1)} aria-label="Предыдущий месяц" style={navBtn}>
+          <span style={{ display: "flex", transform: "rotate(180deg)" }}>{Icon.chevron({ c: C.text, s: 16 })}</span>
+        </button>
+        <div style={{ flex: 1, textAlign: "center", fontFamily: fontDisplay, fontSize: 17, textTransform: "capitalize" }}>{title}</div>
+        <button type="button" className="nx-icon-btn" onClick={() => shift(1)} aria-label="Следующий месяц" style={navBtn}>{Icon.chevron({ c: C.text, s: 16 })}</button>
+        <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть календарь" style={navBtn}>{Icon.close({ c: C.muted, s: 16 })}</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4 }}>
+        {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: "center", fontSize: 11, color: C.mutedSoft, paddingBottom: 4 }}>{w}</div>)}
+        {cells.map((d, i) => {
+          if (!d) return <span key={"e" + i} />;
+          const key = dayKey(d), on = key === value, isToday = key === today;
+          return (
+            <button key={key} type="button" onClick={() => onPick(key)} aria-pressed={on}
+              aria-label={d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) + (busy.has(key) ? ", есть дела" : "")}
+              className="nx-month-day" style={{
+                ...btnReset, height: 42, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                fontFamily: fontDisplay, fontSize: 15, color: on ? C.onFold : key < today ? C.mutedSoft : C.text,
+                background: on ? "linear-gradient(135deg, " + C.foldBlue + ", " + C.foldCyan + ")" : "transparent",
+                border: "1px solid " + (isToday && !on ? C.mint : "transparent"),
+              }}>
+              {d.getDate()}
+              <span style={{ width: 4, height: 4, marginTop: 2, borderRadius: "50%", background: busy.has(key) ? (on ? C.onFold : C.mint) : "transparent" }} />
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+        <button type="button" className="nx-link-btn" onClick={() => onPick(today)} style={{ ...btnReset, fontSize: 13, color: C.mint }}>Сегодня</button>
+      </div>
     </div>
   );
 }
@@ -97,6 +158,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
   const next = nextIdx >= 0 ? schedule[nextIdx] : null;
   const cursorAt = !isToday ? -1 : nextIdx >= 0 ? nextIdx : schedule.length; // курсор «сейчас» — перед ближайшим делом
   const [adding, setAdding] = useState(false);
+  const [calOpen, setCalOpen] = useState(false); // открыт ли календарь на месяц
 
   // Курсор «сейчас»: ромб на линии таймлайна, мятная черта и время справа
   const nowMarker = (
@@ -134,7 +196,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
 
   return (
     <MediaLayout hideArt={forecastOpen}>
-      <MediaTitle title="Сегодня" subtitle="Ваши дела, расписание и погода — всё в одном месте." />
+      <MediaTitle title="Сегодня" />
 
       <div className="nx-today-grid nx-stagger" style={{
         display: "grid",
@@ -147,12 +209,12 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
         gap: "18px 44px", alignItems: "start",
       }}>
         {/* alignSelf: stretch — рамка расписания всегда по высоте правой колонки */}
-        <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.borderStrong}`, borderRadius: 18, padding: "26px 28px 30px" }}>
-          <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 10 }}>
-            {Icon.calendar({ c: C.text, s: 24 })} Расписание
-            {/* Своё дело: открывает форму над таймлайном */}
+        <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px 30px" }}>
+          <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 14 }}>
+            <span className="nx-sched-name">Расписание</span>
+            {/* Своё дело: открывает форму над таймлайном (на телефоне эта кнопка — ниже, рядом с «Календарём») */}
             {!adding && (
-              <button type="button" className="nx-ghost-btn" onClick={() => setAdding(true)} style={{
+              <button type="button" className="nx-ghost-btn nx-sched-add-top" onClick={() => setAdding(true)} style={{
                 ...btnReset, marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontFamily: fontBody,
                 fontSize: 13, padding: "6px 12px", borderRadius: 999, border: `1px solid ${C.borderStrong}`,
               }}>
@@ -162,6 +224,20 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
           </div>
           {/* Дни: сегодня, завтра и дальше */}
           <DayStrip value={day} onChange={(k) => { setDay(k); setAdding(false); }} all={all} />
+          {/* «Календарь» — месяц целиком; на телефоне рядом «+ Добавить» (макет) */}
+          <div className="nx-sched-tools" style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+            <button type="button" className="nx-ghost-btn" onClick={() => setCalOpen(!calOpen)} aria-expanded={calOpen}
+              style={{ ...btnReset, flex: 1, fontSize: 14, padding: "7px 14px", borderRadius: 999, border: `1px solid ${C.lineBright}`, textAlign: "center" }}>
+              Календарь
+            </button>
+            {!adding && (
+              <button type="button" className="nx-ghost-btn nx-sched-add-row" onClick={() => setAdding(true)}
+                style={{ ...btnReset, flex: 1, fontSize: 14, padding: "7px 14px", borderRadius: 999, border: `1px solid ${C.lineBright}`, justifyContent: "center", alignItems: "center", gap: 6 }}>
+                {Icon.plus({ c: C.mint, s: 14 })} Добавить
+              </button>
+            )}
+          </div>
+          {calOpen && <MonthCalendar value={day} all={all} onClose={() => setCalOpen(false)} onPick={(k) => { setDay(k); setAdding(false); setCalOpen(false); }} />}
           {/* Живая строка: сколько осталось до ближайшего дела (пустая — не занимает места) */}
           {(next || schedule.length > 0) && (
             <div role="status" className="nx-sched-until" style={{ fontSize: 13, color: C.muted, marginBottom: 18 }}>

@@ -157,8 +157,11 @@ export const APP_CSS = `
           --home-glow-a: rgba(0, 190, 170, 0.12); --home-glow-b: rgba(60, 100, 255, 0.08);
           --home-bg-a: #EDF1F5; --home-bg-b: #D6E4EE;
           /* Экран входа (макет 2026-10): серое «стекло» поверх светлого рендера, текст белый */
-          /* Логотип в светлой теме — фирменный синий, не почти чёрный; «Активность» — светлая карточка */
-          --logo: #3554C8; --act-bg: #F6F9FB;
+          /* Логотип в светлой теме — чёрный (макет); «Активность» — светлая карточка */
+          --logo: #05070D; --act-bg: #F6F9FB;
+          /* Светлая Главная: панель меню, «стекло» карточек, сплошная «Добавить» */
+          --home-side: rgba(255, 255, 255, 0.62); --home-glass: rgba(140, 150, 166, 0.26); --home-glass-line: rgba(255, 255, 255, 0.7);
+          --home-add: #F4F7FA; --home-gray: #8C96A6; --on-red: #FFFFFF;
           --gate-card: rgba(128, 128, 128, 0.62); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.82);
           --gate-border: rgba(255, 255, 255, 0.45); --gate-field: rgba(230, 230, 230, 0.86); --gate-field-text: #15181f; --gate-scene: #d9d9db;
           --scrim: rgba(10, 16, 36, 0.38);
@@ -263,6 +266,28 @@ export const APP_CSS = `
           -webkit-mask-composite: source-in;
           mask-image: linear-gradient(to right, transparent, #000 16%), linear-gradient(to bottom, transparent, #000 6%);
           mask-composite: intersect; }
+        /* Светлая тема: объёмная складка светлее и прозрачнее (макет) — рендер нарисован под тёмный фон */
+        /* Светлая Главная (макет 2026-10): белая панель меню, «стеклянные» серые карточки,
+           сплошная белая «Добавить устройство», насыщенная заливка «не в сети», ассистент от белого к мятному */
+        :root[data-theme="light"] body:has(.nx-home-glow) .ng-sidebar { background: var(--home-side) !important; }
+        :root[data-theme="light"] .nx-home-card, :root[data-theme="light"] .nx-home-act > section {
+          background: var(--home-glass) !important; border-color: var(--home-glass-line) !important; }
+        :root[data-theme="light"] .nx-dev-row.is-add { border-style: solid !important; border-color: transparent !important; background: var(--home-add) !important; }
+        :root[data-theme="light"] .nx-dev-row[data-online="0"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--red) 52%, var(--home-gray)), color-mix(in srgb, var(--red) 34%, var(--home-gray)) 85%) !important; color: var(--on-red) !important; }
+        :root[data-theme="light"] .nx-dev-row[data-online="0"] .nx-dev-row-sub { color: color-mix(in srgb, var(--on-red) 78%, transparent) !important; }
+        :root[data-theme="light"] .nx-dev-row[data-online="1"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 30%, var(--home-add)), color-mix(in srgb, var(--green) 12%, var(--home-add)) 85%) !important; }
+        :root[data-theme="light"] .nx-ai-glow { background-image: linear-gradient(100deg, var(--home-add) 10%, color-mix(in srgb, var(--mint) 45%, var(--home-add))) !important; }
+        /* «Сегодня», «Медиа», «Файлы» на компьютере: во всю ширину окна — содержимое слева (до 1120 px),
+           складка прижата к правому краю окна (макет 2026-10) */
+        @media ${DESKTOP_MQ} {
+          .ng-main-content:has(.nx-media-grid) { max-width: none !important; }
+          .nx-media-grid { grid-template-columns: minmax(0, 1120px) minmax(300px, 1fr) !important; }
+        }
+        /* Складка справа на «Сегодня», «Медиа», «Файлах»: крупно, обрезана правым краем окна */
+        .nx-media-fold { width: 500px; max-width: none; height: auto; display: block; margin-right: -70px; user-select: none; pointer-events: none;
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 14%); mask-image: linear-gradient(to right, transparent, #000 14%); }
+        :root[data-theme="light"] .nx-media-fold { opacity: 0.78; filter: brightness(1.45) saturate(0.85); }
+        :root[data-theme="light"] .nx-home-fold-art { opacity: 0.78; filter: brightness(1.45) saturate(0.85); }
         .nx-home-act { margin-top: calc(35 * var(--mk)); }
         .nx-home-act > section { border-color: var(--line-bright) !important; border-radius: calc(48 * var(--mk)) !important;
           padding: calc(28 * var(--mk)) calc(42 * var(--mk)) calc(18 * var(--mk)) !important; background: color-mix(in srgb, var(--panel) 35%, transparent) !important; }
@@ -557,6 +582,7 @@ export const APP_CSS = `
     border: 1px solid color-mix(in srgb, var(--gate-text) 10%, transparent);
     -webkit-backdrop-filter: blur(28px) saturate(1.15); backdrop-filter: blur(28px) saturate(1.15);
   }
+  .nx-gate-mtitle { display: none; }
   .nx-gate-hello { display: flex; flex-direction: column; align-items: center; text-align: center; }
   .nx-gate-logo { display: flex; align-items: center; gap: clamp(20px, 3vw, 64px); }
   .nx-gate-logo svg:first-child { width: clamp(56px, 5vw, 96px); height: auto; }
@@ -591,15 +617,18 @@ export const APP_CSS = `
   .nx-sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* Телефон: сверху рендер (сцена с устройствами), снизу — шторка с карточкой */
   @media ${PHONE_MQ} {
-    .nx-gate-scene { position: absolute; inset: 0 0 auto 0; height: 52vh; }
-    .nx-gate-scene img { object-position: 28% 55%; }
+    /* Вертикальный рендер на весь экран (gate-*-m.webp), устройства — в верхней половине */
+    .nx-gate-scene img { object-position: center top; }
     .nx-gate-card {
-      position: relative; right: auto; top: auto; transform: none; width: 100%; min-height: 56vh;
-      margin-top: 44vh; border-radius: 32px 32px 0 0; padding: 30px 22px calc(var(--sab) + 28px);
+      position: relative; right: auto; top: auto; transform: none; width: 100%; min-height: 42vh;
+      margin-top: 58vh; border-radius: 32px 32px 0 0; padding: 30px 22px calc(var(--sab) + 28px);
       border-bottom: none; justify-content: flex-start;
     }
     .nx-gate-logo svg:first-child { width: 52px; } .nx-gate-logo svg:last-child { height: 26px; }
-    .nx-gate-text { font-size: 18px; margin-top: 22px; }
+    .nx-gate-text { font-size: 17px; margin-top: 16px; }
+    /* Телефон: заголовок «Вход в NEXA» вместо знака (макет) */
+    .nx-gate-mtitle { display: block; font-size: 32px; line-height: 1.1; }
+    .nx-gate-hello .nx-gate-logo { display: none; }
     .nx-gate-actions { margin-top: 26px; }
     .nx-gate-title { font-size: 30px; }
   }
@@ -1057,6 +1086,14 @@ export const APP_CSS = `
         html.nx-native { overscroll-behavior-y: contain; }
         /* Дни над расписанием: скруглённые плашки (не «таблетки»), подсветка при наведении */
         .nx-day-chip { transition: border-color 160ms ease; }
+        /* «Сегодня» (макет 2026-10): дни — скруглённые квадраты с яркой обводкой, карточки погоды — радиус 40 */
+        .nx-day-chip { border-radius: 14px !important; }
+        .nx-day-chip[aria-selected="false"] { border-color: var(--line-bright) !important; }
+        .nx-weather { border-radius: 40px !important; border-color: var(--line-bright) !important; }
+        .nx-sched-add-row { display: none !important; }
+        /* «Медиа» (макет 2026-10): лента недавних без рамок — подсветка при наведении */
+        .nx-recent-row:hover { background: var(--hover); }
+        .nx-month-day:hover:not([aria-pressed="true"]) { background: var(--hover) !important; }
         /* Полоса дней листается пальцем — полоса прокрутки под ней не нужна.
            Двойной класс: общее правило .nx-scroll (тонкая полоса) стоит ниже и иначе перебивает */
         .nx-day-strip.nx-scroll { scrollbar-width: none; }
@@ -1172,6 +1209,8 @@ export const APP_CSS = `
         @media (max-width: 960px) {
           .ng-home-grid { grid-template-columns: 1fr !important; }
           .ng-cat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          /* Пятая категория («Другое») — во всю ширину под четырьмя */
+          .ng-cat-grid > :nth-child(5) { grid-column: 1 / -1; }
         }
 
         /* ─── Мобильный ────────────────────────────────────── */
@@ -1281,7 +1320,9 @@ export const APP_CSS = `
           /* Хранилище: те же складки в один ряд, только меньше.
              Заголовок "Хранилище" стоит над карточкой (.nx-storage-head) */
           .nx-storage-label { display: none !important; }
-          .nx-storage-box { padding: 12px 10px !important; margin-bottom: 28px !important; }
+          .ng-crumbs > button { height: 34px !important; font-size: 13px !important; padding: 0 20px 0 18px !important; }
+          .nx-storage-box { padding: 14px 14px !important; margin-bottom: 28px !important; border-radius: 40px !important; }
+          .ng-cat-grid .nx-cat-card { border-radius: 48px !important; height: 112px !important; padding: 14px 20px 16px 24px !important; }
           .ng-storage-folds { height: 92px !important; }
           /* Подпись ближе к левому краю складки, чтобы поместилась в узкие */
           .ng-storage-folds .nx-seg-label span:nth-child(1) { font-size: 10.5px !important; }
@@ -1302,10 +1343,16 @@ export const APP_CSS = `
           /* Карточка погоды на телефоне — как на компьютере (заголовок, дата,
              город, температура и состояние в строку, детали с разделителями),
              только отступы внутри чуть меньше */
-          .nx-weather { padding: 18px !important; }
-          /* Расписание без рамки, время слева от линии */
-          .nx-sched { border: none !important; padding: 0 !important; }
-          .nx-sched-head { font-size: 22px !important; margin-bottom: 18px !important; }
+          .nx-weather { padding: 18px 20px !important; border-radius: 32px !important; }
+          /* Расписание — карточка (макет 2026-10): заголовок по центру, под днями «Календарь» и «+ Добавить» */
+          .nx-sched { border-radius: 32px !important; padding: 16px 16px 20px !important; }
+          .nx-sched-head { font-size: 17px !important; margin-bottom: 12px !important; justify-content: center; }
+          .nx-sched-add-top { display: none !important; }
+          .nx-sched-add-row { display: flex !important; }
+          .nx-sched .nx-day-chip { min-width: 44px !important; padding: 6px 8px 5px !important; }
+          .nx-sched .nx-day-chip span:first-child { font-size: 10px !important; }
+          .nx-sched .nx-day-num { font-size: 20px !important; }
+          .nx-sched-tools button { font-size: 12px !important; padding: 6px 10px !important; }
           .nx-sched-head > svg { display: none; } /* только значок календаря, плюс в кнопке остаётся */
           .nx-sched-list { --dot-x: 62px !important; } /* 46 время + 4 отступ + 12 половина кружка */
           .nx-sched-item {
