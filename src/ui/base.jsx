@@ -4,7 +4,7 @@ import { C, T, fontDisplay } from "./theme.js";
 import { Icon } from "./icons.jsx";
 
 // onClick необязательный: если передан, кнопка становится нажимаемой.
-export function IconBtn({ icon, s = 18, onClick, label }) {
+export function IconBtn({ icon, s = 18, onClick, label, className }) {
   // Без onClick — просто значок. С onClick — настоящая кнопка: до неё можно
   // дойти клавишей Tab и нажать Enter / пробелом
   if (!onClick) return (
@@ -13,7 +13,7 @@ export function IconBtn({ icon, s = 18, onClick, label }) {
     </div>
   );
   return (
-    <button type="button" className="nx-icon-btn" onClick={onClick} aria-label={label} title={label}
+    <button type="button" className={`nx-icon-btn${className ? " " + className : ""}`} onClick={onClick} aria-label={label} title={label}
       style={{ ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {icon({ c: C.text, s })}
     </button>

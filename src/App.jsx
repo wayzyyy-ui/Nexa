@@ -31,7 +31,7 @@ import { ACTIVITY_MAX, loadActivity } from "./lib/activity.js";
 import { PAIR_TTL_MS, PAIR_MAX_TRIES, PAIR_LOCK_MS, PAIR_ANSWER_MS, parseNexaQr, makePairCode, readPairLock, savePairLock } from "./lib/pairing.js";
 import { loadFlow, copyText } from "./lib/flow.js";
 import { useOnline, useModalLock, useKeyboardViewport, scrollTopNow, useSmoothScroll, usePullToRefresh } from "./lib/hooks.js";
-import { IconBtn, Logo, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } from "./ui/base.jsx";
+import { IconBtn, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } from "./ui/base.jsx";
 import { BackdropFolds, BackdropGrid } from "./ui/backdrop.jsx";
 import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./ui/navigation.jsx";
 import { ToastHost } from "./ui/toasts.jsx";
@@ -2257,8 +2257,8 @@ export default function NexaApp() {
       {/* Фон за содержимым: на «Настройках» — сетка-чертёж, на остальных — грани складки */}
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
-      {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа» и «Файлах» */}
-      {["home", "today", "media", "files"].includes(tab) && !openDevice && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && <div className="nx-home-glow" aria-hidden="true" />}
+      {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа», «Файлах» и под меню у ассистента */}
+      {["home", "today", "media", "files", "assistant"].includes(tab) && !openDevice && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}
@@ -2304,7 +2304,7 @@ export default function NexaApp() {
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
             <QuickBtn />
             <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
-            <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" />
+            <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" className="nx-tb-user" />
           </TopBar>
         )}
 
@@ -2414,7 +2414,6 @@ export default function NexaApp() {
           onAbout={openAbout}
           onAllDevices={openAllDevices}
           onSearch={() => openSearch()}
-          onProfile={() => setTab("settings")}
           bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
           activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
           findState={findState}
@@ -2461,22 +2460,8 @@ export default function NexaApp() {
     </div>
   )}
 </div>
-        {/* Нижняя строка: слева логотип, справа ссылка "Подробнее о системе".
-    justifyContent: "space-between" разводит их по разным краям строки. */}
-    {tab !== "assistant" && !(tab === "home" && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && !openDevice) && (
-    <div className="ng-footer" style={{
-    padding: "0 40px 30px", width: "100%", maxWidth: 1440, margin: "0 auto",
-    boxSizing: "border-box",
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-  }}>
-    <Logo small />
-    <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-      <div style={{ fontSize: 11, color: C.mutedSoft, opacity: 0.6, fontFamily: "monospace" }}>
-        v{VERSION}
-      </div>
-    </div>
-  </div>
-)}
+        {/* Нижней строки с логотипом и версией больше нет: казалось, что ниже есть ещё что-то
+            и страницу хочется пролистать. Версия — в «О системе» и в шапке ассистента */}
 </div>
       {/* Окно просмотра файла поверх всего. key — чтобы для нового файла
           окно открывалось "с нуля", без сообщений от прошлого */}

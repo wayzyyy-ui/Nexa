@@ -321,16 +321,21 @@ export const APP_CSS = `
         .nx-ai-glow .nx-ai-pill-title { font-size: max(14px, calc(20 * var(--mk))); font-weight: 400; }
         .nx-ai-glow .nx-ai-pill-sub { font-size: max(11px, calc(12 * var(--mk))) !important; }
         /* Верхняя строка (компьютер): поиск таблеткой, часы, значки — тоже в долях макета */
-        .nx-top-search { display: inline-flex; align-items: center; justify-content: center; gap: calc(10 * var(--mk)); box-sizing: border-box;
-          width: calc(241 * var(--mk)); height: max(34px, calc(49 * var(--mk)));
-          border-radius: 999px !important; border: 1px solid var(--border-strong) !important; background: color-mix(in srgb, var(--text) 9%, transparent) !important;
-          color: var(--text) !important; font-size: max(13px, calc(18 * var(--mk))) !important; font-family: inherit; cursor: pointer; }
-        .nx-top-search svg { width: max(13px, calc(18 * var(--mk))); height: max(13px, calc(18 * var(--mk))); }
+        /* Поиск-таблетка (макет): значок и слово ровно по центру, одна линия; «стекло» —
+           сверху светлее, снизу темнее, светлая тонкая обводка */
+        .nx-top-search { display: inline-flex; align-items: center; justify-content: center; gap: calc(12 * var(--mk)); box-sizing: border-box;
+          width: calc(241 * var(--mk)); height: max(34px, calc(49 * var(--mk))); padding: 0 !important; line-height: 1;
+          border-radius: 999px !important; border: 1px solid color-mix(in srgb, var(--text) 32%, transparent) !important;
+          background: linear-gradient(180deg, color-mix(in srgb, var(--text) 18%, transparent), color-mix(in srgb, var(--text) 9%, transparent)) !important;
+          box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
+          color: var(--text) !important; font-size: max(14px, calc(20 * var(--mk))) !important; font-family: inherit; cursor: pointer; }
+        .nx-top-search svg { display: block; flex-shrink: 0; width: max(14px, calc(19 * var(--mk))); height: max(14px, calc(19 * var(--mk))); }
+        .nx-top-search:hover { border-color: color-mix(in srgb, var(--text) 50%, transparent) !important; }
         .nx-top-search-icon { display: none; }
         @media ${DESKTOP_MQ} {
           .ng-topbar { gap: calc(46 * var(--mk)) !important; padding: max(20px, calc(40 * var(--mk))) calc(70 * var(--mk)) 0 0 !important; }
           .ng-topbar[data-tab="home"] { padding-top: calc(64 * var(--mk)) !important; }
-          .ng-topbar [aria-label="Настройки"] svg, .ng-topbar [aria-label="Быстрые действия"] svg, .ng-topbar [aria-label^="Уведомления"] svg { width: max(20px, calc(34 * var(--mk))) !important; height: max(20px, calc(34 * var(--mk))) !important; }
+          .nx-tb-row :is(.nx-tb-user, .nx-tb-quick, .nx-tb-bell) svg { width: max(18px, calc(28 * var(--mk))) !important; height: max(18px, calc(28 * var(--mk))) !important; }
           .ng-timedate > div:first-child { font-size: max(14px, calc(20 * var(--mk))) !important; }
           .ng-timedate > div:last-child { font-size: max(11px, calc(17 * var(--mk))) !important; }
         }
@@ -347,9 +352,9 @@ export const APP_CSS = `
           .nx-top-search { display: none !important; }
           .nx-top-search-icon { display: inline-flex; }
           .ng-topbar { gap: 2px !important; }
-          .ng-topbar [aria-label="Настройки"] svg, .ng-topbar .nx-top-search-icon svg { width: 22px !important; height: 22px !important; }
-          .ng-topbar [aria-label="Быстрые действия"] svg, .ng-topbar [aria-label^="Уведомления"] svg { width: 15px !important; height: 15px !important; }
-          .nx-home-head [aria-label="Быстрые действия"] svg, .nx-home-head [aria-label^="Уведомления"] svg { width: 20px !important; height: 20px !important; }
+          /* Все значки шапки одного размера; профиль на телефоне — в нижней панели */
+          .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) svg, .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 19px !important; height: 19px !important; }
+          .ng-topbar .nx-tb-user { display: none !important; }
           .nx-dev-pill { min-height: 78px; }
           .nx-ai-pill { min-height: 90px; }
           .nx-ai-pill-title { font-size: 19px; }
@@ -688,6 +693,10 @@ export const APP_CSS = `
            Старый снимок уезжает и тает (200 мс), новый въезжает с той же стороны (320 мс).
            Анимируются только transform и opacity — их рисует видеокарта, без рывков */
         html[data-nav-dir] .ng-main-content { view-transition-name: nx-screen; }
+        /* Ассистент закреплён на всё окно и в общий снимок экрана не попадал — браузер растягивал
+           старый экран в новый. Свой снимок с тем же въездом / уходом, что у остальных разделов */
+        html[data-nav-dir] .ng-assistant-wrapper { view-transition-name: nx-screen-ai; }
+        html[data-nav-dir]::view-transition-group(nx-screen-ai) { animation: none; }
         /* Нижняя панель и строка синхронизации закреплены поверх экрана. Без своих снимков
            они попадали в общий снимок страницы, а он лежит ПОД уезжающим экраном —
            экран наезжал на панель и прятал её фон. Свои снимки рисуются над экраном и стоят на месте */
@@ -701,12 +710,12 @@ export const APP_CSS = `
         html[data-nav-dir]::view-transition-new(nx-syncbar) { animation: none; }
         html[data-nav-dir]::view-transition-old(root), html[data-nav-dir]::view-transition-new(root) { animation: none; }
         html[data-nav-dir]::view-transition-group(nx-screen) { animation-duration: 320ms; }
-        html[data-nav-dir="next"]::view-transition-old(nx-screen) { animation: nx-vt-out-left 200ms cubic-bezier(0.4, 0, 1, 1) both; }
-        html[data-nav-dir="next"]::view-transition-new(nx-screen) { animation: nx-vt-in-right 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-        html[data-nav-dir="prev"]::view-transition-old(nx-screen) { animation: nx-vt-out-right 200ms cubic-bezier(0.4, 0, 1, 1) both; }
-        html[data-nav-dir="prev"]::view-transition-new(nx-screen) { animation: nx-vt-in-left 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-        html[data-nav-dir="fade"]::view-transition-old(nx-screen) { animation: nx-vt-fade-out 180ms ease both; }
-        html[data-nav-dir="fade"]::view-transition-new(nx-screen) { animation: nx-vt-fade-in 260ms ease both; }
+        html[data-nav-dir="next"]::view-transition-old(nx-screen), html[data-nav-dir="next"]::view-transition-old(nx-screen-ai) { animation: nx-vt-out-left 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+        html[data-nav-dir="next"]::view-transition-new(nx-screen), html[data-nav-dir="next"]::view-transition-new(nx-screen-ai) { animation: nx-vt-in-right 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        html[data-nav-dir="prev"]::view-transition-old(nx-screen), html[data-nav-dir="prev"]::view-transition-old(nx-screen-ai) { animation: nx-vt-out-right 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+        html[data-nav-dir="prev"]::view-transition-new(nx-screen), html[data-nav-dir="prev"]::view-transition-new(nx-screen-ai) { animation: nx-vt-in-left 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        html[data-nav-dir="fade"]::view-transition-old(nx-screen), html[data-nav-dir="fade"]::view-transition-old(nx-screen-ai) { animation: nx-vt-fade-out 180ms ease both; }
+        html[data-nav-dir="fade"]::view-transition-new(nx-screen), html[data-nav-dir="fade"]::view-transition-new(nx-screen-ai) { animation: nx-vt-fade-in 260ms ease both; }
         @keyframes nx-vt-out-left { to { opacity: 0; transform: translateX(-48px); } }
         @keyframes nx-vt-out-right { to { opacity: 0; transform: translateX(48px); } }
         @keyframes nx-vt-in-right { from { opacity: 0; transform: translateX(64px); } }
@@ -1089,6 +1098,21 @@ export const APP_CSS = `
         .nx-day-chip[aria-selected="false"] { border-color: var(--line-bright) !important; }
         .nx-weather { border-radius: 40px !important; border-color: var(--line-bright) !important; }
         .nx-sched-add-row { display: none !important; }
+        @keyframes nx-tb-flash { 0% { transform: scale(1); filter: none; } 35% { transform: scale(1.18); filter: drop-shadow(0 0 5px var(--mint)); color: var(--mint); } 100% { transform: scale(1); filter: none; } }
+        @keyframes nx-tb-ring { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(14deg); } 40% { transform: rotate(-11deg); } 60% { transform: rotate(7deg); } 80% { transform: rotate(-4deg); } }
+        @keyframes nx-tb-nod { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-3px); } 65% { transform: translateY(1px); } }
+        .nx-tb-quick svg, .nx-tb-bell svg, .nx-tb-user svg { transition: transform 160ms ease; }
+        .nx-tb-bell svg { transform-origin: 50% 12%; }
+        @media (prefers-reduced-motion: no-preference) {
+          @media (hover: hover) {
+            .nx-tb-quick:hover svg { animation: nx-tb-flash 520ms ease-out; }
+            .nx-tb-bell:hover svg { animation: nx-tb-ring 620ms ease-in-out; }
+            .nx-tb-user:hover svg { animation: nx-tb-nod 520ms ease-in-out; }
+          }
+          .nx-tb-quick:focus-visible svg, .nx-tb-quick:active svg { animation: nx-tb-flash 520ms ease-out; }
+          .nx-tb-bell:focus-visible svg, .nx-tb-bell:active svg { animation: nx-tb-ring 620ms ease-in-out; }
+          .nx-tb-user:focus-visible svg, .nx-tb-user:active svg { animation: nx-tb-nod 520ms ease-in-out; }
+        }
         /* Микрофон ассистента во время диктовки: мятная подложка и мягко «дышащее» кольцо */
         .nx-mic.is-on { background: color-mix(in srgb, var(--mint) 16%, transparent) !important; border-radius: 50%; }
         .nx-mic.is-on::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid var(--mint); opacity: 0.6; animation: nx-mic-pulse 1.6s ease-in-out infinite; pointer-events: none; }

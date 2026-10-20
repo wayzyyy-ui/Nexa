@@ -138,7 +138,8 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
     <MediaLayout>
       <MediaTitle title="Файлы" />
 
-      <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-start", gap: 28, marginBottom: 26 }}>
+      {/* alignItems: flex-end — черта поиска на одной линии с чертой под путём */}
+      <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-end", gap: 28, marginBottom: 26 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Путь навигации. Если включён фильтр — вместо пути
               показываем фильтр и кнопку, чтобы его сбросить.
@@ -186,7 +187,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
 
         <label className="nx-files-search" style={{
           width: 200, flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
-          borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 6, marginTop: 4,
+          borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 6, marginTop: 0,
         }}>
           {Icon.search({ c: C.muted, s: 16 })}
           <input

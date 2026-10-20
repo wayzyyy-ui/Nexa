@@ -65,7 +65,7 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button type="button" className="nx-icon-btn" onClick={toggle} aria-label={unread ? `Уведомления: новых ${unread}` : "Уведомления"}
+      <button type="button" className="nx-icon-btn nx-tb-bell" onClick={toggle} aria-label={unread ? `Уведомления: новых ${unread}` : "Уведомления"}
         aria-expanded={open} style={{
           ...btnReset, width: 34, height: 34, borderRadius: 10, position: "relative",
           display: "flex", alignItems: "center", justifyContent: "center",

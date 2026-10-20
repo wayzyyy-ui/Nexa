@@ -36,7 +36,7 @@ export const quickMatch = (item, q) => {
 // Кнопка-молния в верхней строке
 export function QuickBtn() {
   return (
-    <button type="button" className="nx-icon-btn" onClick={openQuickPanel}
+    <button type="button" className="nx-icon-btn nx-tb-quick" onClick={openQuickPanel}
       aria-label="Быстрые действия" title={`Быстрые действия · ${QUICK_KEYS}`} aria-haspopup="dialog"
       style={{ ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {Icon.quick({ c: C.text, s: 18 })}

@@ -653,7 +653,7 @@ const menuBlock = (
     alignItems: "flex-end",
   }}>
     {/* Верхняя строка: время/дата + иконка профиля */}
-    <div style={{
+    <div className="nx-tb-row" style={{
       display: "flex",
       alignItems: "center",
       gap: 18,
@@ -662,7 +662,7 @@ const menuBlock = (
       <TimeDate />
       <QuickBtn />
       {bell}
-      <IconBtn icon={Icon.user} />
+      <IconBtn icon={Icon.user} onClick={() => setTab?.("settings")} label="Настройки" className="nx-tb-user" />
     </div>
   </div>
 );

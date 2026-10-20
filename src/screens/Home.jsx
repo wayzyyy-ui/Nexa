@@ -256,7 +256,7 @@ function HomeFoldArt() {
 // Компьютер — две, как в макете: карточка не растёт и вся Главная помещается в экран
 const HOME_DESK_MAX = 2, HOME_MOB_MAX = 6;
 
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, onProfile }) {
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online || d.isSelf).length;
   const deskList = devices.slice(0, HOME_DESK_MAX);
@@ -336,11 +336,10 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
       {/* ══════════ ТЕЛЕФОН ══════════ */}
       <div className="ng-home-mobile">
-        {/* Шапка: профиль слева, NEXA по центру, уведомления и быстрые действия справа */}
+        {/* Шапка (макет): NEXA по центру, уведомления и быстрые действия справа.
+            Профиль — во вкладке нижней панели, слева пусто */}
         <div className="nx-home-head">
-          <button type="button" className="nx-icon-btn" onClick={onProfile} aria-label="Настройки" style={{ ...btnReset, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {Icon.user({ c: C.text, s: 22 })}
-          </button>
+          <span aria-hidden="true" style={{ height: 40 }} />
           <span style={{ justifySelf: "center" }}><Logo bare h={22} /></span>
           <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
             {bell}

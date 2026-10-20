@@ -22,7 +22,7 @@ export function MobileTabBar({ active, onChange }) {
     { id: "today",     label: "Сегодня",   icon: Icon.calendar },
     { id: "home",      label: "Главная",   icon: Icon.home, main: true },
     { id: "media",     label: "Медиа",     icon: Icon.image },
-    { id: "files",     label: "Файлы",     icon: Icon.folder },
+    { id: "settings",  label: "Профиль",   icon: Icon.user },
   ];
   const homeIndex = mobileNav.findIndex((i) => i.main);
 
@@ -197,7 +197,7 @@ export function Sidebar({ active, onChange }) {
 // поэтому заголовки всех экранов стоят на одной высоте с часами.
 export function TopBar({ children, tab }) {
   return (
-    <div className="ng-topbar" data-tab={tab} style={{
+    <div className="ng-topbar nx-tb-row" data-tab={tab} style={{
       position: "absolute", top: 0, right: 0, zIndex: 50,
       display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
     }}>
@@ -207,7 +207,7 @@ export function TopBar({ children, tab }) {
 }
 
 /* ---------- Свайпы между разделами (только телефон) ----------
-   Порядок как в нижней панели: Сегодня → Ассистент → Главная → Медиа → Файлы,
+   Порядок как в нижней панели: Ассистент → Сегодня → Главная → Медиа (Профиль — только нажатием),
    без зацикливания. Жест только наблюдаем (passive) — вертикальная прокрутка
    и системные жесты не блокируются. На компьютере касаний нет — мышь и
    колёсико не затронуты.
@@ -219,7 +219,8 @@ export function TopBar({ children, tab }) {
    в 24 px от края экрана (там системный «Назад»), при открытой клавиатуре.
    getCtx() → { tab, sub } (sub — открыт экран устройства или «Активность»);
    onSwipe(dir) — dir: "next" (палец влево) | "prev" (палец вправо) */
-export const SWIPE_ORDER = ["assistant", "today", "home", "media", "files"]; // как в нижней панели
+// Как в нижней панели; «Профиль» (Настройки) свайпом не открывается — как и раньше, только нажатием
+export const SWIPE_ORDER = ["assistant", "today", "home", "media"];
 
 export const SWIPE_MIN = 60, SWIPE_FLICK_MIN = 30, SWIPE_FLICK_SPEED = 0.5, SWIPE_FLICK_MS = 300, SWIPE_EDGE = 24, SWIPE_RATIO = 1.5;
 
