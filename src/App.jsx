@@ -14,6 +14,7 @@ import { useThisDeviceSys, sameSys, thisDeviceKind } from "./lib/deviceInfo.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, PAIR_CODE_RE, cleanSys, isHw } from "./lib/realtime.js";
 import { useReturnToApp } from "./lib/lifecycle.js";
+import { bootRoute, navigate, onRoute, titleOf, canGoBack, goBack, layerCount, pressEscape } from "./lib/router.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
 import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
 // Свои модули: lib — логика без интерфейса, ui — общие элементы, screens — экраны
@@ -75,23 +76,13 @@ import { APP_CSS } from "./ui/appStyles.js";
    setTab меняется при клике по иконке в Sidebar — от этого зависит,
    какой из шести экранов показывается ниже. */
 export default function NexaApp() {
-  // Каждый новый запуск NEXA начинается с Главной. Раздел помним только
-  // внутри текущего запуска (sessionStorage живёт, пока открыты вкладка
-  // браузера или приложение): перезагрузка страницы вернёт туда же,
-  // а полный перезапуск — на Главную.
-  const [tab, setTab] = useState(() => {
-    try {
-      localStorage.removeItem("nexa-tab"); // раньше раздел помнился навсегда — старый ключ не нужен
-      return sessionStorage.getItem("nexa-tab") || "home";
-    } catch { return "home"; }
-  });
-
-  // Каждый раз, когда экран меняется — запоминаем его id до конца запуска
-  useEffect(() => {
-    if (tab !== "assistant") {
-      try { sessionStorage.setItem("nexa-tab", tab); } catch {}
-    }
-  }, [tab]);
+  /* С какого экрана начинаем — по адресу (src/lib/router.js): прямая ссылка /files
+     открывает «Файлы», перезагрузка — тот же экран. Приложение (Android) и корень
+     сайта всегда начинают с Главной */
+  const [boot] = useState(bootRoute);
+  const [tab, setTab] = useState(boot.tab);
+  // Раньше раздел помнился в nexa-tab — теперь его хранит адрес, старые ключи не нужны
+  useEffect(() => { try { localStorage.removeItem("nexa-tab"); sessionStorage.removeItem("nexa-tab"); } catch {} }, []);
 
   // Экранная клавиатура: размер видимой области и признак kb-open
   useKeyboardViewport();
@@ -789,7 +780,7 @@ export default function NexaApp() {
       if (!u.searchParams.has("pair")) return null;
       const c = (u.searchParams.get("pair") || "").toUpperCase();
       u.searchParams.delete("pair");
-      window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+      window.history.replaceState(window.history.state, "", u.pathname + u.search + u.hash);
       return PAIR_CODE_RE.test(c) ? c : null;
     } catch { return null; }
   });
@@ -813,7 +804,7 @@ export default function NexaApp() {
       if (!u.searchParams.has("login")) return null;
       const c = (u.searchParams.get("login") || "").toUpperCase();
       u.searchParams.delete("login");
-      window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+      window.history.replaceState(window.history.state, "", u.pathname + u.search + u.hash);
       return PAIR_CODE_RE.test(c) ? c : null;
     } catch { return null; }
   });
@@ -838,9 +829,9 @@ export default function NexaApp() {
   const [activity, setActivity] = useSharedState(`nexa-activity${scope}`, loadActivity);
   const logActivity = (kind, title, text = "") => setActivity((list) =>
     [{ id: `a${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), kind, title, text }, ...list].slice(0, ACTIVITY_MAX));
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [aboutOpen, setAboutOpen] = useState(false); // экран «О системе»
-  const [devicesOpen, setDevicesOpen] = useState(false); // экран «Все устройства»
+  const [activityOpen, setActivityOpen] = useState(boot.sub === "activity");
+  const [aboutOpen, setAboutOpen] = useState(boot.sub === "about"); // экран «О системе»
+  const [devicesOpen, setDevicesOpen] = useState(boot.sub === "devices"); // экран «Все устройства»
   // То же событие ещё раз (повтор сигнала, вторая вкладка этого браузера) — в ленту не пишем
   const logActivityOnce = (key, ...args) => claimNote(`act:${key}`).then((ok) => ok && logActivity(...args));
   onTextActivity.current = (item) => logActivityOnce(`text:${item.id}`, "text", `Получен текст от «${realNames[item.from_device] || item.from_name || "Устройство"}»`, safeUrl(item.text) ? "Ссылка" : "Сообщение");
@@ -904,7 +895,7 @@ export default function NexaApp() {
      mySid — номер сеанса этого устройства (из его пропуска). Устройство пишет его в свою
      строку (state.sid) — так «Отключить устройство» завершает именно его вход */
   const mySid = sessionIdOf(auth.session);
-  const [securityOpen, setSecurityOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(boot.sub === "security");
   const [secLog, setSecLog] = useSharedState(uid ? securityKey(uid) : "nexa-security-guest", loadSecurity);
   const logSecurity = (kind, title, text = "", extra = {}) => {
     if (!uid) return;
@@ -1532,7 +1523,7 @@ export default function NexaApp() {
     return () => { off(); clearInterval(t); };
   }, [btIds.join(",")]);
   const uploadInputRef = useRef(null);                      // выбор файлов по команде ассистента
-  const [openDeviceId, setOpenDeviceId] = useState(null);   // чей экран устройства открыт
+  const [openDeviceId, setOpenDeviceId] = useState(boot.dev); // чей экран устройства открыт (/device/<id>)
 
   /* Передача файла на устройство.
      transfer — открытое меню { file, card, anchor, sendingId }:
@@ -1575,6 +1566,10 @@ export default function NexaApp() {
     setTransfer(null);
   };
   const openDevice = devices.find((d) => d.id === openDeviceId);
+  // Открыли адрес /device/<id>, а такого устройства нет (удалено, чужая ссылка, гость) —
+  // когда список устройств уже известен, возвращаемся на раздел
+  const devicesKnown = auth.ready && (!uid || devicesLoaded);
+  useEffect(() => { if (devicesKnown && openDeviceId && !openDevice) setOpenDeviceId(null); }, [devicesKnown, openDeviceId, !!openDevice]);
   /* Склеенный телефон (сайт + приложение): куда отправлять действия.
      По умолчанию — приложение, если оно в сети; человек может выбрать сайт */
   const [partPick, setPartPick] = useState({}); // id карточки → id части
@@ -1736,53 +1731,59 @@ export default function NexaApp() {
   const laterUpdate = () => { if (!appUpdate) return; setUpdateLater(appUpdate.version); try { localStorage.setItem("nexa-update-later", appUpdate.version); } catch {} };
   const homeUpdate = appUpdate && !appUpdate.required && appUpdate.version === updateLater ? null : appUpdate;
 
-  // История разделов — для кнопки «Назад» на Android
-  const tabHistory = useRef([]);
-  const prevTab = useRef(tab);
-  const goingBack = useRef(false);
-  useEffect(() => {
-    if (prevTab.current !== tab && !goingBack.current) {
-      tabHistory.current = [...tabHistory.current, prevTab.current].slice(-20);
-    }
-    goingBack.current = false;
-    prevTab.current = tab;
-  }, [tab]);
+  /* ── Адрес и история (src/lib/router.js) ──
+     Какой экран на виду: раздел, экран поверх него («Активность», «О системе»…) и устройство */
+  const screenSub = securityOpen ? "security" : aboutOpen ? "about" : activityOpen ? "activity" : devicesOpen ? "devices" : null;
+  const screenKey = `${tab}|${screenSub || ""}|${openDeviceId || ""}`;
+  // Экран сменился (нажатие, свайп, «Назад» на экране) — подстраиваем адрес и историю
+  useEffect(() => { navigate({ tab, sub: screenSub, dev: openDeviceId }); }, [screenKey]);
+  // Назад / Вперёд браузера (и кнопка «Назад» Android) — показываем экран из истории.
+  // Обработчик подключается один раз, свежие значения — через ref
+  const routeRef = useRef(null);
+  routeRef.current = (s) => {
+    const apply = () => {
+      if (s.tab !== tab) { setFilesFilter(null); setFilesDevice(null); }
+      // Вернулись к ассистенту — открываем тот же диалог, что был
+      if (s.tab === "assistant" && tab !== "assistant") setSearchChatId(currentChatRef.current);
+      setTab(s.tab); setOpenDeviceId(s.dev || null);
+      setActivityOpen(s.sub === "activity"); setAboutOpen(s.sub === "about");
+      setSecurityOpen(s.sub === "security"); setDevicesOpen(s.sub === "devices");
+    };
+    if (`${s.tab}|${s.sub || ""}|${s.dev || ""}` === screenKey) return;
+    // В приложении «Назад» между разделами — с тем же въездом, что у панели; на сайте браузер
+    // часто сам показывает жест «назад» — второй анимации поверх не нужно
+    const plain = !s.sub && !s.dev && !screenSub && !openDeviceId;
+    if (isNative && plain && s.tab !== tab) navTransition(navDir(s.tab), apply);
+    else { apply(); scrollTopNow(); }
+  };
+  useEffect(() => onRoute((s) => routeRef.current?.(s)), []);
+  // Заголовок вкладки браузера — по экрану
+  useEffect(() => { document.title = titleOf({ tab, sub: screenSub, dev: openDeviceId }, openDevice?.name); }, [screenKey, openDevice?.name]);
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
-  backState.current = { openDeviceId, tab, blocked: !!appUpdate?.required, activityOpen, aboutOpen, securityOpen, devicesOpen, locked: !!locked };
+  backState.current = { tab, blocked: !!appUpdate?.required, plain: !screenSub && !openDeviceId, locked: !!locked };
   useEffect(() => {
     if (!isNative) return;
     const sub = CapApp.addListener("backButton", () => {
       // 0) Версия устарела — экран обновления не закрывается, просто сворачиваем
       if (backState.current.blocked) { CapApp.minimizeApp(); return; }
       // Экран первого запуска на приветствии — сворачиваем. На шаге входа (почта, код, QR)
-      // Esc ниже вернёт на шаг назад: с кода — к почте, с почты или QR — к приветствию
+      // Esc вернёт на шаг назад: с кода — к почте, с почты или QR — к приветствию
       const gate = document.querySelector(".nx-auth-gate");
-      if (gate && gate.querySelector(".nx-gate-hello")) { CapApp.minimizeApp(); return; }
-      // 1) Открыто окно, меню, уведомления или история чатов — закрываем его.
-      //    У всех них закрытие уже работает по Esc — нажимаем его за пользователя
-      const layer = document.querySelector('[role="dialog"], [role="menu"], .nx-notes');
-      if (layer) {
-        const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
-        target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        return;
-      }
-      const { openDeviceId: dev, tab: cur, activityOpen: act, aboutOpen: about, securityOpen: sec, devicesOpen: devs, locked: lk } = backState.current;
+      if (gate) { if (gate.querySelector(".nx-gate-hello")) CapApp.minimizeApp(); else pressEscape(); return; }
       // Экран NEXA заблокирован (демонстрация) — «Назад» только сворачивает
-      if (lk) { CapApp.minimizeApp(); return; }
-      // Открыта «Активность» — назад к Главной
-      if (act) { setActivityOpen(false); return; }
-      if (about) { setAboutOpen(false); return; }
-      if (sec) { setSecurityOpen(false); return; }
-      // 2) Открыт экран устройства — назад к списку
-      if (dev) { setOpenDeviceId(null); return; }
-      if (devs) { setDevicesOpen(false); return; }
-      // 3) Был другой раздел — возвращаемся в него
-      const prev = tabHistory.current.pop();
-      if (prev && prev !== cur) { goingBack.current = true; setFilesFilter(null); setFilesDevice(null); setTab(prev); return; }
-      if (cur !== "home") { goingBack.current = true; setTab("home"); return; }
-      // 4) На Главной — сворачиваем приложение (как обычно на Android)
+      if (backState.current.locked) { CapApp.minimizeApp(); return; }
+      // Карточки, пришедшие сами («Продолжить здесь?», «Устройство ищут»), своей записи
+      // в истории не имеют — закрываем их Esc
+      if (document.querySelector(".nx-cont-offer, .nx-find-overlay")) { pressEscape(); return; }
+      // 1) Есть куда вернуться по истории: окно, шторка, экран устройства, раздел → Главная
+      if (canGoBack()) { goBack(); return; }
+      // 2) Запасной путь: окно без записи в истории — закрываем Esc; не Главная — на Главную
+      if (layerCount()) { pressEscape(); return; }
+      const { tab: cur, plain } = backState.current;
+      if (cur !== "home" || !plain) { goTabRef.current("home"); return; }
+      // 3) На Главной — сворачиваем приложение (как обычно на Android)
       CapApp.minimizeApp();
     });
     return () => { sub.then((h) => h.remove()); };

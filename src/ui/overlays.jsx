@@ -8,9 +8,10 @@ import { btnReset, Spinner } from "./base.jsx";
 /* ═══ ДЕМОНСТРАЦИОННАЯ БЛОКИРОВКА ЭКРАНА ══════════════════════
    Закрывает только интерфейс NEXA на этом устройстве. Это не системная
    блокировка телефона — так и написано на экране */
+// data-nx-noback — «Назад» блокировку не закрывает (см. src/lib/router.js)
 export function LockOverlay({ from, onUnlock }) {
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="nx-lock-title" style={{
+    <div role="dialog" aria-modal="true" aria-labelledby="nx-lock-title" data-nx-noback style={{
       position: "fixed", inset: 0, zIndex: 940, background: C.bg,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
       padding: "calc(var(--sat) + 24px) 24px calc(var(--sab) + 24px)",
