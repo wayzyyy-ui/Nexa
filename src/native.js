@@ -23,6 +23,8 @@ export const API_CHAT_URL = `${API_BASE}/api/chat`;
    Нет сети и ответа в памяти — null, приложение работает как обычно */
 const UPDATE_CACHE = "nexa-update-cache";
 export const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
+// Последний ответ version.json { at, latest } — его же читает обновление веб-части (src/lib/ota.js)
+export const readUpdateCache = () => { try { return JSON.parse(localStorage.getItem(UPDATE_CACHE)); } catch { return null; } };
 export async function checkForUpdate({ force = false } = {}) {
   if (!isNative) return null;
   try {

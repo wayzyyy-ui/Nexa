@@ -6,7 +6,10 @@
    2) собирает APK через Gradle: есть android/keystore.properties — подписанный
       release (assembleRelease), нет — debug, как раньше (ключ ~/.android/debug.keystore);
    3) npm run copy:apk — кладёт APK на сайт (public/nexa.apk) и пишет public/version.json
-      (версия из Gradle, размер, SHA-256, ключ подписи, «что нового» из release-notes.md).
+      (версия из Gradle, размер, SHA-256, ключ подписи, «что нового» из release-notes.md);
+   4) веб-часть того же выпуска — архив public/ota/web-<версия>.zip и блок web в version.json
+      (scripts/web-bundle.mjs) с nativeMin = versionCode этого APK: обновление веб-части без APK
+      (npm run release:web) потом пойдёт поверх него.
 
    Перед выпуском поднимите "version" в package.json (0.9.8 → 0.9.9):
    build.gradle считает из неё versionCode (908 → 909). Флаги --hard / --soft
@@ -15,6 +18,7 @@
    Обновление ставится поверх, только если APK подписан тем же ключом, что установленный. */
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { publishWeb, readVersionJson } from "./web-bundle.mjs";
 
 const root = new URL("..", import.meta.url);
 const path = (p) => new URL(p, root).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -37,3 +41,13 @@ run(`${gradlew} ${release ? "assembleRelease" : "assembleDebug"}`, { cwd: path("
 // 3) APK и version.json → сайт
 const pass = ["--hard", "--soft", "--new-key"].filter((f) => process.argv.includes(f)).join(" ");
 run(`node scripts/copy-apk.mjs ${release ? "--release" : "--debug"} ${pass}`);
+
+// 4) Веб-часть этого выпуска — из того же dist, что внутри APK
+const published = readVersionJson();
+publishWeb({
+  version: published.version, nativeMin: published.versionCode,
+  stop: (msg) => { console.error(`
+✖ ${msg}
+  APK выпущен, а веб-часть — нет. Исправьте и выпустите её: npm run release:web
+`); process.exit(1); },
+});

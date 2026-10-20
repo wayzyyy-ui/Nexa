@@ -11,6 +11,14 @@
       ]
     },
     {
+      "source": "/ota/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Content-Type", "value": "application/zip" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
       "source": "/nexa.apk",
       "headers": [
         { "key": "Content-Type", "value": "application/vnd.android.package-archive" },

@@ -14,6 +14,7 @@ import { useThisDeviceSys, sameSys, thisDeviceKind } from "./lib/deviceInfo.js";
 // Связь устройств в реальном времени: кто онлайн, передача текста и ссылок
 import { useDeviceLink, safeUrl, PAIR_CODE_RE, cleanSys, isHw } from "./lib/realtime.js";
 import { useReturnToApp } from "./lib/lifecycle.js";
+import { useOta, otaStart, otaCheck, otaApplyNow } from "./lib/ota.js";
 import { bootRoute, navigate, onRoute, titleOf, canGoBack, goBack, layerCount, pressEscape } from "./lib/router.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
 import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
@@ -22,7 +23,7 @@ import { useSharedState, TAB_ID } from "./lib/shared.js";
 import { C, fontBody, PHONE_MQ } from "./ui/theme.js";
 import { Icon } from "./ui/icons.jsx";
 import { readManualCity, TODAY } from "./lib/weather.js";
-import { plural, toMb, fileBytes, formatSize, mmss } from "./lib/format.js";
+import { plural, toMb, fileBytes, formatSize, mmss, hhmm } from "./lib/format.js";
 import { SCHEDULE_KEY, dayKey, dayFromKey, sortSchedule, itemsOn, nextScheduleItem, scheduleDayLabel, SCHEDULE_MIGRATED_KEY, scheduleMigrated, loadSchedule } from "./lib/schedule.js";
 import { updResume } from "./lib/updates.js";
 import { CHATS_KEY, loadChats, chatMigration, readGuest, saveGuest, useAuth, takeManualSignOut, clearLocalAccountData } from "./lib/auth.js";
@@ -1707,7 +1708,10 @@ export default function NexaApp() {
   }, [auth.ready, auth.user?.id]);
 
   // В приложении: убрать заставку и проявить интерфейс (см. startIntro)
-  useEffect(() => { startIntro(); }, []);
+  // Сначала обновление веб-части (src/lib/ota.js): «запустились» и, если скачанная ждёт, —
+  // перезагрузка под логотипом. Иначе — обычное появление интерфейса
+  useEffect(() => { otaStart().then((r) => { if (!r) startIntro(); }, () => startIntro()); }, []);
+  const ota = useOta();
 
   // Новая версия приложения: проверяем при запуске и когда приложение
   // снова открыли из фона (на сайте checkForUpdate сразу возвращает null)
@@ -1718,7 +1722,8 @@ export default function NexaApp() {
   useEffect(() => { if (isNative) CapApp.getInfo().then((i) => i?.version && setInstalledVersion(i.version)).catch(() => {}); }, []);
   // При запуске и при возврате в приложение; сам сайт спрашиваем не чаще раза в 6 часов
   // (между проверками — последний ответ из памяти, см. checkForUpdate)
-  const checkUpdate = (force) => checkForUpdate({ force }).then((u) => { setAppUpdate(u); setUpdateCheckedAt(Date.now()); });
+  // Тот же ответ version.json решает и про APK, и про веб-часть (otaCheck его не скачивает второй раз)
+  const checkUpdate = (force) => checkForUpdate({ force }).then((u) => { setAppUpdate(u); setUpdateCheckedAt(Date.now()); otaCheck({ force }); });
   useEffect(() => {
     if (!isNative) return;
     updateCleanup(); // скачанный в прошлый раз файл больше не нужен (обновление уже стоит или брошено)
@@ -2446,11 +2451,28 @@ export default function NexaApp() {
           <>
             <SectionTitle>Обновление</SectionTitle>
             <SettingsGroup>
+              {/* Приложение (APK): новая версия — карточка с установкой, иначе — что стоит */}
               {appUpdate ? <UpdateCard variant="settings" update={appUpdate} /> : (
-                <SettingsRow last icon={Icon.check({ c: C.green, s: 18 })} title={`Установлена последняя версия · NEXA ${installedVersion}`}
-                  subtitle={updateCheckedAt ? `Проверено в ${new Date(updateCheckedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} · сайт спрашиваем не чаще раза в 6 часов` : "Проверяем…"}
-                  right={<button type="button" className="nx-ghost-btn" onClick={() => checkUpdate(true)} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Проверить</button>} />
+                <SettingsRow icon={Icon.check({ c: C.green, s: 18 })} title={`Приложение · NEXA ${installedVersion}`}
+                  subtitle={updateCheckedAt ? `Последняя версия · проверено в ${hhmm(new Date(updateCheckedAt))} · сайт спрашиваем не чаще раза в 6 часов` : "Проверяем…"} />
               )}
+              {/* Интерфейс (веб-часть) — обновляется без нового APK, применяется при следующем запуске */}
+              <SettingsRow last wrap
+                icon={ota.status === "error" || ota.status === "needApk" ? Icon.alert({ c: ota.status === "error" ? C.red : C.muted, s: 18 })
+                  : ota.status === "downloading" || ota.status === "ready" ? Icon.download({ c: C.mint, s: 18 })
+                  : Icon.check({ c: C.green, s: 18 })}
+                title={`Интерфейс · NEXA ${VERSION}`}
+                subtitle={{
+                  idle: "Проверяем…", checking: "Проверяем…",
+                  current: `Актуальный${updateCheckedAt ? ` · проверено в ${hhmm(new Date(updateCheckedAt))}` : ""}`,
+                  downloading: `Скачиваем ${ota.version} — ${ota.percent} %. Работе не мешает`,
+                  ready: `Скачано ${ota.version} — применится при следующем запуске NEXA`,
+                  needApk: `Для ${ota.version} нужна новая версия приложения${appUpdate ? " — обновите выше" : ""}`,
+                  error: ota.text,
+                }[ota.status]}
+                right={ota.status === "ready"
+                  ? <button type="button" className="nx-ghost-btn" onClick={() => otaApplyNow()} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.mint}`, color: C.text }}>Перезапустить</button>
+                  : <button type="button" className="nx-ghost-btn" disabled={ota.status === "downloading"} onClick={() => checkUpdate(true)} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text, opacity: ota.status === "downloading" ? 0.5 : 1 }}>Проверить</button>} />
             </SettingsGroup>
           </>
         )}

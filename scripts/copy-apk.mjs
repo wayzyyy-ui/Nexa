@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 import { execFileSync, execSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readNotes } from "./web-bundle.mjs";
 
 const root = new URL("..", import.meta.url);
 const path = (p) => new URL(p, root).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -104,11 +105,8 @@ const signer = cert.digest;
 const debugKey = /CN=Android Debug/i.test(cert.dn);
 const badging = badgingOf(apk.file);
 
-// 4) Что нового — строки «- …» из release-notes.md (строки с # — пояснения, пропускаем)
-const notesFile = path("release-notes.md");
-const notes = existsSync(notesFile)
-  ? readFileSync(notesFile, "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => /^[-•*]\s+/.test(l)).map((l) => l.replace(/^[-•*]\s+/, "")).slice(0, 12)
-  : [];
+// 4) Что нового — строки «- …» из release-notes.md (общая функция с веб-частью)
+const notes = readNotes();
 
 // 5) Минимальная версия, которой ещё можно пользоваться (как раньше в release-android.mjs):
 //    по умолчанию — предыдущий выпуск; --hard — только новая; --soft — прежняя минимальная
@@ -149,7 +147,8 @@ if (prev.signer && prev.signer !== signer && !arg("--new-key")) {
 
 // 7) На сайт
 copyFileSync(apk.file, path("public/nexa.apk"));
-const info = { version, versionCode, minVersionCode, apkUrl: `/nexa.apk?v=${versionCode}`, url: "/nexa.apk", size, sha256, signer, notes };
+// Блок web (обновление веб-части, scripts/web-bundle.mjs) не трогаем — его пишет release:android / release:web
+const info = { version, versionCode, minVersionCode, apkUrl: `/nexa.apk?v=${versionCode}`, url: "/nexa.apk", size, sha256, signer, notes, ...(prev.web ? { web: prev.web } : {}) };
 writeFileSync(versionFile, JSON.stringify(info, null, 2) + "\n");
 
 console.log(`\n✔ public/nexa.apk (${apk.kind}, ${(size / 1e6).toFixed(1)} МБ) и public/version.json — версия ${version} (${versionCode}).`);
