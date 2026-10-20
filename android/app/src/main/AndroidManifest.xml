@@ -89,5 +89,9 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Голосовой вывод: Android 11+ показывает приложению движки синтеза речи только так -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 </manifest>

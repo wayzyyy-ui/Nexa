@@ -4,6 +4,7 @@ import { formatBytes } from "../../lib/deviceInfo.js";
 import { formatLabel } from "../../lib/attach.js";
 import { C } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
+import { useVoiceOutput, speak, stopSpeaking } from "../../lib/voiceOutput.js";
 import { useLiveText } from "../../lib/live.js";
 import { Spinner, btnReset, SkeletonLine } from "../../ui/base.jsx";
 
@@ -108,17 +109,20 @@ export function RichText({ children }) {
 }
 
 // Маленькая кнопка под сообщением (копировать, повторить, править)
-export function ActionBtn({ title, onClick, disabled, children }) {
+// active — кнопка «включена» (идёт озвучка): мятная обводка и цвет, видна без наведения
+export function ActionBtn({ title, onClick, disabled, active, children }) {
   return (
     <button
-      className="nx-action"
+      className={active ? "nx-action nx-action-on" : "nx-action"}
       title={title}
+      aria-label={title}
+      aria-pressed={active ? true : undefined}
       onClick={onClick}
       disabled={disabled}
       style={{
         width: 28, height: 28, borderRadius: 10,
-        border: "1px solid transparent", background: "transparent",
-        color: C.muted, display: "flex", alignItems: "center", justifyContent: "center",
+        border: `1px solid ${active ? C.mint : "transparent"}`, background: "transparent",
+        color: active ? C.mint : C.muted, display: "flex", alignItems: "center", justifyContent: "center",
         cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.35 : 1,
         transition: "color 140ms ease, background 140ms ease, border-color 140ms ease",
       }}
@@ -134,8 +138,11 @@ export function ActionBtn({ title, onClick, disabled, children }) {
 // error — ответ не получен (нет сети, ошибка сервера): пузырь в цветах ошибки
 // actionLabel — ответ на команду: под пузырём плашка с галочкой и названием действия;
 // undoable / undone / onUndo — кнопка «Отменить» на плашке и её состояние
-export function MessageBubble({ role, text, file, error, actionLabel, undoable, undone, onUndo, isLastAi, disabled, onRegenerate, onEdit }) {
+// speakId — номер ответа для озвучки (у неготовых и ошибочных ответов — null: кнопки нет)
+export function MessageBubble({ role, text, file, error, actionLabel, undoable, undone, onUndo, isLastAi, disabled, onRegenerate, onEdit, speakId }) {
   const isUser = role === 'user';
+  const tts = useVoiceOutput();
+  const speaking = speakId != null && tts.speakingId === speakId;
   const [copied, setCopied] = useState(false);       // показываем галочку после копирования
   const [isEditing, setIsEditing] = useState(false); // включён ли режим редактирования
   const [draft, setDraft] = useState(text);          // текст в поле редактирования
@@ -318,15 +325,27 @@ export function MessageBubble({ role, text, file, error, actionLabel, undoable, 
           </div>
         )}
 
-        {/* Кнопки под ответом: копировать, а у последнего ответа ещё и повторить */}
+        {/* Кнопки под ответом: копировать, озвучить, а у последнего ответа ещё и повторить */}
         <div className="nx-actions" style={{ display: "flex", gap: 4, paddingLeft: 2 }}>
           {copyButton}
+          {/* Озвучить — только готовый ответ и только если на устройстве есть русский голос.
+              Во время чтения — «Остановить» (подсвечена, видна и без наведения) */}
+          {speakId != null && tts.supported && (
+            <ActionBtn title={speaking ? "Остановить" : "Озвучить"} active={speaking}
+              onClick={() => (speaking ? stopSpeaking() : speak(speakId, text))}>
+              {speaking ? Icon.stop({ c: "currentColor", s: 13 }) : Icon.speaker({ c: "currentColor", s: 15 })}
+            </ActionBtn>
+          )}
           {isLastAi && (
             <ActionBtn title="Повторить ответ" onClick={onRegenerate} disabled={disabled}>
               {Icon.refresh({ c: "currentColor", s: 15 })}
             </ActionBtn>
           )}
         </div>
+        {/* Не получилось озвучить — коротко, рядом с этим ответом, гаснет само */}
+        {speakId != null && tts.error && tts.errorId === speakId && (
+          <div role="status" style={{ fontSize: 12, color: C.muted, paddingLeft: 4 }}>{tts.error}</div>
+        )}
       </div>
     </div>
   );

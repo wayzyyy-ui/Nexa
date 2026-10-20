@@ -153,6 +153,13 @@ export const Icon = {
       <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" strokeLinecap="round" />
     </svg>
   ),
+  // Озвучить: динамик и две волны звука
+  speaker: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4Z" strokeLinejoin="round" />
+      <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" strokeLinecap="round" />
+    </svg>
+  ),
   // Остановить: квадрат
   stop: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill={p.c}>

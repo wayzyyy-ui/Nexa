@@ -33,6 +33,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NexaUpdatePlugin.class);
         // Голосовой ввод в ассистента: системное распознавание речи (см. NexaSpeechPlugin)
         registerPlugin(NexaSpeechPlugin.class);
+        // Голосовой вывод: прочитать ответ ассистента вслух системным синтезатором (см. NexaTtsPlugin)
+        registerPlugin(NexaTtsPlugin.class);
         // Виджеты рабочего стола: расписание и город из приложения (см. widgets/NexaWidgetsPlugin)
         registerPlugin(ru.nexalink.app.widgets.NexaWidgetsPlugin.class);
         super.onCreate(savedInstanceState);

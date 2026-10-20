@@ -19,6 +19,7 @@ import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSumm
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
 import { useMediaQuery } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
+import { stopSpeaking, useVoiceOutput } from "../../lib/voiceOutput.js";
 import { FILE_SCOPE, sortByRecent, catOf } from "../../lib/fileStore.js";
 import { VERSION } from "../../version.js";
 import { FileThumb } from "../../ui/files.jsx";
@@ -306,6 +307,15 @@ useEffect(() => {
   }, [openRequest?.n]);
   // Какой диалог открыт — NexaApp (для «Продолжить на устройстве» в быстрых действиях)
   useEffect(() => { onCurrentChat?.(currentChatId); }, [currentChatId]);
+  /* Озвучка ответов (src/lib/voiceOutput.js): номер ответа — «диалог:время». Замолкаем при смене
+     диалога, уходе с экрана ассистента и когда читаемый ответ исчез (повтор ответа, удаление) */
+  const speakIdOf = (m, i) => `${currentChatId}:${m.at || i}`;
+  const tts = useVoiceOutput();
+  useEffect(() => { stopSpeaking(); }, [currentChatId]);
+  useEffect(() => () => stopSpeaking(), []);
+  useEffect(() => {
+    if (tts.speakingId && !messages.some((m, i) => speakIdOf(m, i) === tts.speakingId)) stopSpeaking();
+  }, [messages, tts.speakingId]);
   // Удаление (уже после подтверждения в меню диалога)
   const deleteChat = (id) => {
     setChats(prev => prev.filter(c => c.id !== id));
@@ -765,7 +775,8 @@ const menuBlock = (
         {/* Микрофон: нажать — говорить, ещё раз — готово. Нет распознавания на этом устройстве — кнопки нет */}
         {voice.supported && (
           <button type="button" onPointerDown={(e) => e.preventDefault()}
-            onClick={(e) => { e.stopPropagation(); voice.toggle(); }}
+            // Микрофон не должен слышать голос NEXA — озвучку останавливаем
+            onClick={(e) => { e.stopPropagation(); stopSpeaking(); voice.toggle(); }}
             className={`nx-icon-btn nx-mic${voice.active ? " is-on" : ""}`} aria-pressed={voice.active}
             aria-label={voice.active ? "Закончить диктовку" : "Сказать голосом"} title={voice.active ? "Закончить диктовку" : "Сказать голосом"}
             style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
@@ -968,6 +979,8 @@ const menuBlock = (
                     disabled={isLoading}
                     onRegenerate={regenerate}
                     onEdit={(newText) => editMessage(i, newText)}
+                    // Озвучить — только готовый ответ (не ошибка, не оборванный, не пустой)
+                    speakId={m.role === 'ai' && !m.error && !m.partial && m.text?.trim() ? speakIdOf(m, i) : null}
                   />
                 ))}
                 {cmdBusy && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
