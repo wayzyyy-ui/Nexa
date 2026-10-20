@@ -24,13 +24,21 @@ const ATTACH_MIME = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp',
 const SUPABASE_BASE = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
 const SIGNED_PREFIX = '/storage/v1/object/sign/nexa-files/';
 
-const MODEL = 'gemini-flash-lite-latest';
+/* Модели по очереди: первая — основная, остальные — запасные.
+   Не псевдоним «-latest»: Google сам переводит его на новые модели, и однажды он указал
+   на модель, которая отвечала по 25 секунд. Конкретная версия не меняется сама.
+   Порядок выбран по замеру 2026-10-20: 3.6-flash — первые слова за 1–2 с;
+   3.1-flash-lite — быстрая, но часто перегружена; псевдоним — последний запасной */
+const MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
+// Сколько ждём первых слов от модели, прежде чем попробовать следующую (у последней — без ограничения)
+const FIRST_WORDS_MS = 12000;
+// Ошибки, при которых пробуем следующую модель: нет модели, перегружена, сбой у Google, лимит именно этой модели
+const NEXT_MODEL_STATUS = [404, 429, 500, 503];
 
 // Настройки ответа: temperature ниже — меньше фантазий,
 // maxOutputTokens — потолок длины, чтобы не было «простыней»
 const GENERATION = { temperature: 0.4, maxOutputTokens: 400 };
-// Без «обдумывания» перед ответом. MODEL — псевдоним «последняя Flash-Lite»: Google
-// переводит его на новые модели, а новые по умолчанию сначала молча думают —
+// Без «обдумывания» перед ответом: новые модели по умолчанию сначала молча думают —
 // первые слова приходят через несколько секунд, а мысли съедают maxOutputTokens.
 // Для коротких ответов ассистента это не нужно.
 // Новые модели (Gemini 3) понимают только thinkingLevel; старое thinkingBudget: 0 они
@@ -172,15 +180,45 @@ export default async function handler(req, res) {
     const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
     // С файлом ответ может быть длиннее: пересказ, список пунктов
     const config = { systemInstruction: SYSTEM_INSTRUCTION + memoryBlock(req.body?.memory), ...GENERATION, ...(hasAttachment ? { maxOutputTokens: 1200 } : {}) };
-    let stream;
-    for (let i = 0; i < THINKING_TRIES.length; i++) {
+    // Одна модель: перебираем настройки «обдумывания» (400 — модель не понимает эту настройку)
+    // и ждём первых слов не дольше limitMs. Возвращает { it, first } — поток и первый кусок текста
+    const startModel = async (model, limitMs) => {
+      const deadline = Date.now() + limitMs; // limitMs считается от отправки запроса, а не от ответа
+      for (let i = 0; i < THINKING_TRIES.length; i++) {
+        const ctrl = new AbortController();
+        let timer;
+        // Ждём не дольше, чем осталось до deadline (0 — без ограничения)
+        const slow = limitMs ? new Promise((_, reject) => {
+          timer = setTimeout(() => reject(Object.assign(new Error('slow'), { status: 'slow' })), Math.max(0, deadline - Date.now()));
+        }) : null;
+        const within = (p) => (slow ? Promise.race([p, slow]) : p);
+        try {
+          const stream = await within(ai.models.generateContentStream({ model, contents, config: { ...config, ...THINKING_TRIES[i], abortSignal: ctrl.signal } }));
+          const it = stream[Symbol.asyncIterator]();
+          // Первые слова (пустые служебные куски пропускаем)
+          for (;;) {
+            const step = await within(it.next());
+            if (step.done || step.value?.text) { clearTimeout(timer); return { it, first: step.done ? '' : step.value.text }; }
+          }
+        } catch (e) {
+          clearTimeout(timer);
+          ctrl.abort();
+          if (e?.status === 400 && i < THINKING_TRIES.length - 1) continue;
+          throw e;
+        }
+      }
+    };
+    // Модели по очереди: перегружена, нет её, лимит или долго молчит — следующая.
+    // Остальные ошибки (и ошибка последней модели) — обрабатываем ниже, как раньше
+    let started;
+    for (let m = 0; m < MODELS.length; m++) {
+      const last = m === MODELS.length - 1;
       try {
-        stream = await ai.models.generateContentStream({ model: MODEL, contents, config: { ...config, ...THINKING_TRIES[i] } });
+        started = await startModel(MODELS[m], last ? 0 : FIRST_WORDS_MS);
         break;
       } catch (e) {
-        // 400 — модель не понимает эту настройку обдумывания, пробуем следующую.
-        // Последняя попытка (без настройки) или другая ошибка — обрабатываем ниже, как раньше
-        if (e?.status !== 400 || i === THINKING_TRIES.length - 1) throw e;
+        if (last || !(e?.status === 'slow' || NEXT_MODEL_STATUS.includes(e?.status))) throw e;
+        console.error('Gemini model fallback:', m, e?.status); // в журнал — только номер модели и код
       }
     }
 
@@ -188,10 +226,9 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    for await (const chunk of stream) {
-      if (chunk.text) {
-        res.write(chunk.text);
-      }
+    if (started.first) res.write(started.first);
+    for (let step = await started.it.next(); !step.done; step = await started.it.next()) {
+      if (step.value?.text) res.write(step.value.text);
     }
     res.end();
   } catch (error) {
