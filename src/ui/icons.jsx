@@ -146,6 +146,13 @@ export const Icon = {
       <path d="M15.5 7v8.5a3.5 3.5 0 0 1-7 0V6a2.25 2.25 0 0 1 4.5 0v9a1 1 0 0 1-2 0V8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  // Микрофон: капсула на ножке (голосовой ввод ассистента)
+  mic: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="9" y="3.5" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" strokeLinecap="round" />
+    </svg>
+  ),
   // Остановить: квадрат
   stop: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill={p.c}>

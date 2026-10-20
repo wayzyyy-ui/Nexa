@@ -31,6 +31,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NexaPushPlugin.class);
         // Обновление изнутри: скачать APK, проверить, открыть установщик (см. NexaUpdatePlugin)
         registerPlugin(NexaUpdatePlugin.class);
+        // Голосовой ввод в ассистента: системное распознавание речи (см. NexaSpeechPlugin)
+        registerPlugin(NexaSpeechPlugin.class);
         // Виджеты рабочего стола: расписание и город из приложения (см. widgets/NexaWidgetsPlugin)
         registerPlugin(ru.nexalink.app.widgets.NexaWidgetsPlugin.class);
         super.onCreate(savedInstanceState);

@@ -18,6 +18,7 @@ import { fileBytes, plural } from "../../lib/format.js";
 import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSummary, ASSISTANT_HELP, parseCommand } from "../../lib/commands.js";
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
 import { useMediaQuery } from "../../lib/hooks.js";
+import { useVoiceInput } from "../../lib/voice.js";
 import { FILE_SCOPE, sortByRecent, catOf } from "../../lib/fileStore.js";
 import { VERSION } from "../../version.js";
 import { FileThumb } from "../../ui/files.jsx";
@@ -162,6 +163,17 @@ useEffect(() => {
   });
   const flipFrom = useRef(null);
   const taRef = useRef(null);
+  /* Голосовой ввод (src/lib/voice.js): распознанное дописывается в поле, отправляет человек сам */
+  const inputNow = useRef(input);
+  inputNow.current = input;
+  const voice = useVoiceInput({ getText: () => inputNow.current, setText: setInput });
+  // Esc и «Назад» Android во время диктовки — отменить её (поле вернётся к тексту до диктовки)
+  useEffect(() => {
+    if (!voice.active) return;
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); voice.cancel(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [voice.active]);
   const rememberInputPos = () => {
     const el = inputDockRef.current;
     if (el) flipFrom.current = { top: el.getBoundingClientRect().top, focused: document.activeElement === taRef.current };
@@ -590,7 +602,7 @@ useEffect(() => {
   };
   
   const onKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); voice.release(); sendMessage(); }
   };
 
 
@@ -719,7 +731,7 @@ const menuBlock = (
           ref={taRef}
           rows={1}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { voice.release(); setInput(e.target.value); }}
           onKeyDown={onKeyDown}
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
@@ -750,6 +762,16 @@ const menuBlock = (
             overflowWrap: "anywhere",
           }}
         />
+        {/* Микрофон: нажать — говорить, ещё раз — готово. Нет распознавания на этом устройстве — кнопки нет */}
+        {voice.supported && (
+          <button type="button" onPointerDown={(e) => e.preventDefault()}
+            onClick={(e) => { e.stopPropagation(); voice.toggle(); }}
+            className={`nx-icon-btn nx-mic${voice.active ? " is-on" : ""}`} aria-pressed={voice.active}
+            aria-label={voice.active ? "Закончить диктовку" : "Сказать голосом"} title={voice.active ? "Закончить диктовку" : "Сказать голосом"}
+            style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+            {Icon.mic({ c: voice.active ? C.mint : C.muted, s: 18 })}
+          </button>
+        )}
         {/* Пока печатается ответ в этом диалоге — «Остановить» вместо «Отправить» */}
         {streamingHere ? (
           <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); liveAbort?.(); }} className="ng-input-send"
@@ -764,7 +786,7 @@ const menuBlock = (
           // Палец на кнопке не уводит фокус с поля: клавиатура не закрывается,
           // экран не прыгает — и нажатие попадает в кнопку (иначе срабатывало только со второго раза)
           onPointerDown={(e) => e.preventDefault()}
-          onClick={() => sendMessage()}
+          onClick={() => { voice.release(); sendMessage(); }}
           disabled={!canSend}
           aria-label={sendHint} title={sendHint}
           className="ng-input-send"
@@ -789,7 +811,21 @@ const menuBlock = (
     </div>
   </div>
   );
-    const disclaimer = (
+  // Подпись под полем: обычно — «ИИ может допускать ошибки», во время диктовки — что происходит
+  const voiceLine = voice.error ? voice.error
+    : voice.state === "permission" ? "Разрешите доступ к микрофону"
+    : voice.state === "finishing" ? "Заканчиваю…"
+    : voice.state === "listening" ? (voice.heard ? "Слушаю… Проверьте текст перед отправкой" : "Говорите… Нажмите на микрофон, когда закончите")
+    : null;
+    const disclaimer = voiceLine ? (
+  <div className="ng-disclaimer nx-voice-line" role="status" aria-live="polite" style={{ fontSize: 11, color: voice.error ? C.red : C.mint, textAlign: "center", display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <span>{voiceLine}</span>
+    {voice.active && (
+      <button type="button" className="nx-link-btn" onPointerDown={(e) => e.preventDefault()} onClick={voice.cancel}
+        style={{ ...btnReset, fontSize: 11, color: C.muted, textDecoration: "underline", textUnderlineOffset: 2 }}>Отменить</button>
+    )}
+  </div>
+) : (
   <div className="ng-disclaimer" style={{ fontSize: 11, color: C.mutedSoft, textAlign: "center", whiteSpace: "nowrap" }}>
     ИИ может допускать ошибки.
   </div>
@@ -875,8 +911,10 @@ const menuBlock = (
             >
               {greeting}
             </div>
-            <div ref={inputDockRef} className="nx-dock" style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
+            <div ref={inputDockRef} className="nx-dock" style={{ position: "relative", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
               {inputRow}
+              {/* В новом диалоге подписи нет — только состояние диктовки */}
+              {voiceLine && disclaimer}
             </div>
             {/* Подсказки-команды: нажатие отправляет текст как сообщение.
                 На телефоне листаются вбок */}

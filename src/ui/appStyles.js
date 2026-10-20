@@ -1091,6 +1091,13 @@ export const APP_CSS = `
         .nx-day-chip[aria-selected="false"] { border-color: var(--line-bright) !important; }
         .nx-weather { border-radius: 40px !important; border-color: var(--line-bright) !important; }
         .nx-sched-add-row { display: none !important; }
+        /* Микрофон ассистента во время диктовки: мятная подложка и мягко «дышащее» кольцо */
+        .nx-mic.is-on { background: color-mix(in srgb, var(--mint) 16%, transparent) !important; border-radius: 50%; }
+        .nx-mic.is-on::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid var(--mint); opacity: 0.6; animation: nx-mic-pulse 1.6s ease-in-out infinite; pointer-events: none; }
+        @keyframes nx-mic-pulse { 0%, 100% { transform: scale(0.92); opacity: 0.25; } 50% { transform: scale(1.08); opacity: 0.7; } }
+        @media (prefers-reduced-motion: reduce) { .nx-mic.is-on::after { animation: none; opacity: 0.6; } }
+        /* Во время диктовки подпись под полем видна и при открытой клавиатуре */
+        body.kb-open .ng-disclaimer.nx-voice-line { display: flex !important; }
         /* «Медиа» (макет 2026-10): лента недавних без рамок — подсветка при наведении */
         .nx-recent-row:hover { background: var(--hover); }
         .nx-month-day:hover:not([aria-pressed="true"]) { background: var(--hover) !important; }

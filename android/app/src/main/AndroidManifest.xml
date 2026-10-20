@@ -81,4 +81,13 @@
     <!-- «Где устройство?»: место определяется по запросу, только если это включено в Настройках NEXA -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Голосовой ввод в ассистента (NexaSpeechPlugin): спрашивается при первом нажатии на микрофон.
+         Звук не записывается и не хранится — распознаёт системный сервис речи -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Android 11+: без этого приложение «не видит» сервис распознавания речи на телефоне -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 </manifest>
