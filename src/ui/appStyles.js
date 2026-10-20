@@ -123,6 +123,8 @@ export const APP_CSS = `
           /* Фон Главной (макет 2026-10): от левого верхнего угла к правому нижнему */
           --home-bg-a: #01090F; --home-bg-b: #031B2C;
           /* Экран входа (макет 2026-10): тёмное «стекло» поверх рендера */
+          /* Логотип NEXA и карточка «Активность» на телефоне (макет 2026-10: #0D1318) */
+          --logo: #FFFFFF; --act-bg: #0D1318;
           --gate-card: rgba(38, 38, 40, 0.72); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.66);
           --gate-border: rgba(255, 255, 255, 0.4); --gate-field: rgba(20, 20, 22, 0.55); --gate-field-text: #ffffff; --gate-scene: #070708;
           --scrim: rgba(0, 0, 0, 0.6);
@@ -155,6 +157,8 @@ export const APP_CSS = `
           --home-glow-a: rgba(0, 190, 170, 0.12); --home-glow-b: rgba(60, 100, 255, 0.08);
           --home-bg-a: #EDF1F5; --home-bg-b: #D6E4EE;
           /* Экран входа (макет 2026-10): серое «стекло» поверх светлого рендера, текст белый */
+          /* Логотип в светлой теме — фирменный синий, не почти чёрный; «Активность» — светлая карточка */
+          --logo: #3554C8; --act-bg: #F6F9FB;
           --gate-card: rgba(128, 128, 128, 0.62); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.82);
           --gate-border: rgba(255, 255, 255, 0.45); --gate-field: rgba(230, 230, 230, 0.86); --gate-field-text: #15181f; --gate-scene: #d9d9db;
           --scrim: rgba(10, 16, 36, 0.38);
@@ -209,10 +213,10 @@ export const APP_CSS = `
         .ng-home { position: relative; z-index: 1; }
         /* ═══ Главная, макет 2026-10 (второй вариант) ═══════════════════════
            Компьютер: все размеры — в долях макета шириной 1920 px: --mk = ширина окна / 1920
-           (от 0,62 до 1,25 px). На любом экране пропорции те же, что на макете, ничего не «раздувается».
+           (от 0,62 до 1,25 px; по высоте — «высота окна / 1080», берётся меньшее: Главная целиком влезает в окно). На любом экране пропорции те же, что на макете, ничего не «раздувается».
            Числа в calc(N * var(--mk)) — размеры прямо из макета */
         :root { --mk: 1px; }
-        @media ${DESKTOP_MQ} { :root { --mk: clamp(0.62px, calc(100vw / 1920), 1.25px); } }
+        @media ${DESKTOP_MQ} { :root { --mk: clamp(0.62px, min(100vw / 1920, 100vh / 1080), 1.25px); } }
         /* Фон: градиент из макета (слева сверху → справа снизу) и мягкие мятно-синие пятна */
         .nx-home-glow {
           position: fixed; inset: 0; z-index: 0; pointer-events: none;
@@ -230,26 +234,28 @@ export const APP_CSS = `
           .ng-main-content:has(.ng-home) { max-width: none !important; }
           .ng-home { padding: calc(58 * var(--mk)) calc(158 * var(--mk)) calc(40 * var(--mk)) calc(74 * var(--mk)) !important; }
         }
-        .nx-home-brand-desk { margin: 0 0 calc(56 * var(--mk)); }
+        .nx-home-brand-desk { margin: 0 0 calc(52 * var(--mk)); }
         .nx-home-brand-desk > span { gap: calc(40 * var(--mk)) !important; }
         .nx-home-brand-desk > span > svg:first-child { width: calc(58 * var(--mk)) !important; height: auto !important; }
         .nx-home-brand-desk > span > svg:last-child { height: calc(32 * var(--mk)) !important; width: auto !important; }
-        .nx-home-eco { font-size: max(12px, calc(20 * var(--mk))); letter-spacing: 0.3em; text-transform: uppercase; color: var(--text); margin-top: calc(26 * var(--mk)); padding-left: calc(3 * var(--mk)); }
+        .nx-home-eco { font-size: max(12px, calc(20 * var(--mk))); letter-spacing: 0.3em; text-transform: uppercase; color: var(--text); margin-top: calc(18 * var(--mk)); padding-left: calc(3 * var(--mk)); }
         .nx-home-grid { display: grid; grid-template-columns: minmax(0, 1065fr) minmax(0, 505fr); gap: calc(22 * var(--mk)); align-items: stretch; }
         .nx-home-card {
           border: 1px solid var(--line-bright); border-radius: calc(48 * var(--mk)); box-sizing: border-box;
           padding: calc(40 * var(--mk)) calc(42 * var(--mk)) calc(20 * var(--mk));
           background: color-mix(in srgb, var(--panel) 35%, transparent);
         }
-        .nx-home-card-title { font-size: max(14px, calc(21 * var(--mk))); margin-bottom: calc(38 * var(--mk)); }
+        .nx-home-card-title { font-size: max(14px, calc(21 * var(--mk))); margin-bottom: calc(30 * var(--mk)); }
         .nx-home-devices { display: flex; flex-direction: column; min-height: calc(490 * var(--mk)); }
-        .nx-home-devices > .nx-stagger { gap: calc(28 * var(--mk)) !important; margin-bottom: calc(28 * var(--mk)); }
+        /* Две плашки и «Добавить» помещаются в карточку высотой 490 из макета — карточка не растёт */
+        .nx-home-devices > .nx-stagger { gap: calc(20 * var(--mk)) !important; margin-bottom: calc(20 * var(--mk)); }
         .nx-home-all {
           align-self: center; margin-top: auto; height: calc(41 * var(--mk)); min-height: 30px; box-sizing: border-box;
           padding: 0 calc(16 * var(--mk)) !important; font-size: max(13px, calc(20 * var(--mk))) !important; border-radius: 999px !important;
           border: 1px solid var(--border-strong) !important; background: color-mix(in srgb, var(--text) 8%, transparent) !important; color: var(--text) !important;
         }
-        .nx-home-side { display: flex; flex-direction: column; justify-content: flex-end; gap: calc(42 * var(--mk)); min-width: 0; }
+        /* Складка поднимается выше карточки устройств (как в макете) — правая колонка не растягивает карточку */
+        .nx-home-side { display: flex; flex-direction: column; justify-content: flex-end; gap: calc(42 * var(--mk)); min-width: 0; margin-top: calc(-66 * var(--mk)); }
         .nx-home-fold { flex: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; }
         /* Края картинки растворяются: свечение не обрывается прямоугольником на любом фоне */
         .nx-home-fold-art { width: calc(340 * var(--mk)); height: auto; display: block; user-select: none;
@@ -257,16 +263,19 @@ export const APP_CSS = `
           -webkit-mask-composite: source-in;
           mask-image: linear-gradient(to right, transparent, #000 16%), linear-gradient(to bottom, transparent, #000 6%);
           mask-composite: intersect; }
-        .nx-home-act { margin-top: calc(60 * var(--mk)); }
+        .nx-home-act { margin-top: calc(35 * var(--mk)); }
         .nx-home-act > section { border-color: var(--line-bright) !important; border-radius: calc(48 * var(--mk)) !important;
           padding: calc(28 * var(--mk)) calc(42 * var(--mk)) calc(18 * var(--mk)) !important; background: color-mix(in srgb, var(--panel) 35%, transparent) !important; }
         .nx-home-act > section > div:first-child > span { font-size: max(14px, calc(20 * var(--mk))) !important; font-weight: 400 !important; }
         .nx-home-act .nx-act-title { font-size: max(13px, calc(19 * var(--mk))) !important; }
         .nx-home-act .nx-act-time { font-size: max(11px, calc(14 * var(--mk))) !important; }
+        /* Как в макете: три последних события (вся лента — «Вся активность →») */
+        .nx-home-act > section > div:last-child > div:nth-child(n + 4) { display: none !important; }
+        .nx-home-act > section > div:last-child > div { padding: calc(10 * var(--mk)) 0 !important; }
         .nx-home-about { font-size: max(12px, calc(14 * var(--mk))) !important; margin-top: calc(26 * var(--mk)); }
         /* Плашка устройства — «таблетка» во всю ширину карточки, заливка цветом статуса */
         .nx-dev-row {
-          display: flex; align-items: center; gap: calc(26 * var(--mk)); min-height: max(52px, calc(92 * var(--mk))); box-sizing: border-box;
+          display: flex; align-items: center; gap: calc(26 * var(--mk)); min-height: max(46px, calc(82 * var(--mk))); box-sizing: border-box;
           padding: 0 calc(34 * var(--mk)) 0 calc(30 * var(--mk)) !important;
           border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
           background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 14%, transparent), color-mix(in srgb, var(--green) 3%, transparent) 80%) !important;
@@ -321,7 +330,7 @@ export const APP_CSS = `
           .nx-dev-pill { min-height: 78px; }
           .nx-ai-pill { min-height: 90px; }
           .nx-ai-pill-title { font-size: 19px; }
-          .nx-act-pill > section { border-radius: 64px !important; min-height: 140px; padding: 18px 26px 10px !important; }
+          .nx-act-pill > section { border-radius: 33px !important; min-height: 140px; padding: 18px 26px 10px !important; background: var(--act-bg) !important; }
           /* Макет: только заголовок «Активность» по центру. Ссылки «Вся активность →» не видно —
              её кнопка растянута невидимой на всю карточку: нажатие в любое место открывает ленту */
           .nx-act-pill > section { position: relative; }
@@ -340,7 +349,7 @@ export const APP_CSS = `
            (светлой версии макета нет). Цвета — те же, что у тёмной темы */
         .nx-force-update {
           --bg: #01090F; --panel: #0E1016; --border: #1C1E26; --border-soft: #22242C;
-          --text: #FFFFFF; --muted: #92A2AF; --muted-soft: #6B6B72; --mint: #00FFDF;
+          --text: #FFFFFF; --muted: #92A2AF; --muted-soft: #6B6B72; --mint: #00FFDF; --logo: #FFFFFF;
           --border-strong: rgba(255, 255, 255, 0.28); --line-bright: rgba(255, 255, 255, 0.62);
           --hover: rgba(255, 255, 255, 0.05); --pressed: rgba(255, 255, 255, 0.10); color-scheme: dark;
         }
@@ -538,7 +547,7 @@ export const APP_CSS = `
   .nx-gate-scene img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left center; user-select: none; }
   :root[data-theme="dark"] .nx-gate-light, :root[data-theme="light"] .nx-gate-dark { display: none; }
   .nx-gate-card {
-    --text: var(--gate-text); --muted: var(--gate-muted); --muted-soft: var(--gate-muted);
+    --text: var(--gate-text); --muted: var(--gate-muted); --muted-soft: var(--gate-muted); --logo: var(--gate-text);
     --border: var(--gate-border); --border-strong: var(--gate-border); --border-soft: var(--gate-border);
     position: absolute; right: 8.3vw; top: 50%; transform: translateY(-50%);
     width: min(800px, 44vw); min-height: min(800px, 76vh); box-sizing: border-box;

@@ -31,6 +31,8 @@ export const C = {
   pressed: "var(--pressed)",     // подложка нажатой кнопки
   borderStrong: "var(--border-strong)", // заметная обводка карточек (Медиа, Файлы)
   lineBright: "var(--line-bright)", // яркая тонкая обводка карточек-«таблеток» (макет 2026-10)
+  logo: "var(--logo)",           // цвет логотипа NEXA (в светлой теме — фирменный синий)
+  actBg: "var(--act-bg)",         // фон карточки «Активность» на телефоне (макет 2026-10)
   // Экран входа (макет 2026-10): «стекло» карточки, текст, поле почты, фон под рендером
   gateCard: "var(--gate-card)", gateText: "var(--gate-text)", gateMuted: "var(--gate-muted)",
   gateBorder: "var(--gate-border)", gateField: "var(--gate-field)", gateFieldText: "var(--gate-field-text)", gateScene: "var(--gate-scene)",

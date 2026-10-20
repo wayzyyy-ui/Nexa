@@ -23,7 +23,7 @@ export function IconBtn({ icon, s = 18, onClick, label }) {
 // Знак NEXA — грани складки линиями (макет, Logo-mini.svg). Цвет — как у текста
 export function LogoMark({ s = 30, color }) {
   return (
-    <svg viewBox="0 0 46 45" width={s} height={(s * 45) / 46} fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, color: color || C.text }}>
+    <svg viewBox="0 0 46 45" width={s} height={(s * 45) / 46} fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, color: color || C.logo }}>
       <path d="M20.5114 23.6624V28.7977L1.5 41.0349V13.3554L20.5114 2.57495V8.25654M20.5114 28.7977L1.5 13.3554M20.5114 8.25654L28.0739 13.9814M20.5114 8.25654V18.5271M43.8934 25.9569V5.05154L28.0739 13.9814M43.8934 25.9569L28.0739 13.9814M43.8934 25.9569V41.0349L20.5114 23.6624M28.0739 13.9814L20.5114 18.5271M20.5114 18.5271V23.6624"
         stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -31,8 +31,8 @@ export function LogoMark({ s = 30, color }) {
 }
 
 // Логотип NEXA. Это тот же SVG из Figma (assets/logo.svg), только вставлен
-// прямо в код. Все фигуры залиты fill="currentColor", то есть берут цвет
-// текста: в тёмной теме логотип белый, в светлой тёмный. Отдельный чёрный
+// прямо в код. Все фигуры залиты fill="currentColor" и берут цвет C.logo:
+// в тёмной теме логотип белый, в светлой — фирменный синий. Отдельный чёрный
 // файл не нужен, иначе в тёмной теме он пропал бы на фоне.
 // bare — без внешних отступов (в шапке мобильной Главной рядом со знаком)
 export function Logo({ small, bare, h: height, color }) {
@@ -41,7 +41,7 @@ export function Logo({ small, bare, h: height, color }) {
     <svg
       viewBox="0 0 149 25" height={h} width={(h * 149) / 25}
       fill="currentColor" role="img" aria-label="NEXA"
-      style={{ color: color || C.text, marginBottom: bare ? 0 : 20, marginRight: bare ? 0 : 20, display: "block" }}
+      style={{ color: color || C.logo, marginBottom: bare ? 0 : 20, marginRight: bare ? 0 : 20, display: "block" }}
     >
       <rect y="0.128967" width="2.89847" height="23.7675" />
       <rect x="25.521" y="0.143463" width="2.89847" height="23.7675" />

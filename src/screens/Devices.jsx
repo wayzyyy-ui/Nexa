@@ -8,7 +8,7 @@ import { EmptyState, StateButton } from "../ui/base.jsx";
 import { DeviceRow } from "./Home.jsx";
 import { plural } from "../lib/format.js";
 
-export function ScreenDevices({ devices, received, findState, onOpenDevice, onFind, onAddDevice, onBack }) {
+export function ScreenDevices({ devices, received, onOpenDevice, onAddDevice, onBack }) {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   // Esc — назад (если поверх не открыто окно)
   useEffect(() => {
@@ -27,7 +27,7 @@ export function ScreenDevices({ devices, received, findState, onOpenDevice, onFi
         {title} <span style={{ color: C.mutedSoft }}>{list.length}</span>
       </div>
       <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {list.map((d) => <DeviceRow key={d.id} d={d} received={received} findState={findState} onOpen={onOpenDevice} onFind={onFind} />)}
+        {list.map((d) => <DeviceRow key={d.id} d={d} received={received} onOpen={onOpenDevice} />)}
       </div>
     </section>
   );

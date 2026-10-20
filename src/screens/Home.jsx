@@ -6,7 +6,6 @@ import { deviceStatus } from "../lib/devices.js";
 import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.jsx";
 import { QuickBtn } from "../ui/QuickPanel.jsx";
 import { HomeFold } from "../ui/backdrop.jsx";
-import { FindChip } from "../ui/overlays.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner } from "../ui/install.jsx";
 
@@ -216,12 +215,11 @@ export function LinkPulse({ p, onDone }) {
 // received — у каких устройств отметка «Получен файл» { id: { name } }
 // update — вышла новая версия приложения (баннер «Обновить», только в приложении)
 // loading — устройства аккаунта ещё грузятся из облака
-// findState / onFind — «Найти» у реальных устройств (подключённых по коду)
+// «Найти» на карточках не показываем — оно на экране устройства (быстрые действия)
 // activityBlock — компактная лента «Активность» (только у вошедшего)
 /* Плашка устройства (компьютер и экран «Все устройства»): «таблетка» во всю ширину,
    слева рисунок устройства, справа точка статуса; заливка цветом статуса */
-export function DeviceRow({ d, received, findState, onOpen, onFind }) {
-  const findable = d.real && d.online && !d.isSelf && onFind;
+export function DeviceRow({ d, received, onOpen }) {
   return (
     <div style={{ position: "relative" }}>
       <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-row" data-online={d.online || d.isSelf ? "1" : "0"} onClick={() => onOpen(d.id)}
@@ -233,13 +231,8 @@ export function DeviceRow({ d, received, findState, onOpen, onFind }) {
             ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
             : <span className="nx-dev-row-sub">{[deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ")}</span>}
         </span>
-        {findable && <span style={{ width: 108, flexShrink: 0 }} />}
         <span className="nx-status-dot" style={{ color: d.online || d.isSelf ? C.green : C.red, background: d.online || d.isSelf ? C.green : C.red }} />
       </button>
-      {findable && (
-        <FindChip state={findState?.[d.device_id]} onClick={() => onFind(d)}
-          style={{ position: "absolute", right: 56, top: "50%", transform: "translateY(-50%)" }} />
-      )}
     </div>
   );
 }
@@ -262,10 +255,11 @@ function HomeFoldArt({ count }) {
   return <img data-link-hub className="nx-home-fold-art" src="/art/home-fold.webp" alt="" draggable={false} onError={() => setFailed(true)} />;
 }
 
-// Сколько устройств видно на Главной; остальные — «Все устройства»
-const HOME_DESK_MAX = 4, HOME_MOB_MAX = 6;
+// Сколько устройств видно на Главной; остальные — «Все устройства».
+// Компьютер — две, как в макете: карточка не растёт и вся Главная помещается в экран
+const HOME_DESK_MAX = 2, HOME_MOB_MAX = 6;
 
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, findState = {}, onFind, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, onProfile }) {
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, onProfile }) {
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online || d.isSelf).length;
   const deskList = devices.slice(0, HOME_DESK_MAX);
@@ -317,7 +311,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             <div className="nx-home-card-title">Мои устройства</div>
             <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {empty}
-              {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} findState={findState} onOpen={onOpenDevice} onFind={onFind} />)}
+              {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} onOpen={onOpenDevice} />)}
               {devices.length > 0 && <AddDeviceRow onClick={onAddDevice} />}
             </div>
             {devices.length > 0 && (
@@ -392,14 +386,12 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                   </span>
                   <span className="nx-status-dot" style={{ color: d.online || d.isSelf ? C.green : C.red, background: d.online || d.isSelf ? C.green : C.red }} />
                 </button>
-                {d.real && d.online && !d.isSelf && onFind && (
-                  <FindChip compact state={findState[d.device_id]} onClick={() => onFind(d)} style={{ position: "absolute", top: -8, right: 14 }} />
-                )}
               </div>
             ))}
             {devices.length > 0 && (
+              /* Во всю ширину, в одну строку (макет 2026-10): без пустого места справа */
               <button type="button" className="nx-row-btn nx-dev-pill is-add" onClick={onAddDevice}
-                style={{ ...btnReset, textAlign: "left", color: C.text, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 4, minHeight: 88 }}>
+                style={{ ...btnReset, gridColumn: "1 / -1", color: C.text, justifyContent: "center", gap: 8 }}>
                 {Icon.plus({ c: C.mint, s: 20 })}
                 <span style={{ fontSize: 15, lineHeight: 1.2 }}>Добавить устройство</span>
               </button>
