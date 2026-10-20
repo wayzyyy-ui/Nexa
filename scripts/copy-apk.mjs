@@ -6,7 +6,13 @@
 
    Какой APK: подписанный release (android/app/build/outputs/apk/release/app-release.apk,
    есть, если настроен android/keystore.properties) или debug — берём более свежий.
-   Флаги: --release / --debug — взять именно этот; --hard / --soft — см. minVersionCode ниже.
+   Флаги: --release / --debug — взять именно этот; --hard / --soft — см. minVersionCode ниже;
+   --new-key — разрешить смену ключа подписи (иначе выпуск останавливается).
+
+   Проверки перед публикацией (не прошли — public/nexa.apk и version.json не трогаются):
+   подпись APK проверена apksigner; release подписан не debug-ключом и не «debuggable»;
+   версия внутри APK совпадает с output-metadata.json и не старше опубликованной;
+   ключ тот же, что у прошлого выпуска (смена — только с --new-key).
 
    version.json:
    - version, versionCode — версия APK;
@@ -39,7 +45,10 @@ const pick = (kind) => {
 let apk = arg("--release") ? pick("release") : arg("--debug") ? pick("debug")
   : [pick("release"), pick("debug")].filter(Boolean).sort((a, b) => b.time - a.time)[0];
 if (!apk) {
-  console.error("✖ Нет собранного APK. Сначала соберите: npm run release:android (или Build APK в Android Studio).");
+  const unsigned = existsSync(join(outputs.release, "app-release-unsigned.apk"));
+  console.error(unsigned
+    ? "✖ Release-APK собран без подписи: нет android/keystore.properties (образец — keystore.properties.example)."
+    : "✖ Нет собранного APK. Сначала соберите: npm run release:android (или Build APK в Android Studio).");
   process.exit(1);
 }
 
@@ -53,23 +62,47 @@ if (!versionCode || !version) { console.error("✖ В output-metadata.json не�
 const bytes = readFileSync(apk.file);
 const size = bytes.length;
 const sha256 = createHash("sha256").update(bytes).digest("hex");
+// Инструменты Android SDK (build-tools, самая новая версия): apksigner и aapt2
+const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || join(process.env.LOCALAPPDATA || "", "Android", "Sdk");
+const btRoot = join(sdk, "build-tools");
+const btDir = existsSync(btRoot) ? join(btRoot, readdirSync(btRoot).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop()) : "";
+const sdkTool = (name, winExt) => {
+  const t = btDir && join(btDir, process.platform === "win32" ? name + winExt : name);
+  return t && existsSync(t) ? t : "";
+};
+// .bat на Windows запускается только через оболочку — пути берём в кавычки
+const runTool = (tool, args) => (process.platform === "win32"
+  ? execSync(`"${tool}" ${args.map((a) => `"${a}"`).join(" ")}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  : execFileSync(tool, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+// Подпись: apksigner verify (не прошла — пусто), отпечаток и имя сертификата
 function signerOf(file) {
-  // apksigner — из Android SDK (build-tools), самая новая версия
-  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || join(process.env.LOCALAPPDATA || "", "Android", "Sdk");
-  const bt = join(sdk, "build-tools");
-  if (!existsSync(bt)) return "";
-  const latest = readdirSync(bt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop();
-  const tool = join(bt, latest, process.platform === "win32" ? "apksigner.bat" : "apksigner");
-  if (!existsSync(tool)) return "";
+  const tool = sdkTool("apksigner", ".bat");
+  if (!tool) return { digest: "", dn: "" };
   try {
-    // apksigner.bat на Windows запускается только через оболочку — пути берём в кавычки
-    const out = process.platform === "win32"
-      ? execSync(`"${tool}" verify --print-certs "${file}"`, { encoding: "utf8" })
-      : execFileSync(tool, ["verify", "--print-certs", file], { encoding: "utf8" });
-    return (out.match(/certificate SHA-256 digest:\s*([0-9a-f]{64})/i) || [])[1]?.toLowerCase() || "";
-  } catch { return ""; }
+    const out = runTool(tool, ["verify", "--print-certs", file]);
+    return {
+      digest: (out.match(/certificate SHA-256 digest:\s*([0-9a-f]{64})/i) || [])[1]?.toLowerCase() || "",
+      dn: (out.match(/certificate DN:\s*(.+)/i) || [])[1]?.trim() || "",
+    };
+  } catch { return { digest: "", dn: "" }; }
 }
-const signer = signerOf(apk.file);
+// Что записано внутри APK: версия и пометка «отладочный» (debuggable). null — нет aapt2
+function badgingOf(file) {
+  const tool = sdkTool("aapt2", ".exe");
+  if (!tool) return null;
+  try {
+    const out = runTool(tool, ["dump", "badging", file]);
+    return {
+      versionCode: Number((out.match(/versionCode='(\d+)'/) || [])[1]),
+      versionName: (out.match(/versionName='([^']*)'/) || [])[1] || "",
+      debuggable: /^application-debuggable/m.test(out),
+    };
+  } catch { return null; }
+}
+const cert = signerOf(apk.file);
+const signer = cert.digest;
+const debugKey = /CN=Android Debug/i.test(cert.dn);
+const badging = badgingOf(apk.file);
 
 // 4) Что нового — строки «- …» из release-notes.md (строки с # — пояснения, пропускаем)
 const notesFile = path("release-notes.md");
@@ -94,11 +127,35 @@ if (arg("--hard")) minVersionCode = versionCode;
 else if (arg("--soft")) minVersionCode = prev.minVersionCode || 0;
 minVersionCode = Math.min(minVersionCode, versionCode);
 
-// 6) На сайт
+// 6) Проверки — до того, как трогаем опубликованный APK
+const stop = (msg) => {
+  console.error(`\n✖ ${msg}\n  public/nexa.apk и public/version.json не изменены.\n`);
+  process.exit(1);
+};
+if (!signer) stop("Подпись APK не проверена: apksigner verify не прошёл (APK не подписан или повреждён) или нет Android SDK build-tools.");
+if (!badging) stop("Не удалось прочитать APK через aapt2 (Android SDK build-tools) — версию внутри APK не проверить.");
+if (badging.versionCode !== versionCode || badging.versionName !== version) {
+  stop(`Версия внутри APK (${badging.versionName}, ${badging.versionCode}) не совпадает с output-metadata.json (${version}, ${versionCode}).`);
+}
+if (prev.versionCode > versionCode) stop(`На сайте уже более новая версия ${prev.version} (${prev.versionCode}) — старая её не заменит.`);
+if (apk.kind === "release" && debugKey) stop("Release-APK подписан debug-ключом Android Studio — проверьте storeFile в android/keystore.properties.");
+if (apk.kind === "release" && badging.debuggable) stop("Release-APK помечен как отладочный (debuggable) — такой раздавать нельзя.");
+if (prev.signer && prev.signer !== signer && !arg("--new-key")) {
+  stop(`Ключ подписи изменился (был ${prev.signer.slice(0, 16)}…, стал ${signer.slice(0, 16)}…).
+  Установленные приложения НЕ смогут обновиться поверх — их придётся удалить и поставить заново
+  (приложение предупредит само: поле signer в version.json). Если смена ключа задумана —
+  повторите с флагом --new-key (npm run release:android -- --new-key).`);
+}
+
+// 7) На сайт
 copyFileSync(apk.file, path("public/nexa.apk"));
 const info = { version, versionCode, minVersionCode, apkUrl: `/nexa.apk?v=${versionCode}`, url: "/nexa.apk", size, sha256, signer, notes };
 writeFileSync(versionFile, JSON.stringify(info, null, 2) + "\n");
 
 console.log(`\n✔ public/nexa.apk (${apk.kind}, ${(size / 1e6).toFixed(1)} МБ) и public/version.json — версия ${version} (${versionCode}).`);
+if (debugKey || badging.debuggable) {
+  console.warn("⚠ Это ТЕСТОВАЯ сборка: подписана debug-ключом Android Studio и помечена как отладочная (debuggable).");
+  console.warn("  Раздавать людям — только release: android/keystore.properties и свой ключ (см. keystore.properties.example).");
+}
 console.log(`  SHA-256: ${sha256.slice(0, 16)}…  ключ: ${signer ? signer.slice(0, 16) + "…" : "не определён (нет apksigner)"}  что нового: ${notes.length ? notes.length + " п." : "пусто — заполните release-notes.md"}`);
 console.log("  Дальше: коммит и деплой сайта — установленные приложения предложат обновиться.\n");

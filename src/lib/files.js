@@ -139,7 +139,12 @@ export function uploadToCloud({ uid, id, file, onProgress }) {
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
         let msg = "";
         try { msg = JSON.parse(xhr.responseText)?.message || ""; } catch {}
-        reject(uploadError(xhr.status, msg));
+        const err = uploadError(xhr.status, msg);
+        // База отказывает общими словами — сами сверяем, не кончилось ли место (квота 2 ГБ)
+        if (err.kind !== "denied" && err.kind !== "server") return reject(err);
+        cloudBytes().then((used) => reject(used != null && used + file.size > CLOUD_QUOTA_BYTES
+          ? { kind: "quota", text: "Место в облаке закончилось — заняты все 2 ГБ. Удалите ненужные файлы" }
+          : err));
       };
       xhr.onerror = () => reject({ kind: "network", text: "Нет связи — файл не загрузился" });
       xhr.onabort = () => reject({ kind: "abort", text: "Загрузка отменена" });

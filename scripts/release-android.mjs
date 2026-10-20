@@ -10,7 +10,8 @@
 
    Перед выпуском поднимите "version" в package.json (0.9.8 → 0.9.9):
    build.gradle считает из неё versionCode (908 → 909). Флаги --hard / --soft
-   передаются в copy:apk (см. там про minVersionCode).
+   передаются в copy:apk (см. там про minVersionCode), --new-key — разрешить смену ключа подписи.
+   copy:apk проверяет APK (подпись, версия, debuggable, ключ) и не трогает опубликованный файл, если что-то не так.
    Обновление ставится поверх, только если APK подписан тем же ключом, что установленный. */
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -20,7 +21,7 @@ const path = (p) => new URL(p, root).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", cwd: path("."), ...opts });
 
 const release = existsSync(path("android/keystore.properties"));
-console.log(`\n▶ Выпуск NEXA: ${release ? "подписанный release (android/keystore.properties)" : "debug-сборка (keystore.properties нет)"}\n`);
+console.log(`\n▶ Выпуск NEXA: ${release ? "подписанный release (android/keystore.properties)" : "debug-сборка (keystore.properties нет) — только для тестирования, не для раздачи людям"}\n`);
 
 // 1) Сайт для приложения → android/
 run("npm run build:android");
@@ -34,5 +35,5 @@ const gradlew = process.platform === "win32" ? ".\\gradlew.bat" : "./gradlew";
 run(`${gradlew} ${release ? "assembleRelease" : "assembleDebug"}`, { cwd: path("android"), env });
 
 // 3) APK и version.json → сайт
-const pass = ["--hard", "--soft"].filter((f) => process.argv.includes(f)).join(" ");
+const pass = ["--hard", "--soft", "--new-key"].filter((f) => process.argv.includes(f)).join(" ");
 run(`node scripts/copy-apk.mjs ${release ? "--release" : "--debug"} ${pass}`);

@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Проверка SQL на локальном Postgres (не в Supabase). Зависимости — только для тестов, в приложение не входят.",
   "scripts": {
-    "test:limits": "node limits-test.mjs new && node limits-test.mjs migrate"
+    "test:limits": "node limits-test.mjs new && node limits-test.mjs migrate",
+    "test:storage": "node storage-quota-test.mjs new && node storage-quota-test.mjs migrate"
   },
   "dependencies": {
     "embedded-postgres": "18.4.0-beta.17",

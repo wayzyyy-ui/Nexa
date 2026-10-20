@@ -119,6 +119,87 @@ $$;
 revoke execute on function public.nexa_storage_used() from public, anon;
 grant execute on function public.nexa_storage_used() to authenticated;
 
+-- ─── Квота 2 ГБ на аккаунт вместе с новым файлом ─────────────────────────────
+-- Storage кладёт файл в два шага: проверка правил до загрузки байтов (размер — заявленный,
+-- contentLength) и запись строки после загрузки (настоящий size, пишет сам Storage —
+-- клиент его не подделает; таблица files для квоты не используется). Поэтому две проверки:
+--
+-- 1) nexa_storage_fits — в правиле загрузки ниже: быстрый отказ ещё до передачи байтов.
+--    занято + новый файл ≤ 2 ГБ; размер неизвестен — считаем максимум 50 МБ;
+--    объект с тем же именем (замена) в «занято» не входит; чужая папка — сразу «нет».
+create or replace function public.nexa_storage_fits(obj_name text, obj_meta jsonb)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  uid text := (select auth.uid())::text;
+  raw text := coalesce(obj_meta ->> 'size', obj_meta ->> 'contentLength');
+  new_size bigint := 52428800;
+  used bigint;
+begin
+  if uid is null or (storage.foldername(obj_name))[1] is distinct from uid then
+    return false;
+  end if;
+  if raw ~ '^[0-9]{1,15}$' then new_size := raw::bigint; end if;
+  select coalesce(sum((o.metadata ->> 'size')::bigint), 0) into used
+  from storage.objects o
+  where o.bucket_id = 'nexa-files' and (storage.foldername(o.name))[1] = uid and o.name <> obj_name;
+  return used + new_size <= 2147483648;
+end;
+$$;
+revoke execute on function public.nexa_storage_fits(text, jsonb) from public, anon;
+grant execute on function public.nexa_storage_fits(text, jsonb) to authenticated;
+
+-- 2) nexa_storage_quota — триггер на саму запись строки (срабатывает при любой роли, в том
+--    числе когда Storage пишет от своего имени). Записи одного аккаунта идут по очереди
+--    (блокировка до конца транзакции записи) — одновременные загрузки квоту не превысят.
+--    Владелец — по папке пути (<id аккаунта>/…), размер — metadata.size от Storage.
+--    Строки без size (пробная проверка до загрузки) пропускает — их проверяет правило выше.
+create or replace function public.nexa_storage_quota()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  owner_dir text := (storage.foldername(new.name))[1];
+  raw text := new.metadata ->> 'size';
+  used bigint;
+begin
+  if new.bucket_id <> 'nexa-files' or owner_dir is null or raw is null then
+    return new;
+  end if;
+  if raw !~ '^[0-9]{1,15}$' then
+    raise exception 'storage_quota: bad size' using errcode = '23514';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('nexa:storage:' || owner_dir, 0));
+  select coalesce(sum((o.metadata ->> 'size')::bigint), 0) into used
+  from storage.objects o
+  where o.bucket_id = 'nexa-files' and (storage.foldername(o.name))[1] = owner_dir
+    and o.name <> new.name and (tg_op = 'INSERT' or o.name <> old.name);
+  if used + raw::bigint > 2147483648 then
+    raise exception 'storage_quota: account storage quota exceeded' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.nexa_storage_quota() from public, anon, authenticated;
+-- Триггер на storage.objects: Supabase разрешает свои триггеры на этой таблице. Если права
+-- всё же нет — остальное применится, а здесь будет предупреждение (тогда параллельные
+-- загрузки защищает только правило выше, без очереди)
+do $$
+begin
+  drop trigger if exists nexa_storage_quota on storage.objects;
+  create trigger nexa_storage_quota before insert or update of name, metadata on storage.objects
+    for each row execute function public.nexa_storage_quota();
+exception when insufficient_privilege then
+  raise warning 'NEXA: нет права создать триггер на storage.objects — квота проверяется только правилом загрузки';
+end;
+$$;
+
 -- ─── 4. Правила корзины: только своя папка <id аккаунта>/ ────────────────────
 -- Перезаписи (update) нет: новый файл — новый объект; переименование меняет только сведения
 drop policy if exists "nexa-files: читать свои"   on storage.objects;
@@ -130,7 +211,7 @@ create policy "nexa-files: класть в свою папку" on storage.objec
   with check (
     bucket_id = 'nexa-files'
     and (storage.foldername(name))[1] = (select auth.uid()::text)
-    and public.nexa_storage_used() < 2147483648   -- до 2 ГБ на аккаунт
+    and public.nexa_storage_fits(name, metadata)   -- до 2 ГБ на аккаунт вместе с новым файлом
   );
 create policy "nexa-files: удалять свои" on storage.objects for delete to authenticated
   using (bucket_id = 'nexa-files' and (storage.foldername(name))[1] = (select auth.uid()::text));
