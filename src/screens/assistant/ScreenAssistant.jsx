@@ -778,17 +778,6 @@ useEffect(() => {
             overflowWrap: "anywhere",
           }}
         />
-        {/* Разговор голосом: нажать — начать (NEXA слушает, отвечает вслух и снова слушает), ещё раз — закончить */}
-        {voice.supported && (
-          <button type="button" onPointerDown={(e) => e.preventDefault()}
-            onClick={(e) => { e.stopPropagation(); if (conv.active) conv.end(""); else { voice.cancel(); conv.start(); } }}
-            className={`nx-icon-btn nx-talk${conv.active ? " is-on" : ""}`} aria-pressed={conv.active}
-            aria-label={conv.active ? "Завершить разговор" : "Начать разговор"} title={conv.active ? "Завершить разговор" : "Начать разговор"}
-            style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-              border: `1px solid ${conv.active ? C.mint : "transparent"}` }}>
-            {Icon.talk({ c: conv.active ? C.mint : C.muted, s: 18 })}
-          </button>
-        )}
         {/* Микрофон: нажать — говорить, ещё раз — готово. Нет распознавания на этом устройстве — кнопки нет.
             Во время разговора диктовка не нужна — микрофоном управляет полоска разговора */}
         {voice.supported && !conv.active && (
@@ -809,6 +798,22 @@ useEffect(() => {
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
             }}>
             {Icon.stop({ c: C.bg, s: 16 })}
+          </button>
+        ) : voice.supported && !input.trim() && !att ? (
+          /* Поле пустое — вместо «Отправить» разговор голосом (как в ChatGPT): NEXA слушает, отвечает
+             вслух и снова слушает. Во время разговора кнопка обведена мятным — нажатие заканчивает его.
+             Начали писать — здесь снова обычная «Отправить» */
+          <button type="button" onPointerDown={(e) => e.preventDefault()}
+            onClick={(e) => { e.stopPropagation(); if (conv.active) conv.end(""); else { voice.cancel(); conv.start(); } }}
+            className={`ng-input-send nx-talk${conv.active ? " is-on" : ""}`} aria-pressed={conv.active}
+            aria-label={conv.active ? "Завершить разговор" : "Начать разговор"} title={conv.active ? "Завершить разговор" : "Начать разговор"}
+            style={{
+              width: 32, height: 32, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: conv.active ? "transparent" : C.mint, border: `1px solid ${conv.active ? C.mint : "transparent"}`,
+              transition: "background 140ms ease",
+            }}>
+            {Icon.talk({ c: conv.active ? C.mint : C.onAccent, s: 17 })}
           </button>
         ) : (
         <button
@@ -892,8 +897,9 @@ useEffect(() => {
   const innerStyle = {
   position: "relative", zIndex: 1, // над спектральным фоном
   flex: 1, display: "flex", flexDirection: "row",
-  // Прижато влево, к меню (как заголовки других разделов), а не по центру широкого окна
-  width: "100%", maxWidth: 1440, margin: "0",
+  // Во всю ширину: заголовок — слева у меню (как у других разделов), а приветствие, поле
+  // и переписка — по центру свободного места (у них свои ограничения ширины)
+  width: "100%", maxWidth: "none", margin: "0",
   padding: "66px 40px 20px 40px",
   overflow: "hidden",
   boxSizing: "border-box", minHeight: 0,
@@ -980,7 +986,8 @@ useEffect(() => {
                 position: "relative", zIndex: 1,
               }}
             >
-              <div className="nx-msg-col" style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10 }}>
+              {/* Переписка — колонкой до 1100 px по центру (на широком окне строки не растягиваются) */}
+              <div className="nx-msg-col" style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10, width: "100%", maxWidth: 1100, margin: "0 auto" }}>
                 {messages.map((m, i) => (
                   <MessageBubble
                     key={i}
