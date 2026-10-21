@@ -224,6 +224,44 @@ begin
     set local role authenticated;
   end if;
 
+  -- 16в. Заметки (таблица notes, supabase/notes.sql)
+  if to_regclass('public.notes') is null then
+    r := r || format(ok_line, '16в', 'notes: таблица', 'есть', 'таблицы нет', 'не применён notes.sql');
+  else
+    reset role;
+    execute 'insert into public.notes (id, user_id, title, text) values ($1, $2, $3, $4)' using fB, B, 'ТЕСТ B', 'секрет заметки B';
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+    execute 'select count(*) from public.notes where user_id <> $1' into n using A;
+    r := r || format(ok_line, '16в', 'notes: прочитать чужие заметки', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    execute 'update public.notes set text = $1 where id = $2' using 'ВЗЛОМ', fB;
+    get diagnostics n = row_count;
+    r := r || format(ok_line, '16в', 'notes: изменить чужую заметку', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    execute 'delete from public.notes where id = $1' using fB;
+    get diagnostics n = row_count;
+    r := r || format(ok_line, '16в', 'notes: удалить чужую заметку', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    begin
+      execute 'insert into public.notes (id, user_id, title) values ($1, $2, $3)' using gen_random_uuid(), B, 'ПОДЛОГ';
+      r := r || format(ok_line, '16в', 'notes: добавить заметку с user_id чужого', 'ошибка RLS', 'добавилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '16в', 'notes: добавить заметку с user_id чужого', 'ошибка RLS', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'insert into public.notes (id, title) values ($1, $2) on conflict (id) do update set title = excluded.title' using fB, 'ВЗЛОМ';
+      get diagnostics n = row_count;
+      r := r || format(ok_line, '16в', 'notes: upsert с id чужой заметки', 'ошибка RLS', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '16в', 'notes: upsert с id чужой заметки', 'ошибка RLS', 'ошибка ' || sqlstate, 'OK');
+    end;
+    reset role;
+    execute 'select count(*) from public.notes where id = $1 and text = $2 and title = $3' into n using fB, 'секрет заметки B', 'ТЕСТ B';
+    r := r || format(ok_line, '16в', 'notes: заметка B осталась как была', '1 строка', n || ' строк', case when n = 1 then 'OK' else '‼ ПРОБЛЕМА' end);
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+  end if;
+
   -- 17. Storage, корзина nexa-files: чужая папка <B>/…
   -- Наличие и публичность бакета смотрим от имени администратора: строка bucket в
   -- storage.buckets у закрытого бакета обычному пользователю не видна (нет на неё правила) —
@@ -336,6 +374,15 @@ begin
     end;
   end if;
 
+  if to_regclass('public.notes') is not null then
+    begin
+      execute 'select count(*) from public.notes' into n;
+      r := r || format(ok_line, '22в', 'anon: прочитать заметки без входа', 'нет доступа', n || ' строк', case when n = 0 then 'OK (пусто)' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '22в', 'anon: прочитать заметки без входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+  end if;
+
   -- 23. Итог: строки B не изменились (смотрим глазами администратора)
   reset role;
   select count(*) into n from public.devices where id = dB and name = 'ТЕСТ B' and user_id = B;
@@ -358,14 +405,14 @@ select * from (
          'включена' as ожидается
   from pg_class c join pg_namespace s on s.oid = c.relnamespace
   where s.nspname = 'public' and c.relkind = 'r'
-    and c.relname in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard')
+    and c.relname in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard', 'notes')
 
   union all
   -- Сколько правил RLS на каждой таблице
   select 'правил RLS: ' || tablename, count(*)::text,
-         case when tablename in ('devices', 'chats', 'files', 'file_folders', 'clipboard') then '4' else '0 (только сервер)' end
+         case when tablename in ('devices', 'chats', 'files', 'file_folders', 'clipboard', 'notes') then '4' else '0 (только сервер)' end
   from pg_policies where schemaname = 'public'
-    and tablename in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard')
+    and tablename in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard', 'notes')
   group by tablename
 
   union all
@@ -373,7 +420,7 @@ select * from (
   select 'права anon: ' || table_name, string_agg(privilege_type, ', '), 'нет строк — значит, прав нет'
   from information_schema.role_table_grants
   where grantee = 'anon' and table_schema = 'public'
-    and table_name in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard')
+    and table_name in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard', 'notes')
   group by table_name
 
   union all

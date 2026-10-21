@@ -145,7 +145,7 @@ export function MonthCalendar({ value, all, onPick, onClose }) {
 }
 
 // schedule — все дела (по датам, общие с ассистентом), onAddItem / onRemoveItem — добавить и удалить
-export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem }) {
+export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem, onNotes, notesCount = 0 }) {
   // Какой день смотрим (по умолчанию сегодня). Дела этого дня — schedule
   const [day, setDay] = useState(dayKey);
   const today = dayKey();
@@ -206,7 +206,8 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
         // Справа три панели с одинаковыми отступами: погода, завтра, прогноз.
         // "Завтра" растягивается (строка 1fr), поэтому верх правой колонки
         // вровень с верхом расписания, а кнопка прогноза — с его низом
-        gridTemplateAreas: `"sched now" "sched next" "sched month"`,
+        // Под расписанием — «Заметки», напротив — «Прогноз» (макет 2026-10)
+        gridTemplateAreas: `"sched now" "sched next" "notes month"`,
         gridTemplateRows: "auto 1fr auto",
         gap: "18px 44px", alignItems: "start",
       }}>
@@ -373,6 +374,24 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
             veil={veil} grow
             footer={tomorrow && <div style={{ display: "flex", justifyContent: "flex-end" }}><WeatherAttribution w={weather} /></div>} />
         </div>
+        {/* «Заметки» — свой экран поверх «Сегодня» (src/screens/Notes.jsx, адрес /notes) */}
+        <div style={{ gridArea: "notes", alignSelf: "end" }}>
+          <button type="button" className="nx-ghost-btn nx-notepad-entry" onClick={onNotes}
+            aria-label={notesCount ? `Заметки, ${notesCount}` : "Заметки"}
+            style={{
+              ...btnReset, width: "100%", boxSizing: "border-box",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "6px 14px",
+              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
+            }}>
+            <span />
+            <span>Заметки</span>
+            <span style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 8, color: C.mutedSoft, fontSize: 13 }}>
+              {notesCount > 0 && <span>{notesCount}</span>}
+              {Icon.chevron({ c: C.text })}
+            </span>
+          </button>
+        </div>
+
         <div style={{ gridArea: "month", alignSelf: "end" }}>
           <button type="button" className="nx-ghost-btn"
             onClick={() => setForecastOpen(!forecastOpen)}

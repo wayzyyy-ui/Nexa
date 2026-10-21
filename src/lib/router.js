@@ -2,7 +2,7 @@
 
    Экран — { tab, sub, dev }:
    - tab — раздел: home | today | assistant | media | files | settings;
-   - sub — экран поверх раздела: activity | about | security | devices (или null);
+   - sub — экран поверх раздела: activity | about | security | devices | notes (или null);
    - dev — id открытого экрана устройства (или null).
 
    Правила истории:
@@ -23,9 +23,11 @@ import { isDesktop } from "./platform.js";
 const isNative = Capacitor.isNativePlatform() || isDesktop;
 
 export const TAB_PATHS = { home: "/", today: "/today", assistant: "/assistant", media: "/media", files: "/files", settings: "/settings" };
-export const SUB_PATHS = { activity: "/activity", about: "/about", security: "/security", devices: "/devices" };
+export const SUB_PATHS = { activity: "/activity", about: "/about", security: "/security", devices: "/devices", notes: "/notes" };
+// Под каким разделом открывается экран поверх (прямая ссылка, перезагрузка): заметки — из «Сегодня»
+const SUB_TAB = { notes: "today" };
 const TITLES = { home: "NEXA", today: "Сегодня", assistant: "ИИ — Ассистент", media: "Медиа", files: "Файлы", settings: "Настройки",
-  activity: "Активность", about: "О системе", security: "Безопасность", devices: "Все устройства" };
+  activity: "Активность", about: "О системе", security: "Безопасность", devices: "Все устройства", notes: "Заметки" };
 
 export const HOME = { tab: "home", sub: null, dev: null };
 const DEV_ID_RE = /^[\w-]{1,80}$/;
@@ -39,7 +41,7 @@ const isHome = (s) => isPlain(s) && s.tab === "home";
 export function screenFromPath(pathname) {
   const p = (pathname || "/").replace(/\/+$/, "") || "/";
   for (const [tab, path] of Object.entries(TAB_PATHS)) if (path === p) return { tab, sub: null, dev: null };
-  for (const [sub, path] of Object.entries(SUB_PATHS)) if (path === p) return { tab: "home", sub, dev: null };
+  for (const [sub, path] of Object.entries(SUB_PATHS)) if (path === p) return { tab: SUB_TAB[sub] || "home", sub, dev: null };
   const m = p.match(/^\/device\/([^/]+)$/);
   if (m) {
     let id = "";

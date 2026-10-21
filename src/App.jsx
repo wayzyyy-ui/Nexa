@@ -42,6 +42,8 @@ import { parseNexaLink } from "./lib/deeplink.js";
 import { useClipSync } from "./lib/clipboardSync.js";
 import { desktopNotifyClip } from "./lib/desktop.js";
 import { ClipboardSettings } from "./ui/clipboard.jsx";
+import { userNotesKey, loadUserNotes, writeUserNotes, applyEdit, NOTE_ROWS, USER_NOTES_MAX } from "./lib/userNotes.js";
+import { ScreenNotes } from "./screens/Notes.jsx";
 import { ToastHost } from "./ui/toasts.jsx";
 import { SyncStatus, SyncDetails } from "./ui/sync.jsx";
 import { PullIndicator } from "./ui/pull.jsx";
@@ -219,6 +221,7 @@ export default function NexaApp() {
   const logSecurityRef = useRef(null); // журнал безопасности — для обработчиков, объявленных выше него
   const contHandlers = useRef({}); // продолжение работы — обработчики событий канала (объявлены ниже)
   const memorySyncRef = useRef(null); // синхронизация памяти (объявлена ниже обработчиков)
+  const notesSyncRef = useRef(null); // синхронизация заметок (объявлена ниже обработчиков)
   const peerIdsRef = useRef(new Set()); // кто сейчас в канале аккаунта (для проверок в обработчиках)
   /* NEXA Flow на этом устройстве: { on, autoCopy } (у каждого аккаунта своё) */
   const [flow, setFlow] = useSharedState("nexa-flow" + scope, loadFlow);
@@ -383,7 +386,7 @@ export default function NexaApp() {
   useEffect(() => { setSyncState({}); }, [uid]);
   /* Конфликты, которые сводка решила сама (см. mergeLists в sync.js), — честно
      говорим, что выбрали. Больше двух сразу — одно общее уведомление, подробности в центре уведомлений */
-  const CONFLICT_WHAT = { devices: "устройство", chats: "диалог", files: "файл", file_folders: "папка", schedule: "дело" };
+  const CONFLICT_WHAT = { devices: "устройство", chats: "диалог", files: "файл", file_folders: "папка", schedule: "дело", notes: "заметка" };
   const conflictNote = (table, rowsDef) => (all) => {
     const list = table === "devices" ? all.filter((c) => c.kind === "deletedHere" || c.kind === "deletedThere") : all;
     if (!list.length) return;
@@ -397,7 +400,7 @@ export default function NexaApp() {
         deletedThere: `${name} удалили на другом устройстве, а здесь изменили — версия с этого устройства сохранена`,
       }[kind];
     });
-    const base = { cat: "sync", source: "Облако NEXA", target: table === "chats" ? { tab: "assistant" } : table === "schedule" ? { tab: "today" } : table.startsWith("file") ? { tab: "files" } : { tab: "home" } };
+    const base = { cat: "sync", source: "Облако NEXA", target: table === "chats" ? { tab: "assistant" } : table === "schedule" || table === "notes" ? { tab: "today" } : table.startsWith("file") ? { tab: "files" } : { tab: "home" } };
     const many = texts.length > 2;
     list.forEach(({ id, kind }, i) => notifyRef.current({ ...base, key: `conflict:${table}:${id}:${kind}:${Math.floor(Date.now() / 60000)}`, title: `Конфликт: ${CONFLICT_WHAT[table]}`, text: texts[i], toast: !many, duration: 9000 }));
     if (many) showToast({ title: `Конфликтов при синхронизации: ${texts.length}`, text: "Решены автоматически — подробности в уведомлениях", duration: 9000 });
@@ -561,6 +564,43 @@ export default function NexaApp() {
     onPushed: () => link.emit("sync.changed", { table: "memory" }),
   });
   memorySyncRef.current = memorySync;
+  /* ── Заметки (src/lib/userNotes.js, экран src/screens/Notes.jsx). Гость — этот браузер,
+     вошедший — ещё и облако (таблица notes, supabase/notes.sql). Запись в браузер — сразу
+     и с проверкой (writeUserNotes): «Сохранено» показываем, только если запись правда прошла */
+  const [userNotes, setNotesStore] = useSharedState(userNotesKey(uid), loadUserNotes);
+  const notesRef = useRef(userNotes); notesRef.current = userNotes;
+  const notesSync = useCloudList({
+    uid, table: "notes", value: userNotes, setValue: setNotesStore,
+    toList: (list) => list.map((n) => ({ ...n, createdAt: n.createdAt || 0, updatedAt: n.updatedAt || n.createdAt || 0 })),
+    fromList: (list) => NOTE_ROWS.sort(list),
+    rows: NOTE_ROWS,
+    // Таблицы заметок ещё нет (notes.sql не запущен) — заметки живут только здесь, это не ошибка
+    onStatus: (st) => setSyncState((s) => ({ ...s, notes: st.error && isMissingTable(st.error) ? { ok: true, pending: 0, localOnly: true } : st })),
+    onConflict: conflictNote("notes", NOTE_ROWS),
+    onPushed: () => link.emit("sync.changed", { table: "notes" }),
+  });
+  notesSyncRef.current = notesSync;
+  // Правка заметки: { ok } — записалось ли в браузер; full — больше USER_NOTES_MAX нельзя
+  const notesApi = {
+    save: (id, patch) => {
+      const cur = notesRef.current;
+      if (!cur.some((n) => n.id === id) && cur.length >= USER_NOTES_MAX) return { ok: false, full: true };
+      const next = applyEdit(cur, id, patch);
+      if (next === cur) return { ok: true };
+      if (!writeUserNotes(userNotesKey(uid), next)) return { ok: false };
+      notesRef.current = next;
+      setNotesStore(next);
+      return { ok: true };
+    },
+    remove: (id) => {
+      const next = notesRef.current.filter((n) => n.id !== id);
+      if (!writeUserNotes(userNotesKey(uid), next)) return { ok: false };
+      notesRef.current = next;
+      setNotesStore(next);
+      return { ok: true };
+    },
+    retry: () => notesSync.retry(),
+  };
   // Действия с памятью — для ассистента (команды «Запомни» / «Забудь»), Настроек и центра безопасности
   const memoryApi = {
     add: (raw) => {
@@ -600,7 +640,7 @@ export default function NexaApp() {
 
   const syncLoading = !!uid && Object.values(syncState).some((st) => st?.loading);
   const syncError = uid ? Object.values(syncState).find((st) => st?.text)?.text : null;
-  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry(); runUploadQueue("all"); };
+  const retrySync = () => { devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry(); notesSync.retry(); runUploadQueue("all"); };
   // Сколько изменений ещё не подтверждено облаком (по всем таблицам) и что с повторами
   const syncPending = uid ? Object.values(syncState).reduce((n, st) => n + (st?.pending || 0), 0) : 0;
   const syncNextAt = uid ? Math.min(Infinity, ...Object.values(syncState).map((st) => st?.nextAt || Infinity)) : Infinity;
@@ -698,7 +738,7 @@ export default function NexaApp() {
   const refreshTableSoon = (table) => {
     if (table === "settings") return settingsSync.pull(); // категории уведомлений поменяли на другом устройстве
     clearTimeout(refreshTimers.current[table]);
-    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync, memory: memorySyncRef.current }[table] || devicesSync;
+    const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync, memory: memorySyncRef.current, notes: notesSyncRef.current }[table] || devicesSync;
     refreshTimers.current[table] = setTimeout(() => hook.retry(), 400);
   };
 
@@ -871,6 +911,7 @@ export default function NexaApp() {
   const [activityOpen, setActivityOpen] = useState(boot.sub === "activity");
   const [aboutOpen, setAboutOpen] = useState(boot.sub === "about"); // экран «О системе»
   const [devicesOpen, setDevicesOpen] = useState(boot.sub === "devices"); // экран «Все устройства»
+  const [notesOpen, setNotesOpen] = useState(boot.sub === "notes"); // экран «Заметки» (из «Сегодня»)
   // То же событие ещё раз (повтор сигнала, вторая вкладка этого браузера) — в ленту не пишем
   const logActivityOnce = (key, ...args) => claimNote(`act:${key}`).then((ok) => ok && logActivity(...args));
   onTextActivity.current = (item) => logActivityOnce(`text:${item.id}`, "text", `Получен текст от «${realNames[item.from_device] || item.from_name || "Устройство"}»`, safeUrl(item.text) ? "Ссылка" : "Сообщение");
@@ -1641,7 +1682,7 @@ export default function NexaApp() {
   useSmoothScroll(tab !== "assistant");
 
   // Переход по меню закрывает и экран устройства
-  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setTab(t); };
+  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(false); setTab(t); };
   // «Подробнее о системе» — с любого экрана (ассистент — через Главную, как «Активность»)
   const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setSecurityOpen(false); setAboutOpen(true); };
   // Центр безопасности открывается из Настроек поверх раздела (как «О системе»)
@@ -1654,11 +1695,15 @@ export default function NexaApp() {
     </SettingsGroup>
   ) : null;
   const openAllDevices = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(true); scrollTopNow(); };
+  // «Заметки» — поверх «Сегодня» (кнопка там же); «Назад» возвращает в «Сегодня»
+  const openNotes = () => { setTab("today"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(true); scrollTopNow(); };
   const openSecurity = () => { setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(true); scrollTopNow(); };
   // Открыли устройство, «Активность» или «О системе» (например, из уведомления) — центр закрывается
   useEffect(() => { if (openDeviceId || activityOpen || aboutOpen) setSecurityOpen(false); }, [openDeviceId, activityOpen, aboutOpen]);
   // «Все устройства» закрывается, когда открыли что-то другое поверх раздела (кроме экрана устройства — с него «Назад» вернёт к списку)
   useEffect(() => { if (activityOpen || aboutOpen || securityOpen) setDevicesOpen(false); }, [activityOpen, aboutOpen, securityOpen]);
+  // «Заметки» закрываются, когда поверх открыли что-то другое (устройство из уведомления и т. п.)
+  useEffect(() => { if (openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen) setNotesOpen(false); }, [openDeviceId, activityOpen, aboutOpen, securityOpen, devicesOpen]);
   // Переход по меню (боковое на компьютере, нижняя панель на телефоне): новый раздел
   // въезжает с той стороны, где он стоит в меню — как при свайпе (тот же body[data-swipe])
   /* Плавная смена экрана без рывков. Браузер делает снимок старого экрана и держит его,
@@ -1692,7 +1737,7 @@ export default function NexaApp() {
     return a >= 0 && b >= 0 && a !== b ? (b > a ? "next" : "prev") : null;
   };
   const navTo = (t) => {
-    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen && !securityOpen && !devicesOpen) return;
+    if (t === tab && !openDeviceId && !activityOpen && !aboutOpen && !securityOpen && !devicesOpen && !notesOpen) return;
     navTransition(navDir(t), () => goTab(t));
   };
   // Ctrl+← / Ctrl+→ — соседний раздел бокового меню (компьютер: сайт и приложение для ПК).
@@ -1724,7 +1769,7 @@ export default function NexaApp() {
   const [peek, setPeek] = useState(null);   // { tab, dir } — сосед на время жеста
   const [quiet, setQuiet] = useState(null); // раздел, пришедший свайпом, — без своего «появления»
   useTabSwipe(
-    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen }),
+    () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen || notesOpen }),
     { onPeek: (t, dir) => setPeek(t ? { tab: t, dir } : null),
       // Тот же собранный экран становится текущим — в одном кадре: раздел, адрес, прокрутка к началу
       onCommit: (t) => { flushSync(() => { setQuiet(t); setPeek(null); goTab(t); }); scrollTopNow(); },
@@ -1819,7 +1864,7 @@ export default function NexaApp() {
 
   /* ── Адрес и история (src/lib/router.js) ──
      Какой экран на виду: раздел, экран поверх него («Активность», «О системе»…) и устройство */
-  const screenSub = securityOpen ? "security" : aboutOpen ? "about" : activityOpen ? "activity" : devicesOpen ? "devices" : null;
+  const screenSub = securityOpen ? "security" : aboutOpen ? "about" : activityOpen ? "activity" : devicesOpen ? "devices" : notesOpen ? "notes" : null;
   const screenKey = `${tab}|${screenSub || ""}|${openDeviceId || ""}`;
   // Экран сменился (нажатие, свайп, «Назад» на экране) — подстраиваем адрес и историю
   useEffect(() => { navigate({ tab, sub: screenSub, dev: openDeviceId }); }, [screenKey]);
@@ -1833,7 +1878,7 @@ export default function NexaApp() {
       if (s.tab === "assistant" && tab !== "assistant") setSearchChatId(currentChatRef.current);
       setTab(s.tab); setOpenDeviceId(s.dev || null);
       setActivityOpen(s.sub === "activity"); setAboutOpen(s.sub === "about");
-      setSecurityOpen(s.sub === "security"); setDevicesOpen(s.sub === "devices");
+      setSecurityOpen(s.sub === "security"); setDevicesOpen(s.sub === "devices"); setNotesOpen(s.sub === "notes");
     };
     if (`${s.tab}|${s.sub || ""}|${s.dev || ""}` === screenKey) return;
     // В приложении «Назад» между разделами — с тем же въездом, что у панели; на сайте браузер
@@ -2075,7 +2120,7 @@ export default function NexaApp() {
   // (заодно уйдёт неотправленное), проверяем канал связи и очередь загрузок — один раз, без дублей
   useReturnToApp(() => {
     if (!uid) return;
-    devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry();
+    devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry(); notesSync.retry();
     link.refresh();
     runQueueRef.current("waiting");
     clipRef.current?.refresh();
@@ -2395,7 +2440,7 @@ export default function NexaApp() {
             onFind={findDevice}
           />
         )}
-        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} />}
+        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} onNotes={openNotes} notesCount={userNotes.length} />}
         {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
         {t === "files" && (
           <ScreenFiles
@@ -2566,6 +2611,10 @@ export default function NexaApp() {
     <div key="devices" className="ng-screen-anim">
       <ScreenDevices devices={devices} received={received} findState={findState} onOpenDevice={showDevice} onFind={findDevice}
         onAddDevice={onAddDevice} onBack={() => setDevicesOpen(false)} />
+    </div>
+  ) : notesOpen ? (
+    <div key="notes" className="ng-screen-anim">
+      <ScreenNotes notes={userNotes} api={notesApi} uid={uid} online={online} sync={uid ? syncState.notes : null} onBack={() => setNotesOpen(false)} />
     </div>
   ) : aboutOpen ? (
     <div key="about" className="ng-screen-anim">

@@ -71,7 +71,7 @@ export function SyncStatus({ online, uid, loading, pending, queued, text, nextAt
 
 /* Подробности: что с каждой частью данных, очередь загрузок, удаления из облака.
    Только то, что знаем точно; «сохранено» — по подтверждению облака */
-export const SYNC_PARTS = [["devices", "Устройства"], ["chats", "Диалоги ассистента"], ["schedule", "Расписание"], ["memory", "Память ассистента"], ["files", "Сведения о файлах"], ["folders", "Папки"]];
+export const SYNC_PARTS = [["devices", "Устройства"], ["chats", "Диалоги ассистента"], ["schedule", "Расписание"], ["memory", "Память ассистента"], ["notes", "Заметки"], ["files", "Сведения о файлах"], ["folders", "Папки"]];
 
 export function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, onUploadAction, onLogin, onClose }) {
   useEffect(() => {

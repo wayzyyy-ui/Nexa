@@ -594,6 +594,8 @@ export const APP_CSS = `
   /* Телефон: горизонтальное движение пальца браузер отдаёт нам (вертикальная
      прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
   @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
+  /* Заметки на телефоне: «Новая заметка» — в одну строку с заголовком, компактнее */
+  @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 14px !important; } }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
   @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(76px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
   /* ─── Экран первого запуска (AuthGate, макет 2026-10) ───────────────────
@@ -1401,7 +1403,7 @@ export const APP_CSS = `
           /* Блоки друг под другом: погода, расписание, завтра, прогноз */
           .nx-today-grid {
             grid-template-columns: minmax(0, 1fr) !important;
-            grid-template-areas: "sched" "now" "next" "month" !important;
+            grid-template-areas: "sched" "notes" "now" "next" "month" !important;
             grid-template-rows: auto !important;
             gap: 28px !important;
           }
