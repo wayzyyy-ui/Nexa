@@ -1654,9 +1654,15 @@ export default function NexaApp() {
      (а не «Сегодня»), влево — Главная. Открытую шторку истории закрывает
      свайп влево (по самой шторке — её собственный жест, по затемнению — здесь) */
   const [swipeDir, setSwipeDir] = useState(null); // откуда въезжает новый экран: "next" | "prev"
+  // Свайп ведёт пальцем: соседний раздел собирается за краем (peek) и после жеста становится текущим
+  const [peek, setPeek] = useState(null);   // { tab, dir } — сосед на время жеста
+  const [quiet, setQuiet] = useState(null); // раздел, пришедший свайпом, — без своего «появления»
   useTabSwipe(
     () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen }),
-    (dir) => {
+    { onPeek: (t, dir) => setPeek(t ? { tab: t, dir } : null),
+      // Тот же собранный экран становится текущим — в одном кадре: раздел, адрес, прокрутка к началу
+      onCommit: (t) => { flushSync(() => { setQuiet(t); setPeek(null); goTab(t); }); scrollTopNow(); },
+      onSwipe: (dir) => {
       if (tab === "assistant") {
         if (document.querySelector(".nx-hist-drawer.is-open")) {
           if (dir === "next") window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -1667,7 +1673,7 @@ export default function NexaApp() {
       const i = SWIPE_ORDER.indexOf(tab) + (dir === "next" ? 1 : -1);
       if (i < 0 || i >= SWIPE_ORDER.length) return; // крайняя вкладка — дальше некуда
       navTransition(dir, () => goTab(SWIPE_ORDER[i]));
-    },
+    } },
   );
   // Направление — пометка у body (до отрисовки нового экрана): по ней CSS
   // выбирает въезд сбоку вместо обычного появления
@@ -2247,6 +2253,124 @@ export default function NexaApp() {
     return { list, note };
   })();
 
+  /* Содержимое раздела t. Раньше раздел рисовался прямо по tab (key={tab}): при каждой смене
+     старый экран удалялся, новый собирался с нуля и проигрывал своё появление — свайп выглядел как
+     перезагрузка. Теперь каждый раздел — свой блок с ключом (tabPanels): во время свайпа рядом
+     собирается соседний, и после свайпа он же становится текущим, без пересоздания */
+  const screenFor = (t) => (t === "assistant" ? (
+      <ScreenAssistant
+        initialChatId={searchChatId}
+        openRequest={chatOpenReq}
+        onCurrentChat={(id) => { currentChatRef.current = id; }}
+        memory={memory} memoryOn={memoryOn} memoryApi={memoryApi}
+        onContinueChat={uid ? (c) => setContSend({ kind: "chat", ref: c.id, title: c.title }) : null}
+        chats={chats}
+        setChats={setChats}
+        onToast={showToast}
+        tab={t}
+        setTab={goTab}
+        devices={devices}
+        onAddDevice={onAddDevice}
+        onUploadFiles={() => uploadInputRef.current?.click()}
+        files={files}
+        uid={uid}
+        onAddFiles={(list) => addFiles(list, null)}
+        account={auth.user ? { email: auth.user.email || "" } : null}
+        sync={{ loading: syncLoading && online, text: !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}` : syncError, onRetry: online ? retrySync : null }}
+        bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
+      />
+  ) : (
+    <>
+        {t === "home" && (
+          <ScreenHome
+            devices={devices}
+            received={received}
+            update={homeUpdate}
+            onUpdateLater={laterUpdate}
+            onNavigate={goTab}
+            onOpenDevice={showDevice}
+            onAddDevice={onAddDevice}
+            onAbout={openAbout}
+            onAllDevices={openAllDevices}
+            onSearch={() => openSearch()}
+            bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
+            activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
+            findState={findState}
+            onFind={findDevice}
+          />
+        )}
+        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} />}
+        {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
+        {t === "files" && (
+          <ScreenFiles
+            key={`files-${searchFolder || "root"}`}
+            files={files}
+            filter={filesFilter}
+            device={devices.find((d) => d.id === filesDevice)}
+            initialFolder={searchFolder}
+            onClearFilter={() => { setFilesFilter(null); setFilesDevice(null); }}
+            onOpenFile={setOpenFile}
+            folders={folders}
+            uploads={uploads}
+            onAddFiles={addFiles}
+            onUploadAction={uploadAction}
+            onCreateFolder={createFolder}
+            onTransfer={openTransfer}
+          />
+        )}
+        {t === "settings" && <ScreenSettings onAbout={openAbout}
+          noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
+          updateBlock={isNative && (
+            <>
+              <SectionTitle>Обновление</SectionTitle>
+              <SettingsGroup>
+                {/* Приложение (APK): новая версия — карточка с установкой, иначе — что стоит */}
+                {appUpdate ? <UpdateCard variant="settings" update={appUpdate} /> : (
+                  <SettingsRow icon={Icon.check({ c: C.green, s: 18 })} title={`Приложение · NEXA ${installedVersion}`}
+                    subtitle={updateCheckedAt ? `Последняя версия · проверено в ${hhmm(new Date(updateCheckedAt))} · сайт спрашиваем не чаще раза в 6 часов` : "Проверяем…"} />
+                )}
+                {/* Интерфейс (веб-часть) — обновляется без нового APK, применяется при следующем запуске */}
+                <SettingsRow last wrap
+                  icon={ota.status === "error" || ota.status === "needApk" ? Icon.alert({ c: ota.status === "error" ? C.red : C.muted, s: 18 })
+                    : ota.status === "downloading" || ota.status === "ready" ? Icon.download({ c: C.mint, s: 18 })
+                    : Icon.check({ c: C.green, s: 18 })}
+                  title={`Интерфейс · NEXA ${VERSION}`}
+                  subtitle={{
+                    idle: "Проверяем…", checking: "Проверяем…",
+                    current: `Актуальный${updateCheckedAt ? ` · проверено в ${hhmm(new Date(updateCheckedAt))}` : ""}`,
+                    downloading: `Скачиваем ${ota.version} — ${ota.percent} %. Работе не мешает`,
+                    ready: `Скачано ${ota.version} — применится при следующем запуске NEXA`,
+                    needApk: `Для ${ota.version} нужна новая версия приложения${appUpdate ? " — обновите выше" : ""}`,
+                    error: ota.text,
+                  }[ota.status]}
+                  right={ota.status === "ready"
+                    ? <button type="button" className="nx-ghost-btn" onClick={() => otaApplyNow()} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.mint}`, color: C.text }}>Перезапустить</button>
+                    : <button type="button" className="nx-ghost-btn" disabled={ota.status === "downloading"} onClick={() => checkUpdate(true)} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text, opacity: ota.status === "downloading" ? 0.5 : 1 }}>Проверить</button>} />
+              </SettingsGroup>
+            </>
+          )}
+          onSecurity={openSecurity} user={auth.user}
+          memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+          flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
+            onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
+    </>
+  ));
+  /* Блоки разделов: текущий и (во время свайпа) соседний за краем экрана — его двигает useTabSwipe.
+     quiet — раздел, пришедший свайпом: своё «появление» ему не нужно (он уже на экране) */
+  const tabPanels = () => [tab, peek?.tab].filter((t, i, all) => t && all.indexOf(t) === i).map((t) => {
+    const isPeek = t !== tab;
+    const quietHere = isPeek || quiet === t;
+    return (
+      <div key={`tab-${t}`} data-panel={t} data-quiet={quietHere ? "" : undefined}
+        className={t === "assistant" ? "nx-panel" : "ng-screen-anim nx-panel"}
+        aria-hidden={isPeek || undefined} inert={isPeek || undefined}
+        style={isPeek ? { position: "absolute", top: 0, left: 0, width: "100%", visibility: "hidden", pointerEvents: "none", animation: "none" }
+          : quietHere ? { animation: "none" } : undefined}>
+        {screenFor(t)}
+      </div>
+    );
+  });
+
   return (
     <div style={{
       display: "flex",
@@ -2299,8 +2423,8 @@ export default function NexaApp() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
         {/* На экране "Ассистент" своя правая панель вместо обычной
             строки времени/поиска/профиля, поэтому TopBar тут не рисуем */}
-        {tab !== "assistant" && (
-          <TopBar tab={tab}>
+        {(tab !== "assistant" || (peek && peek.tab !== "assistant")) && (
+          <TopBar tab={tab !== "assistant" ? tab : peek.tab} hidden={tab === "assistant"}>
             {/* Компьютер (макет 2026-10): поиск таблеткой, часы, уведомления, быстрые действия, профиль.
                 Телефон: поиск значком (таблетка спрятана стилями); на мобильной Главной строки нет — там своя шапка */}
             <button type="button" className="nx-ghost-btn nx-top-search" onClick={() => openSearch()} aria-label="Поиск">
@@ -2317,7 +2441,8 @@ export default function NexaApp() {
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
             очень широких мониторах, но при этом свободно заполняет
             обычное окно браузера */}
-        <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto" }}>
+        {/* position: relative — точка отсчёта для соседнего раздела во время свайпа */}
+        <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto", position: "relative" }}>
     {/* Открыт экран устройства — показываем его вместо текущего раздела */}
     {securityOpen ? (
     <div key="security" className="ng-screen-anim">
@@ -2384,104 +2509,7 @@ export default function NexaApp() {
         })()}
       />
     </div>
-  ) : tab === "assistant" ? (
-    <ScreenAssistant
-      initialChatId={searchChatId}
-      openRequest={chatOpenReq}
-      onCurrentChat={(id) => { currentChatRef.current = id; }}
-      memory={memory} memoryOn={memoryOn} memoryApi={memoryApi}
-      onContinueChat={uid ? (c) => setContSend({ kind: "chat", ref: c.id, title: c.title }) : null}
-      chats={chats}
-      setChats={setChats}
-      onToast={showToast}
-      tab={tab}
-      setTab={goTab}
-      devices={devices}
-      onAddDevice={onAddDevice}
-      onUploadFiles={() => uploadInputRef.current?.click()}
-      files={files}
-      uid={uid}
-      onAddFiles={(list) => addFiles(list, null)}
-      account={auth.user ? { email: auth.user.email || "" } : null}
-      sync={{ loading: syncLoading && online, text: !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}` : syncError, onRetry: online ? retrySync : null }}
-      bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
-    />
-  ) : (
-    <div key={tab} className="ng-screen-anim">
-      {tab === "home" && (
-        <ScreenHome
-          devices={devices}
-          received={received}
-          update={homeUpdate}
-          onUpdateLater={laterUpdate}
-          onNavigate={goTab}
-          onOpenDevice={showDevice}
-          onAddDevice={onAddDevice}
-          onAbout={openAbout}
-          onAllDevices={openAllDevices}
-          onSearch={() => openSearch()}
-          bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
-          activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
-          findState={findState}
-          onFind={findDevice}
-        />
-      )}
-      {tab === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} />}
-      {tab === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
-      {tab === "files" && (
-        <ScreenFiles
-          key={`files-${searchFolder || "root"}`}
-          files={files}
-          filter={filesFilter}
-          device={devices.find((d) => d.id === filesDevice)}
-          initialFolder={searchFolder}
-          onClearFilter={() => { setFilesFilter(null); setFilesDevice(null); }}
-          onOpenFile={setOpenFile}
-          folders={folders}
-          uploads={uploads}
-          onAddFiles={addFiles}
-          onUploadAction={uploadAction}
-          onCreateFolder={createFolder}
-          onTransfer={openTransfer}
-        />
-      )}
-      {tab === "settings" && <ScreenSettings onAbout={openAbout}
-        noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
-        updateBlock={isNative && (
-          <>
-            <SectionTitle>Обновление</SectionTitle>
-            <SettingsGroup>
-              {/* Приложение (APK): новая версия — карточка с установкой, иначе — что стоит */}
-              {appUpdate ? <UpdateCard variant="settings" update={appUpdate} /> : (
-                <SettingsRow icon={Icon.check({ c: C.green, s: 18 })} title={`Приложение · NEXA ${installedVersion}`}
-                  subtitle={updateCheckedAt ? `Последняя версия · проверено в ${hhmm(new Date(updateCheckedAt))} · сайт спрашиваем не чаще раза в 6 часов` : "Проверяем…"} />
-              )}
-              {/* Интерфейс (веб-часть) — обновляется без нового APK, применяется при следующем запуске */}
-              <SettingsRow last wrap
-                icon={ota.status === "error" || ota.status === "needApk" ? Icon.alert({ c: ota.status === "error" ? C.red : C.muted, s: 18 })
-                  : ota.status === "downloading" || ota.status === "ready" ? Icon.download({ c: C.mint, s: 18 })
-                  : Icon.check({ c: C.green, s: 18 })}
-                title={`Интерфейс · NEXA ${VERSION}`}
-                subtitle={{
-                  idle: "Проверяем…", checking: "Проверяем…",
-                  current: `Актуальный${updateCheckedAt ? ` · проверено в ${hhmm(new Date(updateCheckedAt))}` : ""}`,
-                  downloading: `Скачиваем ${ota.version} — ${ota.percent} %. Работе не мешает`,
-                  ready: `Скачано ${ota.version} — применится при следующем запуске NEXA`,
-                  needApk: `Для ${ota.version} нужна новая версия приложения${appUpdate ? " — обновите выше" : ""}`,
-                  error: ota.text,
-                }[ota.status]}
-                right={ota.status === "ready"
-                  ? <button type="button" className="nx-ghost-btn" onClick={() => otaApplyNow()} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.mint}`, color: C.text }}>Перезапустить</button>
-                  : <button type="button" className="nx-ghost-btn" disabled={ota.status === "downloading"} onClick={() => checkUpdate(true)} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text, opacity: ota.status === "downloading" ? 0.5 : 1 }}>Проверить</button>} />
-            </SettingsGroup>
-          </>
-        )}
-        onSecurity={openSecurity} user={auth.user}
-        memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
-        flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
-          onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
-    </div>
-  )}
+  ) : tabPanels()}
 </div>
         {/* Нижней строки с логотипом и версией больше нет: казалось, что ниже есть ещё что-то
             и страницу хочется пролистать. Версия — в «О системе» и в шапке ассистента */}

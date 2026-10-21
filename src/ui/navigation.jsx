@@ -195,9 +195,10 @@ export function Sidebar({ active, onChange }) {
 // передаём внутрь при вызове компонента (см. использование в App).
 // Лежит поверх экрана в правом верхнем углу и не занимает свою полосу,
 // поэтому заголовки всех экранов стоят на одной высоте с часами.
-export function TopBar({ children, tab }) {
+// hidden — строка собрана только для соседнего раздела во время свайпа с ассистента: стартует невидимой
+export function TopBar({ children, tab, hidden }) {
   return (
-    <div className="ng-topbar nx-tb-row" data-tab={tab} style={{
+    <div className="ng-topbar nx-tb-row" data-tab={tab} style={{ ...(hidden ? { opacity: 0 } : null),
       position: "absolute", top: 0, right: 0, zIndex: 50,
       display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
     }}>
@@ -248,26 +249,83 @@ export function swipePlan(tab, dir) {
   return i < 0 || i >= SWIPE_ORDER.length ? "edge" : "tab";
 }
 
-// Текущий экран, который двигаем за пальцем
-export const swipeScreen = () => document.querySelector(".ng-assistant-wrapper") || document.querySelector(".ng-screen-anim");
+/* ── Интерактивный свайп ──
+   Разделы стоят «в ряд»: пока палец ведёт по горизонтали, текущий экран и соседний (его заранее
+   монтирует NexaApp по onPeek, рядом, за краем) двигаются вместе ровно за пальцем — 1:1.
+   Отпустили: дальше трети ширины или быстрый флик в ту же сторону — оба доезжают до конца с той
+   скоростью, с какой шёл палец (без скачка), и NexaApp делает соседний экран текущим (onCommit) —
+   тот же уже собранный экран, без пересоздания и без второй анимации. Иначе оба возвращаются, а
+   соседний убирается. Двигаем только transform (GPU), React во время жеста не перерисовывается.
+   Ассистент закреплён на всё окно (position: fixed) — у него двигаем саму .ng-assistant-wrapper:
+   transform у родителя сломал бы fixed. */
+export const panelOf = (tab) => document.querySelector(`[data-panel="${tab}"]`);
+// Что двигать у раздела: у ассистента — его закреплённую обёртку, у остальных — сам блок раздела
+const moverOf = (panel) => panel && (panel.querySelector(".ng-assistant-wrapper") || panel);
+// Видна ли общая верхняя строка в этом разделе (у ассистента своя шапка, на телефонной Главной — тоже)
+const topbarShown = (tab) => tab !== "assistant" && tab !== "home";
+const EASE = "cubic-bezier(0.2, 0.9, 0.3, 1)"; // быстро стартует (как палец) и мягко останавливается
 
-export const SWIPE_OUT_MS = 140; // старый экран уезжает
-
-export function useTabSwipe(getCtx, onSwipe) {
+/* getCtx() → { tab, sub }; handlers:
+   onSwipe(dir) — жест засчитан, но двигать нечего (история ассистента, «уменьшение движения»,
+     соседний экран не успел собраться) — NexaApp делает прежнюю смену раздела;
+   onPeek(tab, dir) — собрать соседний раздел за краем (null — убрать);
+   onCommit(tab) — соседний раздел стал текущим (синхронно, в том же кадре) */
+export function useTabSwipe(getCtx, handlers) {
   const ctx = useRef(getCtx); ctx.current = getCtx;
-  const act = useRef(onSwipe); act.current = onSwipe;
+  const h = useRef(handlers); h.current = handlers;
   useEffect(() => {
     const mobile = window.matchMedia?.(PHONE_MQ);
     const still = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    let start = null;
-    // Вернуть экран на место (свайп не засчитан или это не смена раздела)
-    const settle = (el) => {
-      if (!el) return;
-      el.style.transition = "transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)";
-      el.style.transform = "";
-      setTimeout(() => { el.style.transition = ""; }, 240);
+    let start = null;  // текущий жест
+    let anim = null;   // доезжающая анимация после отпускания: { finish() }
+    const clear = (el) => { if (el) { el.style.transition = ""; el.style.transform = ""; } };
+    const topbar = () => document.querySelector(".ng-topbar");
+    const resetTopbar = () => { const t = topbar(); if (t) { t.classList.remove("nx-tb-fade"); t.style.opacity = ""; t.style.transition = ""; } };
+
+    // Положение обоих экранов: dx — сдвиг от исходного места. Соседний раздел стоит вверху окна
+    // (будто его уже открыли и прокрутили к началу): сдвиг вниз на текущую прокрутку страницы
+    const place = (s, dx, ms = 0) => {
+      const tr = ms ? `transform ${ms}ms ${EASE}` : "none";
+      if (s.cur) { s.cur.style.transition = tr; s.cur.style.transform = `translate3d(${dx}px, 0, 0)`; }
+      if (s.peekMover) {
+        const base = s.dir === "next" ? s.w : -s.w;
+        const y = s.peekPanel === s.peekMover ? window.scrollY : 0;
+        s.peekMover.style.transition = tr;
+        s.peekMover.style.transform = `translate3d(${base + dx}px, ${y}px, 0)`;
+        s.peekPanel.style.visibility = "visible";
+      }
+      // Верхняя строка есть только у одного из двух — плавно проявляется / гаснет вместе с ходом
+      const tb = topbar();
+      if (tb && s.target && topbarShown(s.tab) !== topbarShown(s.target)) {
+        const p = Math.min(1, Math.abs(dx) / s.w);
+        tb.classList.add("nx-tb-fade");
+        tb.style.transition = ms ? `opacity ${ms}ms ${EASE}` : "none";
+        tb.style.opacity = String(topbarShown(s.tab) ? 1 - p : p);
+      }
     };
+    // Найти собранный соседний экран (NexaApp монтирует его по onPeek — через кадр-другой)
+    const findPeek = (s) => {
+      if (s.peekMover || !s.target) return;
+      const panel = panelOf(s.target);
+      if (panel && panel !== s.curPanel) { s.peekPanel = panel; s.peekMover = moverOf(panel); }
+    };
+    // Вернуть текущий экран на место (жест не засчитан или это не смена раздела)
+    const settleCur = (s) => {
+      if (!s.cur) return;
+      s.cur.style.transition = `transform 220ms ${EASE}`;
+      s.cur.style.transform = "";
+      const el = s.cur;
+      setTimeout(() => { if (el.style.transform === "") el.style.transition = ""; }, 240);
+    };
+    const dropPeek = (s) => {
+      if (s.peekMover) { clear(s.peekMover); s.peekPanel.style.visibility = ""; }
+      s.peekPanel = s.peekMover = null;
+      if (s.target) { s.target = null; h.current.onPeek(null); }
+      resetTopbar();
+    };
+
     const down = (e) => {
+      if (anim) anim.finish(); // новый жест посреди доезда — сразу закончить прежний
       start = null;
       if (!mobile?.matches || e.touches.length !== 1) return;
       const t = e.touches[0], el = e.target instanceof Element ? e.target : null;
@@ -278,62 +336,108 @@ export function useTabSwipe(getCtx, onSwipe) {
       if (layer || el.closest(SWIPE_SKIP) || inHorizontalScroll(el)) return;
       const c = ctx.current();
       if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», Настройки
-      start = { x: t.clientX, y: t.clientY, at: performance.now(), tab: c.tab, locked: null, el: null };
+      const now = performance.now();
+      start = { x: t.clientX, y: t.clientY, at: now, tab: c.tab, locked: null, w: window.innerWidth,
+        lastX: t.clientX, lastAt: now, vx: 0, dir: null, target: null,
+        curPanel: null, cur: null, peekPanel: null, peekMover: null };
     };
-    // Палец движется: сначала решаем, жест горизонтальный или это прокрутка.
-    // Горизонтальный — экран идёт за пальцем (с сопротивлением; если сменить
-    // раздел нельзя — только чуть-чуть, как пружина)
+
+    // Палец движется: сначала решаем, жест горизонтальный или это прокрутка
     const move = (e) => {
       if (!start) return;
-      const t = e.touches[0];
+      const t = e.touches[0], now = performance.now();
       const dx = t.clientX - start.x, dy = t.clientY - start.y;
+      // Скорость — по последнему отрезку пути (для флика и для доезда)
+      if (now > start.lastAt) { start.vx = (t.clientX - start.lastX) / (now - start.lastAt); start.lastX = t.clientX; start.lastAt = now; }
       if (start.locked === null) {
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
         start.locked = Math.abs(dx) > SWIPE_RATIO * Math.abs(dy);
         if (!start.locked) { start = null; return; } // вертикально — это прокрутка, не мешаем
       }
       if (still()) return;
-      const plan = swipePlan(start.tab, dx < 0 ? "next" : "prev");
+      const dir = dx < 0 ? "next" : "prev";
+      const plan = swipePlan(start.tab, dir);
       if (plan === "history" && document.querySelector(".nx-hist-drawer.is-open")) return; // шторку тянет её свой жест
-      const el = start.el || (start.el = swipeScreen());
-      if (!el) return;
-      el.style.transition = "none";
-      el.style.transform = `translateX(${dx * (plan === "tab" ? 0.45 : 0.15)}px)`;
+      if (!start.cur) { start.curPanel = panelOf(start.tab); start.cur = moverOf(start.curPanel); }
+      if (!start.cur) return;
+      if (plan !== "tab") {
+        // История или край — экран чуть поддаётся (как пружина) и потом возвращается
+        dropPeek(start);
+        start.dir = dir;
+        start.cur.style.transition = "none";
+        start.cur.style.transform = `translate3d(${dx * 0.15}px, 0, 0)`;
+        return;
+      }
+      // Соседний раздел в эту сторону; палец сменил сторону — другой сосед
+      const target = SWIPE_ORDER[SWIPE_ORDER.indexOf(start.tab) + (dir === "next" ? 1 : -1)];
+      if (target !== start.target) {
+        dropPeek(start);
+        start.target = target; start.dir = dir;
+        h.current.onPeek(target, dir);
+      }
+      findPeek(start);
+      place(start, dx);
     };
+
+    // Довести до конца или вернуть: время — по оставшемуся пути и скорости пальца
+    const settleMs = (dist, v) => Math.round(Math.min(320, Math.max(160, dist / Math.max(Math.abs(v), 1.4))));
     const up = (e) => {
       if (!start) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - start.x, dy = t.clientY - start.y, dt = performance.now() - start.at;
-      const el = start.el, tab = start.tab, locked = start.locked;
-      start = null;
+      const s = start; start = null;
+      const t = e.changedTouches[0], now = performance.now();
+      const dx = t.clientX - s.x, dy = t.clientY - s.y, dt = now - s.at;
+      if (now - s.lastAt > 80) s.vx = 0; // палец остановился перед отпусканием — флика нет
       const dir = dx < 0 ? "next" : "prev";
-      const ok = locked !== false && Math.abs(dx) >= SWIPE_RATIO * Math.abs(dy) && // больше вертикально — это прокрутка
-        (Math.abs(dx) >= SWIPE_MIN || (Math.abs(dx) >= SWIPE_FLICK_MIN && dt <= SWIPE_FLICK_MS && Math.abs(dx) / dt >= SWIPE_FLICK_SPEED)) &&
-        !window.getSelection?.().toString(); // выделяли текст — не свайп
-      const plan = swipePlan(tab, dir);
-      if (!ok || plan !== "tab" || still() || !el) {
-        settle(el);
-        if (ok) act.current(dir);
+      const plan = swipePlan(s.tab, dir);
+      const horizontal = s.locked !== false && Math.abs(dx) >= SWIPE_RATIO * Math.abs(dy);
+      const flick = Math.abs(dx) >= SWIPE_FLICK_MIN && Math.sign(s.vx) === Math.sign(dx) &&
+        (Math.abs(s.vx) >= SWIPE_FLICK_SPEED || (dt <= SWIPE_FLICK_MS && Math.abs(dx) / dt >= SWIPE_FLICK_SPEED));
+      const selecting = !!window.getSelection?.().toString(); // выделяли текст — не свайп
+
+      // Не смена раздела (история, край) или «уменьшение движения» — как раньше
+      if (plan !== "tab" || still() || !s.cur) {
+        settleCur(s);
+        dropPeek(s);
+        if (horizontal && !selecting && (Math.abs(dx) >= SWIPE_MIN || flick)) h.current.onSwipe(dir);
         return;
       }
-      // Есть View Transitions: снимок экрана (вместе со сдвигом пальца) уедет сам — сразу меняем раздел
-      if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        act.current(dir);
-        requestAnimationFrame(() => { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; });
+      findPeek(s);
+      const go = horizontal && !selecting && !!s.target && dir === s.dir && (Math.abs(dx) >= s.w * 0.33 || flick);
+      // Соседний экран не успел собраться (очень быстрый флик) — прежняя смена раздела
+      if (go && !s.peekMover) {
+        clear(s.cur); dropPeek(s);
+        h.current.onSwipe(dir);
         return;
       }
-      // Без них: старый экран доезжает в сторону свайпа и тает, потом —
-      // новый раздел (он въезжает с той же стороны, см. nx-swipe-*)
-      el.style.transition = `transform ${SWIPE_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1), opacity ${SWIPE_OUT_MS}ms linear`;
-      el.style.transform = `translateX(${dir === "next" ? -72 : 72}px)`;
-      el.style.opacity = "0";
-      setTimeout(() => {
-        act.current(dir);
-        // Если тот же элемент остался на странице (раздел не сменился) — вернуть
-        requestAnimationFrame(() => { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; });
-      }, SWIPE_OUT_MS);
+      const to = go ? (dir === "next" ? -s.w : s.w) : 0;
+      const ms = settleMs(Math.abs(to - dx), s.vx);
+      place(s, to, ms);
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true; anim = null;
+        clearTimeout(timer);
+        if (go) {
+          // Соседний становится текущим: NexaApp синхронно меняет раздел, прокрутка — к началу.
+          // Стили «соседа» у блока раздела снимает сам React (тот же элемент), здесь — у ассистента
+          h.current.onCommit(s.target);
+          clear(s.peekMover);
+          if (s.peekPanel) s.peekPanel.style.visibility = "";
+          resetTopbar();
+        } else {
+          clear(s.cur);
+          dropPeek(s);
+        }
+      };
+      const timer = setTimeout(finish, ms + 30);
+      anim = { finish };
     };
-    const cancel = () => { if (start?.el) settle(start.el); start = null; };
+    const cancel = () => {
+      const s = start; start = null;
+      if (!s) return;
+      settleCur(s);
+      dropPeek(s);
+    };
     document.addEventListener("touchstart", down, { passive: true });
     document.addEventListener("touchmove", move, { passive: true });
     document.addEventListener("touchend", up, { passive: true });

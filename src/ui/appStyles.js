@@ -348,7 +348,8 @@ export const APP_CSS = `
         .nx-home-more { display: flex !important; align-items: center; justify-content: center; width: 100%; margin-top: 18px; min-height: 38px; box-sizing: border-box;
           font-size: 15px; color: var(--text) !important; background: transparent !important; font-family: inherit; cursor: pointer; }
         @media ${PHONE_MQ} {
-          .ng-topbar[data-tab="home"] { display: none !important; }
+          /* .nx-tb-fade — во время свайпа строка проявляется / гаснет за пальцем (useTabSwipe) */
+          .ng-topbar[data-tab="home"]:not(.nx-tb-fade) { display: none !important; }
           .nx-top-search { display: none !important; }
           .nx-top-search-icon { display: inline-flex; }
           .ng-topbar { gap: 2px !important; }
@@ -556,6 +557,8 @@ export const APP_CSS = `
   .ng-assistant-anim {
   animation: ng-screen-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+  /* Раздел собран свайпом (сосед за краем) — он уже на экране, своё «появление» не проигрывает */
+  .nx-panel[data-quiet] .ng-assistant-anim { animation: none !important; }
   /* Переход свайпом: новый раздел коротко въезжает сбоку (200 мс).
      next — пришёл справа (листали влево), prev — слева */
   body[data-swipe="next"] .ng-screen-anim, body[data-swipe="next"] .ng-assistant-anim { animation: nx-swipe-next 320ms cubic-bezier(0.16, 1, 0.3, 1); }
