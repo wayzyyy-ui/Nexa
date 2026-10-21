@@ -2277,8 +2277,7 @@ export default function NexaApp() {
         onAddFiles={(list) => addFiles(list, null)}
         account={auth.user ? { email: auth.user.email || "" } : null}
         sync={{ loading: syncLoading && online, text: !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}` : syncError, onRetry: online ? retrySync : null }}
-        bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
-      />
+        />
   ) : (
     <>
         {t === "home" && (
@@ -2421,22 +2420,19 @@ export default function NexaApp() {
           <MobileTabBar active={tab} onChange={navTo} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
-        {/* На экране "Ассистент" своя правая панель вместо обычной
-            строки времени/поиска/профиля, поэтому TopBar тут не рисуем */}
-        {(tab !== "assistant" || (peek && peek.tab !== "assistant")) && (
-          <TopBar tab={tab !== "assistant" ? tab : peek.tab} hidden={tab === "assistant"}>
+        {/* Одна и та же строка на всех разделах (и у ассистента): место и порядок кнопок не меняются */}
+          <TopBar tab={tab}>
             {/* Компьютер (макет 2026-10): поиск таблеткой, часы, уведомления, быстрые действия, профиль.
                 Телефон: поиск значком (таблетка спрятана стилями); на мобильной Главной строки нет — там своя шапка */}
             <button type="button" className="nx-ghost-btn nx-top-search" onClick={() => openSearch()} aria-label="Поиск">
               {Icon.search({ c: C.text, s: 16 })} Поиск
             </button>
-            {tab === "settings" ? null : <TimeDate />}
+            <TimeDate />
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
             <QuickBtn />
             <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
             <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" className="nx-tb-user" />
           </TopBar>
-        )}
 
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
             очень широких мониторах, но при этом свободно заполняет

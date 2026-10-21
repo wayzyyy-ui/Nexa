@@ -153,6 +153,19 @@ export const Icon = {
       <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" strokeLinecap="round" />
     </svg>
   ),
+  // Разговор голосом: «волна» из пяти столбиков разной высоты
+  talk: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.8" strokeLinecap="round">
+      <path d="M4 10.5v3M8 7.5v9M12 4.5v15M16 7.5v9M20 10.5v3" />
+    </svg>
+  ),
+  // Микрофон выключен: тот же микрофон, перечёркнутый
+  micOff: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="9" y="3.5" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M4 4l16 16" strokeLinecap="round" />
+    </svg>
+  ),
   // Озвучить: динамик и две волны звука
   speaker: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">

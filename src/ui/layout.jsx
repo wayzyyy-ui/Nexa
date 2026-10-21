@@ -10,7 +10,8 @@ export function MediaLayout({ children, hideArt }) {
   return (
     <div className="ng-screen" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
       <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
-        <div style={{ minWidth: 0 }}>{children}</div>
+        {/* nx-media-main — на большом мониторе растёт вместе с окном (--desk-zoom) */}
+        <div className="nx-media-main" style={{ minWidth: 0 }}>{children}</div>
         <div className="nx-media-art" aria-hidden={hideArt || undefined} style={{
           position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 40, marginRight: -40,
           opacity: hideArt ? 0 : 1, transition: "opacity 240ms ease",

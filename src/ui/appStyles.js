@@ -281,7 +281,14 @@ export const APP_CSS = `
            складка прижата к правому краю окна (макет 2026-10) */
         @media ${DESKTOP_MQ} {
           .ng-main-content:has(.nx-media-grid) { max-width: none !important; }
-          .nx-media-grid { grid-template-columns: minmax(0, 1120px) minmax(300px, 1fr) !important; }
+          /* --desk-zoom (theme.js): 1 на ноутбуке, до 1,3 на большом мониторе — содержимое растёт
+             пропорционально и заполняет окно, как на макете, а не жмётся в левый верхний угол */
+          .nx-media-grid { grid-template-columns: minmax(0, calc(1120px * var(--desk-zoom, 1))) minmax(300px, 1fr) !important; }
+          .nx-media-main { zoom: var(--desk-zoom, 1); }
+          /* Ассистент на компьютере — фон (спектр) и под боковым меню: без тёмной полосы слева.
+             Меню — над ним (прозрачное), содержимое ассистента — правее меню */
+          .ng-assistant-wrapper { left: 0 !important; padding-left: ${NAV_W + 1}px; box-sizing: border-box; }
+          .ng-sidebar { position: relative; z-index: 6; }
         }
         /* Складка справа на «Сегодня», «Медиа», «Файлах»: крупно, обрезана правым краем окна */
         .nx-media-fold { width: 600px; max-width: none; height: auto; display: block; margin-right: -130px; user-select: none; pointer-events: none; overflow: visible; }
@@ -329,12 +336,13 @@ export const APP_CSS = `
           background: linear-gradient(180deg, color-mix(in srgb, var(--text) 18%, transparent), color-mix(in srgb, var(--text) 9%, transparent)) !important;
           box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
           color: var(--text) !important; font-size: max(14px, calc(20 * var(--mk))) !important; font-family: inherit; cursor: pointer; }
-        .nx-top-search svg { display: block; flex-shrink: 0; width: max(14px, calc(19 * var(--mk))); height: max(14px, calc(19 * var(--mk))); }
+        .nx-top-search svg { display: block; flex-shrink: 0; width: max(14px, calc(19 * var(--mk))); height: max(14px, calc(19 * var(--mk)));
+          /* Слово «Поиск» — ровно по центру таблетки: значок вынесен влево на свою ширину и отступ */
+          margin-left: calc(-1 * (max(14px, calc(19 * var(--mk))) + calc(12 * var(--mk)))); }
         .nx-top-search:hover { border-color: color-mix(in srgb, var(--text) 50%, transparent) !important; }
         .nx-top-search-icon { display: none; }
         @media ${DESKTOP_MQ} {
           .ng-topbar { gap: calc(46 * var(--mk)) !important; padding: max(20px, calc(40 * var(--mk))) calc(70 * var(--mk)) 0 0 !important; }
-          .ng-topbar[data-tab="home"] { padding-top: calc(64 * var(--mk)) !important; }
           .nx-tb-row :is(.nx-tb-user, .nx-tb-quick, .nx-tb-bell) svg { width: max(18px, calc(28 * var(--mk))) !important; height: max(18px, calc(28 * var(--mk))) !important; }
           .ng-timedate > div:first-child { font-size: max(14px, calc(20 * var(--mk))) !important; }
           .ng-timedate > div:last-child { font-size: max(11px, calc(17 * var(--mk))) !important; }
@@ -356,6 +364,10 @@ export const APP_CSS = `
           /* Все значки шапки одного размера; профиль на телефоне — в нижней панели */
           .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) svg, .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 19px !important; height: 19px !important; }
           .ng-topbar .nx-tb-user { display: none !important; }
+          /* Карточки ближе к заголовку раздела («Сегодня», «Медиа и файлы»…), но не вплотную */
+          .nx-page-gap { height: 18px !important; }
+          /* Ассистент: справа в шапке — поиск, уведомления, быстрые действия (общая верхняя строка) */
+          .nx-ai-head { padding-right: 112px; padding-top: 11px; } /* на одной линии со значками справа */
           .nx-dev-pill { min-height: 78px; }
           .nx-ai-pill { min-height: 90px; }
           .nx-ai-pill-title { font-size: 19px; }
@@ -573,7 +585,8 @@ export const APP_CSS = `
      карточкой разрешено только здесь (решение автора, см. CLAUDE.md «Визуальный язык»).
      Внутри карточки подменяем цвета текста и обводок — так шаги кода и входа по QR
      тоже получают вид макета, без отдельной вёрстки */
-  .nx-auth-gate { position: fixed; inset: 0; z-index: 900; overflow-y: auto; background: var(--gate-scene); color: var(--gate-text); }
+  .nx-auth-gate { position: fixed; inset: 0; z-index: 900; overflow-y: auto; overscroll-behavior: none; background: var(--gate-scene); color: var(--gate-text); }
+  html:has(.nx-auth-gate), html:has(.nx-auth-gate) body { overscroll-behavior: none; }
   .nx-gate-scene { position: fixed; inset: 0; pointer-events: none; }
   .nx-gate-scene img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left center; user-select: none; }
   :root[data-theme="dark"] .nx-gate-light, :root[data-theme="light"] .nx-gate-dark { display: none; }
@@ -696,6 +709,7 @@ export const APP_CSS = `
            Старый снимок уезжает и тает (200 мс), новый въезжает с той же стороны (320 мс).
            Анимируются только transform и opacity — их рисует видеокарта, без рывков */
         html[data-nav-dir] .ng-main-content { view-transition-name: nx-screen; }
+        html[data-nav-dir] .ng-sidebar { view-transition-name: nx-sidebar; }
         /* Ассистент закреплён на всё окно и в общий снимок экрана не попадал — браузер растягивал
            старый экран в новый. Свой снимок с тем же въездом / уходом, что у остальных разделов */
         html[data-nav-dir] .ng-assistant-wrapper { view-transition-name: nx-screen-ai; }
@@ -847,7 +861,12 @@ export const APP_CSS = `
           display: flex; align-items: flex-start; gap: 12px;
           box-shadow: var(--glass-shadow);
           animation: nx-toast-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+          touch-action: none; /* смахивание вверх (toasts.jsx) — страница под ним не прокручивается */
         }
+        /* Разговор с ассистентом: точка «слушаю» мягко дышит — видно, что микрофон включён */
+        @keyframes nx-conv-breath { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
+        .nx-conv-dot.is-live { animation: nx-conv-breath 1.6s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .nx-conv-dot.is-live { animation: none; } }
         .nx-toast-icon {
           width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
           background: linear-gradient(135deg, var(--blue-dark), var(--mint-dark));
@@ -1185,6 +1204,7 @@ export const APP_CSS = `
         .nx-fc-chev.is-open { transform: rotate(90deg); }
         @media (min-width: 1101px) {
           .nx-fc-inline { display: none; }
+          .nx-today-grid.is-fc { grid-template-columns: minmax(0, 1fr) minmax(0, 356px) minmax(0, 330px) !important; column-gap: 28px !important; }
           .nx-fc-chev.is-open { transform: rotate(180deg); }
         }
         /* Панель выезжает слева направо — из-под колонки погоды */
@@ -1582,6 +1602,8 @@ export const APP_CSS = `
           }
           .nx-chips button { padding: 6px 11px !important; font-size: 12px !important; gap: 5px !important; }
           .ng-input-field { font-size: 16px !important; }
+          /* Подсказка в пустом поле — в одну строку (поле уже из-за кнопок): иначе пустое поле выше, чем после отправки */
+          .ng-input-field::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           .nx-bubble-text { font-size: 16px !important; line-height: 1.5 !important; }
           .nx-user-bubble, .nx-msg-file { max-width: 88% !important; }
           .nx-ai-col { max-width: calc(100% - 48px) !important; }

@@ -54,14 +54,17 @@ const WEB_CODES = { "not-allowed": "denied", "service-not-allowed": "denied", ne
 const joinParts = (parts) => parts.map((t) => String(t || "").trim()).filter(Boolean).join(" ");
 
 /* getText() — текущий текст поля, setText(t) — записать в поле.
-   Возвращает { supported, state, heard, error, toggle, stop, cancel, release, clearError } */
-export function useVoiceInput({ getText, setText }) {
+   onEnd({ text, code, released, phrase }) — сессия закончилась (для режима разговора, src/lib/conversation.js):
+   text — что сказано в этой сессии, code — ошибка (VOICE_ERRORS) или null, released — отменили сами.
+   Возвращает { supported, state, heard, error, toggle, listen, stop, cancel, release, clearError };
+   listen() — одна фраза с пустого поля (режим разговора), обычная диктовка — toggle() */
+export function useVoiceInput({ getText, setText, onEnd }) {
   const [supported, setSupported] = useState(!!voiceKind);
   const [state, setState] = useState("idle");
   const [heard, setHeard] = useState(false);
   const [error, setError] = useState(null);
-  const io = useRef({ getText, setText });
-  io.current = { getText, setText };
+  const io = useRef({ getText, setText, onEnd });
+  io.current = { getText, setText, onEnd };
   // Текущая сессия. Номер (id) отсекает запоздалые события прошлых сессий
   const sess = useRef(null);
   const seq = useRef(0);
@@ -80,7 +83,10 @@ export function useVoiceInput({ getText, setText }) {
     s.subs?.forEach((p) => Promise.resolve(p).then((h) => h?.remove?.()).catch(() => {}));
     if (s.rec) { s.rec.onresult = s.rec.onerror = s.rec.onend = s.rec.onaudiostart = null; }
     setState("idle"); setHeard(false);
-    if (errCode) setError(VOICE_ERRORS[errCode] || VOICE_ERRORS.service);
+    // Фразу для разговора ошибку покажет сам разговор — не дублируем её под полем
+    if (errCode && !s.phrase) setError(VOICE_ERRORS[errCode] || VOICE_ERRORS.service);
+    const said = s.last ? s.last.slice(s.base.length).trim() : "";
+    try { io.current.onEnd?.({ text: said, code: errCode || null, released: s.released, phrase: !!s.phrase }); } catch { /* разговор сам разберётся */ }
   }, []);
 
   // Дописать распознанное после текста, который был до диктовки
@@ -106,10 +112,11 @@ export function useVoiceInput({ getText, setText }) {
     if (s.native) NativeSpeech.cancel().catch(() => {});
   };
 
-  const start = async () => {
+  // phrase — одна фраза с пустого поля (режим разговора): браузер сам заканчивает на паузе в речи
+  const start = async ({ phrase = false } = {}) => {
     if (sess.current || !voiceKind) return;
     setError(null);
-    const s = { id: ++seq.current, base: io.current.getText() || "", last: null, released: false, native: !!NativeSpeech };
+    const s = { id: ++seq.current, base: phrase ? "" : io.current.getText() || "", last: null, released: false, native: !!NativeSpeech, phrase };
     sess.current = s;
     if (!NativeSpeech && navigator.onLine === false) { finish(s, "network"); return; }
     // «Разрешите доступ…» — только если разрешения ещё нет (в приложении знаем заранее)
@@ -146,7 +153,7 @@ export function useVoiceInput({ getText, setText }) {
     rec.lang = LANG;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
-    rec.continuous = !window.matchMedia?.("(pointer: coarse)").matches;
+    rec.continuous = !phrase && !window.matchMedia?.("(pointer: coarse)").matches;
     rec.onaudiostart = () => { if (sess.current === s) { setState("listening"); arm(s, SILENT_MS, "no-speech"); } };
     rec.onresult = (e) => {
       // Каждый раз собираем всю фразу заново из всех кусков — так слова не дублируются
@@ -208,5 +215,5 @@ export function useVoiceInput({ getText, setText }) {
     return () => clearTimeout(t);
   }, [error]);
 
-  return { supported, state, heard, error, active: state !== "idle", toggle, stop, cancel, release, clearError: () => setError(null) };
+  return { supported, state, heard, error, active: state !== "idle", toggle, listen: () => start({ phrase: true }), stop, cancel, release, clearError: () => setError(null) };
 }

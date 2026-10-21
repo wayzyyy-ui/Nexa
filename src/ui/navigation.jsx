@@ -195,10 +195,9 @@ export function Sidebar({ active, onChange }) {
 // передаём внутрь при вызове компонента (см. использование в App).
 // Лежит поверх экрана в правом верхнем углу и не занимает свою полосу,
 // поэтому заголовки всех экранов стоят на одной высоте с часами.
-// hidden — строка собрана только для соседнего раздела во время свайпа с ассистента: стартует невидимой
-export function TopBar({ children, tab, hidden }) {
+export function TopBar({ children, tab }) {
   return (
-    <div className="ng-topbar nx-tb-row" data-tab={tab} style={{ ...(hidden ? { opacity: 0 } : null),
+    <div className="ng-topbar nx-tb-row" data-tab={tab} style={{
       position: "absolute", top: 0, right: 0, zIndex: 50,
       display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
     }}>
@@ -261,8 +260,8 @@ export function swipePlan(tab, dir) {
 export const panelOf = (tab) => document.querySelector(`[data-panel="${tab}"]`);
 // Что двигать у раздела: у ассистента — его закреплённую обёртку, у остальных — сам блок раздела
 const moverOf = (panel) => panel && (panel.querySelector(".ng-assistant-wrapper") || panel);
-// Видна ли общая верхняя строка в этом разделе (у ассистента своя шапка, на телефонной Главной — тоже)
-const topbarShown = (tab) => tab !== "assistant" && tab !== "home";
+// Видна ли общая верхняя строка в этом разделе (на телефонной Главной своя шапка)
+const topbarShown = (tab) => tab !== "home";
 const EASE = "cubic-bezier(0.2, 0.9, 0.3, 1)"; // быстро стартует (как палец) и мягко останавливается
 
 /* getCtx() → { tab, sub }; handlers:

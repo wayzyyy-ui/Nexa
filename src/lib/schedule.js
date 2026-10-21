@@ -85,4 +85,4 @@ export const nextHour = () => `${String((new Date().getHours() + 1) % 24).padSta
 
 /* Полоса дней над расписанием: сегодня, завтра и ещё 5 дней вперёд.
    Под днём — точка, если на него уже есть дела */
-export const DAYS_AHEAD = 7;
+export const DAYS_AHEAD = 14; // полоса дней на «Сегодня»: сегодня и ещё 13 (листается вбок)

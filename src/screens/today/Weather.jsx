@@ -355,11 +355,12 @@ export function ForecastList({ id, days, loading, error, onRetry, variant = "inl
 
   return (
     <div id={id} role="region" aria-label="Прогноз на 2 недели" className="nx-fc-slide" style={{
+      // Как карточки погоды рядом: прозрачная, яркая тонкая обводка, крупное скругление
       height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column",
-      background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 16, overflow: "hidden",
+      background: "transparent", border: `1px solid ${C.lineBright}`, borderRadius: 32, overflow: "hidden",
     }}>
       {/* Шапка панели: заголовок и «закрыть» */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 10px 12px 16px", borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 16px 14px 24px", borderBottom: `1px solid ${C.border}` }}>
         <div style={{ flex: 1, fontFamily: fontDisplay, fontSize: 17 }}>Прогноз на 2 недели</div>
         <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть прогноз" style={{
           ...btnReset, width: 30, height: 30, borderRadius: 10,

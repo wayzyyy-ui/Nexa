@@ -5,11 +5,10 @@ import { formatLabel, prepareAttachment, SUPPORTED_HINT, attachUnsupported, extO
 import { C, NAV_W, PHONE_MQ, readTheme, switchTheme, T } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { liveAbort, useLiveChatId, isPartial, live, setLiveAbort, liveSet, STREAM_FLUSH_MS } from "../../lib/live.js";
-import { btnReset, IconBtn } from "../../ui/base.jsx";
-import { QuickBtn, QuickPanel } from "../../ui/QuickPanel.jsx";
+import { btnReset } from "../../ui/base.jsx";
+import { QuickPanel } from "../../ui/QuickPanel.jsx";
 import { AssistantSpectrum, AssistantAura, ReplyAura, REPLY_AURA_HOLD, REPLY_AURA_FADE } from "./visuals.jsx";
 import { ChatHistory, assistantSuggestions } from "./ChatHistory.jsx";
-import { TimeDate } from "../../ui/notifications.jsx";
 import { flushSync } from "react-dom";
 import { API_CHAT_URL } from "../../native.js";
 import { newId } from "../../lib/sync.js";
@@ -21,12 +20,14 @@ import { useMediaQuery } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
 import { enterAction, useEnterSends } from "../../lib/composer.js";
 import { stopSpeaking, useVoiceOutput } from "../../lib/voiceOutput.js";
+import { useConversation } from "../../lib/conversation.js";
+import { ConversationBar } from "./conversation.jsx";
 import { FILE_SCOPE, sortByRecent, catOf } from "../../lib/fileStore.js";
 import { VERSION } from "../../version.js";
 import { FileThumb } from "../../ui/files.jsx";
 import { LiveAnswer, AttachChip, MessageBubble, AssistantSkeleton } from "./messages.jsx";
 
-export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, tab, setTab, devices = [], onAddDevice, onUploadFiles, bell, account, sync, files = [], uid = null, onAddFiles }) {
+export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -168,7 +169,9 @@ useEffect(() => {
   /* Голосовой ввод (src/lib/voice.js): распознанное дописывается в поле, отправляет человек сам */
   const inputNow = useRef(input);
   inputNow.current = input;
-  const voice = useVoiceInput({ getText: () => inputNow.current, setText: setInput });
+  // onEnd — фраза закончилась: нужно режиму разговора (convEnd ставится ниже, когда он создан)
+  const convEnd = useRef(null);
+  const voice = useVoiceInput({ getText: () => inputNow.current, setText: setInput, onEnd: (r) => convEnd.current?.(r) });
   // Esc и «Назад» Android во время диктовки — отменить её (поле вернётся к тексту до диктовки)
   useEffect(() => {
     if (!voice.active) return;
@@ -312,6 +315,20 @@ useEffect(() => {
      диалога, уходе с экрана ассистента и когда читаемый ответ исчез (повтор ответа, удаление) */
   const speakIdOf = (m, i) => `${currentChatId}:${m.at || i}`;
   const tts = useVoiceOutput();
+  /* Режим разговора (src/lib/conversation.js): фраза → тот же чат → ответ вслух → снова слушаем.
+     lastAi — последний ответ ассистента в этом диалоге (его и читаем) */
+  const lastAi = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "ai") return { ...messages[i], speakId: speakIdOf(messages[i], i) };
+    return null;
+  })();
+  const conv = useConversation({ voice, send: (t) => sendMessage(t), lastAi, tts });
+  convEnd.current = conv.onVoiceEnd;
+  // Открыли другой диалог посреди разговора — разговор заканчивается (новый диалог при первой фразе — не смена)
+  const convChat = useRef(currentChatId);
+  useEffect(() => {
+    if (convChat.current && currentChatId && convChat.current !== currentChatId) conv.end("");
+    convChat.current = currentChatId;
+  }, [currentChatId]);
   useEffect(() => { stopSpeaking(); }, [currentChatId]);
   useEffect(() => () => stopSpeaking(), []);
   useEffect(() => {
@@ -629,7 +646,8 @@ useEffect(() => {
 
 
  const titleOnly = (
-  <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
+  // nx-ai-head — на телефоне справа место под общую строку кнопок
+  <div className="nx-ai-head" style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
     {/* Кнопка истории: на телефоне открывает шторку, на компьютере
         возвращает скрытую колонку (видна, только пока колонка скрыта) */}
     <button
@@ -661,33 +679,8 @@ useEffect(() => {
     </div>
   </div>
 );
-const menuBlock = (
-  // Справа сверху (только компьютер): время, уведомления, профиль.
-  // «Новый диалог» и поиск — в колонке истории слева
-  <div className="ng-menu-block" style={{
-    position: "fixed",
-    top: 24,
-    right: 40,
-    zIndex: 10,
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-    alignItems: "flex-end",
-  }}>
-    {/* Верхняя строка: время/дата + иконка профиля */}
-    <div className="nx-tb-row" style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 18,
-      marginBottom: 8,
-    }}>
-      <TimeDate />
-      <QuickBtn />
-      {bell}
-      <IconBtn icon={Icon.user} onClick={() => setTab?.("settings")} label="Настройки" className="nx-tb-user" />
-    </div>
-  </div>
-);
+// Кнопки справа сверху (поиск, время, уведомления, быстрые действия, профиль) — общая верхняя
+// строка NexaApp (TopBar): у ассистента те же, на том же месте, что и в других разделах
 
   // Отправить можно: не идёт ответ; есть текст или готовое вложение; вложение не готовится и без ошибки
   const canSend = !isLoading && (att ? att.status === "ready" : !!input.trim());
@@ -785,8 +778,20 @@ const menuBlock = (
             overflowWrap: "anywhere",
           }}
         />
-        {/* Микрофон: нажать — говорить, ещё раз — готово. Нет распознавания на этом устройстве — кнопки нет */}
+        {/* Разговор голосом: нажать — начать (NEXA слушает, отвечает вслух и снова слушает), ещё раз — закончить */}
         {voice.supported && (
+          <button type="button" onPointerDown={(e) => e.preventDefault()}
+            onClick={(e) => { e.stopPropagation(); if (conv.active) conv.end(""); else { voice.cancel(); conv.start(); } }}
+            className={`nx-icon-btn nx-talk${conv.active ? " is-on" : ""}`} aria-pressed={conv.active}
+            aria-label={conv.active ? "Завершить разговор" : "Начать разговор"} title={conv.active ? "Завершить разговор" : "Начать разговор"}
+            style={{ ...btnReset, width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              border: `1px solid ${conv.active ? C.mint : "transparent"}` }}>
+            {Icon.talk({ c: conv.active ? C.mint : C.muted, s: 18 })}
+          </button>
+        )}
+        {/* Микрофон: нажать — говорить, ещё раз — готово. Нет распознавания на этом устройстве — кнопки нет.
+            Во время разговора диктовка не нужна — микрофоном управляет полоска разговора */}
+        {voice.supported && !conv.active && (
           <button type="button" onPointerDown={(e) => e.preventDefault()}
             // Микрофон не должен слышать голос NEXA — озвучку останавливаем
             onClick={(e) => { e.stopPropagation(); stopSpeaking(); voice.toggle(); }}
@@ -887,7 +892,8 @@ const menuBlock = (
   const innerStyle = {
   position: "relative", zIndex: 1, // над спектральным фоном
   flex: 1, display: "flex", flexDirection: "row",
-  width: "100%", maxWidth: 1440, margin: "0 auto",
+  // Прижато влево, к меню (как заголовки других разделов), а не по центру широкого окна
+  width: "100%", maxWidth: 1440, margin: "0",
   padding: "66px 40px 20px 40px",
   overflow: "hidden",
   boxSizing: "border-box", minHeight: 0,
@@ -896,7 +902,6 @@ const menuBlock = (
   <div className="ng-assistant-wrapper ng-assistant-anim" style={wrapperStyle}>
     {/* Спектральный фон — под всем содержимым, нажатия и прокрутку не перехватывает */}
     <AssistantSpectrum busyRef={cmdBusyRef} />
-    {menuBlock}
     {/* Выбор файла для ассистента — та же панель, что у быстрых действий */}
     {pickOpen && (
       <QuickPanel commands={pickItems} label="Приложить файл" placeholder="Найти файл…" icon={Icon.clip} keys={null}
@@ -937,8 +942,8 @@ const menuBlock = (
             </div>
             <div ref={inputDockRef} className="nx-dock" style={{ position: "relative", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
               {inputRow}
-              {/* В новом диалоге подписи нет — только состояние диктовки */}
-              {voiceLine && disclaimer}
+              {/* В новом диалоге подписи нет — только состояние диктовки или разговора */}
+              {conv.active || conv.note ? <ConversationBar conv={conv} heard={voice.heard} speakOn={tts.supported} /> : voiceLine && disclaimer}
             </div>
             {/* Подсказки-команды: нажатие отправляет текст как сообщение.
                 На телефоне листаются вбок */}
@@ -1015,7 +1020,7 @@ const menuBlock = (
               paddingBottom: 8,
             }}>
               {inputRow}
-              {disclaimer}
+              {conv.active || conv.note ? <ConversationBar conv={conv} heard={voice.heard} speakOn={tts.supported} /> : disclaimer}
             </div>
            </>
         )}

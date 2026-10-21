@@ -198,7 +198,9 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
     <MediaLayout hideArt={forecastOpen}>
       <MediaTitle title="Сегодня" />
 
-      <div className="nx-today-grid nx-stagger" style={{
+      {/* is-fc — открыт прогноз: на широком экране он третья колонка (расписание чуть уже),
+          поэтому всегда помещается в окно, как бы ни выросло содержимое (--desk-zoom) */}
+      <div className={`nx-today-grid nx-stagger${forecastOpen ? " is-fc" : ""}`} style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) minmax(0, 356px)",
         // Справа три панели с одинаковыми отступами: погода, завтра, прогноз.
@@ -397,14 +399,12 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
           )}
         </div>
 
-        {/* Широкий экран: панель справа от погоды, поверх края складки.
-            Стоит в той же колонке, что и погода (все строки — вровень с расписанием), и сдвинута
-            вправо за её край. Внутренняя обёртка absolute — поэтому панель
-            берёт высоту колонки погоды, но сама её не растягивает */}
+        {/* Широкий экран: панель — третья колонка справа от погоды (все строки — вровень с расписанием).
+            Внутренняя обёртка absolute — поэтому панель берёт высоту колонки погоды, но сама её не растягивает */}
         {forecastOpen && (
           <div className="nx-fc-aside" style={{
-            gridColumn: 2, gridRow: "1 / -1", alignSelf: "stretch", justifySelf: "start",
-            width: 330, marginLeft: "calc(100% + 32px)", position: "relative", zIndex: 3,
+            gridColumn: 3, gridRow: "1 / -1", alignSelf: "stretch",
+            width: "100%", position: "relative", zIndex: 3,
           }}>
             <div style={{ position: "absolute", inset: 0 }}>
               <ForecastList id="nx-forecast-side" variant="aside" days={weather.days} loading={weather.loading}
