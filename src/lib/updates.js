@@ -1,6 +1,8 @@
 // Обновление приложения: общий ход установки изнутри (updState / updStart) и APK для сайта
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { updateCanInstall, updateInstall, updateSigner, updateDownload } from "../native.js";
+import { isDesktop } from "./platform.js";
+import { desktopUpdateInstall } from "./desktop.js";
 
 export const APK_URL = "/nexa.apk";
 
@@ -59,7 +61,34 @@ export async function updProceed() {
   catch (e) { updSet({ state: "error", error: e?.message || "Не получилось открыть установщик Android" }); }
 }
 
+/* Приложение для ПК (desktop/src-tauri/src/updater.rs): скачать → проверить подпись → установщик
+   в тихом режиме (окошко с полосой), NEXA закрывается и через несколько секунд открывается новой
+   версией сама. Отменить нельзя (файл ~3 МБ, секунды). Ошибка — код из оболочки */
+export const DESKTOP_UPDATE_ERRORS = {
+  network: "Не скачалось — проверьте интернет и повторите",
+  signature: "Файл обновления не прошёл проверку подписи — ставить его нельзя. Повторите позже или скачайте NEXA с сайта",
+  not_found: "Файла обновления на сайте пока нет — повторите позже",
+  no_update: "На сайте уже другая версия — нажмите «Проверить» в Настройках",
+  version_mismatch: "На сайте уже другая версия — нажмите «Проверить» в Настройках",
+  not_configured: "Обновление изнутри пока не настроено — скачайте новую версию с сайта",
+  failed: "Не получилось установить — повторите или скачайте NEXA с сайта",
+};
+async function desktopStart(info) {
+  if (["downloading", "installing"].includes(updState.state) && updState.version === info.version) return;
+  updSet({ state: "downloading", loaded: 0, total: info.size || 0, error: "", version: info.version });
+  try {
+    await desktopUpdateInstall(info.version, (e) => {
+      // Скачано целиком — шкала полная, подпись «Проверяем подпись…»; прошла — NEXA закрывается сама
+      if (e?.kind === "progress") updSet({ loaded: e.loaded || 0, total: e.total || info.size || 0 });
+      else if (e?.kind === "downloaded") updSet({ loaded: updState.total || updState.loaded, total: updState.total || updState.loaded });
+    });
+  } catch (e) {
+    updSet({ state: "error", error: DESKTOP_UPDATE_ERRORS[String(e)] || DESKTOP_UPDATE_ERRORS.failed });
+  }
+}
+
 export async function updStart(info) {
+  if (isDesktop) return desktopStart(info);
   if (["downloading", "installing"].includes(updState.state) && updState.version === info.version) {
     if (updState.state === "installing") updProceed(); // «Открыть установщик ещё раз»
     return;

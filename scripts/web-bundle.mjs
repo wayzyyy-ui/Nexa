@@ -34,7 +34,9 @@ const MAX_ZIP = 25 * 1024 * 1024; // больше — что-то лишнее �
 const KEEP = 2;
 
 // В архив не кладём: сам APK, прошлые архивы, version.json (у телефона свой — с сайта)
-const SKIP = (name) => name === "nexa.apk" || name === "version.json" || name === "ota" || name.startsWith("ota/");
+// и приложение для ПК (установщик и latest.json — их берут с сайта)
+const SKIP = (name) => name === "nexa.apk" || name === "version.json" || name === "ota" || name.startsWith("ota/")
+  || name === "nexa-setup.exe" || name === "desktop" || name.startsWith("desktop/");
 // Признаки секретов и тестовой сборки (публичные ключи VITE_* — можно, они и так в APK)
 const BAD = [
   [/sb_secret_[A-Za-z0-9_-]{8,}/, "секретный ключ Supabase"],

@@ -9,7 +9,10 @@
    - браузер: заряд — navigator.getBattery() (есть не везде), сеть —
      navigator.connection.type (обычно только Chrome на Android) и navigator.onLine;
      места на диске браузер не сообщает. navigator.storage.estimate() —
-     это место для сайта внутри браузера, а не память телефона, его не используем.
+     это место для сайта внутри браузера, а не память телефона, его не используем;
+   - приложение для ПК: всё из Windows через оболочку (device_info в desktop.rs) —
+     заряд и зарядка (GetSystemPowerStatus; нет батареи — «от сети»), сеть (адаптер со шлюзом:
+     провод / Wi-Fi / мобильная), место на системном диске. Не ответила — как в браузере.
 
    Сведения (sys): { battery 0–100 | null, charging true/false | null,
    ac — питание от сети, а уровень заряда браузер не знает,
@@ -19,6 +22,8 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Device } from "@capacitor/device";
 import { Network } from "@capacitor/network";
+import { isDesktop } from "./platform.js";
+import { desktopDeviceInfo } from "./desktop.js";
 
 const isNative = Capacitor.isNativePlatform();
 const NexaDisk = registerPlugin("NexaDisk");
@@ -27,6 +32,7 @@ export const SYS_POLL_MS = 30000; // не чаще раза в 30 секунд
 // Смартфон, планшет или компьютер — без моделей и брендов
 export function thisDeviceKind() {
   const side = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  if (isDesktop) return "computer"; // приложение для ПК — всегда компьютер (даже с сенсорным экраном)
   const touch = isNative || !!window.matchMedia?.("(pointer: coarse)").matches;
   if (!touch) return "computer";
   return side >= 600 ? "tablet" : "phone";
@@ -79,7 +85,23 @@ async function readWeb() {
   return out;
 }
 
-export const readThisDevice = async () => ({ ...(await (isNative ? readNative() : readWeb())), at: Date.now() });
+/* ─── Приложение для ПК ─── */
+async function readDesktop() {
+  const i = await desktopDeviceInfo();
+  if (!i) return readWeb();
+  const num = (x) => (Number.isFinite(x) && x >= 0 ? x : null);
+  const free = num(i.disk_free), total = num(i.disk_total);
+  return {
+    battery: Number.isInteger(i.battery) && i.battery >= 0 && i.battery <= 100 ? i.battery : null,
+    charging: typeof i.charging === "boolean" ? i.charging : null,
+    ac: !!i.ac,
+    net: navigator.onLine === false ? "none" : NET[i.net] || null,
+    diskFree: total && free != null && free <= total ? free : null,
+    diskTotal: total && free != null && free <= total ? total : null,
+  };
+}
+
+export const readThisDevice = async () => ({ ...(await (isNative ? readNative() : isDesktop ? readDesktop() : readWeb())), at: Date.now() });
 
 // Одинаковы ли сведения (время чтения не считаем; место — с точностью до 100 МБ,
 // чтобы мелкие записи на диск не считались изменением)
@@ -101,7 +123,8 @@ export function useThisDeviceSys() {
     let stop = false;
     let busy = false;
     const read = async () => {
-      if (busy || document.visibilityState === "hidden") return;
+      // Приложение для ПК в трее тоже «в сети» — его заряд и сеть видят другие устройства
+      if (busy || (document.visibilityState === "hidden" && !isDesktop)) return;
       busy = true;
       try {
         const next = await readThisDevice();

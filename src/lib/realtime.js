@@ -16,6 +16,8 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "./supabase.js";
 import { newId } from "./sync.js";
+import { isDesktop } from "./platform.js";
+import { pcName } from "./desktop.js";
 
 export const EVENT_TEXT = "text.send";
 export const TEXT_MAX = 2000;    // самое длинное сообщение
@@ -28,28 +30,9 @@ const inboxKey = (uid) => `nexa-inbox@${uid}`;
 const sentKey = (uid) => `nexa-flow-sent@${uid}`; // NEXA Flow: что отправили с этого устройства
 const ACK_WAIT_MS = 8000; // столько ждём подтверждения от устройства-получателя
 
-/* NEXA Flow: похоже ли на пароль, ключ или токен. Такое можно передать,
-   но в историю (localStorage) текст не пишем — только пометку «скрыто».
-   Проверка простая и осторожная: лучше лишний раз скрыть, чем сохранить секрет */
-const SENSITIVE_RE = [
-  /(пароль|password|passwd|pwd|pin|пин-?код|секрет|secret|token|токен|api[_ -]?key|ключ api)\s*[:=]/i,
-  /-----BEGIN [A-Z ]*(PRIVATE KEY|CERTIFICATE)-----/,          // ключи и сертификаты
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}/, // JWT
-  /\b(sk|pk|rk)[-_](live|test|proj)?[-_]?[A-Za-z0-9]{16,}/,     // ключи сервисов
-  /\bsb_(secret|publishable)_[A-Za-z0-9_-]{10,}/,               // ключи Supabase
-  /\b(ghp|gho|github_pat|glpat|xox[abp])[-_][A-Za-z0-9_-]{16,}/, // ключи Git и чатов
-  /\bAKIA[0-9A-Z]{16}\b/,                                       // ключи облаков
-  /\bAIza[0-9A-Za-z_-]{30,}/,
-];
-export function isSensitive(text) {
-  const t = String(text || "");
-  if (SENSITIVE_RE.some((re) => re.test(t))) return true;
-  // Одно «слово» без пробелов, длинное и пёстрое (буквы разного регистра + цифры) — похоже на пароль или токен
-  const one = t.trim();
-  if (one.length >= 10 && one.length <= 200 && !/\s/.test(one) && !safeUrl(one) &&
-      /[a-z]/.test(one) && /[A-Z]/.test(one) && /\d/.test(one)) return true;
-  return false;
-}
+// Похоже ли на пароль / ссылка ли — src/lib/textcheck.js (тут — под прежними именами)
+import { isSensitive, safeUrl } from "./textcheck.js";
+export { isSensitive, safeUrl };
 // Для истории: секрет не сохраняем, только пометку
 const forStorage = (x) => (x.sensitive ? { ...x, text: null } : x);
 
@@ -77,7 +60,8 @@ function phoneSignature() {
 export const isHw = (v) => typeof v === "string" && /^[0-9a-f]{8}$/.test(v);
 
 /* Кто это устройство. device_id создаётся один раз и живёт в localStorage,
-   имя — по типу: приложение, сайт на телефоне или на компьютере.
+   имя — по типу: приложение, сайт на телефоне или на компьютере, приложение для ПК (kind "pc":
+   имя компьютера из Windows, запомненное src/lib/desktop.js; старые версии NEXA видят его как "web").
    hw — «отпечаток телефона» (см. phoneSignature), у компьютера — нет */
 export function deviceIdentity() {
   let id = null;
@@ -86,29 +70,20 @@ export function deviceIdentity() {
     id = newId();
     try { localStorage.setItem(DEVICE_ID_KEY, id); } catch {}
   }
-  const kind = Capacitor.isNativePlatform() ? "app" : "web";
-  const mobile = window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth <= 768;
+  const kind = Capacitor.isNativePlatform() ? "app" : isDesktop ? "pc" : "web";
+  const mobile = kind !== "pc" && (window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth <= 768);
   const platform = mobile ? "mobile" : "desktop";
-  const name = kind === "app" ? "Приложение" : mobile ? "Сайт на телефоне" : "Сайт на компьютере";
+  const name = kind === "app" ? "Приложение" : kind === "pc" ? pcName() || "Компьютер" : mobile ? "Сайт на телефоне" : "Сайт на компьютере";
   return { device_id: id, name, kind, platform, ...(mobile ? { hw: phoneSignature() } : {}) };
 }
 
-// Ссылка, которую можно открыть: только http и https (javascript: и прочее — нет)
-export function safeUrl(text) {
-  const t = String(text || "").trim();
-  if (!/^https?:\/\/\S+$/i.test(t)) return null;
-  try {
-    const u = new URL(t);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
-  } catch { return null; }
-}
 
 /* ─── Проверка формы сообщений. Неверное — молча пропускаем ─── */
 const isStr = (v, max) => typeof v === "string" && v.length > 0 && v.length <= max;
 const isId = (v) => isStr(v, 64);
 const isTs = (v) => typeof v === "number" && Number.isFinite(v);
 const isName = (v) => v == null || (typeof v === "string" && v.length <= 60);
-const isKind = (v) => v === "web" || v === "app";
+const isKind = (v) => v === "web" || v === "app" || v === "pc"; // pc — приложение для ПК
 const isPlatform = (v) => v === "desktop" || v === "mobile";
 // Общее у всех: кто прислал и когда
 const base = (p) => !!p && typeof p === "object" && !Array.isArray(p) && isId(p.from_device) && isTs(p.ts) && isName(p.from_name);
@@ -152,6 +127,12 @@ const SCHEMAS = {
     && Number.isFinite(p.size) && p.size >= 0 && (p.mime == null || (typeof p.mime === "string" && p.mime.length <= 255)),
   // Открыть ссылку на устройстве: только http/https, получатель проверяет ещё раз
   "link.open": (p) => base(p) && isId(p.id) && isId(p.to_device) && typeof p.url === "string" && p.url.length <= 2048 && !!safeUrl(p.url),
+  // Общий буфер обмена (src/lib/clipsync.js): скопировано (всем устройствам аккаунта), удалено, очищено.
+  // Текст до 10 000 знаков, срок жизни — не больше часа с небольшим запасом; enc 0 — без шифрования (пока)
+  "clip.new": (p) => base(p) && isId(p.id) && typeof p.text === "string" && p.text.trim().length > 0 && p.text.length <= 10000
+    && isTs(p.exp) && p.exp > Date.now() && p.exp <= Date.now() + 62 * 60000 && (p.enc == null || p.enc === 0),
+  "clip.del": (p) => base(p) && isId(p.id),
+  "clip.clear": (p) => base(p),
   // Список устройств аккаунта изменился — перечитать из облака
   "devices.changed": (p) => base(p),
   // В облаке новое (устройства или чаты) — перечитать эту таблицу сразу
@@ -189,7 +170,7 @@ function flattenPresence(state) {
     list.push({
       device_id: m.device_id,
       name: typeof m.name === "string" ? m.name.slice(0, 60) : "Устройство",
-      kind: m.kind === "app" ? "app" : "web",
+      kind: m.kind === "app" || m.kind === "pc" ? m.kind : "web",
       platform: m.platform === "mobile" ? "mobile" : "desktop",
       joined_at: m.joined_at,
       sys: cleanSys(m.sys),

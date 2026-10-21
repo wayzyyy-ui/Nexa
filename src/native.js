@@ -2,15 +2,21 @@
    Всё здесь срабатывает только внутри приложения — на сайте функции
    ничего не делают, и сайт работает как раньше. */
 import { Capacitor, SystemBars, SystemBarsStyle, registerPlugin } from "@capacitor/core";
+import { isDesktop } from "./lib/platform.js";
+import { desktopClipboardRead, desktopClipboardWrite, desktopNotify } from "./lib/desktop.js";
+import { targetToLink } from "./lib/deeplink.js";
+import { VERSION } from "./version.js";
 
 // Запущены ли мы внутри Android-приложения (а не в браузере)
 export const isNative = Capacitor.isNativePlatform();
+// Приложение для ПК (Tauri, см. src/lib/platform.js): своего сервера рядом нет, как и у Android
+export { isDesktop };
 
 /* Адрес сервера ассистента.
    На сайте — пусто, запрос идёт на свой же адрес: /api/chat.
-   В приложении сайта рядом нет, поэтому нужен полный адрес. Он берётся из
-   файла .env.android (VITE_API_BASE). Если его нет — запасной nexa-link.ru */
-export const API_BASE = (import.meta.env.VITE_API_BASE ?? (isNative ? "https://nexa-link.ru" : "")).replace(/\/+$/, "");
+   В приложении (Android и ПК) сайта рядом нет, поэтому нужен полный адрес. Он берётся из
+   файла .env.android / .env.desktop (VITE_API_BASE). Если его нет — запасной nexa-link.ru */
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? (isNative || isDesktop ? "https://nexa-link.ru" : "")).replace(/\/+$/, "");
 export const API_CHAT_URL = `${API_BASE}/api/chat`;
 
 /* Проверка обновлений (только в приложении).
@@ -26,10 +32,10 @@ export const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
 // Последний ответ version.json { at, latest } — его же читает обновление веб-части (src/lib/ota.js)
 export const readUpdateCache = () => { try { return JSON.parse(localStorage.getItem(UPDATE_CACHE)); } catch { return null; } };
 export async function checkForUpdate({ force = false } = {}) {
-  if (!isNative) return null;
+  if (!isNative && !isDesktop) return null;
   try {
-    const { App } = await import("@capacitor/app");
-    const info = await App.getInfo(); // build — versionCode установленного приложения
+    // Приложение для ПК: своя версия = VERSION, установщик не знает versionCode (см. desktopUpdate ниже)
+    const info = isDesktop ? { build: 0 } : await (await import("@capacitor/app")).App.getInfo(); // build — versionCode установленного приложения
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem(UPDATE_CACHE)); } catch {}
     let latest = cached?.latest || null;
@@ -40,6 +46,7 @@ export async function checkForUpdate({ force = false } = {}) {
         try { localStorage.setItem(UPDATE_CACHE, JSON.stringify({ at: Date.now(), latest })); } catch {}
       }
     }
+    if (isDesktop) return desktopUpdate(latest);
     if (!latest || !(Number(latest.versionCode) > Number(info.build))) return null;
     const path = latest.apkUrl || `${latest.url || "/nexa.apk"}?v=${latest.versionCode}`;
     return {
@@ -55,6 +62,25 @@ export async function checkForUpdate({ force = false } = {}) {
   } catch {
     return null;
   }
+}
+
+/* Приложение для ПК: блок desktop в version.json (пишет npm run release:desktop):
+   { version, url: "/nexa-setup.exe", exeUrl, size, sha256, notes, minVersion }.
+   Новее установленной (VERSION) — показываем «Обновить»; старше minVersion — экран «Обновите NEXA».
+   Сама установка — модуль обновлений Tauri с проверкой подписи (updater.rs) */
+const verNum = (v) => { const [a = 0, b = 0, c = 0] = String(v || "").split(".").map((x) => parseInt(x, 10) || 0); return a * 1e6 + b * 1e3 + c; };
+function desktopUpdate(latest) {
+  const d = latest?.desktop;
+  if (!d || typeof d.version !== "string" || !(verNum(d.version) > verNum(VERSION))) return null;
+  const path = typeof d.exeUrl === "string" ? d.exeUrl : "/nexa-setup.exe";
+  return {
+    version: d.version,
+    url: /^https:\/\//.test(path) ? path : `${API_BASE}${path}`, // на всякий случай — скачать в браузере
+    notes: Array.isArray(d.notes) ? d.notes.filter((x) => typeof x === "string").slice(0, 12) : [],
+    size: Number(d.size) || 0,
+    required: !!d.minVersion && verNum(VERSION) < verNum(d.minVersion),
+    desktop: true,
+  };
 }
 
 /* ─── Обновление изнутри (NexaUpdatePlugin.java) ───
@@ -294,7 +320,8 @@ export async function nativeFile(action, { url, blob, name, mime }) {
    Приложение: модуль @capacitor/clipboard (встроенный браузер Android
    не даёт сайту читать буфер). Сайт: navigator.clipboard — чтение спросит
    разрешение у браузера, на старых браузерах и без https его нет.
-   Будущая версия для Windows подставит свой модуль сюда же. */
+   Приложение для ПК — свои команды окна (src/lib/desktop.js): WebView2 на чтение
+   буфера показывает вопрос «Сайт tauri.localhost хочет…». */
 export async function clipboardRead() {
   try {
     if (isNative) {
@@ -302,10 +329,11 @@ export async function clipboardRead() {
       const r = await Clipboard.read();
       return { text: typeof r?.value === "string" && /text/i.test(r.type || "text") ? r.value : "" };
     }
+    if (isDesktop) return { text: await desktopClipboardRead() };
     if (!navigator.clipboard?.readText) return { error: "Этот браузер не даёт читать буфер — вставьте текст сами (долгое нажатие → «Вставить»)" };
     return { text: await navigator.clipboard.readText() };
   } catch {
-    return { error: "Нет доступа к буферу — разрешите его в браузере или вставьте текст сами" };
+    return { error: isDesktop ? "Не получилось прочитать буфер — вставьте текст сами (Ctrl+V)" : "Нет доступа к буферу — разрешите его в браузере или вставьте текст сами" };
   }
 }
 export async function clipboardWrite(text) {
@@ -315,6 +343,7 @@ export async function clipboardWrite(text) {
       await Clipboard.write({ string: text });
       return true;
     }
+    if (isDesktop) { await desktopClipboardWrite(text); return true; }
     await navigator.clipboard.writeText(text);
     return true;
   } catch { return false; }
@@ -358,9 +387,13 @@ let localNotes = null;
 // Модуль отдаём в обёртке { api }: сам объект плагина Capacitor нельзя возвращать из async —
 // JavaScript примет его за «обещание», вызовет .then, и плагин ответит ошибкой
 const ln = async () => (localNotes ||= { api: (await import("@capacitor/local-notifications")).LocalNotifications });
-// "app" — приложение, "web" — браузер на компьютере, "none" — нельзя
+// "app" — приложение, "desktop" — приложение для ПК, "web" — браузер на компьютере, "none" — нельзя
 export function systemNotifyKind() {
   if (isNative) return "app";
+  // Приложение для ПК: WebView2 молча отказывает сайту в уведомлениях (проверено) —
+  // показываем уведомления Windows через оболочку (desktop.rs). Разрешение спрашивать не нужно:
+  // выключают их в «Параметрах Windows» → «Уведомления»
+  if (isDesktop) return "desktop";
   if (typeof Notification === "undefined") return "none";
   return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? "none" : "web";
 }
@@ -373,6 +406,7 @@ export async function systemNotifyPermission(request = false) {
       const st = request ? await L.requestPermissions() : await L.checkPermissions();
       return st.display === "granted" ? "granted" : st.display === "denied" ? "denied" : "prompt";
     }
+    if (kind === "desktop") return "granted";
     if (kind === "web") {
       if (request && Notification.permission === "default") await Notification.requestPermission();
       return Notification.permission === "default" ? "prompt" : Notification.permission;
@@ -404,6 +438,8 @@ export async function systemNotify({ cat, title, body, target, key }) {
       await L.schedule({ notifications: [{ id: noteNumber(key), title, body: body || "", channelId: `nexa-${cat}`, smallIcon: "ic_stat_nexa", extra: { target: target || null } }] });
       return true;
     }
+    // Нажатие на уведомление Windows возвращается ссылкой nexa:// (onDesktopOpen в App.jsx)
+    if (kind === "desktop") return desktopNotify(title, body, targetToLink(target));
     if (kind === "web" && Notification.permission === "granted") {
       const n = new Notification(title, { body: body || "", tag: key, icon: "/icons/icon-192.png" });
       n.onclick = () => { window.focus(); window.dispatchEvent(new CustomEvent("nexa-note-open", { detail: target || null })); n.close(); };

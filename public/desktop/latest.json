@@ -1,0 +1,11 @@
+{
+  "version": "0.14.1",
+  "notes": "- NEXA для компьютера: своё окно, значок у часов, запуск вместе с компьютером, обновляется сама\n- Компьютер теперь тоже устройство: имя, заряд, сеть и место на диске\n- Общий буфер обмена: скопировали на одном устройстве — «Скопировать» на другом (включается в Настройках)\n- Уведомление «Скопировано на …» с кнопкой «Скопировать», даже когда NEXA на телефоне закрыта\n- Ctrl+← и Ctrl+→ переключают разделы на компьютере\n- Ссылки в приложении для компьютера открываются в браузере, файлы — в своих программах\n- Ровнее подписи устройств и ИИ — Ассистента на Главной",
+  "pub_date": "2026-10-21T19:42:50.259Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WS9ZaURnY3hVSVFCdDkySFFnQzZRTFRnaUxETHdQbWZQcnRRekMzb0R6dlRVZGdBVWZacXpkU2U0ajMrYlJWQStWRDdUYzJNdXJiSjEvSDNJNW5NbkFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjExNzcwCWZpbGU6TkVYQV8wLjE0LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuMQpDT0NvU2cxUW9KMzJYSGlrNkxXRVRDbWRmWGliQnlJS0FGc1lKV0dUdU1IZ1krcHdkK0ZEZG5JOUdhcTBha2tOMnhzd21DeTJJbHRuU0doRWR4Y3JBZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.1"
+    }
+  }
+}

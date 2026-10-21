@@ -186,14 +186,58 @@ begin
     end;
   end if;
 
+  -- 16б. Общий буфер обмена (таблица clipboard, supabase/clipboard.sql)
+  if to_regclass('public.clipboard') is null then
+    r := r || format(ok_line, '16б', 'clipboard: таблица', 'есть', 'таблицы нет', 'не применён clipboard.sql');
+  else
+    -- запись B — от имени администратора
+    reset role;
+    execute 'insert into public.clipboard (id, user_id, from_device, text, expires_at) values ($1, $2, $3, $4, now() + interval ''10 minutes'')'
+      using fB, B, 'test-b', 'ТЕСТ B — секрет из буфера';
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+    execute 'select count(*) from public.clipboard where user_id <> $1' into n using A;
+    r := r || format(ok_line, '16б', 'clipboard: прочитать чужой буфер', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    begin
+      execute 'update public.clipboard set text = $1 where id = $2' using 'ВЗЛОМ', fB;
+      get diagnostics n = row_count;
+      r := r || format(ok_line, '16б', 'clipboard: изменить чужую запись', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '16б', 'clipboard: изменить чужую запись', '0 строк', 'ошибка ' || sqlstate, 'OK');
+    end;
+    execute 'delete from public.clipboard where id = $1' using fB;
+    get diagnostics n = row_count;
+    r := r || format(ok_line, '16б', 'clipboard: удалить чужую запись', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    begin
+      execute 'insert into public.clipboard (user_id, from_device, text, expires_at) values ($1, $2, $3, now() + interval ''1 minute'')' using B, 'podlog', 'ПОДЛОГ';
+      r := r || format(ok_line, '16б', 'clipboard: записать в буфер чужого', 'ошибка RLS', 'добавилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '16б', 'clipboard: записать в буфер чужого', 'ошибка RLS', 'ошибка ' || sqlstate, 'OK');
+    end;
+    -- итог глазами администратора: запись B цела
+    reset role;
+    execute 'select count(*) from public.clipboard where id = $1 and text = $2' into n using fB, 'ТЕСТ B — секрет из буфера';
+    r := r || format(ok_line, '16б', 'clipboard: запись B осталась как была', '1 строка', n || ' строк', case when n = 1 then 'OK' else '‼ ПРОБЛЕМА' end);
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+  end if;
+
   -- 17. Storage, корзина nexa-files: чужая папка <B>/…
+  -- Наличие и публичность бакета смотрим от имени администратора: строка bucket в
+  -- storage.buckets у закрытого бакета обычному пользователю не видна (нет на неё правила) —
+  -- проверка от имени A решила бы, что бакета нет, и пропустила бы всё остальное
+  reset role;
   if not exists (select 1 from storage.buckets where id = 'nexa-files') then
     r := r || format(ok_line, '17', 'storage: корзина nexa-files', 'есть, закрытая', 'корзины нет', 'не применён files-storage.sql');
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
   else
     select count(*) into n from storage.buckets where id = 'nexa-files' and public;
     r := r || format(ok_line, '17', 'storage: корзина nexa-files публичная?', 'нет', case when n = 0 then 'нет' else 'ДА' end, case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
     -- объект B подкладывается от имени администратора
-    reset role;
     begin
       insert into storage.objects (bucket_id, name, owner, metadata) values ('nexa-files', B::text || '/секрет', B, '{"size": 10}');
     exception when others then null;
@@ -283,6 +327,15 @@ begin
     r := r || format(ok_line, '22', 'anon: прочитать chats без входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
   end;
 
+  if to_regclass('public.clipboard') is not null then
+    begin
+      execute 'select count(*) from public.clipboard' into n;
+      r := r || format(ok_line, '22б', 'anon: прочитать буфер обмена без входа', 'нет доступа', n || ' строк', case when n = 0 then 'OK (пусто)' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '22б', 'anon: прочитать буфер обмена без входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+  end if;
+
   -- 23. Итог: строки B не изменились (смотрим глазами администратора)
   reset role;
   select count(*) into n from public.devices where id = dB and name = 'ТЕСТ B' and user_id = B;
@@ -305,14 +358,14 @@ select * from (
          'включена' as ожидается
   from pg_class c join pg_namespace s on s.oid = c.relnamespace
   where s.nspname = 'public' and c.relkind = 'r'
-    and c.relname in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders')
+    and c.relname in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard')
 
   union all
   -- Сколько правил RLS на каждой таблице
   select 'правил RLS: ' || tablename, count(*)::text,
-         case when tablename in ('devices', 'chats', 'files', 'file_folders') then '4' else '0 (только сервер)' end
+         case when tablename in ('devices', 'chats', 'files', 'file_folders', 'clipboard') then '4' else '0 (только сервер)' end
   from pg_policies where schemaname = 'public'
-    and tablename in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders')
+    and tablename in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard')
   group by tablename
 
   union all
@@ -320,7 +373,7 @@ select * from (
   select 'права anon: ' || table_name, string_agg(privilege_type, ', '), 'нет строк — значит, прав нет'
   from information_schema.role_table_grants
   where grantee = 'anon' and table_schema = 'public'
-    and table_name in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders')
+    and table_name in ('devices', 'chats', 'qr_logins', 'api_rate_limits', 'files', 'file_folders', 'clipboard')
   group by table_name
 
   union all

@@ -64,6 +64,10 @@ export const DEVICE_ART = {
   tv: { vb: "0 0 50 39", w: 50, h: 39, body: (
     <><rect x="49.25" y="0.627" width="31.444" height="48.623" rx="8.153" transform="rotate(90 49.25 0.627)" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
       <path d="M34.48 37.65c.29 0 .52.23.52.52 0 .29-.23.52-.52.52H15.4a.52.52 0 0 1 0-1.04h19.08Z" fill="currentColor" /></>) },
+  // Настольный компьютер — монитор на ножке (в стиле значков из макета)
+  desktop: { vb: "0 0 40 36", w: 40, h: 36, body: (
+    <><rect x="0.5" y="0.5" width="39" height="26" rx="6.5" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M20 27v6M13.5 34.5h13" stroke="currentColor" strokeLinecap="round" /></>) },
   watch: { vb: "0 0 31 44", w: 31, h: 44, body: (
     <><rect x="29.532" y="9.566" width="24.843" height="29.032" rx="6.5" transform="rotate(90 29.532 9.566)" stroke="currentColor" strokeLinejoin="round" />
       <path d="M7.75 9.07V7.5a7 7 0 0 1 7-7h.54a7 7 0 0 1 7 7v1.57M22.23 34.91v1.57a7 7 0 0 1-7 7h-.54a7 7 0 0 1-7-7v-1.57" stroke="currentColor" strokeLinejoin="round" /></>) },

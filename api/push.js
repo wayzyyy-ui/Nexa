@@ -9,6 +9,13 @@
    Телефон сам решает, что показать (NexaMessagingService.java): если NEXA открыта —
    ничего (сигнал уже пришёл по каналу связи), иначе — уведомление, которое звонит.
 
+   POST /api/push { action: "clip", target_device_id, id } — общий буфер обмена: на телефоне,
+   где NEXA закрыта, — уведомление «Скопировано на …» с кнопкой «Скопировать». Текст сервер
+   берёт сам из таблицы clipboard (supabase/clipboard.sql) по номеру записи — только этого
+   аккаунта и только не просроченной; из запроса текст не принимаем. В push кладём не больше
+   CLIP_PUSH_MAX знаков (data-сообщение FCM — до 4 КБ); длиннее — начало и «откройте NEXA».
+   Срок жизни push = оставшийся срок записи. Текст в журнал не пишем.
+
    Нужны переменные Vercel (только на сервере):
    - FIREBASE_SERVICE_ACCOUNT — JSON ключа сервисного аккаунта Firebase (целиком);
    - SUPABASE_SERVICE_ROLE_KEY и SUPABASE_URL (как у входа по QR).
@@ -18,7 +25,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createSign } from 'node:crypto';
 import { allow } from './_lib/rate-limit.js';
 
-const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+// Android (Capacitor) и приложение для ПК (Tauri: в Windows — http://tauri.localhost, в macOS/Linux — tauri://localhost)
+const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost'];
 function applyCors(req, res) {
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -67,6 +75,14 @@ async function googleToken(sa) {
   return cachedToken.value;
 }
 
+// Push буфера: значения data в FCM — только строки
+const CLIP_PER_MINUTE = 30;
+const CLIP_PUSH_MAX = 1500;
+function clipData(clip, id, from) {
+  const long = clip.text.length > CLIP_PUSH_MAX;
+  return { type: 'clip', id, from, text: long ? clip.text.slice(0, 300) : clip.text, long: long ? '1' : '0', exp: String(Date.parse(clip.expires_at)) };
+}
+
 export default async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -82,8 +98,19 @@ export default async function handler(req, res) {
   const uid = who.user.id;
 
   const { action, target_device_id: target, id } = req.body || {};
-  if (action !== 'find' || !isId(target) || !isId(id)) return res.status(400).json({ error: 'Неверный запрос' });
-  if (!(await allow([[`push:${uid}`, LIMIT_PER_MINUTE, 60]]))) return res.status(429).json({ error: 'Слишком часто — подождите минуту' });
+  if (!['find', 'clip'].includes(action) || !isId(target) || !isId(id)) return res.status(400).json({ error: 'Неверный запрос' });
+  const limit = action === 'clip' ? [[`push-clip:${uid}`, CLIP_PER_MINUTE, 60]] : [[`push:${uid}`, LIMIT_PER_MINUTE, 60]];
+  if (!(await allow(limit))) return res.status(429).json({ error: 'Слишком часто — подождите минуту' });
+
+  // Буфер обмена: текст — из своей же записи, не из запроса
+  let clip = null;
+  if (action === 'clip') {
+    const { data: rows, error } = await sb.from('clipboard').select('text, expires_at, enc')
+      .eq('user_id', uid).eq('id', id).gt('expires_at', new Date().toISOString()).limit(1);
+    if (error) return res.status(200).json({ sent: false, reason: /does not exist|could not find/i.test(error.message || '') ? 'not_configured' : 'error' });
+    clip = rows?.[0];
+    if (!clip || clip.enc) return res.status(200).json({ sent: false, reason: 'no_clip' });
+  }
 
   // Push-адрес только своего устройства (user_id = вошедший)
   const { data: rows, error } = await sb.from('push_tokens').select('token').eq('user_id', uid).eq('device_id', target).limit(1);
@@ -107,8 +134,10 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: {
         token,
-        data: { type: 'find', id, from: fromName, target },
-        android: { priority: 'high', ttl: '60s' },
+        data: clip ? clipData(clip, id, fromName) : { type: 'find', id, from: fromName, target },
+        android: clip
+          ? { priority: 'high', ttl: `${Math.max(1, Math.floor((Date.parse(clip.expires_at) - Date.now()) / 1000))}s` }
+          : { priority: 'high', ttl: '60s' },
       } }),
     });
     if (r.status === 404 || r.status === 400) {

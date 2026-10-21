@@ -316,8 +316,8 @@ export const APP_CSS = `
         .nx-dev-row.is-add { border-style: dashed !important; background-image: none !important; }
         .nx-dev-row-icon { width: calc(40 * var(--mk)); display: flex; justify-content: center; flex-shrink: 0; }
         .nx-dev-row-icon svg { height: max(24px, calc(40 * var(--mk))) !important; width: auto !important; }
-        .nx-dev-row-name { display: block; font-size: max(14px, calc(22 * var(--mk))); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .nx-dev-row-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: calc(5 * var(--mk)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-name { display: block; font-size: max(14px, calc(20 * var(--mk))); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: max(4px, calc(9 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nx-dev-row .nx-status-dot { width: max(9px, calc(15 * var(--mk))); height: max(9px, calc(15 * var(--mk))); }
         /* Ассистент: значок и заголовок; на компьютере — сине-мятное свечение вокруг (макет) */
         .nx-ai-pill-icon { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; background: var(--mint-dark); display: flex; align-items: center; justify-content: center; }
@@ -325,8 +325,8 @@ export const APP_CSS = `
         .nx-ai-glow { min-height: max(60px, calc(96 * var(--mk))) !important; padding: 0 calc(38 * var(--mk)) 0 calc(36 * var(--mk)) !important; gap: calc(18 * var(--mk)) !important;
           box-shadow: 0 0 calc(22 * var(--mk)) color-mix(in srgb, var(--mint) 28%, transparent), 0 0 calc(44 * var(--mk)) color-mix(in srgb, var(--blue) 22%, transparent); }
         .nx-ai-glow .nx-ai-pill-icon { width: max(30px, calc(42 * var(--mk))); height: max(30px, calc(42 * var(--mk))); }
-        .nx-ai-glow .nx-ai-pill-title { font-size: max(14px, calc(20 * var(--mk))); font-weight: 400; }
-        .nx-ai-glow .nx-ai-pill-sub { font-size: max(11px, calc(12 * var(--mk))) !important; }
+        .nx-ai-glow .nx-ai-pill-title { font-size: max(14px, calc(18 * var(--mk))); font-weight: 400; margin-top: calc(3 * var(--mk)); }
+        .nx-ai-glow .nx-ai-pill-sub { font-size: max(12px, calc(14 * var(--mk))) !important; margin-top: max(4px, calc(7 * var(--mk))) !important; }
         /* Верхняя строка (компьютер): поиск таблеткой, часы, значки — тоже в долях макета */
         /* Поиск-таблетка (макет): значок и слово ровно по центру, одна линия; «стекло» —
            сверху светлее, снизу темнее, светлая тонкая обводка */

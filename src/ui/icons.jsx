@@ -109,6 +109,13 @@ export const Icon = {
       <circle cx="14.5" cy="7" r="2.2" />
     </svg>
   ),
+  // Настольный компьютер: монитор на ножке
+  desktop: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="3" y="4" width="18" height="12" rx="1.5" />
+      <path d="M12 16v3.5M8 20h8" strokeLinecap="round" />
+    </svg>
+  ),
   tv: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <rect x="3.5" y="5" width="17" height="11" rx="1.5" />

@@ -1,5 +1,5 @@
 // Подключение устройства по коду / QR: код, срок, блокировка после неверных попыток, разбор QR NEXA
-import { isNative } from "../native.js";
+import { isNative, isDesktop } from "../native.js";
 import { PAIR_CODE_RE, PAIR_ALPHABET } from "./realtime.js";
 
 /* ═══ ПОДКЛЮЧЕНИЕ УСТРОЙСТВА ПО КОДУ / QR ═════════════════════
@@ -30,7 +30,7 @@ export function parseNexaQr(text) {
   return null;
 }
 
-export const pairUrl = (code) => `${isNative ? "https://nexa-link.ru" : location.origin}/?pair=${code}`;
+export const pairUrl = (code) => `${isNative || isDesktop ? "https://nexa-link.ru" : location.origin}/?pair=${code}`;
 
 // Случайный код из «непохожих» символов (криптостойкий генератор)
 export function makePairCode() {

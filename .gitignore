@@ -15,6 +15,8 @@ dist-ssr
 .env*
 # Исключение: адрес сервера для Android-сборки, секретов в нём нет
 !.env.android
+# Исключение: адрес сервера для приложения на ПК, секретов в нём нет
+!.env.desktop
 # Исключение: образец с названиями переменных, без значений
 !.env.example
 
@@ -37,3 +39,10 @@ android/keystore.properties
 *.keystore
 # Настройки Firebase для Android (ключ клиента) — только на этом компьютере, где собирается APK
 android/app/google-services.json
+
+# Приложение для ПК (Tauri): сборка сайта, сборка Rust, ключ подписи обновлений
+dist-desktop
+desktop/src-tauri/target
+desktop/src-tauri/gen
+*.key
+*.key.pub.bak

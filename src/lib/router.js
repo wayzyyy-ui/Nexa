@@ -18,7 +18,9 @@
 
 // Приложение или сайт — прямо у Capacitor (без native.js: модуль проверяется тестами в Node)
 import { Capacitor } from "@capacitor/core";
-const isNative = Capacitor.isNativePlatform();
+import { isDesktop } from "./platform.js";
+// Приложение (Android и ПК) всегда начинает с Главной: прямых ссылок и перезагрузок у него нет
+const isNative = Capacitor.isNativePlatform() || isDesktop;
 
 export const TAB_PATHS = { home: "/", today: "/today", assistant: "/assistant", media: "/media", files: "/files", settings: "/settings" };
 export const SUB_PATHS = { activity: "/activity", about: "/about", security: "/security", devices: "/devices" };

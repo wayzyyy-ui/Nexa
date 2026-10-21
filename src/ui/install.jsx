@@ -1,11 +1,12 @@
 // Установка и обновление: баннеры, «Скачать APK», карточка обновления, экран «Обновите NEXA»
-import { useState } from "react";
-import { updateCancel, updateOpenSettings, openUpdate } from "../native.js";
+import { useEffect, useState } from "react";
+import { updateCancel, updateOpenSettings, openUpdate, isDesktop } from "../native.js";
 import { C, fontDisplay } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { mbText } from "../lib/format.js";
 import { APK_URL, rememberApkDownload, useSiteApkUpdate, INSTALL_DISMISS_KEY, APK_DOWNLOADED_KEY, UPDATE_DISMISS_KEY, useUpdState, updStart } from "../lib/updates.js";
 import { installPlatform } from "../lib/hooks.js";
+import { openExternal } from "../lib/desktop.js";
 import { SectionTitle, SettingsGroup, SettingsRow, QrCode, btnReset, LogoMark, Logo } from "./base.jsx";
 import { VERSION } from "../version.js";
 
@@ -53,8 +54,33 @@ export const IOS_STEPS = [
 export const ANDROID_STEPS = ["Скачайте файл NEXA.apk", "Откройте его из уведомления или папки «Загрузки»", "Разрешите установку из этого источника"];
 
 // Группа «Приложение» в Настройках
+/* Сайт на компьютере: что опубликовано для ПК (блок desktop в version.json, пишет
+   npm run release:desktop). Нет блока — строки «NEXA для компьютера» нет */
+function useDesktopRelease(enabled) {
+  const [rel, setRel] = useState(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let stop = false;
+    fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => { const d = v?.desktop; if (!stop && d && typeof d.version === "string") setRel(d); })
+      .catch(() => {});
+    return () => { stop = true; };
+  }, [enabled]);
+  return rel;
+}
+
+// Предупреждение системы при первом запуске установщика (у NEXA нет платной подписи кода)
+const SMARTSCREEN_STEPS = [
+  "Скачайте установщик и откройте его",
+  "Если появится синее окно «…защитила ваш компьютер» — нажмите «Подробнее», затем «Выполнить в любом случае»",
+  "Установка займёт несколько секунд, NEXA откроется сама",
+];
+
 export function InstallSettings() {
   const platform = installPlatform();
+  // Установщик собран только для ПК с этой системой — на других компьютерах строку не показываем
+  const pcRelease = useDesktopRelease(platform === "desktop" && !isDesktop && /Windows/i.test(navigator.userAgent));
   if (platform === "installed") return null;
   return (
     <>
@@ -75,10 +101,20 @@ export function InstallSettings() {
             <SettingsRow last icon={Icon.list({ c: C.muted, s: 18 })} title="Как добавить" subtitle={<InstallSteps steps={IOS_STEPS} />} />
           </>
         )}
+        {platform === "desktop" && pcRelease && (
+          <>
+            <SettingsRow wrap icon={Icon.laptop({ c: C.mint, s: 18 })} title="NEXA для компьютера"
+              subtitle={`Версия ${pcRelease.version}${pcRelease.size ? ` · ${mbText(pcRelease.size)}` : ""} · в трее, уведомления, запуск вместе с компьютером, обновляется сама`}
+              right={<a className="nx-primary" href={pcRelease.exeUrl || "/nexa-setup.exe"} download="NEXA-setup.exe"
+                style={{ ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", fontSize: 13, fontWeight: 500, borderRadius: 999, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, textDecoration: "none", whiteSpace: "nowrap" }}>
+                {Icon.download({ c: C.onFold, s: 14 })} Скачать</a>} />
+            <SettingsRow icon={Icon.list({ c: C.muted, s: 18 })} title="Как установить" subtitle={<InstallSteps steps={SMARTSCREEN_STEPS} />} />
+          </>
+        )}
         {platform === "desktop" && (
           <SettingsRow last wrap icon={Icon.phone({ c: C.mint, s: 18 })} title="Приложение для телефона"
             subtitle="Откройте сайт на телефоне, чтобы установить приложение. Наведите камеру на код"
-            right={<QrCode text={window.location.origin + "/"} size={112} />} />
+            right={<QrCode text={(isDesktop ? "https://nexa-link.ru" : window.location.origin) + "/"} size={112} />} />
         )}
       </SettingsGroup>
       </div>
@@ -200,20 +236,23 @@ export function UpdateActions({ update, onLater, big }) {
     return (
       <div role="status" style={{ marginTop: 12, textAlign: "left" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, color: C.muted }}>
-          <span>{checking ? "Проверяем файл…" : `Скачиваем — ${pct}%`}</span>
+          <span>{checking ? (isDesktop ? "Проверяем подпись — затем NEXA перезапустится новой версией" : "Проверяем файл…") : `Скачиваем — ${pct}%`}</span>
           <span style={{ fontFamily: fontDisplay }}>{mine.total ? `${mbText(mine.loaded)} из ${mbText(mine.total)}` : mbText(mine.loaded)}</span>
         </div>
         <div style={{ height: 4, borderRadius: 10, marginTop: 8, overflow: "hidden", background: `color-mix(in srgb, ${C.text} 10%, transparent)` }}>
           <div style={{ height: "100%", width: `${Math.max(2, pct)}%`, background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`, transition: "width 200ms linear" }} />
         </div>
-        {!checking && row(ghost("Отменить", updateCancel))}
+        {/* На ПК отмены нет: файл маленький, а модуль обновлений Tauri прервать нельзя */}
+        {!checking && !isDesktop && row(ghost("Отменить", updateCancel))}
       </div>
     );
   }
   if (mine.state === "error") return (
     <div role="alert">
       {note(mine.error, C.red)}
-      {row(primary("Повторить", () => updStart(update), Icon.refresh), onLater && ghost("Позже", onLater))}
+      {row(primary("Повторить", () => updStart(update), Icon.refresh),
+        isDesktop && update.url && ghost("Скачать с сайта", () => openExternal(update.url)),
+        onLater && ghost("Позже", onLater))}
     </div>
   );
   if (mine.state === "needPerm") return (
@@ -237,7 +276,9 @@ export function UpdateActions({ update, onLater, big }) {
   return (
     <div>
       {row(primary("Обновить", () => updStart(update)), onLater && ghost("Позже", onLater))}
-      {note("Android попросит подтвердить установку в своём окне — данные сохранятся.")}
+      {note(isDesktop
+        ? "NEXA скачает обновление, проверит подпись и поставит его поверх — потом откроется сама. Данные сохранятся."
+        : "Android попросит подтвердить установку в своём окне — данные сохранятся.")}
     </div>
   );
 }

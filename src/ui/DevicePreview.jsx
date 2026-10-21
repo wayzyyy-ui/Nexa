@@ -24,7 +24,8 @@ export const PREVIEW_SIZE = {
 };
 
 // Какой тип у устройства: у добавленных он записан, у исходных — это id
-export const typeOf = (d) => d.type || d.id;
+// Настольный компьютер показываем той же картинкой экрана, что ноутбук
+export const typeOf = (d) => (d.type === "desktop" ? "laptop" : d.type || d.id);
 
 // Ближайшее дело из расписания (или null, если на сегодня всё)
 export function nextEvent(now) {

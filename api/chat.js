@@ -105,7 +105,8 @@ const SYSTEM_INSTRUCTION = `Ты — ассистент приложения NEX
    или capacitor://localhost (iOS), а сервер живёт на другом адресе —
    без этих заголовков браузер внутри приложения запрос не пропустит.
    Сайт ходит на свой же адрес, ему заголовки не нужны и ничего не меняют. */
-const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+// Android (Capacitor) и приложение для ПК (Tauri: в Windows — http://tauri.localhost, в macOS/Linux — tauri://localhost)
+const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost'];
 
 function applyCors(req, res) {
   const origin = req.headers.origin;

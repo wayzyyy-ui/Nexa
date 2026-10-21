@@ -1,0 +1,85 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NEXA",
+  "version": "../../package.json",
+  "identifier": "ru.nexalink.desktop",
+  "build": {
+    "beforeBuildCommand": "npm run build:desktop",
+    "frontendDist": "../../dist-desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "NEXA",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true,
+        "dragDropEnabled": false,
+        "backgroundColor": "#01090F",
+        "visible": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'wasm-unsafe-eval' https://api-maps.yandex.ru https://*.yandex.ru https://*.yandex.net https://yastatic.net",
+        "style-src": "'self' 'unsafe-inline' https://*.yandex.ru https://*.yandex.net https://yastatic.net",
+        "img-src": "'self' data: blob: https://*.supabase.co https://*.yandex.ru https://*.yandex.net https://yastatic.net",
+        "font-src": "'self' data: https://*.yandex.ru https://*.yandex.net https://yastatic.net",
+        "media-src": "'self' blob: data: https://*.supabase.co",
+        "connect-src": "'self' blob: data: ipc: http://ipc.localhost https://nexa-link.ru https://*.supabase.co wss://*.supabase.co https://*.yandex.ru https://*.yandex.net https://ipapi.co https://ipwho.is https://get.geojs.io https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://geocoding-api.open-meteo.com",
+        "worker-src": "'self' blob:",
+        "frame-src": "'self' blob: https://*.supabase.co",
+        "object-src": "'none'",
+        "base-uri": "'self'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "NEXA",
+    "shortDescription": "NEXA — ваши устройства в одной системе",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Russian"
+        ]
+      }
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "nexa"
+        ]
+      }
+    },
+    "updater": {
+      "endpoints": [
+        "https://nexa-link.ru/desktop/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzM0Q0QTg1RDYwMTUyRUMKUldUc1VnSFdoVW85WXlqZVVwOUZWS2ppdFVJTlVqcnpXZHBHMjE5eWhkVUJsTVhkT2ZYbUN6b0EK",
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

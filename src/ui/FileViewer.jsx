@@ -1,7 +1,8 @@
 // Окно файла, фото на весь экран, «Открыть» / «Скачать», меню передачи и анимация отправки
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { isNative, nativeFile } from "../native.js";
+import { isNative, isDesktop, nativeFile } from "../native.js";
+import { desktopOpenFile, desktopSaveFile } from "../lib/desktop.js";
 import { formatBytes } from "../lib/deviceInfo.js";
 import { fileUrl, forgetUrl, safeFileName } from "../lib/files.js";
 import { C } from "./theme.js";
@@ -596,6 +597,18 @@ export async function openFileContent(file, scope, download) {
     const blob = await (await fetch(local)).blob();
     return nativeFile(download ? "save" : "open", { blob, name: safeFileName(file.name), mime: file.mime || blob.type });
   }
+  if (isDesktop) {
+    // Приложение для ПК: окно Tauri не скачивает и не открывает вкладки — берём байты
+    // (копия на этом устройстве, иначе подписанная ссылка облака) и отдаём оболочке.
+    // Ответ: "saved" | "cancelled" | "opened" | "blocked" | false
+    const url = await fileUrl(file, scope);
+    if (!url) return false;
+    const res = await fetch(url);
+    if (!res.ok) return false;
+    const blob = await res.blob();
+    const name = safeFileName(file.name);
+    return download ? desktopSaveFile(blob, name) : desktopOpenFile(blob, name);
+  }
   if (download) {
     const url = cloud ? await fileUrl(file, scope, { download: true }) : await fileUrl(file, scope);
     if (!url) return false;
@@ -622,6 +635,9 @@ export function FileContentActions({ file, onToast }) {
     try {
       const ok = await openFileContent(file, FILE_SCOPE, download);
       if (ok && download && isNative) onToast?.({ title: "Файл сохранён", text: `«${file.name}» — в папке «Загрузки»` });
+      if (ok === "saved") onToast?.({ title: "Файл сохранён", text: `«${file.name}»` });
+      // Программы и сценарии по «Открыть» не запускаем — только сохранить
+      if (ok === "blocked") onToast?.({ title: "Такой файл NEXA не открывает", text: "Это может быть программа. Нажмите «Скачать» и откройте сами, если доверяете файлу" });
       if (!ok) {
         onToast?.({
           title: download ? "Не получилось скачать" : "Не получилось открыть",

@@ -148,7 +148,9 @@ if (prev.signer && prev.signer !== signer && !arg("--new-key")) {
 // 7) На сайт
 copyFileSync(apk.file, path("public/nexa.apk"));
 // Блок web (обновление веб-части, scripts/web-bundle.mjs) не трогаем — его пишет release:android / release:web
-const info = { version, versionCode, minVersionCode, apkUrl: `/nexa.apk?v=${versionCode}`, url: "/nexa.apk", size, sha256, signer, notes, ...(prev.web ? { web: prev.web } : {}) };
+const info = { version, versionCode, minVersionCode, apkUrl: `/nexa.apk?v=${versionCode}`, url: "/nexa.apk", size, sha256, signer, notes, ...(prev.web ? { web: prev.web } : {}),
+  // Блок приложения для ПК пишет только release:desktop — здесь переносим как был
+  ...(prev.desktop ? { desktop: prev.desktop } : {}) };
 writeFileSync(versionFile, JSON.stringify(info, null, 2) + "\n");
 
 console.log(`\n✔ public/nexa.apk (${apk.kind}, ${(size / 1e6).toFixed(1)} МБ) и public/version.json — версия ${version} (${versionCode}).`);

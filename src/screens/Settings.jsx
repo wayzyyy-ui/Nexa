@@ -11,6 +11,7 @@ import { AccountSettings } from "./auth.jsx";
 import { NOTE_CATS } from "../lib/notes.js";
 import { VERSION } from "../version.js";
 import { InstallSettings } from "../ui/install.jsx";
+import { DesktopSettings } from "../ui/desktop.jsx";
 import { useEnterSends, touchLike } from "../lib/composer.js";
 
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
@@ -60,7 +61,9 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   // включено — app у всех категорий; системные — там, где их разрешило устройство
   const on = NOTE_CATS.some((c) => prefs[c.id]?.app);
   const flipAll = () => setPrefs(() => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { app: !on, system: !on && sysOn }])));
-  const where = kind === "none"
+  const where = kind === "desktop"
+    ? "Ещё и системные — когда окно NEXA свёрнуто, закрыто в трей или не в фокусе. Выключить их можно и в настройках уведомлений компьютера"
+    : kind === "none"
     ? "В браузере телефона — только внутри NEXA. Системные есть в приложении для Android"
     : kind === "web"
       ? "Ещё и системные — пока вкладка NEXA открыта (можно свёрнутой)"
@@ -195,6 +198,8 @@ export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteDat
       <ThisDeviceSettings sys={sys} />
 
       {updateBlock}
+
+      <DesktopSettings />
 
       <InstallSettings />
 

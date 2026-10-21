@@ -57,6 +57,9 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_weather_info" />
         </receiver>
 
+        <!-- Общий буфер обмена: кнопка «Скопировать» в уведомлении (только из своих уведомлений) -->
+        <receiver android:name=".NexaClipReceiver" android:exported="false" />
+
         <!-- Push «Найти устройство» (api/push.js → Firebase) -->
         <service android:name=".NexaMessagingService" android:exported="false">
             <intent-filter>

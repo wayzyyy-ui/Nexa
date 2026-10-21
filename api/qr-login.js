@@ -21,7 +21,8 @@ const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const TTL_MS = 2 * 60 * 1000; // код живёт 2 минуты
 
 // Те же адреса приложения, что и у api/chat.js
-const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+// Android (Capacitor) и приложение для ПК (Tauri: в Windows — http://tauri.localhost, в macOS/Linux — tauri://localhost)
+const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost'];
 function applyCors(req, res) {
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {

@@ -21,7 +21,7 @@
    уход NEXA в фон и уход с экрана ассистента останавливают диктовку. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { registerPlugin } from "@capacitor/core";
-import { isNative } from "../native.js";
+import { isNative, isDesktop } from "../native.js";
 
 const LANG = "ru-RU";
 const SILENT_MS = 15000;    // столько ждём первых слов, дальше — «не расслышал»
@@ -32,7 +32,10 @@ const NativeSpeech = isNative ? registerPlugin("NexaSpeech") : null;
 const WebRec = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition || null) : null;
 
 // Есть ли чем распознавать здесь вообще (без запросов разрешений)
-export const voiceKind = NativeSpeech ? "native" : WebRec ? "web" : null;
+// Приложение для ПК: в WebView2 распознавание есть «на бумаге», но сразу падает с ошибкой
+// network — службы распознавания у встроенного браузера Windows нет (проверено 2026-10-21).
+// Поэтому на ПК микрофона и «Начать разговор» нет совсем, а не сломанная кнопка
+export const voiceKind = NativeSpeech ? "native" : WebRec && !isDesktop ? "web" : null;
 
 export const VOICE_ERRORS = {
   denied: isNative

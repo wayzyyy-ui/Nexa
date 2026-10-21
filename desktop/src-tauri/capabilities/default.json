@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Права главного окна NEXA: базовые возможности окна (в т.ч. события nexa-open) и запоминание его размера. Свои команды (commands.rs, desktop.rs) разрешены приложением; модули deep-link и autostart странице напрямую не открыты — только через свои команды",
+  "windows": ["main"],
+  "permissions": ["core:default", "window-state:default"]
+}

@@ -8,6 +8,8 @@ import { plural } from "./format.js";
 export const DEVICE_TYPES = [
   { type: "phone",  icon: Icon.phone,  name: "Смартфон",  battery: 100,  memory: 128 },
   { type: "laptop", icon: Icon.laptop, name: "Ноутбук",   battery: 78,   memory: 512 },
+  // Настольный компьютер — пишет приложение для ПК, когда у компьютера нет батареи
+  { type: "desktop", icon: Icon.desktop, name: "Компьютер", battery: null, memory: 512 },
   { type: "tablet", icon: Icon.tablet, name: "Планшет",   battery: 86,   memory: 256 },
   { type: "watch",  icon: Icon.watch,  name: "Часы",      battery: 100,  memory: 32 },
   { type: "buds",   icon: Icon.buds,   name: "Наушники",  battery: 90,   memory: 1 },
@@ -98,7 +100,9 @@ export const realStatus = (d) => (d.online ? "Онлайн" : lastSeenText(d.see
    Блок на Главной: кто из устройств аккаунта онлайн, «Передать» текст или
    ссылку и «Входящее». Демо-устройства тут ни при чём — это настоящие окна
    и приложения, где выполнен вход в тот же аккаунт */
-export const peerLabel = (d) => `${d.kind === "both" ? "Сайт и приложение" : d.kind === "app" ? "Приложение" : "Сайт"} · ${d.platform === "mobile" ? "телефон" : "компьютер"}`;
+// kind: web — сайт, app — приложение Android, both — оба на одном телефоне, pc — приложение для ПК
+export const peerLabel = (d) => (d.kind === "pc" ? "Приложение для ПК"
+  : `${d.kind === "both" ? "Сайт и приложение" : d.kind === "app" ? "Приложение" : "Сайт"} · ${d.platform === "mobile" ? "телефон" : "компьютер"}`);
 
 /* Сайт и приложение на одном телефоне — одно устройство в списке.
    Записи реальных устройств с одинаковым «отпечатком» (state.hw, см.

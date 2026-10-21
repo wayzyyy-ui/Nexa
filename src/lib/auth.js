@@ -1,7 +1,7 @@
 // Аккаунт: гость, сессия Supabase, выход (стирает данные аккаунта в браузере), тексты ошибок входа, вход по QR.
 // Чаты гостя и перенос их в облако при первом входе
 import { useState, useEffect } from "react";
-import { API_BASE, isNative } from "../native.js";
+import { API_BASE, isNative, isDesktop } from "../native.js";
 import { supabase } from "./supabase.js";
 import { DOMAIN_NOT_ALLOWED_MESSAGE } from "./allowedEmailDomains.js";
 import { newId } from "./sync.js";
@@ -143,7 +143,8 @@ export const QR_POLL_MS = 2000;                  // как часто новое
 export const APPROVE_LOCK_KEY = "nexa-approve-lock"; // 5 неверных кодов — пауза на минуту
 
 // Адрес для QR входа: открывает NEXA с ?login=КОД
-export const loginUrl = (code) => `${isNative ? "https://nexa-link.ru" : location.origin}/?login=${code}`;
+// В приложениях (Android, ПК) адрес страницы свой (localhost / tauri.localhost) — телефон его не откроет
+export const loginUrl = (code) => `${isNative || isDesktop ? "https://nexa-link.ru" : location.origin}/?login=${code}`;
 
 // Запрос к серверу входа по QR. token — ключ входа (для подтверждения)
 export async function qrApi(action, body = {}, token) {

@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
+import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // Стили плавной прокрутки Lenis (сам хук — useSmoothScroll в lib/hooks.js)
 import "lenis/dist/lenis.css";
@@ -36,6 +36,12 @@ import { useOnline, useModalLock, useKeyboardViewport, scrollTopNow, useSmoothSc
 import { IconBtn, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } from "./ui/base.jsx";
 import { BackdropFolds, BackdropGrid } from "./ui/backdrop.jsx";
 import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./ui/navigation.jsx";
+import { arrowNavTarget, isEditable } from "./lib/keynav.js";
+import { onDesktopOpen, desktopDeviceInfo } from "./lib/desktop.js";
+import { parseNexaLink } from "./lib/deeplink.js";
+import { useClipSync } from "./lib/clipboardSync.js";
+import { desktopNotifyClip } from "./lib/desktop.js";
+import { ClipboardSettings } from "./ui/clipboard.jsx";
 import { ToastHost } from "./ui/toasts.jsx";
 import { SyncStatus, SyncDetails } from "./ui/sync.jsx";
 import { PullIndicator } from "./ui/pull.jsx";
@@ -174,7 +180,8 @@ export default function NexaApp() {
     const at = n.at || Date.now();
     // Устройство-источник не нашлось в списке — ведём на Главную, а не в никуда
     if (n.target && "device" in n.target && !n.target.device) n = { ...n, target: { tab: "home" } };
-    const away = document.visibilityState === "hidden";
+    // Приложение для ПК: окно может быть открыто, но за другими окнами — тогда тоже уведомление Windows
+    const away = document.visibilityState === "hidden" || (isDesktop && !document.hasFocus());
     if (pref.app) {
       addNote({ ...n, at });
       if (!away && n.toast !== false) {
@@ -270,6 +277,27 @@ export default function NexaApp() {
   // чтобы после перезагрузки всё осталось как было
   // Здесь же — добавленные и удалённые устройства (см. loadDeviceStore)
   const [deviceStore, setDeviceStore] = useSharedState(DEVICES_KEY + scope, loadDeviceStore);
+  /* Общий буфер обмена (src/lib/clipboardSync.js): только приложения, включается на каждом устройстве.
+     Push — приложениям на телефонах, где буфер включён (state.clip в их записи), а NEXA закрыта.
+     Пришедшее — уведомление; на ПК вне фокуса — системное с кнопкой «Скопировать» */
+  const clipOnline = useOnline();
+  const clip = useClipSync({
+    uid, link, online: clipOnline,
+    pushTargets: () => Object.values(deviceStore.state)
+      .filter((st) => st?.real && st.clip && st.kind === "app" && st.device_id && st.device_id !== link.self?.device_id && !peerIdsRef.current.has(st.device_id))
+      .map((st) => st.device_id),
+    onIncoming: (item) => {
+      const from = item.from_name || "Устройство";
+      const preview = item.text.replace(/\s+/g, " ").trim().slice(0, 140);
+      // В колокольчике — без самого текста (как у Flow); текст — только во всплывающем на экране
+      notifyRef.current({ cat: "flow", key: `clip:${item.id}`, at: item.at, source: `«${from}»`, target: { clip: true },
+        title: `Скопировано на «${from}»`, text: "Текст в общем буфере — откройте NEXA, чтобы скопировать", toastText: preview,
+        action: { label: "Скопировать", onClick: () => clipRef.current?.copy(item) }, duration: 10000, system: false });
+      // ПК не в фокусе (свёрнут, в трее, за другими окнами) — уведомление системы с кнопкой «Скопировать»
+      if (isDesktop && !document.hasFocus() && notePrefsRef.current.flow?.app) desktopNotifyClip(`Скопировано на «${from}»`, item.text);
+    },
+  });
+  const clipRef = useRef(clip); clipRef.current = clip;
   // Итоговый список — только настоящие: подключённые по коду/QR (real) и Bluetooth (bt).
   // Выдуманные (старый мастер «демо-устройство») в списке не показываем — в данных они
   // могут остаться у тех, кто добавлял их раньше, но на экраны не попадают
@@ -390,29 +418,38 @@ export default function NexaApp() {
      Своя запись: тип (смартфон / планшет / компьютер), вид (сайт / приложение) — по факту;
      название, если его меняли, не трогаем */
   const devicesLoaded = !!uid && !!syncState.devices && !syncState.devices.loading;
+  // Приложение для ПК: имя компьютера и ноутбук ли он (есть батарея) — из Windows (desktop.rs).
+  // undefined — ещё спрашиваем, null — не узнали (тогда «Компьютер» и ноутбук по умолчанию)
+  const [pcInfo, setPcInfo] = useState(isDesktop ? undefined : null);
+  useEffect(() => { if (isDesktop) desktopDeviceInfo().then((i) => setPcInfo(i || null)); }, []);
   useEffect(() => {
     const me = link.self;
-    if (!devicesLoaded || !me?.device_id) return;
-    const type = { phone: "phone", tablet: "tablet", computer: "laptop" }[thisDeviceKind()] || "phone";
+    if (!devicesLoaded || !me?.device_id || pcInfo === undefined) return;
+    const type = me.kind === "pc" ? (pcInfo?.form === "desktop" ? "desktop" : "laptop")
+      : { phone: "phone", tablet: "tablet", computer: "laptop" }[thisDeviceKind()] || "phone";
     setDeviceStore((s) => {
       const now = Date.now();
-      const info = { real: true, device_id: me.device_id, kind: me.kind, platform: me.platform, ...(isHw(me.hw) ? { hw: me.hw } : {}) };
+      // clip — включён ли здесь общий буфер (другие шлют push только таким телефонам)
+      const info = { real: true, device_id: me.device_id, kind: me.kind, platform: me.platform, clip: !!clip.on, ...(isHw(me.hw) ? { hw: me.hw } : {}) };
       const old = s.added.find((d) => s.state[d.id]?.device_id === me.device_id);
       if (old) {
         const st = s.state[old.id] || {};
-        const same = st.real && st.kind === info.kind && st.platform === info.platform && old.type === type && (!info.hw || st.hw === info.hw);
+        const same = st.real && st.kind === info.kind && st.platform === info.platform && !!st.clip === info.clip && old.type === type && (!info.hw || st.hw === info.hw);
         if (same) return s;
+        // ПК, записанный раньше как сайт (до приложения для ПК), — имя по умолчанию меняем на имя компьютера
+        const pcRename = info.kind === "pc" && /^Сайт на компьютере( \d+)?$/.test(old.name || "");
         return {
-          ...s, added: s.added.map((d) => (d.id === old.id ? { ...d, type } : d)),
+          ...s, added: s.added.map((d) => (d.id === old.id ? { ...d, type, ...(pcRename ? { name: pcInfo?.name || "Компьютер" } : {}) } : d)),
           state: { ...s.state, [old.id]: { ...st, ...info } }, updated: { ...s.updated, [old.id]: now },
         };
       }
       const label = me.kind === "app" ? (type === "tablet" ? "Приложение на планшете" : "Приложение")
+        : me.kind === "pc" ? pcInfo?.name || (type === "desktop" ? "Компьютер" : "Ноутбук")
         : type === "tablet" ? "Сайт на планшете" : me.name;
       const d = { id: newId(), type, name: uniqueDeviceName(label, s.added.map((x) => x.name)), createdAt: now, battery: null, memory: deviceType(type).memory, online: false, lastSeen: "" };
       return { ...s, added: [...s.added, d], state: { ...s.state, [d.id]: info }, updated: { ...s.updated, [d.id]: now } };
     });
-  }, [devicesLoaded, uid, link.self?.device_id]);
+  }, [devicesLoaded, uid, link.self?.device_id, pcInfo, clip.on]);
   /* Повторы одного устройства (одинаковый device_id в нескольких записях — оставались после
      старых подключений). Оставляем самую раннюю запись, лишние убираем — и в облаке тоже */
   const dupKey = deviceStore.added.map((d) => `${d.id}:${deviceStore.state[d.id]?.device_id || ""}`).join(",");
@@ -581,6 +618,7 @@ export default function NexaApp() {
 
   /* ── События канала (кроме текста) ── */
   const handleLinkEvent = (event, p) => {
+    if (clipRef.current?.handle(event, p)) return; // общий буфер обмена — clip.new / clip.del / clip.clear
     if (event === "pair.claim") return answerClaim(p);
     if (event === "pair.ok" || event === "pair.fail") return onPairAnswer(event, p);
     // Список устройств изменился (могли отключить и это устройство) — заодно проверяем свой сеанс:
@@ -1332,6 +1370,7 @@ export default function NexaApp() {
   const openReceivedFile = async (p) => {
     const ok = await openFileContent({ id: p.id, path: `${uid}/${p.id}`, name: p.name, mime: p.mime }, uid, false).catch(() => false);
     if (!ok) showToast({ title: "Файл недоступен", text: "Нет связи или файл уже удалили", kind: "error" });
+    if (ok === "blocked") showToast({ title: "Такой файл NEXA не открывает", text: "Это может быть программа — откройте «Файлы» и сохраните его, если доверяете" });
   };
 
   /* ── «Где устройство?» ──
@@ -1656,6 +1695,23 @@ export default function NexaApp() {
     if (t === tab && !openDeviceId && !activityOpen && !aboutOpen && !securityOpen && !devicesOpen) return;
     navTransition(navDir(t), () => goTab(t));
   };
+  // Ctrl+← / Ctrl+→ — соседний раздел бокового меню (компьютер: сайт и приложение для ПК).
+  // Правила — arrowNavTarget (src/lib/keynav.js); окна, меню, экран входа и блокировка — не трогаем
+  const navToRef = useRef(navTo); navToRef.current = navTo;
+  const tabRef = useRef(tab); tabRef.current = tab;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (matchMedia(PHONE_MQ).matches) return;
+      const blocked = !!document.querySelector('[aria-modal="true"], [role="menu"], .nx-auth-gate, [data-nx-noback]');
+      const t = arrowNavTarget({ key: e.key, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey,
+        repeat: e.repeat, editable: isEditable(document.activeElement), blocked, order: NAV.map((n) => n.id), tab: tabRef.current });
+      if (!t) return;
+      e.preventDefault();
+      navToRef.current(t);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
   useEffect(() => onSharedText((text) => setFlowSend({ text })), []);
   // Нажали на виджет рабочего стола: «Расписание» → «Сегодня», «Погода» → Главная
@@ -1741,6 +1797,15 @@ export default function NexaApp() {
   // Тот же ответ version.json решает и про APK, и про веб-часть (otaCheck его не скачивает второй раз)
   const checkUpdate = (force) => checkForUpdate({ force }).then((u) => { setAppUpdate(u); setUpdateCheckedAt(Date.now()); otaCheck({ force }); });
   useEffect(() => {
+    // Приложение для ПК: при запуске, раз в 30 минут (NEXA может неделями жить в трее) и при
+    // возврате в окно; сам сайт всё равно спрашивается не чаще раза в 6 часов
+    if (isDesktop) {
+      checkUpdate(false);
+      const t = setInterval(() => checkUpdate(false), 30 * 60000);
+      const onFocus = () => checkUpdate(false);
+      window.addEventListener("focus", onFocus);
+      return () => { clearInterval(t); window.removeEventListener("focus", onFocus); };
+    }
     if (!isNative) return;
     updateCleanup(); // скачанный в прошлый раз файл больше не нужен (обновление уже стоит или брошено)
     checkUpdate(false);
@@ -2013,6 +2078,7 @@ export default function NexaApp() {
     devicesSync.retry(); chatsSync.retry(); filesSync.retry(); foldersSync.retry(); scheduleSync.retry(); memorySync.retry();
     link.refresh();
     runQueueRef.current("waiting");
+    clipRef.current?.refresh();
   }, { native: isNative, appPlugin: CapApp });
   // Вошли / перезапуск: строки очереди на экран, есть сеть — отправляем; связь вернулась — тоже
   useEffect(() => {
@@ -2055,12 +2121,27 @@ export default function NexaApp() {
   /* ── Куда ведёт уведомление (колокольчик, всплывающее, системное) ── */
   const openTarget = (t) => {
     if (!t) return;
+    // Диалог ассистента и файл — из ссылок nexa:// (приложение для ПК). Нет такого — честно говорим
+    if (t.chat) {
+      if (!chats.some((c) => c.id === t.chat)) { showToast({ title: "Диалог не найден", text: "Его нет в этом аккаунте или он ещё не синхронизировался" }); return; }
+      setSearchChatId(t.chat);
+      navTransition(navDir("assistant"), () => goTab("assistant"));
+      setChatOpenReq({ id: t.chat, n: Date.now() });
+      return;
+    }
+    if (t.file) {
+      if (!files.some((f) => f.id === t.file)) { showToast({ title: "Файл не найден", text: "Его нет в «Файлах» этого аккаунта" }); return; }
+      setOpenFile({ id: t.file });
+      return;
+    }
     if (t.device) {
       const card = devices.find((d) => d.id === t.device || d.members?.includes(t.device));
       if (card) { setActivityOpen(false); showDevice(card.id); return; }
       goTab("home"); return;
     }
     if (t.sync) { setSyncOpen(true); return; }
+    // Общий буфер обмена — Настройки, сразу к его блоку
+    if (t.clip) { goTab("settings"); setTimeout(() => document.getElementById("nx-clip-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 150); return; }
     if (t.activity) { openActivity(); return; }
     if (t.update) { goTab("settings"); return; }
     if (t.tab) {
@@ -2072,6 +2153,12 @@ export default function NexaApp() {
   openTargetRef.current = openTarget;
   // Нажали на системное уведомление (Android или браузер)
   useEffect(() => onSystemNoteOpen((t) => openTargetRef.current?.(t)), []);
+  // Приложение для ПК: ссылки nexa:// и нажатия на уведомления Windows (src/lib/deeplink.js).
+  // Неизвестные ссылки молча пропускаем; ссылка только открывает экран, ничего не делает
+  useEffect(() => onDesktopOpen((url) => {
+    const t = parseNexaLink(url);
+    if (t) openTargetRef.current?.(t);
+  }), []);
 
   /* ── Синхронизация: «не удалось» — когда повторы кончились или сессия закончилась;
      «восстановлено» — только если до этого был сбой или без сети ждали изменения,
@@ -2329,7 +2416,19 @@ export default function NexaApp() {
         )}
         {t === "settings" && <ScreenSettings onAbout={openAbout}
           noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
-          updateBlock={isNative && (
+          updateBlock={isDesktop ? (
+            <>
+              <SectionTitle>Обновление</SectionTitle>
+              <SettingsGroup>
+                {/* Приложение для ПК: новая версия — карточка с установкой, иначе — что стоит и «Проверить» */}
+                {appUpdate ? <UpdateCard variant="settings" update={appUpdate} /> : (
+                  <SettingsRow last icon={Icon.check({ c: C.green, s: 18 })} title={`Приложение для ПК · NEXA ${VERSION}`}
+                    subtitle={updateCheckedAt ? `Последняя версия · проверено в ${hhmm(new Date(updateCheckedAt))}` : "Проверяем…"}
+                    right={<button type="button" className="nx-ghost-btn" onClick={() => checkUpdate(true)} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text }}>Проверить</button>} />
+                )}
+              </SettingsGroup>
+            </>
+          ) : isNative && (
             <>
               <SectionTitle>Обновление</SectionTitle>
               <SettingsGroup>
@@ -2360,8 +2459,8 @@ export default function NexaApp() {
           )}
           onSecurity={openSecurity} user={auth.user}
           memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
-          flowBlock={uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
-            onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />} />}
+          flowBlock={<>{uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
+            onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />}<ClipboardSettings clip={clip} account={!!uid} onLogin={() => setAuthOpen(true)} /></>} />}
     </>
   ));
   /* Блоки разделов: текущий и (во время свайпа) соседний за краем экрана — его двигает useTabSwipe.

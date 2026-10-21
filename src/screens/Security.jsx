@@ -18,7 +18,7 @@ const danger = { ...pill, border: `1px solid color-mix(in srgb, ${C.red} 55%, tr
 function deviceKindText(d) {
   if (d.bt) return d.host_name ? `Bluetooth · через «${d.host_name}»` : "Bluetooth";
   if (d.kind) return peerLabel(d);
-  return d.type === "laptop" ? "Компьютер" : "Телефон";
+  return d.type === "laptop" || d.type === "desktop" ? "Компьютер" : "Телефон";
 }
 
 /* Подтверждение опасного действия прямо в строке: что будет, предупреждение и кнопки.
