@@ -29,7 +29,7 @@ test("адреса разделов и экранов", () => {
   assert.equal(screenFromPath("/device/%E0%A4%A"), null, "битый адрес — не падаем");
   assert.equal(pathOf({ tab: "files", sub: null, dev: "x y" }), "/device/x%20y");
   assert.equal(pathOf({ tab: "settings", sub: "security", dev: null }), "/security");
-  assert.equal(titleOf(HOME), "NEXA");
+  assert.equal(titleOf(HOME), "NEXA Hub — смартфон, ноутбук и часы в одной системе");
   assert.equal(titleOf(T("today")), "Сегодня · NEXA");
 });
 

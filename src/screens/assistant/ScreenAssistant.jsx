@@ -647,7 +647,9 @@ useEffect(() => {
 
  const titleOnly = (
   // nx-ai-head — на телефоне справа место под общую строку кнопок
-  <div className="nx-ai-head" style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
+  // Кнопка истории — на одной линии с названием (alignItems: flex-start + высота строки названия),
+  // а не по центру названия и описания вместе
+  <div className="nx-ai-head" style={{ display: "flex", alignItems: "flex-start", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
     {/* Кнопка истории: на телефоне открывает шторку, на компьютере
         возвращает скрытую колонку (видна, только пока колонка скрыта) */}
     <button
@@ -657,8 +659,8 @@ useEffect(() => {
       onClick={() => (mobile ? setIsHistoryOpen(true) : setHistHidden(false))}
       style={{
         background: "transparent", border: "none",
-        cursor: "pointer", padding: 4, display: "none",
-        alignItems: "center", justifyContent: "center",
+        cursor: "pointer", padding: "0 4px", display: "none",
+        alignItems: "center", justifyContent: "center", height: "1.2em", fontSize: T.fs.page, flexShrink: 0,
       }}
       aria-label="История диалогов"
       aria-expanded={isHistoryOpen}
@@ -669,7 +671,7 @@ useEffect(() => {
     </button>
     <div style={{ textAlign: "left", minWidth: 0 }}>
       {/* На телефоне — одна строка без переноса: название и маленькая версия рядом */}
-      <div className="ng-display nx-assistant-title" style={{ fontSize: T.fs.page, fontWeight: 500, textAlign: "left" }}>
+      <div className="ng-display nx-assistant-title" style={{ fontSize: T.fs.page, fontWeight: 500, textAlign: "left", lineHeight: 1.2 }}>
         ИИ — Ассистент<span className="nx-assistant-ver"> v{VERSION}</span>
       </div>
       {/* Описание — только на компьютере */}

@@ -51,7 +51,7 @@ export const pathOf = (s) => s.dev ? `/device/${encodeURIComponent(s.dev)}` : s.
 // Заголовок вкладки браузера
 export const titleOf = (s, devName) => {
   const t = s.dev ? (devName || "Устройство") : s.sub ? TITLES[s.sub] : TITLES[s.tab];
-  return !t || t === "NEXA" ? "NEXA" : `${t} · NEXA`;
+  return !t || t === "NEXA" ? "NEXA Hub — смартфон, ноутбук и часы в одной системе" : `${t} · NEXA`;
 };
 
 // «Глубина» экрана: Главная 0, раздел 1, экран поверх раздела 2, устройство из «Все устройства» 3

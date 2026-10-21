@@ -1370,13 +1370,23 @@ export default function NexaApp() {
     );
   };
   // Включили в Настройках: сразу спрашиваем разрешение системы, чтобы потом не ждать
+  /* Включить «Показывать, где это устройство». Раньше переключатель ждал, пока телефон найдёт
+     место (до 10–15 с после «Разрешить»). Теперь включается сразу: место здесь не нужно — его
+     определяют только по запросу «Где устройство?». Запрос места остаётся лишь для того, чтобы
+     Android / браузер спросили разрешение; отказали — переключатель возвращаем. Долго не
+     находится место (нет спутников, помещение) — это не отказ, оставляем включённым */
   const toggleLocateAllow = () => {
     if (locateAllow.allow) { setLocateAllow({ allow: false }); return; }
     if (!navigator.geolocation) { showToast({ title: "Геолокация недоступна", text: "Это устройство не умеет определять место" }); return; }
+    setLocateAllow({ allow: true });
     navigator.geolocation.getCurrentPosition(
-      () => setLocateAllow({ allow: true }),
-      (err) => showToast({ title: "Нет доступа к геолокации", text: err?.code === 1 ? "Разрешите доступ к местоположению в настройках телефона или браузера" : "Не получилось определить место — попробуйте ещё раз" }),
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 },
+      () => {},
+      (err) => {
+        if (err?.code !== 1) return; // не отказ — просто место пока не нашлось
+        setLocateAllow({ allow: false });
+        showToast({ title: "Нет доступа к геолокации", text: "Разрешите доступ к местоположению в настройках телефона или браузера" });
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: Infinity },
     );
   };
 

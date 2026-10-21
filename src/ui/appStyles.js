@@ -336,6 +336,13 @@ export const APP_CSS = `
           background: linear-gradient(180deg, color-mix(in srgb, var(--text) 18%, transparent), color-mix(in srgb, var(--text) 9%, transparent)) !important;
           box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
           color: var(--text) !important; font-size: max(14px, calc(20 * var(--mk))) !important; font-family: inherit; cursor: pointer; }
+        /* Верхняя строка закреплена во всю ширину (кроме меню): сама полоса нажатия не ловит,
+           кнопки — ловят. Прокрутили — под ней мягкий фон экрана, внизу тает в прозрачный */
+        .ng-topbar { left: ${NAV_W}px; pointer-events: none; }
+        .ng-topbar > * { pointer-events: auto; }
+        .ng-topbar::before { content: ""; position: absolute; inset: calc(-1 * var(--sat)) 0 -18px 0; z-index: -1; pointer-events: none;
+          background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 62%, transparent); opacity: 0; transition: opacity 180ms ease; }
+        html.nx-scrolled .ng-topbar::before { opacity: 1; }
         .nx-top-search svg { display: block; flex-shrink: 0; width: max(14px, calc(19 * var(--mk))); height: max(14px, calc(19 * var(--mk)));
           /* Слово «Поиск» — ровно по центру таблетки: значок вынесен влево на свою ширину и отступ */
           margin-left: calc(-1 * (max(14px, calc(19 * var(--mk))) + calc(12 * var(--mk)))); }
@@ -349,6 +356,15 @@ export const APP_CSS = `
         }
         /* Телефон (макет 402 px): шапка Главной, поиск, таблетки */
         .nx-home-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px -6px 16px; }
+        /* Шапка мобильной Главной закреплена: при прокрутке остаётся сверху, под ней — фон во всю ширину */
+        @media ${PHONE_MQ} {
+          .nx-home-head { position: sticky; top: var(--sat); z-index: 40; }
+          .nx-home-head::before { content: ""; position: absolute; z-index: -1; pointer-events: none;
+            left: -50vw; right: -50vw; top: calc(-1 * var(--sat) - 8px); bottom: -14px;
+            background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 70%, transparent);
+            opacity: 0; transition: opacity 180ms ease; }
+          html.nx-scrolled .nx-home-head::before { opacity: 1; }
+        }
         .nx-home-head > :first-child { justify-self: start; }
         .nx-home-search { display: flex !important; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 31px; box-sizing: border-box;
           border-radius: 999px !important; border: 1px solid var(--border-strong) !important; background: color-mix(in srgb, var(--text) 8%, transparent) !important;
@@ -1483,6 +1499,7 @@ export const APP_CSS = `
           }
           .ng-assistant-inner .nx-assistant-subtitle { display: none !important; }
           .ng-hamburger { width: 40px; height: 40px; margin-left: -8px; }
+          .nx-ai-head { align-items: center !important; } /* описания нет — кнопка и название в одну строку */
           /* Переписка вплотную к шапке и полю ввода; сообщения чуть плотнее */
           .nx-chat-area { margin: 6px 0 0 !important; }
           .nx-msg-col { gap: 14px !important; padding-bottom: 22px !important; }
@@ -1549,9 +1566,10 @@ export const APP_CSS = `
 
           /* TopBar — поверх контента справа сверху */
           .ng-topbar {
-            position: absolute !important;
-            top: 0 !important;
+            position: fixed !important;
+            top: var(--sat) !important;
             right: 0 !important;
+            left: 0 !important; /* меню на телефоне нет — полоса во всю ширину */
             padding: 22px 16px 0 0 !important;
             z-index: 50 !important;
             gap: 2px !important;

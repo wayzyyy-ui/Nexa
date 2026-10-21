@@ -304,7 +304,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
         <div className="nx-home-grid">
           {/* Мои устройства */}
-          <section className="nx-home-card nx-home-devices" aria-label="Мои устройства">
+          {/* data-nosnippet — поисковики не берут отсюда текст для описания сайта (тут личные устройства) */}
+          <section className="nx-home-card nx-home-devices" aria-label="Мои устройства" data-nosnippet>
             <div className="nx-home-card-title">Мои устройства</div>
             <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {empty}
@@ -324,7 +325,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           </div>
         </div>
 
-        {activityBlock && <div className="nx-home-act">{activityBlock}</div>}
+        {activityBlock && <div className="nx-home-act" data-nosnippet>{activityBlock}</div>}
         {onAbout && (
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button type="button" className="nx-link-btn nx-about-link nx-home-about" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
@@ -357,8 +358,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
         }} />
 
-        {/* Мои устройства: таблетки по две в ряд */}
-        <div style={{ marginTop: 22 }}>
+        {/* Мои устройства: таблетки по две в ряд (data-nosnippet — не в описание сайта в поиске) */}
+        <div style={{ marginTop: 22 }} data-nosnippet>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="ng-display" style={{ fontSize: 22, fontWeight: 500 }}>Мои устройства</div>
             <button type="button" className="nx-row-btn" title="В сети · все устройства" onClick={onAllDevices}
@@ -399,7 +400,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
         </div>
 
         <div style={{ marginTop: 24 }}>{aiPill()}</div>
-        {activityBlock && <div className="nx-act-pill" style={{ marginTop: 18 }}>{activityBlock}</div>}
+        {activityBlock && <div className="nx-act-pill" style={{ marginTop: 18 }} data-nosnippet>{activityBlock}</div>}
         {onAbout && (
           <button type="button" className="nx-row-btn nx-pill-card nx-home-more" onClick={onAbout}>О системе</button>
         )}

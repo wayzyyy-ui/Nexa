@@ -195,10 +195,19 @@ export function Sidebar({ active, onChange }) {
 // передаём внутрь при вызове компонента (см. использование в App).
 // Лежит поверх экрана в правом верхнем углу и не занимает свою полосу,
 // поэтому заголовки всех экранов стоят на одной высоте с часами.
+// Закреплена (fixed): при прокрутке остаётся на месте. Страницу прокрутили — у html класс
+// nx-scrolled, и под строкой проявляется фон (иначе карточки ехали бы прямо под кнопками)
 export function TopBar({ children, tab }) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const onScroll = () => root.classList.toggle("nx-scrolled", window.scrollY > 4);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); root.classList.remove("nx-scrolled"); };
+  }, []);
   return (
     <div className="ng-topbar nx-tb-row" data-tab={tab} style={{
-      position: "absolute", top: 0, right: 0, zIndex: 50,
+      position: "fixed", top: 0, right: 0, zIndex: 50,
       display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 18, padding: "24px 40px 0",
     }}>
       {children}
@@ -219,8 +228,8 @@ export function TopBar({ children, tab }) {
    в 24 px от края экрана (там системный «Назад»), при открытой клавиатуре.
    getCtx() → { tab, sub } (sub — открыт экран устройства или «Активность»);
    onSwipe(dir) — dir: "next" (палец влево) | "prev" (палец вправо) */
-// Как в нижней панели; «Профиль» (Настройки) свайпом не открывается — как и раньше, только нажатием
-export const SWIPE_ORDER = ["assistant", "today", "home", "media"];
+// Как в нижней панели: Ассистент → Сегодня → Главная → Медиа → Профиль (Настройки)
+export const SWIPE_ORDER = ["assistant", "today", "home", "media", "settings"];
 
 export const SWIPE_MIN = 60, SWIPE_FLICK_MIN = 30, SWIPE_FLICK_SPEED = 0.5, SWIPE_FLICK_MS = 300, SWIPE_EDGE = 24, SWIPE_RATIO = 1.5;
 
@@ -334,7 +343,7 @@ export function useTabSwipe(getCtx, handlers) {
       const layer = document.querySelector('[role="dialog"]:not(.nx-hist-drawer):not(.nx-cont-offer), [role="menu"], .nx-notes, .nx-viewer');
       if (layer || el.closest(SWIPE_SKIP) || inHorizontalScroll(el)) return;
       const c = ctx.current();
-      if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», Настройки
+      if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», «О системе»…
       const now = performance.now();
       start = { x: t.clientX, y: t.clientY, at: now, tab: c.tab, locked: null, w: window.innerWidth,
         lastX: t.clientX, lastAt: now, vx: 0, dir: null, target: null,
