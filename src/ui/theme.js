@@ -131,10 +131,11 @@ export const DESKTOP_MQ = "(min-width: 769px) and (min-height: 501px), (min-widt
 export const NAV_W = 96; // ширина боковой панели (к ней привязаны фон и экран ассистента)
 
 /* Масштаб «Сегодня», «Медиа», «Файлов» на компьютере (--desk-zoom, см. .nx-media-main в appStyles):
-   по макету 1920 × 1080 содержимое растёт с окном. На ноутбуке (до ~1440 × 810) — 1, на большом
-   мониторе — до 1,3. Считается здесь: в CSS длину на длину не поделить */
+   по макету 1920 × 1080 содержимое в масштабе 1:1 (макет 2026-10, второй вариант: раньше на 1920 было ×1,3 —
+   крупнее макета). До 1920 × 1080 — 1, на большом мониторе растёт с окном — до 1,3.
+   Считается здесь: в CSS длину на длину не поделить */
 function applyDeskZoom() {
   const k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-  document.documentElement.style.setProperty("--desk-zoom", String(Math.round(Math.min(1.3, Math.max(1, k / 0.75)) * 1000) / 1000));
+  document.documentElement.style.setProperty("--desk-zoom", String(Math.round(Math.min(1.3, Math.max(1, k)) * 1000) / 1000));
 }
 if (typeof window !== "undefined") { applyDeskZoom(); window.addEventListener("resize", applyDeskZoom); }

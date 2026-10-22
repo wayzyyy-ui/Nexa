@@ -239,14 +239,15 @@ export const APP_CSS = `
         @media ${DESKTOP_MQ} {
           /* Главная занимает всю ширину окна (у других разделов колонка до 1440 px) */
           .ng-main-content:has(.ng-home) { max-width: none !important; }
-          .ng-home { padding: calc(58 * var(--mk)) calc(158 * var(--mk)) calc(40 * var(--mk)) calc(74 * var(--mk)) !important; }
+          /* Слева — отступ по макету: содержимое начинается на 270 px макета (меню 96 + 174) */
+          .ng-home { padding: calc(58 * var(--mk)) calc(158 * var(--mk)) calc(40 * var(--mk)) calc(174 * var(--mk)) !important; }
         }
         .nx-home-brand-desk { margin: 0 0 calc(52 * var(--mk)); }
         .nx-home-brand-desk > span { gap: calc(40 * var(--mk)) !important; }
         .nx-home-brand-desk > span > svg:first-child { width: calc(58 * var(--mk)) !important; height: auto !important; }
         .nx-home-brand-desk > span > svg:last-child { height: calc(32 * var(--mk)) !important; width: auto !important; }
         .nx-home-eco { font-size: max(12px, calc(20 * var(--mk))); letter-spacing: 0.3em; text-transform: uppercase; color: var(--text); margin-top: calc(18 * var(--mk)); padding-left: calc(3 * var(--mk)); }
-        .nx-home-grid { display: grid; grid-template-columns: minmax(0, 1065fr) minmax(0, 505fr); gap: calc(22 * var(--mk)); align-items: stretch; }
+        .nx-home-grid { display: grid; grid-template-columns: minmax(0, 1fr) calc(505 * var(--mk)); gap: calc(22 * var(--mk)); align-items: stretch; }
         .nx-home-card {
           border: 1px solid var(--line-bright); border-radius: calc(48 * var(--mk)); box-sizing: border-box;
           padding: calc(40 * var(--mk)) calc(42 * var(--mk)) calc(20 * var(--mk));
@@ -285,6 +286,14 @@ export const APP_CSS = `
              пропорционально и заполняет окно, как на макете, а не жмётся в левый верхний угол */
           .nx-media-grid { grid-template-columns: minmax(0, calc(1120px * var(--desk-zoom, 1))) minmax(300px, 1fr) !important; }
           .nx-media-main { zoom: var(--desk-zoom, 1); }
+          /* Отступ слева — как на Главной: содержимое с 270 px макета 1920 × 1080 */
+          /* «Сегодня» по макету шире остальных (1183 вместо 1120: расписание 648 + погода 488) */
+          .nx-media-grid:has(.nx-today-grid) { grid-template-columns: minmax(0, calc(1183px * var(--desk-zoom, 1))) minmax(300px, 1fr) !important; }
+          .nx-media-screen { padding-left: max(40px, calc(174 * var(--mk))) !important; padding-top: calc(38 * var(--mk)) !important; }
+          /* Заголовок — по макету: крупнее и на одной линии с верхней строкой (поиск, часы); карточки — ниже.
+             Внутри .nx-media-main действует zoom, поэтому размеры делим на --desk-zoom */
+          .nx-media-screen .nx-page-title { font-size: max(32px, calc(50 * var(--mk) / var(--desk-zoom, 1))) !important; line-height: 1.1 !important; }
+          .nx-media-screen .nx-page-gap { height: calc(75 * var(--mk) / var(--desk-zoom, 1)) !important; }
           /* Ассистент на компьютере — фон (спектр) и под боковым меню: без тёмной полосы слева.
              Меню — над ним (прозрачное), содержимое ассистента — правее меню */
           .ng-assistant-wrapper { left: 0 !important; padding-left: ${NAV_W + 1}px; box-sizing: border-box; }
@@ -619,7 +628,7 @@ export const APP_CSS = `
      список; справа — открытая заметка от строки поиска почти до низа окна */
   @media ${DESKTOP_MQ} {
     .ng-main-content:has(.nx-notepad) { max-width: none !important; }
-    .nx-notepad { padding: calc(38 * var(--mk)) calc(145 * var(--mk)) 40px calc(74 * var(--mk)) !important; }
+    .nx-notepad { padding: calc(38 * var(--mk)) calc(145 * var(--mk)) 40px calc(174 * var(--mk)) !important; }
     .nx-notepad-top { display: flex; align-items: center; gap: calc(44 * var(--mk)); min-height: max(40px, calc(50 * var(--mk))); }
     .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
     .nx-notepad-desk { display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(58 * var(--mk)); align-items: start; margin-top: calc(63 * var(--mk)); }
@@ -1267,7 +1276,8 @@ export const APP_CSS = `
           .nx-fc-inline { display: none; }
           /* Третья колонка (прогноз) есть всегда — нулевой ширины; лишний промежуток прячем
              отрицательным отступом справа. Так ширина колонки меняется плавно, в обе стороны */
-          .nx-today-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 356px) minmax(0, 0px) !important; margin-right: -44px;
+          /* Погода — 488 из макета (прогноз закрыт); открыли прогноз — погода 356, чтобы расписанию хватило места */
+          .nx-today-grid { grid-template-columns: minmax(0, 1fr) minmax(0, max(356px, calc(488 * var(--mk) / var(--desk-zoom, 1)))) minmax(0, 0px) !important; margin-right: -44px;
             transition: grid-template-columns 340ms cubic-bezier(0.2, 0.9, 0.3, 1), column-gap 340ms cubic-bezier(0.2, 0.9, 0.3, 1), margin-right 340ms cubic-bezier(0.2, 0.9, 0.3, 1); }
           .nx-today-grid.is-fc { grid-template-columns: minmax(0, 1fr) minmax(0, 356px) minmax(0, 330px) !important; column-gap: 28px !important; margin-right: 0; }
           .nx-fc-aside { overflow: hidden; }
