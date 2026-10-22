@@ -68,7 +68,7 @@ async function fetchRows(table) {
    chats.pinned — supabase/chats-pinned.sql). Пока миграцию не запустили,
    облако отвечает «нет такой колонки» — тогда шлём строки без неё
    (до перезапуска приложения), а значение живёт только в браузере. */
-const OPTIONAL_COLUMNS = { chats: ["pinned"] };
+const OPTIONAL_COLUMNS = { chats: ["pinned"], notes: ["tags", "archived"] }; // notes — повторный запуск notes.sql
 const missingColumns = new Set(); // "chats.pinned" — колонки в базе нет
 const withoutMissing = (table, rows) => {
   const drop = (OPTIONAL_COLUMNS[table] || []).filter((c) => missingColumns.has(`${table}.${c}`));
@@ -108,8 +108,8 @@ async function pushRows(table, upserts, deletes) {
   if (upserts.length) {
     const send = () => supabase.from(table).upsert(withoutMissing(table, upserts)).select("id, updated_at");
     let { data, error } = await send();
-    const col = error && missingOptional(table, error);
-    if (col) {
+    // Облако называет по одной недостающей колонке за раз — убираем их по очереди
+    for (let col; error && (col = missingOptional(table, error)) && !missingColumns.has(`${table}.${col}`);) {
       missingColumns.add(`${table}.${col}`);
       ({ data, error } = await send());
     }

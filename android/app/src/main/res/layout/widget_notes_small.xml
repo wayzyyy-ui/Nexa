@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Виджет «Заметки» 2 × 2 (NotesWidget, компактная раскладка): нажатие открывает заметку -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="12dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:paddingEnd="22dp"
+            android:text="@string/widget_notes_label"
+            android:textColor="@color/widget_muted"
+            android:textSize="11sp" />
+        <TextView
+            android:id="@+id/notes_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="2"
+            android:text=""
+            android:textColor="@color/widget_text"
+            android:textSize="15sp" />
+        <TextView
+            android:id="@+id/notes_text"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:lineSpacingExtra="2dp"
+            android:maxLines="3"
+            android:text=""
+            android:textColor="@color/widget_text"
+            android:textSize="12sp" />
+        <TextView
+            android:id="@+id/notes_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="@color/widget_muted"
+            android:textSize="10sp" />
+    </LinearLayout>
+    <!-- Уголок-складка NEXA — внутри полей: лаунчеры Android 12+ скругляют углы виджета сами -->
+    <ImageView
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/widget_fold" />
+</FrameLayout>

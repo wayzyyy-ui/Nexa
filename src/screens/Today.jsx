@@ -1,21 +1,21 @@
 // Экран «Сегодня»: полоса дней, расписание (форма дела), погода
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, fontDisplay, fontBody } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { TODAY, useLocation, weatherPlace, useWeather, formatWeatherDate, LOCATION_SOURCE_TEXT } from "../lib/weather.js";
 import { hhmm, plural, signed } from "../lib/format.js";
 import { dayKey, nextHour, DAYS_AHEAD, itemsOn, toMinutes, untilText, dayFromKey } from "../lib/schedule.js";
-import { useClock } from "../lib/hooks.js";
+import { useClock, LEAVE_MS } from "../lib/hooks.js";
 import { btnReset, EmptyState, StateButton, Spinner } from "../ui/base.jsx";
 import { condLook, WeatherCard, CityPicker, WeatherAttribution, ForecastList } from "./today/Weather.jsx";
 import { MediaLayout, MediaTitle } from "../ui/layout.jsx";
 
 /* Форма нового дела: дата, время, название и описание (необязательно).
    day — выбранный день (по умолчанию дело ставится на него). Enter — добавить, Esc — отмена */
-export function ScheduleForm({ existing, day, onSave, onCancel }) {
+export function ScheduleForm({ existing, day, initialTitle = "", onSave, onCancel }) {
   const [date, setDate] = useState(day || dayKey());
   const [time, setTime] = useState(nextHour);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialTitle.slice(0, 60)); // initialTitle — из заметки («В расписание»)
   const [place, setPlace] = useState(""); // описание (в данных поле по-прежнему place)
   const t = title.trim();
   const today = dayKey();
@@ -92,7 +92,7 @@ export function DayStrip({ value, onChange, all }) {
 /* Календарь на месяц: листать месяцы, точка — в этот день есть дела, мятная рамка — сегодня.
    Выбор дня открывает его расписание. Окно — role="dialog", Esc и «Назад» Android закрывают */
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-export function MonthCalendar({ value, all, onPick, onClose }) {
+export function MonthCalendar({ value, all, onPick, onClose, leaving }) {
   const [month, setMonth] = useState(() => { const d = dayFromKey(value); return new Date(d.getFullYear(), d.getMonth(), 1); });
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
@@ -108,14 +108,14 @@ export function MonthCalendar({ value, all, onPick, onClose }) {
   const title = month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(" г.", "");
   const navBtn = { ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" };
   return (
-    <div role="dialog" aria-label="Календарь" className="nx-pop nx-month" style={{ border: "1px solid " + C.lineBright, borderRadius: 24, padding: "14px 16px 16px", marginBottom: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        <button type="button" className="nx-icon-btn" onClick={() => shift(-1)} aria-label="Предыдущий месяц" style={navBtn}>
+    <div role="dialog" aria-label="Календарь" className={`nx-pop nx-month${leaving ? " nx-leaving" : ""}`} style={{ border: "1px solid " + C.lineBright, borderRadius: 24, padding: "14px 16px 16px", marginBottom: 18 }}>
+      {/* Шапка — та же сетка в 7 колонок, что у дней: стрелки над «Пн» и «Вс», месяц — точно по центру */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4, alignItems: "center", marginBottom: 10 }}>
+        <button type="button" className="nx-icon-btn" onClick={() => shift(-1)} aria-label="Предыдущий месяц" style={{ ...navBtn, justifySelf: "center" }}>
           <span style={{ display: "flex", transform: "rotate(180deg)" }}>{Icon.chevron({ c: C.text, s: 16 })}</span>
         </button>
-        <div style={{ flex: 1, textAlign: "center", fontFamily: fontDisplay, fontSize: 17, textTransform: "capitalize" }}>{title}</div>
-        <button type="button" className="nx-icon-btn" onClick={() => shift(1)} aria-label="Следующий месяц" style={navBtn}>{Icon.chevron({ c: C.text, s: 16 })}</button>
-        <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть календарь" style={navBtn}>{Icon.close({ c: C.muted, s: 16 })}</button>
+        <div style={{ gridColumn: "2 / 7", textAlign: "center", fontFamily: fontDisplay, fontSize: 17, textTransform: "capitalize" }}>{title}</div>
+        <button type="button" className="nx-icon-btn" onClick={() => shift(1)} aria-label="Следующий месяц" style={{ ...navBtn, justifySelf: "center" }}>{Icon.chevron({ c: C.text, s: 16 })}</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4 }}>
         {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: "center", fontSize: 11, color: C.mutedSoft, paddingBottom: 4 }}>{w}</div>)}
@@ -137,8 +137,11 @@ export function MonthCalendar({ value, all, onPick, onClose }) {
           );
         })}
       </div>
-      <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+      {/* Низ: «Сегодня» по центру, «Закрыть» — справа */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", marginTop: 10 }}>
+        <span />
         <button type="button" className="nx-link-btn" onClick={() => onPick(today)} style={{ ...btnReset, fontSize: 13, color: C.mint }}>Сегодня</button>
+        <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть календарь" style={{ ...navBtn, justifySelf: "end" }}>{Icon.close({ c: C.muted, s: 16 })}</button>
       </div>
     </div>
   );
@@ -158,7 +161,18 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
   const next = nextIdx >= 0 ? schedule[nextIdx] : null;
   const cursorAt = !isToday ? -1 : nextIdx >= 0 ? nextIdx : schedule.length; // курсор «сейчас» — перед ближайшим делом
   const [adding, setAdding] = useState(false);
-  const [calOpen, setCalOpen] = useState(false); // открыт ли календарь на месяц
+  // Календарь на месяц: closed | open | closing (короткая анимация ухода, как у окон — LEAVE_MS)
+  const [cal, setCal] = useState("closed");
+  const calOpen = cal === "open";
+  const calTimer = useRef(null);
+  useEffect(() => () => clearTimeout(calTimer.current), []);
+  const setCalOpen = (open) => {
+    clearTimeout(calTimer.current);
+    if (open) { setCal("open"); return; }
+    if (cal === "closed" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setCal("closed"); return; }
+    setCal("closing");
+    calTimer.current = setTimeout(() => setCal("closed"), LEAVE_MS);
+  };
 
   // Курсор «сейчас»: ромб на линии таймлайна, мятная черта и время справа
   const nowMarker = (
@@ -178,7 +192,17 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
   const [pickingCity, setPickingCity] = useState(false); // открыт ли выбор города
   // Город и место — в общие данные (для сводки ассистента)
   useEffect(() => { TODAY.city = location.city; TODAY.place = place; }, [location.city, place.key]);
-  const [forecastOpen, setForecastOpen] = useState(false); // раскрыт ли прогноз на 2 недели
+  // Прогноз на 2 недели: closed | open | closing (панель ещё видна и уезжает, колонка сжимается)
+  const [fc, setFc] = useState("closed");
+  const forecastOpen = fc === "open";
+  const fcTimer = useRef(null);
+  useEffect(() => () => clearTimeout(fcTimer.current), []);
+  const setForecastOpen = (open) => {
+    clearTimeout(fcTimer.current);
+    if (open) { setFc("open"); return; }
+    setFc("closing");
+    fcTimer.current = setTimeout(() => setFc("closed"), 320);
+  };
   const now = weather.now;
   const tomorrow = weather.tomorrow;
   const nowSky = condLook(now?.cond);
@@ -240,7 +264,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
               </button>
             )}
           </div>
-          {calOpen && <MonthCalendar value={day} all={all} onClose={() => setCalOpen(false)} onPick={(k) => { setDay(k); setAdding(false); setCalOpen(false); }} />}
+          {cal !== "closed" && <MonthCalendar leaving={cal === "closing"} value={day} all={all} onClose={() => setCalOpen(false)} onPick={(k) => { setDay(k); setAdding(false); setCalOpen(false); }} />}
           {/* Живая строка: сколько осталось до ближайшего дела (пустая — не занимает места) */}
           {(next || schedule.length > 0) && (
             <div role="status" className="nx-sched-until" style={{ fontSize: 13, color: C.muted, marginBottom: 18 }}>
@@ -420,8 +444,8 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
 
         {/* Широкий экран: панель — третья колонка справа от погоды (все строки — вровень с расписанием).
             Внутренняя обёртка absolute — поэтому панель берёт высоту колонки погоды, но сама её не растягивает */}
-        {forecastOpen && (
-          <div className="nx-fc-aside" style={{
+        {fc !== "closed" && (
+          <div className={`nx-fc-aside${fc === "closing" ? " is-leaving" : ""}`} style={{
             gridColumn: 3, gridRow: "1 / -1", alignSelf: "stretch",
             width: "100%", position: "relative", zIndex: 3,
           }}>

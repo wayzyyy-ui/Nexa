@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «NEXA · Заметки»: 2 × 2, растягивается (шире — «Открыть» и «Новая заметка», выше — больше текста).
+     Сам ничего не загружает: заметку присылает приложение (NexaWidgets.setNote) -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_notes_desc"
+    android:initialLayout="@layout/widget_notes_small"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:previewImage="@drawable/widget_preview_notes"
+    android:previewLayout="@layout/widget_notes_preview"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

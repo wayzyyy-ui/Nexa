@@ -30,9 +30,18 @@ await db.query(`
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 `);
 const sql = fs.readFileSync(`${REPO}supabase/notes.sql`, "utf8");
-await db.query(sql); await db.query(sql); // дважды — повторный запуск безопасен
 const A = "00000000-0000-0000-0000-00000000000a", B = "00000000-0000-0000-0000-00000000000b";
 await db.query("insert into auth.users (id) values ($1), ($2)", [A, B]);
+// Таблица как в 0.14.2 (без tags / archived) и заметка в ней — повторный запуск notes.sql должен её дополнить
+await db.query(`create table public.notes (id uuid primary key, user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  title text not null default '' check (char_length(title) <= 200), text text not null default '' check (char_length(text) <= 100000),
+  pinned boolean not null default false, created_at timestamptz not null default now(), updated_at timestamptz not null default now())`);
+const oldId = "00000000-0000-0000-0000-0000000000a0";
+await db.query("insert into public.notes (id, user_id, title, text) values ($1, $2, 'старая', 'до тегов')", [oldId, A]);
+await db.query(sql); await db.query(sql); // дважды — повторный запуск безопасен
+const old = (await db.query("select tags, archived, text from public.notes where id = $1", [oldId])).rows[0];
+check("старая таблица дополнена: tags = {}, archived = false, текст цел", old && Array.isArray(old.tags) && !old.tags.length && old.archived === false && old.text === "до тегов", JSON.stringify(old));
+await db.query("delete from public.notes where id = $1", [oldId]);
 const bId = "00000000-0000-0000-0000-0000000000b1";
 await db.query("insert into public.notes (id, user_id, title, text) values ($1, $2, 'B', 'секрет B')", [bId, B]);
 
@@ -66,6 +75,12 @@ check("A не создаёт заметку от имени B", !!(await upsert(
 check("заголовок длиннее 200 — отказ", !!(await upsert(A, aId, "я".repeat(201))).error);
 check("текст 100 000 знаков — можно", !(await upsert(A, aId, "big", "т".repeat(100000))).error);
 check("текст длиннее 100 000 — отказ", !!(await upsert(A, aId, "big", "т".repeat(100001))).error);
+const setTags = (tags, archived = false) => as(A, "update public.notes set tags = $2, archived = $3 where id = $1", [aId, tags, archived]);
+check("теги и архив сохраняются", ((r) => !r.error && r.rowCount === 1)(await setTags(["дом", "работа"], true)));
+check("10 тегов — можно", !(await setTags(Array.from({ length: 10 }, (_, i) => `т${i}`))).error);
+check("11 тегов — отказ", (await setTags(Array.from({ length: 11 }, (_, i) => `т${i}`))).error === "23514");
+check("тег длиннее 30 — отказ", (await setTags(["я".repeat(31)])).error === "23514");
+check("пустой тег — отказ", (await setTags([""])).error === "23514");
 check("A удаляет свою заметку", (await as(A, "delete from public.notes where id = $1", [aId])).rowCount === 1);
 // Лимит 1000: 999 вставляем от имени администратора, 1000-я — можно, 1001-я — нет, правка существующей — можно
 await db.query("insert into public.notes (id, user_id, title) select gen_random_uuid(), $1, 'n' || g from generate_series(1, 999) g", [A]);

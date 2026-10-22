@@ -23,6 +23,8 @@ import ru.nexalink.app.R;
 public final class Widgets {
     /** Раздел, который открыть в приложении (Intent extra): "today" или "home" */
     public static final String EXTRA_TAB = "nexa_tab";
+    /** Виджет «Заметки» (Intent extra): id заметки, "new" — новая заметка, "list" — список заметок */
+    public static final String EXTRA_NOTE = "nexa_note";
     private static final String WORK_PERIODIC = "nexa-weather";
     private static final String WORK_NOW = "nexa-weather-now";
 
@@ -39,6 +41,12 @@ public final class Widgets {
         AppWidgetManager m = AppWidgetManager.getInstance(c);
         int[] ids = weatherIds(c);
         if (ids.length > 0) WeatherWidget.render(c, m, ids);
+    }
+
+    public static void updateNotes(Context c) {
+        AppWidgetManager m = AppWidgetManager.getInstance(c);
+        int[] ids = m.getAppWidgetIds(new ComponentName(c, NotesWidget.class));
+        if (ids.length > 0) NotesWidget.render(c, m, ids);
     }
 
     static int[] weatherIds(Context c) {
@@ -83,6 +91,16 @@ public final class Widgets {
                 .setAction(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER)
                 .putExtra(EXTRA_TAB, tab)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(c, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /* ─── Виджет «Заметки»: открыть заметку (id), новую ("new") или список ("list") ─── */
+    static PendingIntent openNote(Context c, String note, int requestCode) {
+        Intent i = new Intent(c, MainActivity.class)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .putExtra(EXTRA_NOTE, note)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         return PendingIntent.getActivity(c, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }

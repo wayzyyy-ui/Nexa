@@ -432,10 +432,11 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
 
       {/* Под превью: слева статус, заряд и главные кнопки, справа настройки.
           На телефоне — одной колонкой */}
-      <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.82fr) minmax(0, 1fr)", gap: "20px 36px", alignItems: "start", marginTop: 28 }}>
-      <div data-keep>
+      <div className="nx-device-info nx-stagger" style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.82fr) minmax(0, 1fr)", gap: "20px 36px", alignItems: "stretch", marginTop: 28 }}>
+      {/* Обе карточки одной высоты (stretch), кнопка «Файлы» — внизу левой */}
+      <div data-keep style={{ display: "flex", flexDirection: "column" }}>
         {/* Карточка «Состояние»: заряд, память, сеть и кнопки — как карточка справа */}
-        <div className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px", background: C.panel }}>
+        <div className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px", background: C.panel, flex: 1, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 20 }}>
           <span style={{ fontSize: 17, color: C.muted }}>Состояние</span>
           {/* Когда сведения получены: у отключённого — последние достоверные */}
@@ -470,7 +471,7 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
         {/* Кнопки делят ширину поровну; «Подключить / Отключить» — на всю строку */}
         <div className="nx-device-actions" style={{
           display: "flex", flexWrap: "wrap",
-          gap: 10, marginTop: 26,
+          gap: 10, marginTop: "auto", paddingTop: 26,
         }}>
           {/* «В сети» решает само устройство; «Найти» — в быстрых действиях справа */}
           <button type="button" className="nx-ghost-btn" onClick={onOpenFiles} style={{ ...ghostBtn, ...pillBtn, flex: "1 1 136px" }}>

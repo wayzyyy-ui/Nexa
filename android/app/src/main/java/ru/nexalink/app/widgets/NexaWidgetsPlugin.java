@@ -20,13 +20,19 @@ import org.json.JSONObject;
  *     (то же, что на экране «Сегодня»). Хранится в SharedPreferences, поэтому
  *     виджет видит его и при закрытом приложении.
  * setCity({ city, lat, lon, api }) — город из настроек NEXA (city: null — не выбран, тогда Казань) и адрес сервера.
+ * setNote({ state, id, title, text, hidden, updatedAt, check }) — виджет «Заметки»: одна закреплённая
+ *     заметка (state "note"), "empty" — закреплённой нет, "signedOut" — вышли из аккаунта.
  * refresh() — перерисовать виджеты и, если погода устарела, обновить её.
  * Событие "openTab" { tab } — нажали на виджет: открыть раздел ("today" или "home").
+ * Событие "openNote" { id } | { create: true } | {} — виджет «Заметки»: заметка, новая заметка, список.
  */
 @CapacitorPlugin(name = "NexaWidgets")
 public class NexaWidgetsPlugin extends Plugin {
     private static final int MAX_ITEMS = 200;
     private static final int MAX_TITLE = 120;
+    private static final int NOTE_TITLE = 200;
+    private static final int NOTE_TEXT = 700;
+    private static final java.util.regex.Pattern NOTE_ID = java.util.regex.Pattern.compile("[0-9a-fA-F-]{8,64}");
 
     @Override
     public void load() {
@@ -44,6 +50,15 @@ public class NexaWidgetsPlugin extends Plugin {
 
     private void handleTab(Intent intent) {
         if (intent == null) return;
+        String note = intent.getStringExtra(Widgets.EXTRA_NOTE);
+        if (note != null) {
+            intent.removeExtra(Widgets.EXTRA_NOTE);
+            JSObject data = new JSObject();
+            if ("new".equals(note)) data.put("create", true);
+            else if (NOTE_ID.matcher(note).matches()) data.put("id", note);
+            notifyListeners("openNote", data, true);
+            return;
+        }
         String tab = intent.getStringExtra(Widgets.EXTRA_TAB);
         if (!"today".equals(tab) && !"home".equals(tab)) return;
         intent.removeExtra(Widgets.EXTRA_TAB); // чтобы перезапуск страницы не открыл раздел ещё раз
@@ -100,8 +115,45 @@ public class NexaWidgetsPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setNote(PluginCall call) {
+        // Только нужные поля и в пределах — заметка приходит из веб-части
+        String state = call.getString("state", "");
+        JSONObject n = new JSONObject();
+        try {
+            if ("note".equals(state)) {
+                String id = call.getString("id", "");
+                if (!NOTE_ID.matcher(id).matches()) { call.reject("bad id"); return; }
+                String hidden = call.getString("hidden", "");
+                if (!"hide".equals(hidden) && !"secret".equals(hidden)) hidden = "";
+                n.put("state", "note").put("id", id).put("hidden", hidden)
+                        .put("title", cut(hidden.isEmpty() ? call.getString("title", "") : "", NOTE_TITLE))
+                        .put("text", cut(hidden.isEmpty() ? call.getString("text", "") : "", NOTE_TEXT))
+                        .put("check", cut(hidden.isEmpty() ? call.getString("check", "") : "", 40))
+                        .put("updatedAt", Math.max(0L, call.getData().optLong("updatedAt", 0L)));
+            } else if ("signedOut".equals(state)) {
+                n.put("state", "signedOut"); // вышли — старый текст стираем, а не прячем
+            } else {
+                n.put("state", "empty");
+            }
+        } catch (Exception e) {
+            call.reject("bad note");
+            return;
+        }
+        Context c = getContext();
+        WidgetStore.saveNote(c, n);
+        Widgets.updateNotes(c);
+        call.resolve();
+    }
+
+    private static String cut(String s, int max) {
+        if (s == null) return "";
+        return s.length() > max ? s.substring(0, max) : s;
+    }
+
+    @PluginMethod
     public void refresh(PluginCall call) {
         Context c = getContext();
+        Widgets.updateNotes(c);
         Widgets.updateSchedule(c);
         Widgets.updateWeather(c);
         WeatherData w = WidgetStore.weather(c);

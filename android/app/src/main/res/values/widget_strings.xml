@@ -12,4 +12,21 @@
     <string name="widget_weather_desc">Погода в городе из настроек NEXA (по умолчанию Казань). По данным Gismeteo (резерв — Open-Meteo)</string>
     <string name="widget_weather_loading">Загружаем погоду…</string>
     <string name="widget_weather_need_net">Нужен интернет</string>
+
+    <string name="widget_notes_name">NEXA · Заметки</string>
+    <string name="widget_notes_desc">Закреплённая заметка из NEXA. Шире — кнопки «Открыть» и «Новая заметка»</string>
+    <string name="widget_notes_label">Заметка</string>
+    <string name="widget_notes_untitled">Без названия</string>
+    <string name="widget_notes_open">Открыть</string>
+    <string name="widget_notes_list">Заметки</string>
+    <string name="widget_notes_new">+ Новая</string>
+    <string name="widget_notes_new_desc">Новая заметка</string>
+    <string name="widget_notes_empty">Закрепите заметку в NEXA — она появится здесь</string>
+    <string name="widget_notes_open_app">Откройте NEXA, чтобы виджет увидел заметки</string>
+    <string name="widget_notes_signed_out">Войдите в NEXA, чтобы видеть заметки</string>
+    <string name="widget_notes_hidden_title">Закреплённая заметка</string>
+    <string name="widget_notes_hidden_text">Текст скрыт в настройках NEXA — нажмите, чтобы открыть</string>
+    <string name="widget_notes_secret_text">Похоже на пароль или ключ — текст виден только в NEXA</string>
+    <string name="widget_notes_preview_title">Закреплённая заметка</string>
+    <string name="widget_notes_preview_text">Закрепите заметку булавкой в NEXA — здесь будет её начало</string>
 </resources>

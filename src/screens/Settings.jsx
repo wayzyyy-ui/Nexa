@@ -106,7 +106,26 @@ function AssistantInputSettings() {
   );
 }
 
-export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, updateBlock }) {
+/* Виджет «NEXA · Заметки» (только приложение для Android): показывает закреплённую заметку.
+   «Скрывать текст» — на виджете видно только, что заметка есть. Хранится на этом устройстве */
+export function NotesWidgetSettings({ hide, setHide, onNotes }) {
+  if (!isNative) return null;
+  return (
+    <>
+      <SectionTitle>Виджет «Заметки»</SectionTitle>
+      <SettingsGroup>
+        <SettingsRow icon={Icon.pin({ c: C.mint, s: 18 })} title="Что показывает виджет"
+          subtitle="Закреплённую заметку (из нескольких — изменённую последней). Закрепить — булавкой в «Заметках»"
+          right={Icon.chevron({})} onClick={onNotes} />
+        <SettingsRow last icon={Icon.lock({ c: hide ? C.mint : C.muted, s: 18 })} title="Скрывать текст на виджете"
+          subtitle={hide ? "На экране «Домой» видно только, что заметка есть — откроется в NEXA" : "Заголовок и начало текста видны на экране «Домой». Похожее на пароли и ключи скрывается всегда"}
+          right={<Toggle on={hide} onClick={() => setHide(!hide)} label="Скрывать текст на виджете" />} />
+      </SettingsGroup>
+    </>
+  );
+}
+
+export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, updateBlock, widgetBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -194,6 +213,8 @@ export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteDat
       {memoryBlock}
 
       {flowBlock}
+
+      {widgetBlock}
 
       <ThisDeviceSettings sys={sys} />
 

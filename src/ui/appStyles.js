@@ -288,7 +288,8 @@ export const APP_CSS = `
           /* Ассистент на компьютере — фон (спектр) и под боковым меню: без тёмной полосы слева.
              Меню — над ним (прозрачное), содержимое ассистента — правее меню */
           .ng-assistant-wrapper { left: 0 !important; padding-left: ${NAV_W + 1}px; box-sizing: border-box; }
-          .ng-sidebar { position: relative; z-index: 6; }
+          /* Меню слева стоит на месте при прокрутке страницы */
+          .ng-sidebar { position: sticky; top: 0; height: 100vh; align-self: flex-start; z-index: 6; }
         }
         /* Складка справа на «Сегодня», «Медиа», «Файлах»: крупно, обрезана правым краем окна */
         .nx-media-fold { width: 600px; max-width: none; height: auto; display: block; margin-right: -130px; user-select: none; pointer-events: none; overflow: visible; }
@@ -316,8 +317,8 @@ export const APP_CSS = `
         .nx-dev-row.is-add { border-style: dashed !important; background-image: none !important; }
         .nx-dev-row-icon { width: calc(40 * var(--mk)); display: flex; justify-content: center; flex-shrink: 0; }
         .nx-dev-row-icon svg { height: max(24px, calc(40 * var(--mk))) !important; width: auto !important; }
-        .nx-dev-row-name { display: block; font-size: max(14px, calc(20 * var(--mk))); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .nx-dev-row-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: max(4px, calc(9 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-name { display: block; font-size: max(14px, calc(20 * var(--mk))); line-height: 1.2; margin-top: max(3px, calc(7 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: max(4px, calc(7 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nx-dev-row .nx-status-dot { width: max(9px, calc(15 * var(--mk))); height: max(9px, calc(15 * var(--mk))); }
         /* Ассистент: значок и заголовок; на компьютере — сине-мятное свечение вокруг (макет) */
         .nx-ai-pill-icon { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; background: var(--mint-dark); display: flex; align-items: center; justify-content: center; }
@@ -595,7 +596,9 @@ export const APP_CSS = `
      прокрутка и масштаб — как обычно). Горизонтальные списки — сами по себе */
   @media ${PHONE_MQ} { .ng-screen-anim, .ng-assistant-wrapper { touch-action: pan-y pinch-zoom; } }
   /* Заметки на телефоне: «Новая заметка» — в одну строку с заголовком, компактнее */
-  @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 14px !important; } }
+  @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 10px !important; } .nx-notepad-list { padding-bottom: 72px; } }
+  .nx-notepad-filters::-webkit-scrollbar { display: none; }
+  body.kb-open .nx-notepad-fab { display: none !important; }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
   @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(76px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
   /* ─── Экран первого запуска (AuthGate, макет 2026-10) ───────────────────
@@ -730,8 +733,14 @@ export const APP_CSS = `
         html[data-nav-dir] .ng-sidebar { view-transition-name: nx-sidebar; }
         /* Ассистент закреплён на всё окно и в общий снимок экрана не попадал — браузер растягивал
            старый экран в новый. Свой снимок с тем же въездом / уходом, что у остальных разделов */
-        html[data-nav-dir] .ng-assistant-wrapper { view-transition-name: nx-screen-ai; }
-        html[data-nav-dir]::view-transition-group(nx-screen-ai) { animation: none; }
+        /* Как у остальных разделов: въезжает и уезжает только содержимое (nx-ai-body),
+           а фон ассистента (спектр) просто проявляется / гаснет на месте — иначе ехал весь экран с фоном */
+        html[data-nav-dir] .ng-assistant-wrapper { view-transition-name: nx-ai-bg; }
+        html[data-nav-dir] .nx-ai-body { view-transition-name: nx-screen-ai; }
+        html[data-nav-dir]::view-transition-group(nx-screen-ai),
+        html[data-nav-dir]::view-transition-group(nx-ai-bg) { animation: none; }
+        html[data-nav-dir]::view-transition-old(nx-ai-bg) { animation: nx-vt-fade-out 200ms ease both; }
+        html[data-nav-dir]::view-transition-new(nx-ai-bg) { animation: nx-vt-fade-in 260ms ease both; }
         /* Нижняя панель и строка синхронизации закреплены поверх экрана. Без своих снимков
            они попадали в общий снимок страницы, а он лежит ПОД уезжающим экраном —
            экран наезжал на панель и прятал её фон. Свои снимки рисуются над экраном и стоят на месте */
@@ -1219,7 +1228,14 @@ export const APP_CSS = `
         .nx-fc-chev.is-open { transform: rotate(90deg); }
         @media (min-width: 1101px) {
           .nx-fc-inline { display: none; }
-          .nx-today-grid.is-fc { grid-template-columns: minmax(0, 1fr) minmax(0, 356px) minmax(0, 330px) !important; column-gap: 28px !important; }
+          /* Третья колонка (прогноз) есть всегда — нулевой ширины; лишний промежуток прячем
+             отрицательным отступом справа. Так ширина колонки меняется плавно, в обе стороны */
+          .nx-today-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 356px) minmax(0, 0px) !important; margin-right: -44px;
+            transition: grid-template-columns 340ms cubic-bezier(0.2, 0.9, 0.3, 1), column-gap 340ms cubic-bezier(0.2, 0.9, 0.3, 1), margin-right 340ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+          .nx-today-grid.is-fc { grid-template-columns: minmax(0, 1fr) minmax(0, 356px) minmax(0, 330px) !important; column-gap: 28px !important; margin-right: 0; }
+          .nx-fc-aside { overflow: hidden; }
+          .nx-fc-aside .nx-fc-slide { min-width: 300px; }
+          .nx-fc-aside.is-leaving .nx-fc-slide { animation: nx-fc-out 300ms cubic-bezier(0.4, 0, 1, 1) forwards; }
           .nx-fc-chev.is-open { transform: rotate(180deg); }
         }
         /* Панель выезжает слева направо — из-под колонки погоды */
@@ -1227,8 +1243,9 @@ export const APP_CSS = `
           from { opacity: 0; transform: translateX(-14px); }
           to   { opacity: 1; transform: none; }
         }
-        .nx-fc-slide { animation: nx-fc-in 260ms cubic-bezier(0.16, 1, 0.3, 1); }
-        @media (prefers-reduced-motion: reduce) { .nx-fc-slide { animation: none; } }
+        @keyframes nx-fc-out { to { opacity: 0; transform: translateX(-14px); } }
+        .nx-fc-slide { animation: nx-fc-in 340ms cubic-bezier(0.16, 1, 0.3, 1); }
+        @media (prefers-reduced-motion: reduce) { .nx-fc-slide, .nx-fc-aside.is-leaving .nx-fc-slide { animation: none; } .nx-today-grid { transition: none !important; } }
         @media (max-width: 1100px) {
           .nx-fc-aside { display: none !important; }
           .nx-media-grid { grid-template-columns: minmax(0, 1fr) !important; }
@@ -1259,6 +1276,17 @@ export const APP_CSS = `
         }
         .nx-scroll { scrollbar-width: thin; }
         /* Для браузеров, которые не понимают scrollbar-color (старый Safari) */
+        /* Приложение для ПК: полоса для перетаскивания окна (под кнопками верхней строки — они нажимаются)
+           и кнопки окна — круги, как остальные кнопки-значки; «Закрыть» при наведении краснеет */
+        .nx-pc-drag { position: fixed; top: 0; left: 0; right: 0; height: 22px; z-index: 45; }
+        .nx-pc-winbtns { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 14px; border-left: 1px solid var(--border); pointer-events: auto; }
+        .nx-pc-winbtn { width: 32px; height: 32px; border-radius: 999px; border: 1px solid transparent; background: transparent; color: var(--muted);
+          display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 140ms ease, color 140ms ease, border-color 140ms ease; }
+        .nx-pc-winbtn:hover, .nx-pc-winbtn:focus-visible { color: var(--text); border-color: var(--border-strong); background: color-mix(in srgb, var(--text) 8%, transparent); }
+        .nx-pc-winbtn.is-close:hover, .nx-pc-winbtn.is-close:focus-visible { color: var(--on-fold); background: var(--red); border-color: var(--red); }
+        /* Компьютер: полосы прокрутки у самой страницы нет (колесо, тачпад и клавиши работают) — появилась
+           прокрутка (открыли календарь) — верхняя строка и складка не сдвигаются; у блоков внутри — как раньше */
+        @media ${DESKTOP_MQ} { html { scrollbar-width: none; } html::-webkit-scrollbar { display: none; } }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
@@ -1404,6 +1432,7 @@ export const APP_CSS = `
           .nx-today-grid {
             grid-template-columns: minmax(0, 1fr) !important;
             grid-template-areas: "sched" "notes" "now" "next" "month" !important;
+            margin-right: 0 !important;
             grid-template-rows: auto !important;
             gap: 28px !important;
           }

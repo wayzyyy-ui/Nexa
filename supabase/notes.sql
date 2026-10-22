@@ -14,6 +14,17 @@ create table if not exists public.notes (
 );
 create index if not exists notes_user_idx on public.notes (user_id);
 
+-- Теги и архив (NEXA 0.14.3). Уже созданной таблице повторный запуск файла добавит колонки.
+-- Пока их нет, приложение шлёт строки без них — теги и архив живут только на устройстве.
+alter table public.notes add column if not exists tags text[] not null default '{}';
+alter table public.notes add column if not exists archived boolean not null default false;
+-- До 10 тегов, каждый до 30 знаков (как в приложении: NOTE_TAGS_MAX, NOTE_TAG_LEN)
+create or replace function public.nexa_note_tags_ok(t text[]) returns boolean language sql immutable set search_path = '' as $$
+  select coalesce(cardinality(t), 0) <= 10 and not exists (select 1 from unnest(t) x where x is null or char_length(x) not between 1 and 30);
+$$;
+alter table public.notes drop constraint if exists notes_tags_check;
+alter table public.notes add constraint notes_tags_check check (public.nexa_note_tags_ok(tags));
+
 -- updated_at ставит база (по нему синхронизация понимает, где новее)
 create or replace function public.nexa_notes_touch() returns trigger language plpgsql as $$
 begin new.updated_at := now(); return new; end; $$;

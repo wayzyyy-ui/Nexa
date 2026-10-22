@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
+import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // Стили плавной прокрутки Lenis (сам хук — useSmoothScroll в lib/hooks.js)
 import "lenis/dist/lenis.css";
@@ -42,7 +42,8 @@ import { parseNexaLink } from "./lib/deeplink.js";
 import { useClipSync } from "./lib/clipboardSync.js";
 import { desktopNotifyClip } from "./lib/desktop.js";
 import { ClipboardSettings } from "./ui/clipboard.jsx";
-import { userNotesKey, loadUserNotes, writeUserNotes, applyEdit, NOTE_ROWS, USER_NOTES_MAX } from "./lib/userNotes.js";
+import { WindowControls, DesktopDragStrip } from "./ui/desktop.jsx";
+import { userNotesKey, loadUserNotes, writeUserNotes, applyEdit, NOTE_ROWS, USER_NOTES_MAX, widgetNote } from "./lib/userNotes.js";
 import { ScreenNotes } from "./screens/Notes.jsx";
 import { ToastHost } from "./ui/toasts.jsx";
 import { SyncStatus, SyncDetails } from "./ui/sync.jsx";
@@ -74,7 +75,7 @@ import { GlobalSearch } from "./ui/GlobalSearch.jsx";
 import { ScreenAssistant } from "./screens/assistant/ScreenAssistant.jsx";
 import { UpdateCard, ForceUpdateScreen } from "./ui/install.jsx";
 import { useAccountSettings } from "./lib/accountSettings.js";
-import { NoteSettings, ScreenSettings } from "./screens/Settings.jsx";
+import { NoteSettings, NotesWidgetSettings, ScreenSettings } from "./screens/Settings.jsx";
 import { ScreenHome } from "./screens/Home.jsx";
 import { ScreenFiles } from "./screens/Files.jsx";
 import { APP_CSS } from "./ui/appStyles.js";
@@ -572,7 +573,12 @@ export default function NexaApp() {
   const notesSync = useCloudList({
     uid, table: "notes", value: userNotes, setValue: setNotesStore,
     toList: (list) => list.map((n) => ({ ...n, createdAt: n.createdAt || 0, updatedAt: n.updatedAt || n.createdAt || 0 })),
-    fromList: (list) => NOTE_ROWS.sort(list),
+    // Колонок tags / archived в базе ещё нет (облако их не прислало) — оставляем то, что было здесь
+    fromList: (list) => NOTE_ROWS.sort(list.map((n) => {
+      if ("tags" in n && "archived" in n) return n;
+      const old = notesRef.current.find((x) => x.id === n.id);
+      return { ...n, tags: n.tags ?? old?.tags ?? [], archived: n.archived ?? !!old?.archived };
+    })),
     rows: NOTE_ROWS,
     // Таблицы заметок ещё нет (notes.sql не запущен) — заметки живут только здесь, это не ошибка
     onStatus: (st) => setSyncState((s) => ({ ...s, notes: st.error && isMissingTable(st.error) ? { ok: true, pending: 0, localOnly: true } : st })),
@@ -1696,7 +1702,13 @@ export default function NexaApp() {
   ) : null;
   const openAllDevices = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(true); scrollTopNow(); };
   // «Заметки» — поверх «Сегодня» (кнопка там же); «Назад» возвращает в «Сегодня»
-  const openNotes = () => { setTab("today"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(true); scrollTopNow(); };
+  // req — сразу открыть редактор: { create: true } (быстрые действия) или { id } (глобальный поиск)
+  const [notesReq, setNotesReq] = useState(null);
+  useEffect(() => { if (!notesOpen) setNotesReq(null); }, [notesOpen]); // «Вперёд» браузера не откроет старую просьбу снова
+  const openNotes = (req) => {
+    setTab("today"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(true); scrollTopNow();
+    setNotesReq(req?.create || req?.id ? { ...req, n: Date.now() } : null);
+  };
   const openSecurity = () => { setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(true); scrollTopNow(); };
   // Открыли устройство, «Активность» или «О системе» (например, из уведомления) — центр закрывается
   useEffect(() => { if (openDeviceId || activityOpen || aboutOpen) setSecurityOpen(false); }, [openDeviceId, activityOpen, aboutOpen]);
@@ -1757,6 +1769,23 @@ export default function NexaApp() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  /* Ctrl+V с файлами (скопированными в проводнике или снимок экрана) вне полей ввода — в «Файлы».
+     В поле ассистента вставка прикладывает файл к вопросу (ScreenAssistant), в других полях — как обычно */
+  const addFilesRef = useRef(null);
+  const showToastRef = useRef(showToast); showToastRef.current = showToast;
+  useEffect(() => {
+    const onPaste = (e) => {
+      const files = [...(e.clipboardData?.files || [])];
+      if (!files.length || isEditable(e.target) || tabRef.current === "assistant") return;
+      if (document.querySelector('[aria-modal="true"], .nx-auth-gate')) return;
+      e.preventDefault();
+      addFilesRef.current?.(files, null);
+      showToastRef.current?.({ title: files.length === 1 ? "Файл из буфера — в «Файлы»" : `Файлов из буфера: ${files.length} — в «Файлы»`, text: files.length === 1 ? files[0].name : "Загружаются",
+        action: { label: "Открыть", onClick: () => navToRef.current?.("files") } });
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
   // «Поделиться» → «Отправить в NEXA» из другого приложения (Android)
   useEffect(() => onSharedText((text) => setFlowSend({ text })), []);
   // Нажали на виджет рабочего стола: «Расписание» → «Сегодня», «Погода» → Главная
@@ -1806,6 +1835,18 @@ export default function NexaApp() {
   // Экран входа при первом запуске: аккаунты доступны, Supabase ответил,
   // никто не вошёл и «без аккаунта» ещё не выбирали
   const showGate = authAvailable && auth.ready && !auth.user && !guest;
+  /* Виджет «Заметки» (Android): одна закреплённая заметка этого аккаунта (widgetNote).
+     Пока не знаем, кто вошёл, — ничего не шлём (иначе на миг ушли бы заметки гостя);
+     вышли из аккаунта — виджет очищается. Нажатия на виджет открывают заметку / новую / список */
+  const [widgetHide, setWidgetHide] = useState(() => { try { return localStorage.getItem("nexa-note-widget-hide") === "1"; } catch { return false; } });
+  const changeWidgetHide = (on) => { setWidgetHide(on); try { localStorage.setItem("nexa-note-widget-hide", on ? "1" : "0"); } catch {} };
+  useEffect(() => {
+    if (authAvailable && !auth.ready) return;
+    widgetsSetNote(widgetNote(userNotes, { hide: widgetHide, signedOut: showGate }));
+  }, [userNotes, widgetHide, showGate, authAvailable, auth.ready]);
+  const showGateRef = useRef(showGate); showGateRef.current = showGate;
+  const openNotesRef = useRef(null); openNotesRef.current = openNotes;
+  useEffect(() => onWidgetNote((req) => { if (!showGateRef.current) openNotesRef.current(req); }), []);
   // Вошли — гостевой режим больше не нужен, окно входа закрываем.
   // Вышли — снова экран входа (решение автора): гостем после выхода не остаёмся
   const prevUser = useRef(null);
@@ -1984,6 +2025,7 @@ export default function NexaApp() {
      Файл появляется в списке только после того, как содержимое сохранено */
   const uploadCtl = useRef({}); // id загрузки → { abort }
   const guestSeq = useRef(0);
+  addFilesRef.current = (...a) => addFiles(...a);
   const addFiles = (fileList, folder) => {
     const picked = Array.from(fileList || []);
     if (!picked.length) return;
@@ -2372,6 +2414,8 @@ export default function NexaApp() {
               thumb: <FileThumb file={f} w={34} h={34} iconSize={14} radius={0} />, run: () => sendStoredFile(d, f) })),
           ] },
         })) } },
+      { id: "note", title: "Новая заметка", sub: uid ? "Сохранится в аккаунте" : "Сохранится в этом браузере", icon: Icon.edit,
+        keywords: ["заметка", "заметки", "записать", "запись", "список", "чек-лист", "идея", "мысль"], run: () => openNotes({ create: true }) },
       { id: "files", title: "Открыть «Файлы»", sub: files.length ? `${files.length} ${plural(files.length, ["файл", "файла", "файлов"])}` : "Пока пусто — можно добавить",
         icon: Icon.folder, keywords: ["файлы", "папки", "документы", "раздел"], run: () => goTab("files") },
       canLink && { id: "find", title: "Найти устройство", sub: "Подать сигнал на устройство в сети", icon: Icon.signal,
@@ -2384,7 +2428,7 @@ export default function NexaApp() {
         keywords: ["активность", "лента", "события", "синхронизация", "облако", "статус"], run: openActivity },
       uid && syncError && { id: "resync", title: "Повторить синхронизацию", sub: syncError, icon: Icon.refresh,
         keywords: ["синхронизация", "облако", "повторить"], run: retrySync },
-      { id: "search", title: "Глобальный поиск", sub: "Файлы, папки, диалоги, устройства, настройки", icon: Icon.search,
+      { id: "search", title: "Глобальный поиск", sub: "Файлы, папки, диалоги, заметки, устройства, настройки", icon: Icon.search,
         keywords: ["поиск", "найти", "искать"], run: () => openSearch() },
     ].filter(Boolean);
     const note = !uid ? "Передача текста и файлов, поиск устройств и активность — после входа в аккаунт"
@@ -2440,7 +2484,7 @@ export default function NexaApp() {
             onFind={findDevice}
           />
         )}
-        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} onNotes={openNotes} notesCount={userNotes.length} />}
+        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} onNotes={() => openNotes()} notesCount={userNotes.filter((n) => !n.archived).length} />}
         {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
         {t === "files" && (
           <ScreenFiles
@@ -2461,6 +2505,7 @@ export default function NexaApp() {
         )}
         {t === "settings" && <ScreenSettings onAbout={openAbout}
           noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
+          widgetBlock={<NotesWidgetSettings hide={widgetHide} setHide={changeWidgetHide} onNotes={() => openNotes()} />}
           updateBlock={isDesktop ? (
             <>
               <SectionTitle>Обновление</SectionTitle>
@@ -2541,7 +2586,7 @@ export default function NexaApp() {
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
       {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа», «Файлах» и под меню у ассистента */}
-      {["home", "today", "media", "files", "assistant"].includes(tab) && !openDevice && !aboutOpen && !activityOpen && !securityOpen && !devicesOpen && <div className="nx-home-glow" aria-hidden="true" />}
+      {["home", "today", "media", "files", "assistant"].includes(tab) && !openDevice && !aboutOpen && !activityOpen && !securityOpen && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}
@@ -2585,8 +2630,11 @@ export default function NexaApp() {
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
             <QuickBtn />
             <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
-            <IconBtn icon={Icon.user} onClick={() => setTab("settings")} label="Настройки" className="nx-tb-user" />
+            <IconBtn icon={Icon.user} onClick={() => navTo("settings")} label="Настройки" className="nx-tb-user" />
+            {/* Приложение для ПК: свои кнопки окна (системная рамка выключена) */}
+            <WindowControls />
           </TopBar>
+          <DesktopDragStrip />
 
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
             очень широких мониторах, но при этом свободно заполняет
@@ -2614,7 +2662,8 @@ export default function NexaApp() {
     </div>
   ) : notesOpen ? (
     <div key="notes" className="ng-screen-anim">
-      <ScreenNotes notes={userNotes} api={notesApi} uid={uid} online={online} sync={uid ? syncState.notes : null} onBack={() => setNotesOpen(false)} />
+      <ScreenNotes notes={userNotes} api={notesApi} uid={uid} online={online} sync={uid ? syncState.notes : null} onBack={() => setNotesOpen(false)}
+        request={notesReq} schedule={schedule} onAddSchedule={addScheduleItem} toast={showToast} />
     </div>
   ) : aboutOpen ? (
     <div key="about" className="ng-screen-anim">
@@ -2711,6 +2760,8 @@ export default function NexaApp() {
           onOpenFile={(f) => setOpenFile(f)}
           onOpenFolder={openFolderFromSearch}
           onOpenChat={openChatFromSearch}
+          notes={userNotes}
+          onOpenNote={(id) => openNotes({ id })}
           onNavigate={goTab}
           initialQuery={searchQuery}
         />

@@ -21,7 +21,9 @@
         "dragDropEnabled": false,
         "backgroundColor": "#01090F",
         "visible": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows"
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -58,7 +60,9 @@
         "installMode": "currentUser",
         "languages": [
           "Russian"
-        ]
+        ],
+        "template": "installer/installer.nsi",
+        "installerHooks": "installer/hooks.nsh"
       }
     },
     "createUpdaterArtifacts": false

@@ -32,7 +32,8 @@ export function ScreenDevices({ devices, received, onOpenDevice, onAddDevice, on
     </section>
   );
   return (
-    <div className="ng-screen nx-all-devices" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1080, marginInline: "auto", boxSizing: "border-box" }}>
+    <div className="ng-screen nx-all-devices" style={{ padding: "calc(max(20px, calc(40 * var(--mk))) + 6px) 40px 40px", textAlign: "left", maxWidth: 1080, marginInline: "auto", boxSizing: "border-box" }}>
+      {/* Отступ сверху — как у верхней строки: «Назад» на одной высоте с поиском */}
       <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 26 }}>
         <div>

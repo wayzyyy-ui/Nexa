@@ -1,7 +1,7 @@
 {
   "name": "nexa",
   "private": true,
-  "version": "0.14.2",
+  "version": "0.14.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,8 @@
     "release:android": "node scripts/release-android.mjs",
     "release:web": "node scripts/release-web.mjs",
     "copy:apk": "node scripts/copy-apk.mjs",
-    "build:desktop": "vite build --mode desktop --outDir dist-desktop --emptyOutDir && node -e \"const f=require('fs');for(const x of ['nexa.apk','nexa-setup.exe','version.json','ota','desktop','sitemap.xml'])f.rmSync('dist-desktop/'+x,{recursive:true,force:true})\"",
+    "installer:art": "node scripts/installer-art.mjs",
+    "build:desktop": "node scripts/installer-art.mjs --bmp && vite build --mode desktop --outDir dist-desktop --emptyOutDir && node -e \"const f=require('fs');for(const x of ['nexa.apk','nexa-setup.exe','version.json','ota','desktop','sitemap.xml'])f.rmSync('dist-desktop/'+x,{recursive:true,force:true})\"",
     "release:desktop": "node scripts/release-desktop.mjs",
     "dev:desktop": "tauri build --debug --no-bundle --config desktop/src-tauri/tauri.conf.json",
     "tauri": "tauri"

@@ -9,6 +9,7 @@ import { NAV } from "./navigation.jsx";
 import { FOLDERS, sortByRecent, fileMeta } from "../lib/fileStore.js";
 import { VERSION } from "../version.js";
 import { FileThumb } from "./files.jsx";
+import { searchNotes, sortNotes, noteTitle, notePreview, noteWhen } from "../lib/userNotes.js";
 
 export const SETTINGS_INDEX = [
   { title: "Пользователь", subtitle: "user@example.com", keywords: ["профиль", "аккаунт", "почта"] },
@@ -19,7 +20,7 @@ export const SETTINGS_INDEX = [
   { title: "О системе", subtitle: `NEXA ${VERSION}`, keywords: ["версия", "о системе", "nexa"] },
 ];
 
-export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = [], onOpenDevice, onClose: closeNow, onOpenFile, onOpenFolder, onOpenChat, onNavigate, initialQuery = "" }) {
+export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS, devices: allDevices = [], onOpenDevice, onClose: closeNow, onOpenFile, onOpenFolder, onOpenChat, notes = [], onOpenNote, onNavigate, initialQuery = "" }) {
   const [leaving, onClose] = useLeave(closeNow);
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef(null);
@@ -47,11 +48,13 @@ export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS,
     if (!hasQuery) return [];
     return chats.filter((c) => match(c.title));
   })();
+  // Заметки — тем же поиском, что на экране «Заметки» (заголовок, текст, теги; ё = е); архивные — в конце
+  const noteHits = hasQuery ? sortNotes(searchNotes(notes, query)).sort((a, b) => !!a.archived - !!b.archived) : [];
   const settingHits = hasQuery
     ? SETTINGS_INDEX.filter((s) => match(s.title) || match(s.subtitle) || hitKeys(s.keywords))
     : [];
 
-  const total = tabs.length + devices.length + folders.length + fileHits.length + chatHits.length + settingHits.length;
+  const total = tabs.length + devices.length + folders.length + fileHits.length + chatHits.length + noteHits.length + settingHits.length;
 
   // Обработчик клика: делаем действие и закрываем поиск
   const go = (fn) => () => { fn(); onClose(); };
@@ -87,7 +90,7 @@ export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS,
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Найти файл, папку, диалог, настройку…"
+            placeholder="Найти файл, диалог, заметку, настройку…"
             style={{
               flex: 1, minWidth: 0, background: "transparent", border: "none",
               outline: "none", color: C.text, fontSize: 15,
@@ -111,7 +114,7 @@ export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS,
           )}
 
           {hasQuery && total === 0 && (
-            <EmptyState compact title="Ничего не нашлось" text={`По запросу «${query.trim()}» нет ни разделов, ни файлов. Попробуйте другое слово.`} />
+            <EmptyState compact title="Ничего не нашлось" text={`По запросу «${query.trim()}» нет ни разделов, ни файлов, ни заметок. Попробуйте другое слово.`} />
           )}
 
           {tabs.length > 0 && (
@@ -186,6 +189,25 @@ export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS,
                   onClick={go(() => onOpenChat(c.id))}
                 />
               ))}
+            </SearchGroup>
+          )}
+
+          {noteHits.length > 0 && (
+            <SearchGroup title={`Заметки · ${noteHits.length}`}>
+              {noteHits.slice(0, 8).map((n) => (
+                <SearchRow
+                  key={n.id}
+                  icon={Icon.edit({ c: C.muted, s: 16 })}
+                  title={noteTitle(n)}
+                  subtitle={[n.archived && "В архиве", notePreview(n, 80) || `Изменено ${noteWhen(n.updatedAt)}`].filter(Boolean).join(" · ")}
+                  onClick={go(() => onOpenNote(n.id))}
+                />
+              ))}
+              {noteHits.length > 8 && (
+                <div style={{ padding: "6px 18px", fontSize: 12, color: C.mutedSoft }}>
+                  и ещё {noteHits.length - 8}…
+                </div>
+              )}
             </SearchGroup>
           )}
 

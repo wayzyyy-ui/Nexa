@@ -281,13 +281,39 @@ export function widgetsSetCity(c) {
 export function widgetsFlush() {
   if (!isNative) return;
   if (widgetSchedule) widgetsSetSchedule(widgetSchedule, true);
+  if (widgetNoteData) widgetsSetNote(widgetNoteData, true);
   NexaWidgets.refresh().catch(() => {});
+}
+
+/* Виджет «Заметки»: одна закреплённая заметка — то, что посчитал widgetNote (src/lib/userNotes.js).
+   В Android уходит только она (заголовок и начало текста), не весь список.
+   APK без этого метода (старше 0.14.3) отвечает ошибкой — молча пропускаем */
+let widgetNoteData = null;
+let widgetNoteSent = "";
+export function widgetsSetNote(data, force = false) {
+  if (!isNative || !data) return;
+  widgetNoteData = data;
+  const json = JSON.stringify(data);
+  if (!force && json === widgetNoteSent) return;
+  widgetNoteSent = json;
+  NexaWidgets.setNote(data).catch(() => { widgetNoteSent = ""; });
 }
 
 // Нажали на виджет: cb("today" | "home"). Возвращает функцию отписки
 export function onWidgetTab(cb) {
   if (!isNative) return () => {};
   const handle = NexaWidgets.addListener("openTab", (e) => { if (e?.tab === "today" || e?.tab === "home") cb(e.tab); });
+  return () => { Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
+}
+
+// Виджет «Заметки»: cb({ id }) — открыть заметку, cb({ create: true }) — новая, cb({}) — список заметок
+export function onWidgetNote(cb) {
+  if (!isNative) return () => {};
+  const handle = NexaWidgets.addListener("openNote", (e) => {
+    if (e?.create) cb({ create: true });
+    else if (typeof e?.id === "string" && /^[0-9a-f-]{8,64}$/i.test(e.id)) cb({ id: e.id });
+    else cb({});
+  });
   return () => { Promise.resolve(handle).then((h) => h?.remove()).catch(() => {}); };
 }
 

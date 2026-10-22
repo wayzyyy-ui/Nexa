@@ -44,5 +44,7 @@ android/app/google-services.json
 dist-desktop
 desktop/src-tauri/target
 desktop/src-tauri/gen
+# Картинки установщика в BMP — собираются из art/*.png перед каждой сборкой (scripts/installer-art.mjs --bmp)
+desktop/src-tauri/installer/art/bmp
 *.key
 *.key.pub.bak

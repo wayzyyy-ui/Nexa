@@ -20,6 +20,8 @@ import org.json.JSONObject;
  *   city, city_lat, city_lon — город из настроек NEXA: название и координаты (нет — Казань)
  *   api_base      — адрес сервера NEXA (погода — <api_base>/api/weather?city=<id>)
  *   weather       — последняя успешная погода (JSON, см. WeatherData)
+ *   note          — виджет «Заметки»: ОДНА закреплённая заметка (JSON: state, id, title, text,
+ *                   hidden, updatedAt, check), не весь список. Нет ключа — приложение ещё не присылало
  */
 public final class WidgetStore {
     private static final String PREFS = "nexa_widgets";
@@ -95,6 +97,22 @@ public final class WidgetStore {
         if (changed) e.remove("weather"); // погода прежнего города больше не подходит
         e.apply();
         return changed;
+    }
+
+    /* ─── Заметка для виджета «Заметки» ─── */
+    /** Записать сразу (commit), чтобы виджет перерисовался уже с новыми данными */
+    public static void saveNote(Context c, JSONObject note) {
+        prefs(c).edit().putString("note", note.toString()).commit();
+    }
+
+    /** Что показать на виджете или null — приложение ещё ни разу не присылало */
+    public static JSONObject note(Context c) {
+        try {
+            String s = prefs(c).getString("note", null);
+            return s == null ? null : new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /* ─── Погода ─── */

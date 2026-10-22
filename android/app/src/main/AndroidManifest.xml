@@ -34,7 +34,16 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Виджеты рабочего стола (папка widgets): расписание и погода -->
+        <!-- Виджеты рабочего стола (папка widgets): расписание, погода и заметки -->
+        <receiver
+            android:name=".widgets.NotesWidget"
+            android:label="@string/widget_notes_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_notes_info" />
+        </receiver>
         <receiver
             android:name=".widgets.ScheduleWidget"
             android:label="@string/widget_schedule_name"

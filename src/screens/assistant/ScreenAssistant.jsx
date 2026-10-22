@@ -749,6 +749,8 @@ useEffect(() => {
           rows={1}
           value={input}
           onChange={(e) => { voice.release(); setInput(e.target.value); }}
+          // Вставили файл или картинку из буфера (Ctrl+V) — прикладываем к вопросу, как через скрепку
+          onPaste={(e) => { const f = e.clipboardData?.files?.[0]; if (f) { e.preventDefault(); attachDevice(f); } }}
           onKeyDown={onKeyDown}
           enterKeyHint={enterSends ? "send" : "enter"}
           onFocus={() => setInputFocused(true)}
@@ -923,7 +925,7 @@ useEffect(() => {
 
     {/* История — слева: на компьютере колонкой от бокового меню на всю высоту
         (скрыта — не рисуем), на телефоне — шторкой поверх (в body) */}
-    <div style={{ position: "relative", zIndex: 1, flex: 1, minHeight: 0, display: "flex" }}>
+    <div className="nx-ai-body" style={{ position: "relative", zIndex: 1, flex: 1, minHeight: 0, display: "flex" }}>
     {(mobile || !histHidden) && historyPanel}
     <div className="ng-assistant-inner" style={innerStyle}>
       <div style={{
