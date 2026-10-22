@@ -140,15 +140,31 @@ export default async function handler(req, res) {
           : { priority: 'high', ttl: '60s' },
       } }),
     });
-    if (r.status === 404 || r.status === 400) {
+    if (await staleToken(r)) {
       // Адрес устарел (приложение удалили / переустановили) — забываем его
       await sb.from('push_tokens').delete().eq('user_id', uid).eq('device_id', target);
       return res.status(200).json({ sent: false, reason: 'no_token' });
     }
-    if (!r.ok) { console.error('FCM error:', r.status); return res.status(200).json({ sent: false, reason: 'error' }); }
+    if (!r.ok) { console.error('FCM error:', r.status, r.fcmCode || ''); return res.status(200).json({ sent: false, reason: 'error' }); }
     return res.status(200).json({ sent: true });
   } catch (e) {
     console.error('Push error:', e?.name || 'unknown');
     return res.status(200).json({ sent: false, reason: 'error' });
   }
+}
+
+/* Ответ FCM значит «такого адреса больше нет»? Только тогда адрес удаляем.
+   404 / UNREGISTERED — приложение удалили или переустановили; 400 с замечанием к message.token —
+   адрес испорчен. Остальные 400 (INVALID_ARGUMENT про само сообщение) — наша ошибка,
+   адрес телефона при этом рабочий: удалив его, мы отвязали бы телефон от «Найти» и буфера */
+async function staleToken(r) {
+  if (r.ok) return false;
+  let err = null;
+  try { err = (await r.json())?.error; } catch {}
+  const details = Array.isArray(err?.details) ? err.details : [];
+  const code = details.map((d) => d?.errorCode).find(Boolean) || '';
+  r.fcmCode = code; // в журнал — только код
+  if (r.status === 404 || code === 'UNREGISTERED') return true;
+  if (r.status !== 400) return false;
+  return details.some((d) => (d?.fieldViolations || []).some((v) => String(v?.field || '') === 'message.token'));
 }

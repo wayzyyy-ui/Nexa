@@ -125,7 +125,7 @@ export function NotesWidgetSettings({ hide, setHide, onNotes }) {
   );
 }
 
-export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, updateBlock, widgetBlock }) {
+export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, updateBlock, widgetBlock, backupBlock }) {
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -213,6 +213,8 @@ export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteDat
       {memoryBlock}
 
       {flowBlock}
+
+      {backupBlock}
 
       {widgetBlock}
 

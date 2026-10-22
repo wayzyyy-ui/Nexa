@@ -339,6 +339,37 @@ export async function nativeFile(action, { url, blob, name, mime }) {
   }
 }
 
+/* Большой файл (резервная копия) — в «Загрузки» телефона по кускам по 3 МБ: весь архив одной строкой
+   в память не берём. onProgress(записано, всего). Отмена — signal (кусок дописывается, файл удаляется).
+   APK без streamStart (до 0.14.4) — файлы до 40 МБ по-старому, больше — честный отказ "old_app".
+   Ответ: "saved" | "cancelled"; ошибка — исключение с кодом */
+export async function nativeSaveLarge(blob, { name, mime, signal, onProgress }) {
+  if (!isNative) throw new Error("not_app");
+  let token;
+  try {
+    ({ token } = await NexaFiles.streamStart({ name, mime: mime || "" }));
+  } catch (e) {
+    if (!/not implemented|not_implemented/i.test(String(e?.message || e))) throw new Error("save_failed");
+    if (blob.size > 40 * 1024 * 1024) throw new Error("old_app");
+    await NexaFiles.save({ base64: await blobToBase64(blob), name, mime: mime || "" });
+    onProgress?.(blob.size, blob.size);
+    return "saved";
+  }
+  const CH = 3 * 1024 * 1024;
+  try {
+    for (let pos = 0; pos < blob.size; pos += CH) {
+      if (signal?.aborted) { await NexaFiles.streamCancel({ token }).catch(() => {}); return "cancelled"; }
+      await NexaFiles.streamWrite({ token, base64: await blobToBase64(blob.slice(pos, pos + CH)) });
+      onProgress?.(Math.min(pos + CH, blob.size), blob.size);
+    }
+    await NexaFiles.streamFinish({ token });
+    return "saved";
+  } catch {
+    await NexaFiles.streamCancel({ token }).catch(() => {});
+    throw new Error("save_failed");
+  }
+}
+
 /* ─── NEXA Flow: буфер обмена ───
    Только по действию человека: читаем буфер, когда нажали «Вставить
    скопированное», пишем — когда нажали «Копировать» (или включено

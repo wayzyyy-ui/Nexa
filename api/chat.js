@@ -32,6 +32,9 @@ const SIGNED_PREFIX = '/storage/v1/object/sign/nexa-files/';
 const MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
 // Сколько ждём первых слов от модели, прежде чем попробовать следующую (у последней — без ограничения)
 const FIRST_WORDS_MS = 12000;
+// Пометка «ответ оборвался на сервере»: два невидимых разделителя (U+2063) + понятный текст.
+// Приложение (ScreenAssistant) ищет разделители и сохраняет ответ как оборванный, с «повторить»
+const STREAM_CUT = String.fromCharCode(0x2063, 0x2063) + '\n\n(ответ оборвался, нажмите "повторить")';
 // Ошибки, при которых пробуем следующую модель: нет модели, перегружена, сбой у Google, лимит именно этой модели
 const NEXT_MODEL_STATUS = [404, 429, 500, 503];
 
@@ -177,6 +180,12 @@ export default async function handler(req, res) {
     { role: 'user', parts: [...fileParts, { text: message }] },
   ];
 
+  /* Человек нажал «Остановить» или закрыл страницу — соединение закрылось раньше конца ответа.
+     Тогда прерываем и запрос к модели: дописывать ответ, который никто не прочтёт, — пустая трата квоты */
+  let clientGone = false;
+  let liveCtrl = null; // AbortController текущего запроса к модели
+  res.on('close', () => { if (!res.writableEnded) { clientGone = true; liveCtrl?.abort(); } });
+
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
     // С файлом ответ может быть длиннее: пересказ, список пунктов
@@ -187,6 +196,8 @@ export default async function handler(req, res) {
       const deadline = Date.now() + limitMs; // limitMs считается от отправки запроса, а не от ответа
       for (let i = 0; i < THINKING_TRIES.length; i++) {
         const ctrl = new AbortController();
+        liveCtrl = ctrl;
+        if (clientGone) throw Object.assign(new Error('gone'), { name: 'AbortError' });
         let timer;
         // Ждём не дольше, чем осталось до deadline (0 — без ограничения)
         const slow = limitMs ? new Promise((_, reject) => {
@@ -228,11 +239,12 @@ export default async function handler(req, res) {
     res.setHeader('X-Accel-Buffering', 'no');
 
     if (started.first) res.write(started.first);
-    for (let step = await started.it.next(); !step.done; step = await started.it.next()) {
+    for (let step = await started.it.next(); !step.done && !clientGone; step = await started.it.next()) {
       if (step.value?.text) res.write(step.value.text);
     }
     res.end();
   } catch (error) {
+    if (clientGone) { res.end(); return; } // ушли сами (остановили) — это не ошибка
     // В журнал — только код и тип ошибки, без текста запроса и служебных подробностей
     console.error('Gemini API error:', error?.status || error?.code || error?.name || 'unknown');
     if (!res.headersSent) {
@@ -249,7 +261,9 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'Ошибка при обращении к AI' });
       }
     } else {
-      res.end();
+      // Ответ уже шёл и оборвался: дописываем пометку STREAM_CUT, чтобы приложение
+      // не сохранило обрезанный текст как готовый ответ (старые версии покажут её как текст)
+      res.end(STREAM_CUT);
     }
   }
 }

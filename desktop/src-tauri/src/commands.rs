@@ -20,6 +20,11 @@ const BLOCKED_EXT: &[&str] = &[
     "mht", "mhtml", "svg", "lnk", "url", "scr", "pif", "cpl", "reg", "jar", "inf", "scf", "chm",
     "dll", "sys", "application", "gadget", "msc", "iso", "img", "vhd", "vhdx", "xll", "library-ms",
     "settingcontent-ms", "search-ms",
+    // ещё сценарии и установщики, которые Windows запускает сама
+    "vb", "ws", "wsc", "sct", "shb", "shs", "ps1xml", "ps2", "ps2xml", "psc1", "psc2", "msh", "msh1",
+    "msh2", "mshxml", "msh1xml", "msh2xml", "jnlp", "website", "diagcab", "appinstaller", "xbap", "ins",
+    "isp", "job", "mst", "ocx", "cab", "ade", "adp", "mda", "mdb", "mde", "mdt", "mdw", "mdz", "theme",
+    "themepack", "desktopthemepackfile", "cmdline",
 ];
 
 /// Открыть ссылку во внешнем браузере. Только http и https.
@@ -49,6 +54,7 @@ pub async fn save_file(window: tauri::WebviewWindow, request: Request<'_>) -> Re
         .await;
     let Some(handle) = picked else { return Ok(false) };
     std::fs::write(handle.path(), bytes).map_err(|_| "write_failed".to_string())?;
+    mark_from_internet(handle.path());
     Ok(true)
 }
 
@@ -66,6 +72,7 @@ pub async fn open_file(request: Request<'_>) -> Result<(), String> {
     std::fs::create_dir_all(&dir).map_err(|_| "write_failed".to_string())?;
     let path = dir.join(&name);
     std::fs::write(&path, bytes).map_err(|_| "write_failed".to_string())?;
+    mark_from_internet(&path);
     open::that_detached(&path).map_err(|_| "open_failed".into())
 }
 
@@ -93,6 +100,21 @@ pub async fn clipboard_write(text: String) -> Result<(), String> {
 /// При запуске: убрать файлы, открытые в прошлый раз (занятые программой — пропускаем).
 pub fn cleanup_open_dir() {
     let _ = std::fs::remove_dir_all(open_dir());
+}
+
+/// Пометка «файл получен из интернета» (Mark of the Web, поток Zone.Identifier, зона 3).
+/// Файлы из облака могли прийти с другого устройства — с пометкой программы вроде офисной
+/// открывают их в защищённом просмотре, а система предупредит перед запуском.
+/// Диск без NTFS (флешка) поток не поддерживает — тогда просто без пометки.
+fn mark_from_internet(path: &std::path::Path) {
+    #[cfg(windows)]
+    {
+        let mut ads = path.as_os_str().to_owned();
+        ads.push(":Zone.Identifier");
+        let _ = std::fs::write(PathBuf::from(ads), b"[ZoneTransfer]\r\nZoneId=3\r\n");
+    }
+    #[cfg(not(windows))]
+    let _ = path;
 }
 
 fn open_dir() -> PathBuf {
@@ -162,6 +184,22 @@ pub fn safe_name(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Пометка «из интернета» ложится рядом с файлом (поток Zone.Identifier)
+    #[cfg(windows)]
+    #[test]
+    fn marks_from_internet() {
+        let dir = std::env::temp_dir().join(format!("nexa-motw-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("doc.txt");
+        std::fs::write(&file, b"hi").unwrap();
+        mark_from_internet(&file);
+        let mut ads = file.as_os_str().to_owned();
+        ads.push(":Zone.Identifier");
+        let mark = std::fs::read_to_string(PathBuf::from(ads)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(mark.contains("ZoneId=3"));
+    }
 
     #[test]
     fn names_are_safe() {

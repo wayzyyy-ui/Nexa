@@ -29,14 +29,30 @@ export function clientKey(req) {
   return createHash('sha256').update(ip).digest('hex').slice(0, 32);
 }
 
-// Запасной счётчик в памяти: ключ → { start, hits }
+// Запасной счётчик в памяти: ключ → { start, until, hits, limit }
 const memory = new Map();
+const MEMORY_MAX = 5000;
+/* Не даём памяти расти бесконечно. Раньше при переполнении счётчик стирался целиком —
+   и все лимиты разом обнулялись (достаточно было сделать 5000 запросов с разных адресов).
+   Теперь убираем истёкшие, потом самые старые из тех, кто лимит ещё не исчерпал;
+   заблокированные (дошли до лимита) — в последнюю очередь */
+function trimMemory(now) {
+  for (const [k, v] of memory) if (v.until <= now) memory.delete(k);
+  // Map помнит порядок добавления: первыми идут самые старые окна
+  for (const blockedToo of [false, true]) {
+    for (const [k, v] of memory) {
+      if (memory.size <= MEMORY_MAX * 0.9) return;
+      if (blockedToo || v.hits < v.limit) memory.delete(k);
+    }
+  }
+}
 function memoryHit(key, limit, windowSec) {
   const now = Date.now();
   const cur = memory.get(key);
-  if (!cur || now - cur.start > windowSec * 1000) {
-    memory.set(key, { start: now, hits: 1 });
-    if (memory.size > 5000) memory.clear(); // не даём памяти расти бесконечно
+  if (!cur || now >= cur.until) {
+    memory.delete(key); // новое окно — в конец порядка
+    memory.set(key, { start: now, until: now + windowSec * 1000, hits: 1, limit });
+    if (memory.size > MEMORY_MAX) trimMemory(now);
     return true;
   }
   cur.hits += 1;

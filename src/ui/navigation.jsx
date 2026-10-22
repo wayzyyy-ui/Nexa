@@ -45,8 +45,9 @@ export function MobileTabBar({ active, onChange }) {
     setPos(mobileNav.findIndex((i) => i.id === active));
   }, [active]);
 
+  // Нажатие на уже выбранный раздел тоже передаём: поверх него может быть открыт экран
+  // («Активность», «О системе», устройство…) — NexaApp закроет его; иначе navTo ничего не делает
   const handleClick = (item, index) => {
-    if (item.id === active) return;
     setPos(index); // подсветка поехала сразу
     // Экран меняем со следующего кадра: подсветка успевает поехать,
     // а смену экрана плавно показывает navTransition в NexaApp

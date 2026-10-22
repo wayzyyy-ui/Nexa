@@ -39,6 +39,8 @@ import java.net.URL;
  *   (просмотр PDF, галерея, плеер…), файл временно лежит в кэше приложения.
  * url — подписанная ссылка облака (только https), base64 — содержимое файла
  * гостя из браузерного хранилища.
+ * streamStart / streamWrite / streamFinish / streamCancel — большой файл (резервная копия)
+ *   по кускам, без предела 60 МБ.
  */
 @CapacitorPlugin(name = "NexaFiles")
 public class NexaFilesPlugin extends Plugin {
@@ -80,6 +82,114 @@ public class NexaFilesPlugin extends Plugin {
                 call.reject("save_failed");
             }
         }).start();
+    }
+
+    /* ── Большой файл по частям (резервная копия NEXA): весь файл одной строкой base64 не держим ──
+       streamStart({ name, mime }) → { token }: пустой временный файл в кэше приложения;
+       streamWrite({ token, base64 }) — дописать кусок (до 4 МБ);
+       streamFinish({ token }) → { where } — в «Загрузки», как save; временный файл удаляется;
+       streamCancel({ token }) — удалить временный файл (отмена). Старые недописанные — убираются при старте */
+    private final java.util.Map<String, File> streams = new java.util.HashMap<>();
+    private final java.util.Map<String, String[]> streamMeta = new java.util.HashMap<>();
+    private static final int CHUNK_MAX = 6 * 1024 * 1024; // base64 куска (≈ 4,5 МБ байтов)
+
+    private File streamDir() {
+        File dir = new File(getContext().getCacheDir(), "stream");
+        dir.mkdirs();
+        return dir;
+    }
+
+    @PluginMethod
+    public void streamStart(PluginCall call) {
+        try {
+            File dir = streamDir();
+            File[] old = dir.listFiles();
+            long day = System.currentTimeMillis() - 24L * 3600 * 1000;
+            if (old != null) for (File f : old) if (f.lastModified() < day) f.delete();
+            String token = java.util.UUID.randomUUID().toString();
+            File part = new File(dir, token + ".part");
+            if (!part.createNewFile()) throw new Exception("no_file");
+            String name = safeName(call.getString("name", "file"));
+            synchronized (streams) {
+                streams.put(token, part);
+                streamMeta.put(token, new String[] { name, mimeOf(call.getString("mime"), name) });
+            }
+            JSObject res = new JSObject();
+            res.put("token", token);
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("stream_failed");
+        }
+    }
+
+    @PluginMethod
+    public void streamWrite(PluginCall call) {
+        File part;
+        synchronized (streams) { part = streams.get(call.getString("token", "")); }
+        String b64 = call.getString("base64");
+        if (part == null || b64 == null || b64.length() > CHUNK_MAX) { call.reject("bad_stream"); return; }
+        try (OutputStream out = new FileOutputStream(part, true)) {
+            out.write(Base64.decode(b64, Base64.DEFAULT));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("stream_failed"); // например, на телефоне кончилось место
+        }
+    }
+
+    @PluginMethod
+    public void streamFinish(PluginCall call) {
+        String token = call.getString("token", "");
+        File part;
+        String[] meta;
+        synchronized (streams) { part = streams.remove(token); meta = streamMeta.remove(token); }
+        if (part == null || meta == null) { call.reject("bad_stream"); return; }
+        new Thread(() -> {
+            try (InputStream in = new java.io.FileInputStream(part)) {
+                String where;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ContentResolver cr = getContext().getContentResolver();
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME, meta[0]);
+                    v.put(MediaStore.Downloads.MIME_TYPE, meta[1]);
+                    v.put(MediaStore.Downloads.IS_PENDING, 1);
+                    Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) throw new Exception("no_uri");
+                    try (OutputStream out = cr.openOutputStream(uri)) { copyAll(in, out); }
+                    v.clear();
+                    v.put(MediaStore.Downloads.IS_PENDING, 0);
+                    cr.update(uri, v, null, null);
+                    where = "downloads";
+                } else {
+                    File dir = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                    if (dir == null) throw new Exception("no_dir");
+                    dir.mkdirs();
+                    try (OutputStream out = new FileOutputStream(new File(dir, meta[0]))) { copyAll(in, out); }
+                    where = "app";
+                }
+                JSObject res = new JSObject();
+                res.put("where", where);
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject("save_failed");
+            } finally {
+                part.delete();
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void streamCancel(PluginCall call) {
+        File part;
+        synchronized (streams) { part = streams.remove(call.getString("token", "")); streamMeta.remove(call.getString("token", "")); }
+        if (part != null) part.delete();
+        call.resolve();
+    }
+
+    // Как copy, но без предела 60 МБ (резервная копия бывает больше)
+    private static void copyAll(InputStream in, OutputStream out) throws Exception {
+        byte[] buf = new byte[256 * 1024];
+        int n;
+        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
     }
 
     @PluginMethod

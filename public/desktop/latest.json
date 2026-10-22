@@ -1,11 +1,11 @@
 {
-  "version": "0.14.1",
-  "notes": "- NEXA для компьютера: своё окно, значок у часов, запуск вместе с компьютером, обновляется сама\n- Компьютер теперь тоже устройство: имя, заряд, сеть и место на диске\n- Общий буфер обмена: скопировали на одном устройстве — «Скопировать» на другом (включается в Настройках)\n- Уведомление «Скопировано на …» с кнопкой «Скопировать», даже когда NEXA на телефоне закрыта\n- Ctrl+← и Ctrl+→ переключают разделы на компьютере\n- Ссылки в приложении для компьютера открываются в браузере, файлы — в своих программах\n- Ровнее подписи устройств и ИИ — Ассистента на Главной",
-  "pub_date": "2026-10-21T19:42:50.259Z",
+  "version": "0.14.3",
+  "notes": "- Заметки: теги, архив и чек-листы прямо в тексте\n- Заметку можно перенести в расписание, новая заметка — из быстрых действий\n- Заметки находятся в общем поиске NEXA\n- Виджет «Заметки» на экране «Домой»: закреплённая заметка и «Новая»\n- Правки заметок сразу видны на других устройствах",
+  "pub_date": "2026-10-22T01:03:48.457Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WS9ZaURnY3hVSVFCdDkySFFnQzZRTFRnaUxETHdQbWZQcnRRekMzb0R6dlRVZGdBVWZacXpkU2U0ajMrYlJWQStWRDdUYzJNdXJiSjEvSDNJNW5NbkFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjExNzcwCWZpbGU6TkVYQV8wLjE0LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuMQpDT0NvU2cxUW9KMzJYSGlrNkxXRVRDbWRmWGliQnlJS0FGc1lKV0dUdU1IZ1krcHdkK0ZEZG5JOUdhcTBha2tOMnhzd21DeTJJbHRuU0doRWR4Y3JBZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.1"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTBldVYydkhqVVEvM3NWd0ViUDZzQklxVmROazNLT2RwUVBkd1N1RjBvVFUxRHJpU2pncVpQWkRBSlpOVXYzMzhwUlA5S3JlcENJbXMvVFI1dSs3cFFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjMxMDI4CWZpbGU6TkVYQV8wLjE0LjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuMwpWMW8zMWxUbjlyQXB6K1ExUnFYNy9KcW9NYmY2blU0RnRocW1vNVVXdTdJbUdScHFDTXFzeFIvb2hVcVhqcHB4blhiSWtQVVBWQUppcUZSbjhtaUhEZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.3"
     }
   }
 }

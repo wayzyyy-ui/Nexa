@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NEXA не попадает в резервную копию Android и не переносится на новый телефон:
+     в данных WebView лежит вход в аккаунт, а в NEXA каждое устройство входит само
+     (сеанс = устройство, см. «Центр безопасности»). Данные аккаунта и так в облаке.
+     Android 12+ читает этот файл; старые версии — android:allowBackup="false" -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

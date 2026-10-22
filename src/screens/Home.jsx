@@ -343,18 +343,21 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
       <div className="ng-home-mobile">
         {/* Шапка (макет): NEXA по центру, уведомления и быстрые действия справа.
             Профиль — во вкладке нижней панели, слева пусто */}
-        <div className="nx-home-head">
-          <span aria-hidden="true" style={{ height: 40 }} />
-          <span style={{ justifySelf: "center" }}><Logo bare h={22} /></span>
-          <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-            {bell}
-            <QuickBtn />
-          </span>
+        {/* Шапка и поиск закреплены вместе: при прокрутке поиск не уезжает под логотип */}
+        <div className="nx-home-top">
+          <div className="nx-home-head">
+            <span aria-hidden="true" style={{ height: 40 }} />
+            <span style={{ justifySelf: "center" }}><Logo bare h={22} /></span>
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+              {bell}
+              <QuickBtn />
+            </span>
+          </div>
+          {/* Поиск — широкая таблетка */}
+          <button type="button" className="nx-row-btn nx-home-search" onClick={() => onSearch?.()}>
+            {Icon.search({ c: C.text, s: 15 })} Поиск
+          </button>
         </div>
-        {/* Поиск — широкая таблетка */}
-        <button type="button" className="nx-row-btn nx-home-search" onClick={() => onSearch?.()}>
-          {Icon.search({ c: C.text, s: 15 })} Поиск
-        </button>
 
         {update && <div style={{ marginTop: 18 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
         <InstallBanner onHowTo={() => {

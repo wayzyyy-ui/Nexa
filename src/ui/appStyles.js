@@ -357,14 +357,21 @@ export const APP_CSS = `
         }
         /* Телефон (макет 402 px): шапка Главной, поиск, таблетки */
         .nx-home-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px -6px 16px; }
-        /* Шапка мобильной Главной закреплена: при прокрутке остаётся сверху, под ней — фон во всю ширину */
+        /* Шапка мобильной Главной вместе с поиском закреплена: при прокрутке остаётся сверху.
+           Подложка — тот же фон, что у .nx-home-glow, закреплённый к экрану (background-attachment: fixed):
+           совпадает с фоном точка в точку, без тёмной полосы; внизу короткий переход в прозрачность */
         @media ${PHONE_MQ} {
-          .nx-home-head { position: sticky; top: var(--sat); z-index: 40; }
-          .nx-home-head::before { content: ""; position: absolute; z-index: -1; pointer-events: none;
+          .nx-home-top { position: sticky; top: var(--sat); z-index: 40; }
+          .nx-home-top::before { content: ""; position: absolute; z-index: -1; pointer-events: none;
             left: -50vw; right: -50vw; top: calc(-1 * var(--sat) - 8px); bottom: -14px;
-            background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 70%, transparent);
+            background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
+                        radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
+                        linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
+            background-attachment: fixed;
+            -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+            mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
             opacity: 0; transition: opacity 180ms ease; }
-          html.nx-scrolled .nx-home-head::before { opacity: 1; }
+          html.nx-scrolled .nx-home-top::before { opacity: 1; }
         }
         .nx-home-head > :first-child { justify-self: start; }
         .nx-home-search { display: flex !important; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 31px; box-sizing: border-box;
@@ -1357,9 +1364,12 @@ export const APP_CSS = `
           .nx-set-group { margin-bottom: 22px !important; }
 
           /* Единый padding для всех экранов */
+          /* overflow-x: clip, а не hidden: hidden делает экран отдельной прокручиваемой областью,
+             и закреплённая шапка Главной (sticky) «прилипала» к нему со сдвигом на --sat — наезжала на поиск */
           .ng-screen {
             max-width: 100% !important;
             overflow-x: hidden !important;
+            overflow-x: clip !important;
             box-sizing: border-box !important;
             padding: 16px 16px 24px !important;
           }
@@ -1589,9 +1599,11 @@ export const APP_CSS = `
           /* Футер на мобильном скрываем */
           .ng-footer { display: none !important; }
 
-          /* Защита от горизонтальной прокрутки */
+          /* Защита от горизонтальной прокрутки. clip (где есть) вместо hidden: hidden на html и body
+             делает body отдельной прокручиваемой областью — и закреплённые (sticky) блоки не держатся */
           html, body {
             overflow-x: hidden !important;
+            overflow-x: clip !important;
             max-width: 100vw !important;
           }
 

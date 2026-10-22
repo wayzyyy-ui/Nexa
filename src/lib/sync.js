@@ -57,12 +57,23 @@ function writeMeta(uid, table, meta) {
 export const clearMeta = (uid) => { try { localStorage.removeItem(metaKey(uid)); } catch {} };
 
 /* ─── Запросы к Supabase ─── */
+/* Облако отдаёт за один запрос не больше FETCH_PAGE строк (настройка Supabase «Max rows»,
+   по умолчанию 1000). Поэтому читаем порциями, пока порция полная. Список должен быть
+   ЦЕЛЫМ: сводка считает «пропавшие» строки удалёнными на другом устройстве —
+   оборвалось на середине → ошибка, сводки нет (неполный список хуже никакого) */
+const FETCH_PAGE = 1000;
 async function fetchRows(table) {
-  // Свои повторы клиента выключены: паузы и число попыток решает useCloudList (RETRY_DELAYS_MS),
-  // иначе попытки перемножаются (4 наших × 4 клиента)
-  const { data, error } = await supabase.from(table).select("*").order("created_at").retry(false);
-  if (error) throw error;
-  return data || [];
+  const all = [];
+  for (let from = 0; ; from += FETCH_PAGE) {
+    // Свои повторы клиента выключены: паузы и число попыток решает useCloudList (RETRY_DELAYS_MS),
+    // иначе попытки перемножаются (4 наших × 4 клиента).
+    // Порядок по created_at и id — постоянный: порции не пересекаются и не теряют строк
+    const { data, error } = await supabase.from(table).select("*")
+      .order("created_at").order("id").range(from, from + FETCH_PAGE - 1).retry(false);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < FETCH_PAGE) return all;
+  }
 }
 /* Необязательные колонки: появляются после ручной миграции (например,
    chats.pinned — supabase/chats-pinned.sql). Пока миграцию не запустили,
@@ -103,19 +114,35 @@ function noteLocalPins(rows, sentWithColumn) {
 // Отправить строки и удаления. Возвращает Map id → updated_at из облака (мс):
 // облако само ставит это время, по нему потом видно, меняли ли строку на другом устройстве.
 // Upsert по id — повторная отправка той же строки не создаёт дубля
+/* Облако отклонило САМУ строку (не связь и не доступ): слишком большая (диалог > 1 МБ),
+   слишком длинное поле, превышен лимит количества — повтор той же строки не поможет */
+const isRejected = (e) => ["23514", "22001", "23502", "22P02", "P0001"].includes(String(e?.code));
+// Отправить пачку; отклонённую делим пополам, пока не найдём виноватые строки:
+// остальные уходят, виноватые остаются только на этом устройстве (rejected — их id)
+async function upsertRows(table, rows, confirmed, rejected) {
+  const send = () => supabase.from(table).upsert(withoutMissing(table, rows)).select("id, updated_at");
+  let { data, error } = await send();
+  // Облако называет по одной недостающей колонке за раз — убираем их по очереди
+  for (let col; error && (col = missingOptional(table, error)) && !missingColumns.has(`${table}.${col}`);) {
+    missingColumns.add(`${table}.${col}`);
+    ({ data, error } = await send());
+  }
+  if (error && isRejected(error)) {
+    if (rows.length === 1) { rejected.push(rows[0].id); return; }
+    const half = Math.ceil(rows.length / 2);
+    await upsertRows(table, rows.slice(0, half), confirmed, rejected);
+    await upsertRows(table, rows.slice(half), confirmed, rejected);
+    return;
+  }
+  if (error) throw error;
+  (data || []).forEach((r) => confirmed.set(r.id, toMs(r.updated_at)));
+}
 async function pushRows(table, upserts, deletes) {
   const confirmed = new Map();
+  confirmed.rejected = []; // id строк, которые облако не приняло (см. isRejected)
   if (upserts.length) {
-    const send = () => supabase.from(table).upsert(withoutMissing(table, upserts)).select("id, updated_at");
-    let { data, error } = await send();
-    // Облако называет по одной недостающей колонке за раз — убираем их по очереди
-    for (let col; error && (col = missingOptional(table, error)) && !missingColumns.has(`${table}.${col}`);) {
-      missingColumns.add(`${table}.${col}`);
-      ({ data, error } = await send());
-    }
-    if (error) throw error;
-    (data || []).forEach((r) => confirmed.set(r.id, toMs(r.updated_at)));
-    if (table === "chats") noteLocalPins(upserts, !missingColumns.has("chats.pinned"));
+    await upsertRows(table, upserts, confirmed, confirmed.rejected);
+    if (table === "chats") noteLocalPins(upserts.filter((r) => !confirmed.rejected.includes(r.id)), !missingColumns.has("chats.pinned"));
   }
   if (deletes.length) {
     const { error } = await supabase.from(table).delete().in("id", deletes);
@@ -254,6 +281,7 @@ export function mergeLists(local, cloud, meta, resolve) {
 
 // Понятный текст, почему не вышло поговорить с облаком
 export function syncErrorText(e) {
+  if (e?.code === "nexa_rejected") return e.message;
   const msg = String(e?.message || "").toLowerCase();
   const code = String(e?.code || "");
   if ((typeof navigator !== "undefined" && navigator.onLine === false) || msg.includes("failed to fetch") || msg.includes("network") || msg.includes("load failed")) {
@@ -270,10 +298,12 @@ export function syncErrorText(e) {
 /* Что за ошибка — от этого зависит, повторять ли:
    offline — браузер знает, что сети нет: ждём события «online»;
    network / server — повторяем сами несколько раз с паузами;
-   auth / setup / denied — повтор не поможет: нужен вход или настройка облака */
+   auth / setup / denied — повтор не поможет: нужен вход или настройка облака;
+   rejected — облако не приняло отдельные записи (остальное ушло) */
 export function syncErrorKind(e) {
   const msg = String(e?.message || "").toLowerCase();
   const code = String(e?.code || "");
+  if (code === "nexa_rejected") return "rejected"; // облако не принимает саму запись — повтор не поможет
   if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
   if (msg.includes("failed to fetch") || msg.includes("network") || msg.includes("load failed")) return "network";
   if (code === "42P01" || code === "PGRST205" || msg.includes("could not find the table") || msg.includes("does not exist")) return "setup";
@@ -283,6 +313,15 @@ export function syncErrorKind(e) {
 }
 // Паузы перед повторами после сбоя: потом — только вручную или когда вернётся связь
 export const RETRY_DELAYS_MS = [3000, 10000, 30000];
+// «Облако не приняло эти записи» — для строки состояния: какая запись и что с ней
+function rejectedError(ids, list, rows) {
+  const first = list.find((i) => i.id === ids[0]);
+  const name = first && rows.label ? rows.label(first) : "";
+  const what = name ? `«${name}»${ids.length > 1 ? ` и ещё ${ids.length - 1}` : ""}` : ids.length > 1 ? `${ids.length} записи` : "Одна запись";
+  const e = new Error(`${what} не помещается в облако: слишком большая или превышен лимит. Остальное сохранено, а это — только на этом устройстве`);
+  e.code = "nexa_rejected";
+  return e;
+}
 
 /* Хук синхронизации одного списка (устройства, чаты, файлы, папки, расписание).
    uid       — id вошедшего (null — гость: хук ничего не делает);
@@ -306,6 +345,8 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
   const ready = useRef(false);        // сводка с облаком прошла — можно отправлять изменения
   const timer = useRef(null);
   const pendingSend = useRef(null); // отправка, которая ждёт паузы SAVE_DELAY_MS (её можно запустить сразу)
+  const sending = useRef(false);    // отправка уже в пути — вторая параллельно не идёт
+  const sendAgain = useRef(null);   // пока шла отправка, были новые правки — отправить после неё
   const retryTimer = useRef(null);
   const attempts = useRef(0);         // сколько повторов подряд уже было
   const lastStatus = useRef({});
@@ -379,12 +420,16 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
         const sorted = rows.sort(result);
         // Версии: взятое из облака — как есть, отправленное — с временем, которое поставило облако
         const sent = new Set(upserts.map((i) => i.id));
+        // Не принятые облаком — не «синхронизированы»: иначе следующая сводка сочла бы их
+        // удалёнными на другом устройстве. Они остаются только здесь и уйдут при следующей отправке
+        const rejected = new Set(times.rejected);
         const ver = {};
         for (const i of sorted) {
+          if (rejected.has(i.id)) continue;
           if (sent.has(i.id)) ver[i.id] = [i.updatedAt, times.get(i.id) ?? null];
           else ver[i.id] = [i.updatedAt, i.updatedAt];
         }
-        writeMeta(uid, table, { synced: sorted.map((i) => i.id), deleted: [], ver });
+        writeMeta(uid, table, { synced: sorted.map((i) => i.id).filter((id) => !rejected.has(id)), deleted: [], ver });
         ready.current = true;
         attempts.current = 0;
         /* Пока шла сводка (запросы к облаку — это время), человек мог добавить,
@@ -405,10 +450,11 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
         };
         setValue((prev) => keepEdits(prev));
         latest.current = keepEdits(latest.current);
-        report({ ok: true, at: Date.now() });
+        if (rejected.size) failed(rejectedError([...rejected], sorted, rows));
+        else report({ ok: true, at: Date.now() });
         if (conflicts.length) conflicted.current?.(conflicts);
         // Что-то из этого устройства ушло (накопилось без сети) — пусть остальные перечитают
-        if (upserts.length || deletes.length) pushed.current?.();
+        if (upserts.length > rejected.size || deletes.length) pushed.current?.();
       } catch (e) {
         if (!cancelled) failed(e);
       }
@@ -434,6 +480,10 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
     if (!ready.current) return;
     clearTimeout(timer.current);
     const send = async () => {
+      /* Отправки идут строго по очереди: две одновременные могли прийти в облако
+         в обратном порядке (там на миг осталась бы старая версия) или записать
+         подтверждение не той версии. Новая правка во время отправки — уйдёт сразу после */
+      if (sending.current) { sendAgain.current = send; return; }
       pendingSend.current = null;
       const list = toList(latest.current);
       const m0 = readMeta(uid, table);
@@ -441,22 +491,31 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
       const upserts = list.filter((i) => { const v = m0.ver[i.id]; return v ? v[0] !== i.updatedAt : !m0.synced.includes(i.id); });
       const deletes = m0.deleted;
       if (!upserts.length && !deletes.length) return;
+      sending.current = true;
       try {
         if (navigator.onLine === false) throw new Error("network: offline");
         const times = await pushRows(table, upserts.map(rows.toRow), deletes);
+        const rejected = new Set(times.rejected);
+        const ok = upserts.filter((i) => !rejected.has(i.id));
         const m = readMeta(uid, table);
-        const ver = confirm(m, upserts, times);
+        const ver = confirm(m, ok, times);
         deletes.forEach((id) => delete ver[id]);
         writeMeta(uid, table, {
-          synced: [...new Set([...m.synced.filter((id) => !deletes.includes(id)), ...upserts.map((i) => i.id)])],
+          synced: [...new Set([...m.synced.filter((id) => !deletes.includes(id)), ...ok.map((i) => i.id)])],
           deleted: m.deleted.filter((id) => !deletes.includes(id)),
           ver,
         });
         attempts.current = 0;
-        report({ ok: true, at: Date.now() });
-        pushed.current?.();
+        if (rejected.size) failed(rejectedError([...rejected], upserts, rows));
+        else report({ ok: true, at: Date.now() });
+        if (ok.length || deletes.length) pushed.current?.();
       } catch (e) {
         failed(e);
+      } finally {
+        sending.current = false;
+        const next = sendAgain.current;
+        sendAgain.current = null;
+        next?.();
       }
     };
     pendingSend.current = send;
@@ -479,7 +538,7 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
 
   // Ушли из аккаунта — неотправленное не теряется: оно в локальном списке,
   // при следующем входе сводка отправит его
-  useEffect(() => () => { clearTimeout(timer.current); pendingSend.current = null; clearTimeout(retryTimer.current); }, [uid]);
+  useEffect(() => () => { clearTimeout(timer.current); pendingSend.current = null; sendAgain.current = null; clearTimeout(retryTimer.current); }, [uid]);
 
   return { retry: () => { attempts.current = 0; setRetry((n) => n + 1); } };
 }

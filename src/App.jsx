@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
+import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, nativeSaveLarge, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen } from "./native.js";
 import { App as CapApp } from "@capacitor/app";
 // Стили плавной прокрутки Lenis (сам хук — useSmoothScroll в lib/hooks.js)
 import "lenis/dist/lenis.css";
@@ -17,10 +17,10 @@ import { useReturnToApp } from "./lib/lifecycle.js";
 import { useOta, otaStart, otaCheck, otaApplyNow } from "./lib/ota.js";
 import { bootRoute, navigate, onRoute, titleOf, canGoBack, goBack, layerCount, pressEscape } from "./lib/router.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
-import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
+import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cachePut, fileBlob, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
 // Свои модули: lib — логика без интерфейса, ui — общие элементы, screens — экраны
 import { useSharedState, TAB_ID } from "./lib/shared.js";
-import { C, fontBody, PHONE_MQ } from "./ui/theme.js";
+import { C, fontBody, PHONE_MQ, switchTheme } from "./ui/theme.js";
 import { Icon } from "./ui/icons.jsx";
 import { readManualCity, TODAY } from "./lib/weather.js";
 import { plural, toMb, fileBytes, formatSize, mmss, hhmm } from "./lib/format.js";
@@ -37,7 +37,9 @@ import { IconBtn, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } f
 import { BackdropFolds, BackdropGrid } from "./ui/backdrop.jsx";
 import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./ui/navigation.jsx";
 import { arrowNavTarget, isEditable } from "./lib/keynav.js";
-import { onDesktopOpen, desktopDeviceInfo } from "./lib/desktop.js";
+import { onDesktopOpen, desktopDeviceInfo, desktopSaveFile } from "./lib/desktop.js";
+import { buildBackup, readBackup, planRestore, backupSummary, ownerTag, backupFileName, SETTINGS_KEYS } from "./lib/backup.js";
+import { BackupSettings } from "./ui/backup.jsx";
 import { parseNexaLink } from "./lib/deeplink.js";
 import { useClipSync } from "./lib/clipboardSync.js";
 import { desktopNotifyClip } from "./lib/desktop.js";
@@ -2025,6 +2027,15 @@ export default function NexaApp() {
      Файл появляется в списке только после того, как содержимое сохранено */
   const uploadCtl = useRef({}); // id загрузки → { abort }
   const guestSeq = useRef(0);
+  const uploadUid = useRef(uid); // кто вошёл сейчас — поздний ответ загрузки сверяет с ним
+  uploadUid.current = uid;
+  /* Вышли или сменили аккаунт — идущие загрузки прежнего отменяем и убираем их строки.
+     Иначе загрузка, закончившись позже, записала бы файл прежнего аккаунта в список нового */
+  useEffect(() => () => {
+    Object.values(uploadCtl.current).forEach((c) => { try { c?.abort?.(); } catch {} });
+    uploadCtl.current = {};
+    setUploads([]);
+  }, [uid]);
   addFilesRef.current = (...a) => addFiles(...a);
   const addFiles = (fileList, folder) => {
     const picked = Array.from(fileList || []);
@@ -2053,6 +2064,7 @@ export default function NexaApp() {
     const done = (extra) => {
       setUploads((list) => list.filter((u) => u.id !== upId));
       delete uploadCtl.current[upId];
+      if (uploadUid.current !== uid) return; // пока грузилось, вошёл другой (или вышли) — не его файл
       // Уже есть (догрузила очередь в другой вкладке) — не дублируем
       setFileStore((s) => (s.added.some((f) => f.id === id) ? s : { ...s, added: [...s.added, { ...meta, ...extra, updatedAt: meta.addedAt }] }));
       showToast({ title: "Файл добавлен", text: `${name} → ${folderName(folders, folder)}` });
@@ -2439,6 +2451,154 @@ export default function NexaApp() {
     return { list, note };
   })();
 
+  /* ── Резервная копия (src/lib/backup.js — что входит и проверки, окна — src/ui/backup.jsx) ──
+     Копия — данные того, кто сейчас в NEXA (аккаунт или гость). Восстановление: сначала файлы
+     (каждый — проверка CRC, загрузка в свою корзину или в браузер гостя), потом списки — только
+     если не отменили; список пишется в браузер сразу и с проверкой, в облако уходит обычной
+     синхронизацией. Неудача части — остальное не трогаем, в отчёте честно что и почему */
+  const backupScopeKey = `nexa-backup-last${scope}`;
+  // Когда делали последнюю копию на этом устройстве (у гостя и у каждого аккаунта — своя отметка)
+  const [backupLast, setBackupLast] = useState(null);
+  useEffect(() => { try { setBackupLast(JSON.parse(localStorage.getItem(backupScopeKey))); } catch { setBackupLast(null); } }, [backupScopeKey]);
+  const backupApi = {
+    guest: !uid,
+    online,
+    last: backupLast,
+    counts: {
+      notes: userNotes.length, chats: chats.length, schedule: schedule.length, memory: memory.length,
+      files: files.length, folders: fileStore.folders.length, filesBytes: files.reduce((s, f) => s + (f.size || 0), 0),
+      settings: SETTINGS_KEYS.filter((k) => { try { return localStorage.getItem(k) !== null; } catch { return false; } }).length,
+    },
+    create: async ({ parts, withContent, signal, onProgress }) => {
+      const settings = {};
+      for (const k of SETTINGS_KEYS) { try { const v = localStorage.getItem(k); if (v !== null) settings[k] = v; } catch {} }
+      const res = await buildBackup({
+        uid, appVersion: VERSION, platform: isDesktop ? "pc" : isNative ? "android" : "web",
+        data: { notes: userNotes, chats, schedule, memory, folders: fileStore.folders, files, settings },
+        parts, withContent, signal, onProgress,
+        // Нет копии на устройстве и нет сети — честно «не скачался», а не «нет содержимого»
+        getBlob: async (f, sig) => {
+          const blob = await fileBlob(f, uid || "guest", sig);
+          if (!blob && uid && f.path && navigator.onLine === false) throw new Error("offline");
+          return blob;
+        },
+      });
+      return { ...res, name: backupFileName() };
+    },
+    // Сохранить готовый файл копии: ПК — окно «Сохранить как», Android — в «Загрузки» по кускам, сайт — загрузка браузера
+    save: async (blob, name, { signal, onProgress, manifest }) => {
+      let r;
+      if (isDesktop) r = await desktopSaveFile(blob, name);
+      else if (isNative) r = await nativeSaveLarge(blob, { name, mime: "application/octet-stream", signal, onProgress }); // с типом ZIP Android дописал бы к имени «.zip»
+      else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        r = "started";
+      }
+      if (r !== "cancelled") {
+        const last = { at: Date.now(), complete: !!manifest?.complete, size: blob.size };
+        try { localStorage.setItem(backupScopeKey, JSON.stringify(last)); } catch {}
+        setBackupLast(last);
+      }
+      return r;
+    },
+    read: async (file, { signal } = {}) => {
+      const b = await readBackup(file, { signal });
+      return { ...b, summary: backupSummary(b), sameOwner: b.manifest.source?.owner === (await ownerTag(uid)) };
+    },
+    plan: (b, { parts, mode }) => planRestore({
+      current: { notes: userNotes, chats, schedule, memory, folders: fileStore.folders, files },
+      backup: b.data, parts, mode, sameOwner: b.sameOwner,
+      newId: (kind) => (kind === "file" && !uid ? Date.now() * 100 + (guestSeq.current++ % 100) : kind === "folders" && !uid ? `u-${Date.now()}-${guestSeq.current++}` : newId()),
+    }),
+    apply: async (b, plan, { parts, mode, signal, onProgress }) => {
+      const out = { written: [], failed: [], files: { done: 0, queued: 0, failed: [] }, cancelled: false };
+      const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } };
+      // 1. Папки — сразу (их только добавляем, ничего не удаляется): файлам нужны их id
+      if (plan.next.folders) {
+        const cur = loadFileStore(FILES_KEY + scope);
+        const st = { ...cur, folders: plan.next.folders };
+        if (write(FILES_KEY + scope, st)) { setFileStore((s) => ({ ...s, folders: plan.next.folders })); out.written.push("folders"); }
+        else out.failed.push({ part: "folders", text: "в браузере не хватило места" });
+      }
+      // 2. Файлы по одному: настоящий прогресс по байтам, отмена между файлами (уже загруженные остаются)
+      const add = plan.files.filter((x) => x.action === "add");
+      const total = Math.max(1, add.reduce((s, x) => s + (x.meta.size || 0), 0));
+      let done = 0;
+      for (let i = 0; i < add.length; i++) {
+        if (signal?.aborted) { out.cancelled = true; break; }
+        const m = add[i].meta;
+        const label = `Файл ${i + 1} из ${add.length}: ${m.name}`;
+        onProgress?.({ done, total, text: label });
+        try {
+          const blob = await b.contentOf(m.content, { signal });
+          const file = new File([blob], safeFileName(m.name), { type: m.mime || "" });
+          const problem = fileProblem(file);
+          if (problem) throw new Error(problem);
+          const meta = { id: m.id, name: safeFileName(m.name), cat: m.cat, folder: m.folder, device: m.device || uploadDevice(),
+            mb: toMb(file.size), size: file.size, mime: m.mime || "", addedAt: m.addedAt || Date.now() };
+          if (!uid) {
+            // Гость: содержимое — только в этот браузер (IndexedDB хранит до 25 МБ на файл)
+            const ok = await cachePut(cacheKey("guest", m.id), file);
+            if (ok === null) throw new Error("больше 25 МБ — без входа в аккаунт такой файл не сохранить");
+            setFileStore((s) => (s.added.some((f) => f.id === m.id) ? s : { ...s, added: [...s.added, { ...meta, updatedAt: Date.now() }] }));
+            out.files.done++;
+          } else if (navigator.onLine === false) {
+            // Нет сети — в обычную очередь загрузок: уйдёт, когда связь вернётся
+            const ok = await enqueueUpload(uid, { ...meta, attempts: 0, status: "queued" }, file);
+            if (!ok) throw new Error("не сохранился для отправки — в браузере нет места");
+            out.files.queued++;
+          } else {
+            const { path } = await uploadToCloud({ uid, id: m.id, file, onProgress: (p) => onProgress?.({ done: done + p * file.size, total, text: label }) }).promise
+              .catch((e) => { if (e?.kind === "exists") return { path: `${uid}/${m.id}` }; throw e; });
+            rememberLocal(uid, m.id, file);
+            setFileStore((s) => (s.added.some((f) => f.id === m.id) ? s : { ...s, added: [...s.added, { ...meta, path, updatedAt: Date.now() }] }));
+            out.files.done++;
+          }
+        } catch (e) {
+          if (signal?.aborted || e?.code === "abort" || e?.kind === "abort") { out.cancelled = true; break; }
+          out.files.failed.push({ name: m.name, text: e?.text || e?.message || "не восстановился" });
+        }
+        done += m.size || 0;
+      }
+      if (out.files.queued) loadQueueRows();
+      // 3. Списки — только если не отменили (при отмене прежние данные остаются как были)
+      if (!out.cancelled) {
+        onProgress?.({ done: total, total, text: "Записываем заметки, диалоги и расписание" });
+        /* План считали, когда выбрали файл копии, — с тех пор (загрузка файлов, раздумья над
+           окном) списки могли измениться: сводка с облаком, правка на другом устройстве.
+           Пересчитываем по тому, что лежит сейчас, — иначе свежая правка молча пропала бы */
+        const now = (key, fallback) => { try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : fallback; } catch { return fallback; } };
+        if (mode) plan = planRestore({
+          current: { notes: now(userNotesKey(uid), userNotes), chats: now(CHATS_KEY + scope, chats), schedule: now(SCHEDULE_KEY + scope, schedule), memory: now(memoryKey(uid), memory), folders: plan.next.folders || fileStore.folders, files },
+          backup: b.data, parts, mode, sameOwner: b.sameOwner,
+          newId: () => newId(),
+        });
+        const lists = [
+          ["notes", userNotesKey(uid), (v) => { notesRef.current = v; setNotesStore(v); }],
+          ["chats", CHATS_KEY + scope, (v) => setChatsStore(v)],
+          ["schedule", SCHEDULE_KEY + scope, (v) => setScheduleStore(v)],
+          ["memory", memoryKey(uid), (v) => setMemoryStore(v)],
+        ];
+        for (const [part, key, set] of lists) {
+          if (!plan.next[part]) continue;
+          const value = part === "schedule" ? sortSchedule(plan.next[part]) : plan.next[part];
+          if (write(key, value)) { set(value); out.written.push(part); }
+          else out.failed.push({ part, text: "в браузере не хватило места — эта часть не восстановлена" });
+        }
+        if (parts.has("settings") && b.data.settings) {
+          let n = 0;
+          for (const [k, v] of Object.entries(b.data.settings)) { try { localStorage.setItem(k, v); n++; } catch {} }
+          if (b.data.settings["nexa-theme"] === "dark" || b.data.settings["nexa-theme"] === "light") switchTheme(b.data.settings["nexa-theme"]);
+          if (n) out.written.push("settings");
+        }
+      }
+      return out;
+    },
+  };
+
   /* Содержимое раздела t. Раньше раздел рисовался прямо по tab (key={tab}): при каждой смене
      старый экран удалялся, новый собирался с нуля и проигрывал своё появление — свайп выглядел как
      перезагрузка. Теперь каждый раздел — свой блок с ключом (tabPanels): во время свайпа рядом
@@ -2506,6 +2666,7 @@ export default function NexaApp() {
         {t === "settings" && <ScreenSettings onAbout={openAbout}
           noteBlock={<NoteSettings prefs={notePrefs} setPrefs={setNotePrefs} perm={notePerm} onAsk={askNotePerm} account={!!auth.user} />}
           widgetBlock={<NotesWidgetSettings hide={widgetHide} setHide={changeWidgetHide} onNotes={() => openNotes()} />}
+          backupBlock={<BackupSettings api={backupApi} />}
           updateBlock={isDesktop ? (
             <>
               <SectionTitle>Обновление</SectionTitle>

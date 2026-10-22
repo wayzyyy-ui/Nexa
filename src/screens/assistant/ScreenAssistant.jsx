@@ -27,6 +27,13 @@ import { VERSION } from "../../version.js";
 import { FileThumb } from "../../ui/files.jsx";
 import { LiveAnswer, AttachChip, MessageBubble, AssistantSkeleton } from "./messages.jsx";
 
+/* Черновик вопроса вне экрана: при уходе в другой раздел экран ассистента пересоздаётся
+   (в памяти держатся только текущий и соседний разделы), и набранный текст пропадал.
+   Только в памяти страницы — не в хранилище: перезагрузка и выход его стирают */
+const draftKeep = { uid: undefined, chatId: null, input: "", att: null };
+// Пометка сервера «ответ оборвался посреди» (api/chat.js, STREAM_CUT): два невидимых разделителя
+const STREAM_CUT_MARK = String.fromCharCode(0x2063, 0x2063);
+
 export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
   "Что сегодня в повестке дня?",
@@ -44,16 +51,26 @@ const [greeting, setGreeting] = useState('');
 useEffect(() => {
   setGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
 }, []);
-  const [currentChatId, setCurrentChatId] = useState(initialChatId || null);
-  const [input, setInput] = useState('');
+  /* Недописанный вопрос (и приложенный файл) с прошлого раза — того же человека (см. draftKeep).
+     Есть черновик — возвращаемся в тот диалог, где его писали (если диалог ещё есть) */
+  const keptDraft = draftKeep.uid === uid && !!(draftKeep.input || draftKeep.att)
+    && (!initialChatId || initialChatId === draftKeep.chatId)
+    && (!draftKeep.chatId || chats.some((c) => c.id === draftKeep.chatId));
+  const [currentChatId, setCurrentChatId] = useState(initialChatId || (keptDraft ? draftKeep.chatId : null));
+  const [input, setInput] = useState(() => (keptDraft ? draftKeep.input : ''));
 
   /* ── Вложение к вопросу (src/lib/attach.js) ──
      att = { key, name, size, status: "preparing" | "ready" | "error", error, payload, sent, file }
      Подготовка только читает файл здесь, на устройстве. Содержимое уходит на сервер
      только вместе с вопросом по «Отправить». После отправки файл остаётся в диалоге
      (так и написано у поля) — следующий вопрос тоже уйдёт с ним, пока его не убрали */
-  const [att, setAtt] = useState(null);
+  const [att, setAtt] = useState(() => (keptDraft ? draftKeep.att : null));
   const [pickOpen, setPickOpen] = useState(false);
+  // Запоминаем черновик вне экрана: экран пересоздаётся при уходе в другой раздел.
+  // Вложение — только готовое или с ошибкой: подготовку при уходе с экрана прерываем
+  useEffect(() => {
+    Object.assign(draftKeep, { uid, chatId: currentChatId, input, att: att?.status === "preparing" ? null : att });
+  }, [uid, currentChatId, input, att]);
   const attCtl = useRef(null);
   const attachInputRef = useRef(null);
   const clearAtt = () => { attCtl.current?.abort(); attCtl.current = null; setAtt(null); };
@@ -416,7 +433,7 @@ useEffect(() => {
       // первый кусок — сразу, следующие собираются и выводятся вместе
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      const show = () => { timer = 0; liveSet({ text: fullText }); };
+      const show = () => { timer = 0; liveSet({ text: fullText.split(STREAM_CUT_MARK)[0] }); };
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -427,13 +444,16 @@ useEffect(() => {
       }
       fullText += decoder.decode();
 
-      if (!fullText.trim()) finish('Пустой ответ. Нажмите "повторить".', true);
+      // Сервер пометил, что модель оборвалась посреди ответа: сохраняем как оборванный, с «повторить»
+      const cut = fullText.indexOf(STREAM_CUT_MARK);
+      if (cut >= 0) finish(fullText.slice(0, cut).trimEnd() + '\n\n(ответ оборвался, нажмите "повторить")', true);
+      else if (!fullText.trim()) finish('Пустой ответ. Нажмите "повторить".', true);
       else finish(fullText);
     } catch (error) {
       const stopped = error?.name === 'AbortError';
       if (fullText) {
         // Ответ оборвался посередине (или его остановили): оставляем то, что успело прийти
-        finish(fullText + (stopped ? '\n\n(остановлено)' : '\n\n(ответ оборвался, нажмите "повторить")'), true);
+        finish(fullText.split(STREAM_CUT_MARK)[0] + (stopped ? '\n\n(остановлено)' : '\n\n(ответ оборвался, нажмите "повторить")'), true);
       } else if (stopped) {
         finish('Отправка отменена — нажмите «повторить», чтобы спросить снова.', true);
       } else if (!error.userMessage && navigator.onLine === false) {
