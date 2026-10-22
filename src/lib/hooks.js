@@ -1,6 +1,6 @@
 // Общие React-хуки: размеры и медиазапросы, сеть, окна (useLeave, useModalLock), клавиатура, прокрутка (Lenis),
 // наклон и курсор для фона, «потяните, чтобы обновить»
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useSyncExternalStore } from "react";
 import { isNative } from "../native.js";
 import Lenis from "lenis";
 
@@ -99,13 +99,19 @@ export function useBackdropMotion(ref) {
     if (!el || !mq || mq("(prefers-reduced-motion: reduce)").matches) return;
     const fine = mq("(min-width: 769px) and (pointer: fine)").matches;
     let frame = 0, px = 0, py = 0;
+    const last = { px: NaN, py: NaN, sy: NaN };
     const clamp = (v) => Math.max(-1, Math.min(1, v));
-    // Не чаще одного раза за кадр, даже если события приходят чаще
+    /* Не чаще одного раза за кадр, даже если события приходят чаще. И только заметные изменения:
+       датчик наклона телефона «дрожит» 60 раз в секунду, даже когда телефон лежит, — без порога
+       фон пересчитывался бы каждый кадр, и приложению оставалось меньше времени на остальное */
     const apply = () => {
       frame = 0;
+      const sy = Math.min(1, window.scrollY / 800);
+      if (Math.abs(px - last.px) < 0.02 && Math.abs(py - last.py) < 0.02 && Math.abs(sy - last.sy) < 0.005) return;
+      Object.assign(last, { px, py, sy });
       el.style.setProperty("--px", px.toFixed(3));
       el.style.setProperty("--py", py.toFixed(3));
-      el.style.setProperty("--sy", Math.min(1, window.scrollY / 800).toFixed(3));
+      el.style.setProperty("--sy", sy.toFixed(3));
     };
     const queue = () => { if (!frame) frame = requestAnimationFrame(apply); };
     // Компьютер: за курсором
@@ -199,9 +205,23 @@ export function useMediaQuery(query) {
    Внутри окон, полей ввода и прокручиваемых блоков жест не срабатывает */
 export const PULL_THRESHOLD = 64; // столько пикселей нужно протянуть
 
+/* Насколько протянули и идёт ли обновление — отдельное маленькое хранилище, а не состояние NexaApp:
+   иначе каждое движение пальца перерисовывало бы всё приложение. Читает только PullIndicator */
+let pullState = { pull: 0, busy: false };
+const pullSubs = new Set();
+const setPullState = (patch) => {
+  const next = { ...pullState, ...patch };
+  if (next.pull === pullState.pull && next.busy === pullState.busy) return;
+  pullState = next;
+  pullSubs.forEach((f) => f());
+};
+export function usePullState() {
+  return useSyncExternalStore((f) => { pullSubs.add(f); return () => pullSubs.delete(f); }, () => pullState);
+}
+
 export function usePullToRefresh(enabled, onRefresh) {
-  const [pull, setPull] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const setPull = (v) => setPullState({ pull: v });
+  const setBusy = (v) => setPullState({ busy: v });
   const refresh = useRef(onRefresh);
   refresh.current = onRefresh;
   const busyRef = useRef(false);
@@ -227,7 +247,6 @@ export function usePullToRefresh(enabled, onRefresh) {
       if (dy <= 0 || !atTop()) { if (dist) { dist = 0; setPull(0); } if (dy < 0) startY = null; return; }
       dist = Math.min(110, dy * 0.5); // тянется «туго» — вдвое медленнее пальца
       setPull(dist);
-      if (e.cancelable) e.preventDefault(); // страница не дёргается вместе с жестом
     };
     const onEnd = async () => {
       if (startY == null) return;
@@ -240,8 +259,12 @@ export function usePullToRefresh(enabled, onRefresh) {
       try { await Promise.all([refresh.current?.(), new Promise((r) => setTimeout(r, 900))]); } catch {}
       busyRef.current = false; setBusy(false); setPull(0);
     };
+    /* Все слушатели пассивные: раньше touchmove был с passive: false (ради preventDefault) — тогда
+       телефон перед КАЖДЫМ кадром любой прокрутки ждал ответа скрипта страницы, и прокрутка
+       подтормаживала, стоило странице чем-то заняться. Страница при натяжении и так стоит
+       (она в самом верху), а растяжку края Android выключает overscroll-behavior (html.nx-native) */
     window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchmove", onMove, { passive: true });
     window.addEventListener("touchend", onEnd);
     window.addEventListener("touchcancel", onEnd);
     return () => {
@@ -251,7 +274,6 @@ export function usePullToRefresh(enabled, onRefresh) {
       window.removeEventListener("touchcancel", onEnd);
     };
   }, [enabled]);
-  return { pull, busy };
 }
 
 /* Есть ли сеть — по мнению браузера (события online / offline).
@@ -275,6 +297,75 @@ export function useCountdown(at) {
     return () => clearInterval(t);
   }, [at]);
   return at && at !== Infinity ? Math.max(0, Math.ceil((at - Date.now()) / 1000)) : null;
+}
+
+/* Окна-шторки на телефоне (.nx-viewer > [role="dialog"]: файл, «Продолжить на устройстве»,
+   подключение, Flow, синхронизация…) смахиваются вниз — как шторки системы.
+   Тянем вниз, когда шторка прокручена до самого верха: она едет за пальцем; отпустили ниже
+   трети высоты (или быстро, ≥ 0,6 px/мс) — уезжает и закрывается тем же Esc, что и крестик;
+   иначе — возвращается. Не мешаем: поля ввода, ползунки, фото на весь экран, data-no-sheet-swipe
+   и прокручиваемые блоки внутри, которые сейчас не в самом верху. Слушатели пассивные */
+export function useSheetSwipe(phoneMq) {
+  useEffect(() => {
+    if (!phoneMq) return;
+    const reduce = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let g = null; // { el, y0, x0, t0, dy, on }
+    const scrolledInside = (t, el) => {
+      for (let n = t; n && n !== el.parentElement; n = n.parentElement) if (n.scrollTop > 0) return true;
+      return false;
+    };
+    const onStart = (e) => {
+      g = null;
+      if (e.touches.length !== 1 || !window.matchMedia(phoneMq).matches) return; // шторки — только на телефоне
+      const t = e.target;
+      const el = t?.closest?.('.nx-viewer > [role="dialog"]');
+      if (!el || t.closest('input, textarea, select, [contenteditable="true"], .nx-photo-full, [data-no-sheet-swipe]') || scrolledInside(t, el)) return;
+      g = { el, y0: e.touches[0].clientY, x0: e.touches[0].clientX, t0: Date.now(), dy: 0, on: false };
+    };
+    const onMove = (e) => {
+      if (!g) return;
+      const dy = e.touches[0].clientY - g.y0, dx = e.touches[0].clientX - g.x0;
+      if (!g.on) {
+        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) { g = null; return; } // жест вбок — не наш
+        if (dy < 8) { if (dy < -8) g = null; return; }                              // вверх — прокрутка шторки
+        g.on = true;
+        g.el.style.transition = "none";
+      }
+      g.dy = Math.max(0, dy);
+      g.el.style.transform = `translateY(${g.dy}px)`;
+    };
+    const onEnd = () => {
+      if (!g?.on) { g = null; return; }
+      const { el, dy, t0 } = g;
+      g = null;
+      const fast = dy / Math.max(1, Date.now() - t0) > 0.6 && dy > 40;
+      if (dy > el.offsetHeight / 3 || fast) {
+        if (reduce()) { el.style.transform = ""; } else {
+          el.style.transition = "transform 180ms ease-in";
+          el.style.transform = "translateY(100%)";
+        }
+        // Закрываем так же, как крестик / «Назад»: у всех окон закрытие по Esc
+        setTimeout(() => {
+          const a = document.activeElement;
+          (a && a !== document.body && document.contains(a) ? a : document.body)
+            .dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        }, reduce() ? 0 : 170);
+      } else {
+        el.style.transition = reduce() ? "none" : "transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1)";
+        el.style.transform = "";
+      }
+    };
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchend", onEnd, { passive: true });
+    document.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+  }, [phoneMq]);
 }
 
 /* Любое открытое окно (role="dialog" aria-modal="true") — у html класс nx-modal-open:

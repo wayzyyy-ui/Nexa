@@ -62,18 +62,49 @@ export const clearMeta = (uid) => { try { localStorage.removeItem(metaKey(uid));
    ЦЕЛЫМ: сводка считает «пропавшие» строки удалёнными на другом устройстве —
    оборвалось на середине → ошибка, сводки нет (неполный список хуже никакого) */
 const FETCH_PAGE = 1000;
-async function fetchRows(table) {
+async function fetchRows(table, columns = "*") {
   const all = [];
   for (let from = 0; ; from += FETCH_PAGE) {
     // Свои повторы клиента выключены: паузы и число попыток решает useCloudList (RETRY_DELAYS_MS),
     // иначе попытки перемножаются (4 наших × 4 клиента).
     // Порядок по created_at и id — постоянный: порции не пересекаются и не теряют строк
-    const { data, error } = await supabase.from(table).select("*")
+    const { data, error } = await supabase.from(table).select(columns)
       .order("created_at").order("id").range(from, from + FETCH_PAGE - 1).retry(false);
     if (error) throw error;
     all.push(...(data || []));
     if (!data || data.length < FETCH_PAGE) return all;
   }
+}
+/* Список из облака для сводки — без лишнего скачивания.
+   Сначала только «номер + время изменения» всех строк (крошечный ответ), целиком скачиваются лишь те,
+   что изменились с прошлой подтверждённой сводки (их время в облаке не совпадает с ver) или которых здесь нет.
+   Остальные берутся из своей копии: облако их с тех пор не меняло — содержимое то же. Удалённое на другом
+   устройстве видно по отсутствию номера. Истории версий нет (первый вход) или изменилось больше половины —
+   скачиваем всё, как раньше. Ответ — список в виде приложения (rows.fromRow) */
+const DELTA_CHUNK = 100; // номеров в одном запросе .in("id", …) — адрес запроса не раздувается
+export function planDelta(heads, local, ver) {
+  const localById = new Map(local.map((i) => [i.id, i]));
+  const need = heads.filter((h) => { const v = ver[h.id]; return !localById.has(h.id) || !v || !v[1] || toMs(h.updated_at) !== v[1]; }).map((h) => h.id);
+  return { need, localById };
+}
+async function fetchCloudList(table, local, meta, rows) {
+  const ver = meta.ver || {};
+  if (!Object.keys(ver).length) return (await fetchRows(table)).map(rows.fromRow);
+  const heads = await fetchRows(table, "id, updated_at");
+  const { need, localById } = planDelta(heads, local, ver);
+  if (need.length > heads.length / 2) return (await fetchRows(table)).map(rows.fromRow);
+  const full = new Map();
+  for (let i = 0; i < need.length; i += DELTA_CHUNK) {
+    const { data, error } = await supabase.from(table).select("*").in("id", need.slice(i, i + DELTA_CHUNK)).retry(false);
+    if (error) throw error;
+    for (const row of data || []) full.set(row.id, rows.fromRow(row));
+  }
+  const needSet = new Set(need);
+  return heads.flatMap((h) => {
+    if (full.has(h.id)) return [full.get(h.id)];
+    if (needSet.has(h.id)) return []; // успели удалить между двумя запросами
+    return [{ ...localById.get(h.id), updatedAt: ver[h.id][1] }];
+  });
 }
 /* Необязательные колонки: появляются после ручной миграции (например,
    chats.pinned — supabase/chats-pinned.sql). Пока миграцию не запустили,
@@ -150,6 +181,30 @@ async function pushRows(table, upserts, deletes) {
   }
   return confirmed;
 }
+/* Отправка правок: записи, которые только дописали в конец (rows.appendOf — у диалогов: новые
+   сообщения после подтверждённых облаком), уходят функцией базы rows.appendRpc — одни новые части,
+   без всего диалога. Нельзя (правили середину, повтор ответа, облако с тех пор меняли, функции в базе
+   ещё нет — supabase/chats-append.sql) — как раньше, целиком через pushRows. Ответ — как у pushRows */
+let appendMissing = false; // функции в базе нет — до перезапуска не пробуем
+async function pushAppendOrRows(table, upserts, deletes, ver, rows) {
+  const appended = new Map(), rest = [];
+  for (const item of upserts) {
+    const plan = !appendMissing && rows.appendOf ? rows.appendOf(item, ver[item.id]) : null;
+    if (!plan) { rest.push(item); continue; }
+    const { data, error } = await supabase.rpc(rows.appendRpc, plan);
+    if (error) {
+      const code = String(error.code || "");
+      if (code === "PGRST202" || code === "42883" || /could not find the function/i.test(String(error.message))) appendMissing = true;
+      else if (syncErrorKind(error) === "network" || syncErrorKind(error) === "offline") throw error;
+      rest.push(item); // любая другая причина — отправим целиком, там и решится
+    } else if (data) appended.set(item.id, toMs(data));
+    else rest.push(item); // строку с тех пор изменили — целиком, со сводкой конфликта
+  }
+  const times = await pushRows(table, rest.map(rows.toRow), deletes);
+  for (const [id, at] of appended) times.set(id, at);
+  return times;
+}
+
 // «Удалить мои данные»: все устройства и чаты этого пользователя
 export async function deleteAllMine(uid) {
   // Сначала содержимое файлов в хранилище (папка <id аккаунта>/), потом записи
@@ -196,7 +251,29 @@ export const SCHEDULE_ROWS = {
   sort: (list) => [...list].sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || "")),
 };
 
+/* Короткая «сумма» первых n сообщений диалога (FNV-1a по JSON): совпала — начало диалога то же,
+   что подтвердило облако, и его можно только дописать */
+export function messagesSum(msgs, n) {
+  const s = JSON.stringify((msgs || []).slice(0, n));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+}
+const APPEND_MAX = 50; // как в nexa_chat_append
+
 export const CHAT_ROWS = {
+  // Подтверждённая версия: сколько сообщений, их сумма, закреплён ли
+  verExtra: (c) => { const m = c.messages || []; return [m.length, messagesSum(m, m.length), !!c.pinned]; },
+  /* Диалог только дописали: прежние сообщения те же (сумма совпала), новых 1–50, закрепление то же,
+     облако с тех пор не меняли (время — p_expected). Иначе null — уйдёт целиком */
+  appendRpc: "nexa_chat_append",
+  appendOf: (c, v) => {
+    const x = v?.[2], m = c.messages || [];
+    if (!v?.[1] || !Array.isArray(x)) return null;
+    const [n, sum, pinned] = x;
+    if (m.length <= n || m.length - n > APPEND_MAX || !!c.pinned !== pinned || messagesSum(m, n) !== sum) return null;
+    return { p_id: c.id, p_expected: new Date(v[1]).toISOString(), p_messages: m.slice(n), p_title: c.title || "" };
+  },
   // pinned — «Закреплено». Шлём всегда целиком (true/false), поэтому значение
   // в облаке не затирается; без колонки в базе см. OPTIONAL_COLUMNS выше
   toRow: (c) => ({ id: c.id, title: c.title || "", messages: withLastAt(c), pinned: !!c.pinned, created_at: toIso(c.createdAt) }),
@@ -336,7 +413,8 @@ function rejectedError(ids, list, rows) {
                { error, text, kind, pending, nextAt (когда следующий повтор) или gaveUp };
                pending — сколько изменений ещё не подтверждено облаком;
    onConflict — список решённых конфликтов [{ id, kind, item }] (сказать человеку);
-   onPushed  — правки этого устройства ушли в облако (сказать остальным «обновитесь»).
+   onPushed  — правки этого устройства ушли в облако (сказать остальным «обновитесь»);
+               получает { ids, deletes } — какие записи ушли и сколько удалено.
                После простой сводки при входе не вызывается — иначе устройства
                гоняли бы друг другу «обновись» по кругу */
 export function useCloudList({ uid, table, value, setValue, toList, fromList, rows, migrate, onStatus, onPushed, onConflict }) {
@@ -379,9 +457,12 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
     report({ error: e, text: syncErrorText(e), kind, nextAt, gaveUp: !nextAt && kind !== "offline" });
   };
   // Подтверждённые облаком версии: id → [updatedAt здесь, updated_at в облаке]
+  // Отпечаток подтверждённой версии (rows.verExtra; у диалогов — сколько сообщений и их «сумма»):
+  // по нему потом видно, что диалог только дописали и можно отправить одни новые сообщения
+  const withExtra = (v, item) => (rows.verExtra ? [...v, rows.verExtra(item)] : v);
   const confirm = (meta, items, cloudTimes) => {
     const ver = { ...meta.ver };
-    for (const i of items) ver[i.id] = [i.updatedAt, cloudTimes.get(i.id) ?? null]; // нет времени облака — сравним по-старому
+    for (const i of items) ver[i.id] = withExtra([i.updatedAt, cloudTimes.get(i.id) ?? null], i); // нет времени облака — сравним по-старому
     return ver;
   };
 
@@ -403,16 +484,15 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
       try {
         // Браузер уже знает, что сети нет, — не ждём, сразу работаем локально
         if (navigator.onLine === false) throw new Error("network: offline");
-        const cloudRows = await fetchRows(table);
-        if (cancelled) return;
         const orig = toList(latest.current);
+        const cloudList = await fetchCloudList(table, orig, readMeta(uid, table), rows);
+        if (cancelled) return;
         let local = orig;
         // Старые локальные id (не uuid) облако не примет — выдаём новые
         local = local.map((i) => (isUuid(i.id) ? i : { ...i, id: newId(), updatedAt: Date.now() }));
-        const moved = migrate?.prepare(local, cloudRows);
+        const moved = migrate?.prepare(local, cloudList); // переносу нужно только «пусто ли в облаке»
         if (moved) local = moved;
         const meta = readMeta(uid, table);
-        const cloudList = cloudRows.map(rows.fromRow);
         const { result, upserts, deletes, conflicts } = mergeLists(local, cloudList, meta, rows.resolve);
         const times = await pushRows(table, upserts.map(rows.toRow), deletes);
         if (cancelled) return;
@@ -426,8 +506,8 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
         const ver = {};
         for (const i of sorted) {
           if (rejected.has(i.id)) continue;
-          if (sent.has(i.id)) ver[i.id] = [i.updatedAt, times.get(i.id) ?? null];
-          else ver[i.id] = [i.updatedAt, i.updatedAt];
+          if (sent.has(i.id)) ver[i.id] = withExtra([i.updatedAt, times.get(i.id) ?? null], i);
+          else ver[i.id] = withExtra([i.updatedAt, i.updatedAt], i);
         }
         writeMeta(uid, table, { synced: sorted.map((i) => i.id).filter((id) => !rejected.has(id)), deleted: [], ver });
         ready.current = true;
@@ -454,7 +534,7 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
         else report({ ok: true, at: Date.now() });
         if (conflicts.length) conflicted.current?.(conflicts);
         // Что-то из этого устройства ушло (накопилось без сети) — пусть остальные перечитают
-        if (upserts.length > rejected.size || deletes.length) pushed.current?.();
+        if (upserts.length > rejected.size || deletes.length) pushed.current?.({ ids: upserts.map((i) => i.id).filter((id) => !rejected.has(id)), deletes: deletes.length });
       } catch (e) {
         if (!cancelled) failed(e);
       }
@@ -494,7 +574,7 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
       sending.current = true;
       try {
         if (navigator.onLine === false) throw new Error("network: offline");
-        const times = await pushRows(table, upserts.map(rows.toRow), deletes);
+        const times = await pushAppendOrRows(table, upserts, deletes, m0.ver, rows);
         const rejected = new Set(times.rejected);
         const ok = upserts.filter((i) => !rejected.has(i.id));
         const m = readMeta(uid, table);
@@ -508,7 +588,7 @@ export function useCloudList({ uid, table, value, setValue, toList, fromList, ro
         attempts.current = 0;
         if (rejected.size) failed(rejectedError([...rejected], upserts, rows));
         else report({ ok: true, at: Date.now() });
-        if (ok.length || deletes.length) pushed.current?.();
+        if (ok.length || deletes.length) pushed.current?.({ ids: ok.map((i) => i.id), deletes: deletes.length });
       } catch (e) {
         failed(e);
       } finally {

@@ -285,7 +285,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
             <div data-transfer-card className="nx-recent-row" style={{
               display: "flex", alignItems: "center", gap: 8, paddingRight: 4, borderRadius: 14,
             }}>
-              <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{
+              <button type="button" className="nx-row-btn" onClick={() => onOpenFile({ id: f.id, list: recent.map((x) => x.id) })} style={{
                 ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 14, padding: "7px 8px",
                 display: "flex", alignItems: "center", gap: 14,
               }}>

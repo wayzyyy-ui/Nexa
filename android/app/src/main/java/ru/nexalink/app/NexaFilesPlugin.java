@@ -223,6 +223,36 @@ public class NexaFilesPlugin extends Plugin {
         }).start();
     }
 
+    /* «Копировать» у фото: картинка — в буфер обмена телефона, чтобы вставить в мессенджер.
+       Сам файл кладём в кэш (cache/clip, его отдаёт FileProvider), в буфер — ссылку на него:
+       приложение, куда вставляют, получает право прочитать её от системы */
+    @PluginMethod
+    public void copyImage(PluginCall call) {
+        new Thread(() -> {
+            try (InputStream in = source(call)) {
+                String name = safeName(call.getString("name", "photo.png"));
+                File dir = new File(getContext().getCacheDir(), "clip");
+                dir.mkdirs();
+                File[] old = dir.listFiles();
+                if (old != null) for (File f : old) f.delete(); // в буфере всегда одна картинка
+                File file = new File(dir, name);
+                try (OutputStream out = new FileOutputStream(file)) { copy(in, out); }
+                Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file);
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        android.content.ClipboardManager cb = (android.content.ClipboardManager) getContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                        cb.setPrimaryClip(android.content.ClipData.newUri(getContext().getContentResolver(), "Фото", uri));
+                        call.resolve();
+                    } catch (Exception e) {
+                        call.reject("copy_failed");
+                    }
+                });
+            } catch (Exception e) {
+                call.reject("copy_failed");
+            }
+        }).start();
+    }
+
     // Откуда брать байты: подписанная ссылка облака (только https) или base64
     private InputStream source(PluginCall call) throws Exception {
         String url = call.getString("url");

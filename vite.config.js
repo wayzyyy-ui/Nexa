@@ -17,7 +17,9 @@ function desktopHtml() {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), ...(mode === 'desktop' ? [desktopHtml()] : [])],
+  // Яндекс Метрики нет в приложениях (ПК и Android): её запись сессий (webvisor) следит за каждым
+  // изменением страницы и движением пальца — в приложении это заметно тормозило. На сайте — как раньше
+  plugins: [react(), ...(mode === 'desktop' || mode === 'android' ? [desktopHtml()] : [])],
   // Весь интерфейс в одном файле — около 500 КБ, это нормально; не предупреждаем
   build: { chunkSizeWarningLimit: 800 },
 }))

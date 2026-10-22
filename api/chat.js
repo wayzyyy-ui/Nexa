@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { allow, clientKey } from './_lib/rate-limit.js';
+import { allowEach, clientKey } from './_lib/rate-limit.js';
 
 // Защита от злоупотреблений: длина вопроса, размер истории и частота запросов
 const MESSAGE_MAX = 4000;        // символов в одном вопросе
@@ -151,14 +151,18 @@ export default async function handler(req, res) {
     return res.status(413).json({ error: `Слишком длинное сообщение — до ${MESSAGE_MAX} символов` });
   }
 
-  // Частота: не больше LIMIT_PER_MINUTE в минуту и LIMIT_PER_DAY в сутки с одного адреса
+  // Частота: не больше LIMIT_PER_MINUTE в минуту и LIMIT_PER_DAY в сутки с одного адреса,
+  // с файлом — ещё LIMIT_FILES_PER_HOUR в час. Все правила — одним заходом (одновременно)
   const who = clientKey(req);
-  const allowed = await allow([[`chat:m:${who}`, LIMIT_PER_MINUTE, 60], [`chat:d:${who}`, LIMIT_PER_DAY, 86400]]);
-  if (!allowed) {
+  const [perMinute, perDay, perFiles = true] = await allowEach([
+    [`chat:m:${who}`, LIMIT_PER_MINUTE, 60], [`chat:d:${who}`, LIMIT_PER_DAY, 86400],
+    ...(hasAttachment ? [[`chat:f:${who}`, LIMIT_FILES_PER_HOUR, 3600]] : []),
+  ]);
+  if (!perMinute || !perDay) {
     res.setHeader('Retry-After', '60');
     return res.status(429).json({ error: 'Слишком много вопросов подряд — подождите минуту' });
   }
-  if (hasAttachment && !(await allow([[`chat:f:${who}`, LIMIT_FILES_PER_HOUR, 3600]]))) {
+  if (!perFiles) {
     res.setHeader('Retry-After', '600');
     return res.status(429).json({ error: 'Слишком много файлов за час — подождите немного' });
   }

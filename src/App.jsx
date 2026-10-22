@@ -28,11 +28,12 @@ import { SCHEDULE_KEY, dayKey, dayFromKey, sortSchedule, itemsOn, nextScheduleIt
 import { updResume } from "./lib/updates.js";
 import { CHATS_KEY, loadChats, chatMigration, readGuest, saveGuest, useAuth, takeManualSignOut, clearLocalAccountData } from "./lib/auth.js";
 import { sessionIdOf, securityKey, loadSecurity, SECURITY_MAX, clientLabel, checkOwnSession, revokeSession, signOutOthers } from "./lib/security.js";
+import { needsSignal } from "./lib/devicePush.js";
 import { deviceType, uniqueDeviceName, DEVICES_KEY, loadDeviceStore, devicesToList, devicesFromList, deviceStatus, mergeSamePhone, peerLabel } from "./lib/devices.js";
 import { ACTIVITY_MAX, loadActivity } from "./lib/activity.js";
 import { PAIR_TTL_MS, PAIR_MAX_TRIES, PAIR_LOCK_MS, PAIR_ANSWER_MS, parseNexaQr, makePairCode, readPairLock, savePairLock } from "./lib/pairing.js";
 import { loadFlow, copyText } from "./lib/flow.js";
-import { useOnline, useModalLock, useKeyboardViewport, scrollTopNow, useSmoothScroll, usePullToRefresh } from "./lib/hooks.js";
+import { useOnline, useModalLock, useSheetSwipe, useKeyboardViewport, scrollTopNow, useSmoothScroll, usePullToRefresh } from "./lib/hooks.js";
 import { IconBtn, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } from "./ui/base.jsx";
 import { BackdropFolds, BackdropGrid } from "./ui/backdrop.jsx";
 import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./ui/navigation.jsx";
@@ -44,7 +45,6 @@ import { parseNexaLink } from "./lib/deeplink.js";
 import { useClipSync } from "./lib/clipboardSync.js";
 import { desktopNotifyClip } from "./lib/desktop.js";
 import { ClipboardSettings } from "./ui/clipboard.jsx";
-import { WindowControls, DesktopDragStrip } from "./ui/desktop.jsx";
 import { userNotesKey, loadUserNotes, writeUserNotes, applyEdit, NOTE_ROWS, USER_NOTES_MAX, widgetNote } from "./lib/userNotes.js";
 import { ScreenNotes } from "./screens/Notes.jsx";
 import { ToastHost } from "./ui/toasts.jsx";
@@ -100,6 +100,7 @@ export default function NexaApp() {
   useKeyboardViewport();
   // Открыто окно (aria-modal) — страница под ним не прокручивается и не «оттягивается», фон не двигается
   useModalLock();
+  useSheetSwipe(PHONE_MQ); // окна-шторки на телефоне смахиваются вниз
 
   // Аккаунт: кто вошёл (Supabase), выбран ли гостевой режим, открыто ли окно входа
   const auth = useAuth();
@@ -408,13 +409,16 @@ export default function NexaApp() {
     list.forEach(({ id, kind }, i) => notifyRef.current({ ...base, key: `conflict:${table}:${id}:${kind}:${Math.floor(Date.now() / 60000)}`, title: `Конфликт: ${CONFLICT_WHAT[table]}`, text: texts[i], toast: !many, duration: 9000 }));
     if (many) showToast({ title: `Конфликтов при синхронизации: ${texts.length}`, text: "Решены автоматически — подробности в уведомлениях", duration: 9000 });
   };
+  const deviceStoreRef = useRef(deviceStore); deviceStoreRef.current = deviceStore;
+  const deviceSigs = useRef(new Map()); // id → отпечаток устройства при прошлом сигнале «обновись»
   const devicesSync = useCloudList({
     uid, table: "devices", value: deviceStore, setValue: setDeviceStore,
     toList: devicesToList, fromList: devicesFromList, rows: DEVICE_ROWS,
     onStatus: (st) => setSyncState((s) => ({ ...s, devices: st })),
     onConflict: conflictNote("devices", DEVICE_ROWS),
-    // Правки ушли в облако — остальные устройства аккаунта перечитают их сразу
-    onPushed: () => link.emit("sync.changed", { table: "devices" }),
+    // Правки ушли в облако — остальные устройства аккаунта перечитают их сразу.
+    // Только заметные правки: одни «был в сети» и сведения о заряде / сети сигнала не дают (devicePush.js)
+    onPushed: (sent) => { if (needsSignal(sent, devicesToList(deviceStoreRef.current), deviceSigs.current)) link.emit("sync.changed", { table: "devices" }); },
   });
   /* Это устройство само записывает себя в список устройств аккаунта.
      Раньше в список попадал только тот, кто ВВОДИЛ код, а устройство, показавшее код,
@@ -662,7 +666,7 @@ export default function NexaApp() {
     window.dispatchEvent(new Event("nexa-refresh"));
     try { await checkUpdate(true); } catch {}
   };
-  const pull = usePullToRefresh(isNative, pullRefresh);
+  usePullToRefresh(isNative, pullRefresh); // насколько протянули — читает сам PullIndicator
 
   /* ── События канала (кроме текста) ── */
   const handleLinkEvent = (event, p) => {
@@ -926,11 +930,14 @@ export default function NexaApp() {
 
   /* ── «Был в сети»: Presence говорит, кто онлайн сейчас; время последней
      активности пишем в state.seenAt реального устройства (уходит в облако).
-     - своё устройство отмечает себя при действиях человека — не чаще раза в минуту;
+     - своё устройство отмечает себя при действиях человека — не чаще раза в 5 минут и при уходе в фон;
      - когда устройство пропало из Presence, его время ставят те, кто это увидел ── */
+  const SEEN_GAP_MS = 5 * 60000;
   const seenAt = useRef({}); // id строки → когда последний раз писали lastSeen
+  // Не чаще раза в 5 минут (SEEN_GAP_MS): каждая отметка — запись в облако. Уход в фон и пропажа
+  // устройства из Presence отмечаются всегда (там seenAt.current сбрасывается / своё значение)
   const markSeen = (row, at = Date.now()) => {
-    if (!row || at - (seenAt.current[row.id] || 0) < 60000) return;
+    if (!row || at - (seenAt.current[row.id] || 0) < SEEN_GAP_MS) return;
     seenAt.current[row.id] = at;
     patchDevice(row.id, { seenAt: at });
   };
@@ -2747,11 +2754,12 @@ export default function NexaApp() {
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
       {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа», «Файлах» и под меню у ассистента */}
-      {["home", "today", "media", "files", "assistant"].includes(tab) && !openDevice && !aboutOpen && !activityOpen && !securityOpen && <div className="nx-home-glow" aria-hidden="true" />}
+      {/* Общий фон-градиент: разделы и экраны поверх них («Активность», «О системе», безопасность) */}
+      {!openDevice && (["home", "today", "media", "files", "assistant"].includes(tab) || aboutOpen || activityOpen || securityOpen) && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}
-      <PullIndicator pull={pull.pull} busy={pull.busy} />
+      <PullIndicator />
       {/* Синхронизация аккаунта: «Загружаем…» или «Нет связи, работаем локально» */}
       {/* На экране ассистента строка живёт внутри панели истории — не перекрывает чат */}
       {tab !== "assistant" && (
@@ -2792,10 +2800,7 @@ export default function NexaApp() {
             <QuickBtn />
             <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
             <IconBtn icon={Icon.user} onClick={() => navTo("settings")} label="Настройки" className="nx-tb-user" />
-            {/* Приложение для ПК: свои кнопки окна (системная рамка выключена) */}
-            <WindowControls />
           </TopBar>
-          <DesktopDragStrip />
 
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
             очень широких мониторах, но при этом свободно заполняет
@@ -2885,6 +2890,11 @@ export default function NexaApp() {
         <FileViewer
           key={openFile.id}
           file={files.find((f) => f.id === openFile.id)}
+          /* Соседние файлы — тот же список и порядок, откуда открыли (папка, категория, недавние):
+             стрелки и свайп в окне листают их; nav — открыт листанием (без своего «появления») */
+          siblings={(openFile.list || []).map((id) => files.find((f) => f.id === id)).filter(Boolean)}
+          onNavigate={(id) => setOpenFile((o) => ({ ...o, id, nav: true }))}
+          pop={!openFile.nav}
           photos={sortByRecent(files.filter((f) => f.uploaded && f.cat === "photo"))}
           folders={folders}
           devices={devices}

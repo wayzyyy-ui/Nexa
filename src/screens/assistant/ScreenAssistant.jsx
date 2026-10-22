@@ -33,6 +33,7 @@ import { LiveAnswer, AttachChip, MessageBubble, AssistantSkeleton } from "./mess
 const draftKeep = { uid: undefined, chatId: null, input: "", att: null };
 // Пометка сервера «ответ оборвался посреди» (api/chat.js, STREAM_CUT): два невидимых разделителя
 const STREAM_CUT_MARK = String.fromCharCode(0x2063, 0x2063);
+const ANSWER_IDLE_MS = 40000; // столько ждём ответа или следующего куска, дальше — «не ответил»
 
 export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
@@ -370,6 +371,10 @@ useEffect(() => {
     liveSet({ chatId, text: "" });
     let fullText = '';
     let timer = 0;
+    /* Сторож тишины: от сервера ничего (ни ответа, ни нового куска) ANSWER_IDLE_MS — обрываем сами.
+       Сервер сам переключает модели через 12 с, так что столько молчать он не должен: это «висящая» сеть */
+    let idle = 0, timedOut = false;
+    const kick = () => { clearTimeout(idle); idle = setTimeout(() => { timedOut = true; ctl.abort(); }, ANSWER_IDLE_MS); };
 
     // Ответ в историю чата: последний сохранённый «на всякий случай» кусок
     // заменяем, иначе добавляем новое сообщение. Так ответ не задваивается
@@ -384,6 +389,7 @@ useEffect(() => {
     // LiveAnswer и сохранённый ответ сменили друг друга в одном кадре, без мигания
     const finish = (answerText, isError = false) => {
       clearTimeout(timer);
+      clearTimeout(idle);
       removeEventListener('pagehide', checkpoint);
       document.removeEventListener('visibilitychange', checkpoint);
       flushSync(() => putAnswer({ role: 'ai', text: answerText, at: Date.now(), ...(isError ? { error: true } : {}) }));
@@ -413,6 +419,7 @@ useEffect(() => {
       const memoryPick = memoryOn ? pickMemory(memory, text, previousMessages.filter((m) => !m.action)) : [];
 
       // На сайте — /api/chat, в приложении — полный адрес (см. src/native.js)
+      kick();
       const res = await fetch(API_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -431,12 +438,14 @@ useEffect(() => {
 
       // Читаем ответ кусками. Показываем пачками раз в STREAM_FLUSH_MS:
       // первый кусок — сразу, следующие собираются и выводятся вместе
+      kick();
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       const show = () => { timer = 0; liveSet({ text: fullText.split(STREAM_CUT_MARK)[0] }); };
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        kick();
         fullText += decoder.decode(value, { stream: true });
         if (!fullText) continue;
         if (!live.text) show();
@@ -450,7 +459,8 @@ useEffect(() => {
       else if (!fullText.trim()) finish('Пустой ответ. Нажмите "повторить".', true);
       else finish(fullText);
     } catch (error) {
-      const stopped = error?.name === 'AbortError';
+      const stopped = error?.name === 'AbortError' && !timedOut;
+      if (timedOut && !fullText) { finish('Сервер не ответил — проверьте связь и нажмите «повторить».', true); return; }
       if (fullText) {
         // Ответ оборвался посередине (или его остановили): оставляем то, что успело прийти
         finish(fullText.split(STREAM_CUT_MARK)[0] + (stopped ? '\n\n(остановлено)' : '\n\n(ответ оборвался, нажмите "повторить")'), true);

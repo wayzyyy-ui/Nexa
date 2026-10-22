@@ -59,11 +59,13 @@ function memoryHit(key, limit, windowSec) {
   return cur.hits <= limit;
 }
 
-/* Можно ли ещё один запрос? rules — [[ключ, лимит, окно в секундах], …].
-   true — можно, false — слишком часто */
-export async function allow(rules) {
+/* Сколько правил разрешают ещё один запрос: rules — [[ключ, лимит, окно в секундах], …].
+   Ответ — массив true / false по каждому правилу. Все правила проверяются ОДНОВРЕМЕННО:
+   раньше — по очереди, и каждое правило было отдельным заходом в базу (у ассистента 2–3 подряд,
+   по 50–150 мс каждый — до первых слов ответа). Счётчик в базе не ответил — запасной в памяти */
+export async function allowEach(rules) {
   const sb = adminClient();
-  for (const [key, limit, windowSec] of rules) {
+  return Promise.all(rules.map(async ([key, limit, windowSec]) => {
     let ok = null;
     if (sb) {
       try {
@@ -71,8 +73,11 @@ export async function allow(rules) {
         if (!error && typeof data === 'boolean') ok = data;
       } catch {}
     }
-    if (ok === null) ok = memoryHit(key, limit, windowSec);
-    if (!ok) return false;
-  }
-  return true;
+    return ok === null ? memoryHit(key, limit, windowSec) : ok;
+  }));
+}
+
+/* Можно ли ещё один запрос? true — можно (все правила разрешают), false — слишком часто */
+export async function allow(rules) {
+  return (await allowEach(rules)).every(Boolean);
 }

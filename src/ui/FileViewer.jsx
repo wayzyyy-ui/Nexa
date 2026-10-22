@@ -1,10 +1,10 @@
 // Окно файла, фото на весь экран, «Открыть» / «Скачать», меню передачи и анимация отправки
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { isNative, isDesktop, nativeFile } from "../native.js";
+import { isNative, isDesktop, nativeFile, clipboardWriteImage } from "../native.js";
 import { desktopOpenFile, desktopSaveFile } from "../lib/desktop.js";
 import { formatBytes } from "../lib/deviceInfo.js";
-import { fileUrl, forgetUrl, safeFileName } from "../lib/files.js";
+import { fileUrl, fileBlob, forgetUrl, safeFileName } from "../lib/files.js";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { fileBytes, formatWhen } from "../lib/format.js";
@@ -311,7 +311,7 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
   );
 }
 
-export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [], onClose, onDelete, onRename, onSent, onToast, onContinue }) {
+export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [], siblings = [], onNavigate, pop = true, onClose, onDelete, onRename, onSent, onToast, onContinue }) {
   // Полноэкранный просмотр: только у загруженных фото (у демо-файлов нет содержимого)
   const [fullPhoto, setFullPhoto] = useState(false);
   const canFullPhoto = !!file.uploaded && file.cat === "photo";
@@ -352,6 +352,47 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
   };
   const [confirmDel, setConfirmDel] = useState(false); // спрашиваем ли "точно удалить?"
   const cat = catOf(file);
+  /* Листание: соседние файлы того списка, откуда открыли окно (папка, категория, недавние) */
+  const at = siblings.findIndex((f) => f.id === file.id);
+  const prevFile = at > 0 ? siblings[at - 1] : null;
+  const nextFile = at >= 0 && at < siblings.length - 1 ? siblings[at + 1] : null;
+  const step = (d) => { const f = d < 0 ? prevFile : nextFile; if (f && onNavigate) onNavigate(f.id); };
+  const stepRef = useRef(step); stepRef.current = step;
+  // ← → на клавиатуре — соседний файл (не в поле ввода, не при полноэкранном фото и подтверждении удаления)
+  const busyRef = useRef(false); busyRef.current = editing || fullPhoto || confirmDel;
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || busyRef.current || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.target?.closest?.("input, textarea, [contenteditable=true]")) return;
+      e.preventDefault();
+      stepRef.current(e.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // Свайп по превью на сенсорном экране: влево — следующий, вправо — предыдущий
+  const touch = useRef(null);
+  const onTouchStart = (e) => { const t = e.touches[0]; touch.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null; };
+  const onTouchEnd = (e) => {
+    const s0 = touch.current; touch.current = null;
+    const t = e.changedTouches[0]; if (!s0 || !t) return;
+    const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+  };
+  const arrow = (d) => {
+    const f = d < 0 ? prevFile : nextFile;
+    return (
+      <button type="button" className="nx-icon-btn nx-viewer-arrow" onClick={(e) => { e.stopPropagation(); step(d); }} disabled={!f}
+        aria-label={d < 0 ? "Предыдущий файл" : "Следующий файл"} title={f ? f.name : undefined} style={{
+          ...btnReset, position: "absolute", top: "50%", [d < 0 ? "left" : "right"]: 8, transform: "translateY(-50%)", zIndex: 1,
+          width: 36, height: 36, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
+          background: `color-mix(in srgb, ${C.photoBg} 70%, transparent)`, opacity: f ? 1 : 0.35,
+        }}>
+        <span style={{ display: "flex", transform: d < 0 ? "rotate(180deg)" : "none" }}>{Icon.chevron({ c: C.onFold, s: 18 })}</span>
+      </button>
+    );
+  };
+  const many = siblings.length > 1 && at >= 0 && !!onNavigate;
 
   // Esc закрывает окно; пока окно открыто, страница под ним не скроллится
   useEffect(() => {
@@ -394,7 +435,7 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
       {/* stopPropagation — клик внутри окна не должен его закрывать */}
       <div
         role="dialog" aria-modal="true" aria-label={file.name}
-        className="nx-viewer-panel nx-pop nx-scroll"
+        className={`nx-viewer-panel${pop ? " nx-pop" : ""} nx-scroll`}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
@@ -446,7 +487,7 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
               </div>
             )}
             <div style={{ fontSize: 12, color: draftError && editing ? C.red : C.mutedSoft, marginTop: 2 }}>
-              {editing ? draftError || "Enter — сохранить, Esc — отменить" : fileMeta(file)}
+              {editing ? draftError || "Enter — сохранить, Esc — отменить" : `${fileMeta(file)}${many ? ` · ${at + 1} из ${siblings.length}` : ""}`}
             </div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
@@ -459,6 +500,9 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
 
         {/* Превью: та же миниатюра, только крупно */}
         <div style={{ padding: "0 18px" }}>
+          <div style={{ position: "relative" }} onTouchStart={many ? onTouchStart : undefined} onTouchEnd={many ? onTouchEnd : undefined}>
+          {many && arrow(-1)}
+          {many && arrow(1)}
           {canFullPhoto ? (
             <button type="button" className="nx-viewer-preview nx-photo-open" onClick={() => setFullPhoto(true)}
               aria-label="Открыть фото на весь экран" title="Открыть на весь экран"
@@ -478,6 +522,7 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
               <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
             </div>
           )}
+          </div>
           {fullPhoto && (
             <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} />
           )}
@@ -629,7 +674,7 @@ export async function openFileContent(file, scope, download) {
 }
 
 export function FileContentActions({ file, onToast }) {
-  const [state, setState] = useState(null); // null | "open" | "download" — что сейчас готовим
+  const [state, setState] = useState(null); // null | "open" | "download" | "copy" — что сейчас готовим
   const go = async (download) => {
     setState(download ? "download" : "open");
     try {
@@ -650,6 +695,17 @@ export function FileContentActions({ file, onToast }) {
       onToast?.({ title: "Не получилось", text: "Попробуйте ещё раз" });
     } finally { setState(null); }
   };
+  // «Копировать» — само фото в буфер обмена (вставить в мессенджер, документ). Байты — копия
+  // на этом устройстве или своя корзина облака; запрос буфера — сразу по нажатию
+  const copy = async () => {
+    setState("copy");
+    try {
+      const ok = await clipboardWriteImage(fileBlob(file, FILE_SCOPE), safeFileName(file.name));
+      onToast?.(ok === true ? { title: "Фото скопировано", text: "Вставьте его, где нужно" }
+        : ok === "old_app" ? { title: "Не получилось скопировать", text: "Обновите приложение NEXA — копирование фото появилось в новой версии" }
+        : { title: "Не получилось скопировать", text: navigator.onLine === false ? "Нет связи — фото ещё не скачано на это устройство" : "Буфер обмена не принял картинку — попробуйте «Скачать»" });
+    } finally { setState(null); }
+  };
   const btn = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text };
   return (
     <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
@@ -659,6 +715,11 @@ export function FileContentActions({ file, onToast }) {
       <button type="button" className="nx-ghost-btn" onClick={() => go(true)} disabled={!!state} style={btn}>
         {state === "download" ? <Spinner s={13} /> : Icon.download({ c: C.text, s: 15 })} Скачать
       </button>
+      {file.cat === "photo" && (
+        <button type="button" className="nx-ghost-btn" onClick={copy} disabled={!!state} style={btn}>
+          {state === "copy" ? <Spinner s={13} /> : Icon.copy({ c: C.text, s: 15 })} Копировать
+        </button>
+      )}
       <span style={{ alignSelf: "center", fontSize: 12, color: C.mutedSoft }}>
         {FILE_SCOPE === "guest" ? "Хранится только в этом браузере" : "Хранится в облаке аккаунта"}
       </span>

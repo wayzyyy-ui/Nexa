@@ -362,7 +362,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             data-transfer-card — отсюда полетит карточка при передаче */}
         {list.map((f) => (
           <div key={f.id} data-transfer-card style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
-            <button type="button" className="nx-row-btn" onClick={() => onOpenFile(f)} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
+            <button type="button" className="nx-row-btn" onClick={() => onOpenFile({ id: f.id, list: list.map((x) => x.id) })} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
               <FileThumb file={f} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>

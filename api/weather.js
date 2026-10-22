@@ -1,4 +1,4 @@
-import { allow } from './_lib/rate-limit.js';
+import { allow, clientKey } from './_lib/rate-limit.js';
 
 /* Погода для NEXA (сайт, приложение, виджет Android) — только через этот адрес.
    GET /api/weather?city=kazan          — город из списка CITIES (Казань по умолчанию, Москва)
@@ -36,6 +36,13 @@ const GISMETEO_URL = 'https://api.gismeteo.net/v4/weather/forecast/h3';
 const FRESH_MS = 60 * 60 * 1000;     // ответ свежий час — как s-maxage
 const TIMEOUT_MS = 8000;             // дольше 8 секунд источник не ждём
 const GISMETEO_MONTH_MAX = 900;      // с запасом до 1000 в месяц
+/* С одного адреса: не больше IP_GISMETEO_PER_HOUR новых обращений к Gismeteo в час (дальше — резерв,
+   не ошибка: перебором координат месячный лимит Gismeteo на всех не истратить) и не больше
+   IP_HITS_PER_10MIN запросов к самой функции за 10 минут (дальше 429). Обычный человек почти всегда
+   получает ответ из кеша CDN и сюда не доходит. Адреса операторов связи бывают общими на многих людей —
+   поэтому лимиты с запасом и при превышении Gismeteo — просто данные Open-Meteo */
+const IP_GISMETEO_PER_HOUR = 10;
+const IP_HITS_PER_10MIN = 60;
 const CACHE_OK = 'public, s-maxage=3600, stale-while-revalidate=1800';
 const CACHE_FALLBACK = 'public, s-maxage=600, stale-while-revalidate=600'; // резерв — пробуем Gismeteo снова через 10 минут
 
@@ -160,9 +167,11 @@ async function getJson(url, headers) {
   return res.json();
 }
 
-async function loadGismeteo(place) {
+async function loadGismeteo(place, who) {
   const token = process.env.GISMETEO_TOKEN;
   if (!token) { const e = new Error('no-token'); e.status = 'no-token'; throw e; }
+  // Сначала лимит адреса — чтобы чужой перебор не тратил общий месячный счётчик
+  if (!(await allow([[`gismeteo:ip:${who}`, IP_GISMETEO_PER_HOUR, 3600]]))) { const e = new Error('ip'); e.status = 'ip-limit'; throw e; }
   // Лимит бесплатного тарифа: дальше 900 обращений за 30 дней — сразу резерв
   if (!(await allow([['gismeteo:month', GISMETEO_MONTH_MAX, 30 * 86400]]))) { const e = new Error('quota'); e.status = 'quota'; throw e; }
   const url = `${GISMETEO_URL}?coordinates=${place.lat},${place.lon}&days=14&locale=ru-RU`;
@@ -178,12 +187,12 @@ async function loadOpenMeteo(place) {
 }
 
 // Погода места: свежая из памяти → Gismeteo (один запрос на всех) → память (устаревшая) → Open-Meteo
-async function weatherFor(place) {
+async function weatherFor(place, who) {
   const id = place.key;
   const m = memory.get(id);
   if (m && Date.now() - m.at < FRESH_MS) return { data: m.data, fresh: true };
   if (!inFlight.has(id)) {
-    inFlight.set(id, loadGismeteo(place)
+    inFlight.set(id, loadGismeteo(place, who)
       .then((data) => { memory.set(id, { data, at: Date.now() }); return data; })
       .finally(() => inFlight.delete(id)));
   }
@@ -227,8 +236,14 @@ export default async function handler(req, res) {
       cities: Object.entries(CITIES).map(([cid, c]) => ({ id: cid, name: c.name })),
     });
   }
+  const who = clientKey(req);
+  if (!(await allow([[`weather:${who}`, IP_HITS_PER_10MIN, 600]]))) {
+    res.setHeader('Retry-After', '600');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({ error: 'Слишком часто — погода обновится через несколько минут' });
+  }
   try {
-    const { data, fresh } = await weatherFor(place);
+    const { data, fresh } = await weatherFor(place, who);
     res.setHeader('Cache-Control', fresh ? CACHE_OK : CACHE_FALLBACK);
     return res.status(200).json(data);
   } catch (e) {

@@ -331,7 +331,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
         {activityBlock && <div className="nx-home-act" data-nosnippet>{activityBlock}</div>}
         {onAbout && (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "flex-end" }}>
             <button type="button" className="nx-link-btn nx-about-link nx-home-about" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
               <span aria-hidden="true">→</span> Подробнее о системе
             </button>

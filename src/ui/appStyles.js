@@ -303,7 +303,13 @@ export const APP_CSS = `
         /* Как в макете: три последних события (вся лента — «Вся активность →») */
         .nx-home-act > section > div:last-child > div:nth-child(n + 4) { display: none !important; }
         .nx-home-act > section > div:last-child > div { padding: calc(10 * var(--mk)) 0 !important; }
-        .nx-home-about { font-size: max(12px, calc(14 * var(--mk))) !important; margin-top: calc(26 * var(--mk)); }
+        .nx-home-about { font-size: max(12px, calc(14 * var(--mk))) !important; }
+        /* «Подробнее о системе» — внизу окна, а не вплотную под карточкой: Главная компьютера — колонка
+           на всю высоту окна (минус отступы .ng-home), ссылка прижата к низу */
+        @media ${DESKTOP_MQ} {
+          .ng-home-desktop { display: flex; flex-direction: column; min-height: calc(100vh - 98 * var(--mk)); }
+          .nx-home-about-row { margin-top: auto; padding-top: calc(26 * var(--mk)); }
+        }
         /* Плашка устройства — «таблетка» во всю ширину карточки, заливка цветом статуса */
         .nx-dev-row {
           display: flex; align-items: center; gap: calc(26 * var(--mk)); min-height: max(46px, calc(82 * var(--mk))); box-sizing: border-box;
@@ -358,16 +364,19 @@ export const APP_CSS = `
         /* Телефон (макет 402 px): шапка Главной, поиск, таблетки */
         .nx-home-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px -6px 16px; }
         /* Шапка мобильной Главной вместе с поиском закреплена: при прокрутке остаётся сверху.
-           Подложка — тот же фон, что у .nx-home-glow, закреплённый к экрану (background-attachment: fixed):
+           Подложка — тот же фон, что у .nx-home-glow, выровненный по экрану:
            совпадает с фоном точка в точку, без тёмной полосы; внизу короткий переход в прозрачность */
         @media ${PHONE_MQ} {
           .nx-home-top { position: sticky; top: var(--sat); z-index: 40; }
           .nx-home-top::before { content: ""; position: absolute; z-index: -1; pointer-events: none;
-            left: -50vw; right: -50vw; top: calc(-1 * var(--sat) - 8px); bottom: -14px;
+            left: calc((100% - 100vw) / 2); right: calc((100% - 100vw) / 2); top: calc(-1 * var(--sat) - 8px); bottom: -14px;
             background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
                         radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
                         linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
-            background-attachment: fixed;
+            /* Не background-attachment: fixed — такой фон Android перерисовывает на каждом кадре прокрутки.
+               Подложка во всю ширину экрана, когда шапка закреплена, её верх — 8 px над экраном:
+               фон размером с экран, сдвинутый на эти 8 px, совпадает с .nx-home-glow */
+            background-size: 100vw 100vh; background-position: 0 8px; background-repeat: no-repeat;
             -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
             mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
             opacity: 0; transition: opacity 180ms ease; }
@@ -395,7 +404,7 @@ export const APP_CSS = `
           .nx-dev-pill { min-height: 78px; }
           .nx-ai-pill { min-height: 90px; }
           .nx-ai-pill-title { font-size: 19px; }
-          .nx-act-pill > section { border-radius: 33px !important; min-height: 140px; padding: 18px 26px 10px !important; background: var(--act-bg) !important; }
+          .nx-act-pill > section { border-radius: 33px !important; min-height: 140px; padding: 18px 26px 10px !important; background: transparent !important; } /* фон — общий фон экрана, как у «О системе» (раньше — своя тёмная заливка --act-bg) */
           /* Макет: только заголовок «Активность» по центру. Ссылки «Вся активность →» не видно —
              её кнопка растянута невидимой на всю карточку: нажатие в любое место открывает ленту */
           .nx-act-pill > section { position: relative; }
@@ -605,6 +614,27 @@ export const APP_CSS = `
   /* Заметки на телефоне: «Новая заметка» — в одну строку с заголовком, компактнее */
   @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 10px !important; } .nx-notepad-list { padding-bottom: 72px; } }
   .nx-notepad-filters::-webkit-scrollbar { display: none; }
+  /* Заметки на компьютере (макет 2026-10, размеры в долях макета 1920 × 1080 — --mk, как на Главной):
+     «Назад» и заголовок — в строку с верхней строкой; слева поиск + «Добавить заметку», «Все заметки»,
+     список; справа — открытая заметка от строки поиска почти до низа окна */
+  @media ${DESKTOP_MQ} {
+    .ng-main-content:has(.nx-notepad) { max-width: none !important; }
+    .nx-notepad { padding: calc(38 * var(--mk)) calc(145 * var(--mk)) 40px calc(74 * var(--mk)) !important; }
+    .nx-notepad-top { display: flex; align-items: center; gap: calc(44 * var(--mk)); min-height: max(40px, calc(50 * var(--mk))); }
+    .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
+    .nx-notepad-desk { display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(58 * var(--mk)); align-items: start; margin-top: calc(63 * var(--mk)); }
+    /* Слово «Поиск» и значок — по центру таблетки, как в макете; поле растёт вместе с набранным */
+    .nx-notepad-desk .nx-notepad-search { justify-content: center; }
+    .nx-notepad-desk .nx-notepad-search-input { flex: 0 1 auto !important; field-sizing: content; min-width: 5ch !important; max-width: 100%; }
+    .nx-notepad-tools { display: flex; gap: calc(27 * var(--mk)); height: max(44px, calc(53 * var(--mk))); }
+    .nx-notepad-add { flex-shrink: 0; width: max(124px, calc(152 * var(--mk))); padding: 0 14px; border-radius: 999px; border: 1px solid transparent; cursor: pointer;
+      background: linear-gradient(90deg, var(--fold-cyan), var(--fold-blue)); color: var(--on-fold); font: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; white-space: normal; }
+    .nx-notepad-desk .nx-notepad-filters { margin: 16px 0 0 !important; }
+    .nx-notepad-subtitle { font-size: max(18px, calc(24 * var(--mk))); margin: calc(42 * var(--mk)) 4px calc(20 * var(--mk)); }
+    .nx-notepad-desk .nx-notepad-card { border-radius: max(28px, calc(60 * var(--mk))) !important; }
+    .nx-notepad-desk .nx-notepad-open { padding-left: max(26px, calc(36 * var(--mk))) !important; min-height: calc(110 * var(--mk)); }
+    .nx-notepad-panel { border-radius: max(32px, calc(60 * var(--mk))) !important; min-height: max(360px, calc(100vh - 341 * var(--mk))) !important; top: max(104px, calc(130 * var(--mk))) !important; } /* прилипает НИЖЕ верхней строки (поиск, часы — до ~91 px макета): иначе шапка заметки уезжала под неё и кнопки не нажимались */
+  }
   body.kb-open .nx-notepad-fab { display: none !important; }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
   @media ${PHONE_MQ} { .nx-cont-offer { bottom: calc(76px + var(--sab) + 12px) !important; } body.kb-open .nx-cont-offer { bottom: 12px !important; } }
@@ -1143,7 +1173,7 @@ export const APP_CSS = `
         /* Приложение: на самом верху страница не «пружинит» сама — у нас свой жест обновления.
            Только на html (вся страница)! На body нельзя: body у нас — отдельный
            прокручиваемый слой, и запрет на нём обрывает прокрутку страницы */
-        html.nx-native { overscroll-behavior-y: contain; }
+        html.nx-native { overscroll-behavior-y: none; } /* none, а не contain: без растяжки края — жест обновления теперь пассивный и её не гасит */
         /* Дни над расписанием: скруглённые плашки (не «таблетки»), подсветка при наведении */
         .nx-day-chip { transition: border-color 160ms ease; }
         /* «Сегодня» (макет 2026-10): дни — скруглённые квадраты с яркой обводкой, карточки погоды — радиус 40 */
@@ -1283,14 +1313,6 @@ export const APP_CSS = `
         }
         .nx-scroll { scrollbar-width: thin; }
         /* Для браузеров, которые не понимают scrollbar-color (старый Safari) */
-        /* Приложение для ПК: полоса для перетаскивания окна (под кнопками верхней строки — они нажимаются)
-           и кнопки окна — круги, как остальные кнопки-значки; «Закрыть» при наведении краснеет */
-        .nx-pc-drag { position: fixed; top: 0; left: 0; right: 0; height: 22px; z-index: 45; }
-        .nx-pc-winbtns { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 14px; border-left: 1px solid var(--border); pointer-events: auto; }
-        .nx-pc-winbtn { width: 32px; height: 32px; border-radius: 999px; border: 1px solid transparent; background: transparent; color: var(--muted);
-          display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 140ms ease, color 140ms ease, border-color 140ms ease; }
-        .nx-pc-winbtn:hover, .nx-pc-winbtn:focus-visible { color: var(--text); border-color: var(--border-strong); background: color-mix(in srgb, var(--text) 8%, transparent); }
-        .nx-pc-winbtn.is-close:hover, .nx-pc-winbtn.is-close:focus-visible { color: var(--on-fold); background: var(--red); border-color: var(--red); }
         /* Компьютер: полосы прокрутки у самой страницы нет (колесо, тачпад и клавиши работают) — появилась
            прокрутка (открыли календарь) — верхняя строка и складка не сдвигаются; у блоков внутри — как раньше */
         @media ${DESKTOP_MQ} { html { scrollbar-width: none; } html::-webkit-scrollbar { display: none; } }
@@ -1458,7 +1480,8 @@ export const APP_CSS = `
           .nx-sched .nx-day-chip { min-width: 44px !important; padding: 6px 8px 5px !important; }
           .nx-sched .nx-day-chip span:first-child { font-size: 10px !important; }
           .nx-sched .nx-day-num { font-size: 20px !important; }
-          .nx-sched-tools button { font-size: 12px !important; padding: 6px 10px !important; }
+          /* «Календарь» и «+ Добавить» — того же размера и с той же обводкой, что «О системе» и «Заметки» */
+          .nx-sched-tools button { font-size: 14px !important; min-height: 40px; padding: 8px 14px !important; box-sizing: border-box; border-color: var(--line-bright) !important; }
           .nx-sched-head > svg { display: none; } /* только значок календаря, плюс в кнопке остаётся */
           .nx-sched-list { --dot-x: 62px !important; } /* 46 время + 4 отступ + 12 половина кружка */
           .nx-sched-item {
@@ -1503,6 +1526,10 @@ export const APP_CSS = `
 
           /* Окно просмотра файла на телефоне — шторка снизу */
           .nx-viewer { align-items: flex-end !important; padding: 0 !important; }
+          /* Полоска-«ручка» сверху шторки: подсказка, что её можно смахнуть вниз (useSheetSwipe) */
+          .nx-viewer > [role="dialog"] { position: relative; }
+          .nx-viewer > [role="dialog"]::before { content: ""; position: absolute; top: 7px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
+            border-radius: 2px; background: color-mix(in srgb, var(--text) 22%, transparent); pointer-events: none; }
           .nx-viewer-panel {
             width: 100% !important;
             max-height: 90vh !important;

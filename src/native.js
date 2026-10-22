@@ -405,6 +405,38 @@ export async function clipboardWrite(text) {
     return true;
   } catch { return false; }
 }
+/* Картинку — в буфер обмена (кнопка «Копировать» у фото). blobPromise — обещание Blob картинки:
+   на сайте ClipboardItem создаётся сразу по нажатию (иначе Safari откажет), а байты подъедут потом.
+   Буфер браузера принимает только PNG — остальное перерисовываем в PNG.
+   Android-приложение — свой модуль (NexaFiles.copyImage: файл в кэш, в буфер — ссылка на него);
+   APK без него (до 0.14.5) — пробуем как сайт. Ответ: true | "old_app" | false */
+const toPng = async (blob) => {
+  if (!blob) throw new Error("no_blob");
+  if (blob.type === "image/png") return blob;
+  const bmp = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width; canvas.height = bmp.height;
+  canvas.getContext("2d").drawImage(bmp, 0, 0);
+  bmp.close?.();
+  return new Promise((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error("png"))), "image/png"));
+};
+export async function clipboardWriteImage(blobPromise, name = "photo") {
+  if (isNative) {
+    try {
+      const blob = await blobPromise;
+      if (!blob) return false;
+      await NexaFiles.copyImage({ base64: await blobToBase64(blob), name });
+      return true;
+    } catch (e) {
+      if (!/not implemented|не реализ/i.test(String(e?.message || e?.code || ""))) return false;
+    }
+  }
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return isNative ? "old_app" : false;
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": Promise.resolve(blobPromise).then(toPng) })]);
+    return true;
+  } catch { return isNative ? "old_app" : false; }
+}
 // Текст из «Поделиться» другого приложения (только Android): cb(text). Возвращает отписку
 export function onSharedText(cb) {
   if (!isNative) return () => {};

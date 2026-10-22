@@ -125,56 +125,106 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
     : tag ? { title: `Нет заметок с тегом «${tag}»`, text: "Тег могли убрать или заметки ушли в архив", label: "Все заметки", reset: () => setTag(null) }
     : { title: "Все заметки в архиве", text: "Откройте архив, чтобы вернуть нужные, или создайте новую", label: "Открыть архив", reset: () => setView("archive") };
 
-  return (
-    <div className="ng-screen nx-notepad" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1240 }}>
-      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Сегодня</Crumb>
-
-      <div className="nx-notepad-head" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", margin: "24px 0 20px" }}>
-        <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1, flex: "1 1 auto" }}>Заметки</div>
-        {!phone && (
-          <button type="button" className="nx-primary" onClick={create} style={primary}>
-            {Icon.plus({ c: C.onFold, s: 16 })} Новая заметка
+  // Фильтры: все / по тегу / архив. Ряд листается вбок (свайп разделов здесь не срабатывает)
+  const filters = (
+    <div className="nx-notepad-filters nx-scroll" data-no-swipe role="group" aria-label="Фильтр заметок"
+      style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16, scrollbarWidth: "none" }}>
+      <button type="button" style={chip(!filtered)} aria-pressed={!filtered} onClick={() => { setView("active"); setTag(null); }}>Все</button>
+      {tags.map((t) => {
+        const on = view === "active" && tag?.toLowerCase() === t.tag.toLowerCase();
+        return (
+          <button key={t.tag} type="button" style={chip(on)} aria-pressed={on} onClick={() => { setView("active"); setTag(on ? null : t.tag); }}>
+            #{t.tag} <span style={{ color: on ? C.mint : C.mutedSoft }}>{t.count}</span>
           </button>
-        )}
-      </div>
-
-      {!empty && (
-        <label className="nx-notepad-search" style={{
-          display: "flex", alignItems: "center", gap: 10, maxWidth: 560, padding: "0 16px", height: 44, boxSizing: "border-box",
-          border: `1px solid ${C.lineBright}`, borderRadius: 999, marginBottom: 12,
-        }}>
-          {Icon.search({ c: C.muted, s: 16 })}
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по заметкам и тегам"
-            aria-label="Поиск по заметкам" className="nx-notepad-search-input"
-            style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 15, fontFamily: "inherit" }} />
-          {query && (
-            <button type="button" onClick={() => setQuery("")} aria-label="Сбросить поиск" style={{ ...btnReset, display: "flex" }}>
-              {Icon.close({ c: C.muted, s: 14 })}
-            </button>
-          )}
-        </label>
+        );
+      })}
+      {archivedCount > 0 && (
+        <button type="button" style={chip(view === "archive")} aria-pressed={view === "archive"} onClick={() => { setTag(null); setView(view === "archive" ? "active" : "archive"); }}>
+          {Icon.archive({ c: view === "archive" ? C.mint : C.muted, s: 14 })} Архив <span style={{ color: view === "archive" ? C.mint : C.mutedSoft }}>{archivedCount}</span>
+        </button>
       )}
+    </div>
+  );
 
-      {/* Фильтры: все / по тегу / архив. Ряд листается вбок (свайп разделов здесь не срабатывает) */}
-      {!empty && (tags.length > 0 || archivedCount > 0) && (
-        <div className="nx-notepad-filters nx-scroll" data-no-swipe role="group" aria-label="Фильтр заметок"
-          style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16, scrollbarWidth: "none" }}>
-          <button type="button" style={chip(!filtered)} aria-pressed={!filtered} onClick={() => { setView("active"); setTag(null); }}>Все</button>
-          {tags.map((t) => {
-            const on = view === "active" && tag?.toLowerCase() === t.tag.toLowerCase();
-            return (
-              <button key={t.tag} type="button" style={chip(on)} aria-pressed={on} onClick={() => { setView("active"); setTag(on ? null : t.tag); }}>
-                #{t.tag} <span style={{ color: on ? C.mint : C.mutedSoft }}>{t.count}</span>
-              </button>
-            );
-          })}
-          {archivedCount > 0 && (
-            <button type="button" style={chip(view === "archive")} aria-pressed={view === "archive"} onClick={() => { setTag(null); setView(view === "archive" ? "active" : "archive"); }}>
-              {Icon.archive({ c: view === "archive" ? C.mint : C.muted, s: 14 })} Архив <span style={{ color: view === "archive" ? C.mint : C.mutedSoft }}>{archivedCount}</span>
-            </button>
-          )}
+  // Поиск по заметкам. На компьютере — таблетка рядом с «Добавить заметку» (макет 2026-10)
+  const search = (
+    <label className="nx-notepad-search" style={phone ? {
+      display: "flex", alignItems: "center", gap: 10, maxWidth: 560, padding: "0 16px", height: 44, boxSizing: "border-box",
+      border: `1px solid ${C.lineBright}`, borderRadius: 999, marginBottom: 12,
+    } : {
+      display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, padding: "0 18px", boxSizing: "border-box",
+      border: `1px solid ${C.lineBright}`, borderRadius: 999,
+    }}>
+      {Icon.search({ c: C.muted, s: 16 })}
+      <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={phone ? "Поиск по заметкам и тегам" : "Поиск"}
+        aria-label="Поиск по заметкам и тегам" className="nx-notepad-search-input"
+        style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 15, fontFamily: "inherit" }} />
+      {query && (
+        <button type="button" onClick={() => setQuery("")} aria-label="Сбросить поиск" style={{ ...btnReset, display: "flex" }}>
+          {Icon.close({ c: C.muted, s: 14 })}
+        </button>
+      )}
+    </label>
+  );
+
+  return (
+    <div className="ng-screen nx-notepad" style={phone ? { padding: "28px 40px 40px", textAlign: "left" } : { textAlign: "left" }}>
+      {phone ? (
+        <>
+          <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Сегодня</Crumb>
+          <div className="nx-notepad-head" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", margin: "24px 0 20px" }}>
+            <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1, flex: "1 1 auto" }}>Заметки</div>
+          </div>
+          {!empty && search}
+        </>
+      ) : (
+        // Компьютер (макет): «Назад» и заголовок в одну строку с верхней строкой (поиск, часы…)
+        <div className="nx-notepad-top">
+          <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+          <div className="ng-display nx-page-title nx-notepad-title" style={{ fontWeight: 500, lineHeight: 1.1 }}>Заметки</div>
         </div>
       )}
+
+      {!phone ? (
+        /* Компьютер: слева — поиск + «Добавить заметку», фильтры, «Все заметки» и список;
+           справа — открытая заметка (или подсказка) от строки поиска до низа окна */
+        <div className="nx-notepad-body nx-notepad-desk">
+          <div style={{ minWidth: 0 }}>
+            <div className="nx-notepad-tools">
+              {search}
+              <button type="button" className="nx-primary nx-notepad-add" onClick={create}>Добавить заметку</button>
+            </div>
+            {!empty && (tags.length > 0 || archivedCount > 0) && filters}
+            <div className="ng-display nx-notepad-subtitle">{view === "archive" ? "Архив" : tag ? `#${tag}` : "Все заметки"}</div>
+            {empty ? (
+              <div className="nx-notepad-card nx-notepad-none" style={{ border: `1px solid ${C.lineBright}` }}>
+                <EmptyState compact title="Заметок пока нет"
+                  text={uid ? "Списки, мысли и планы — сохранятся в аккаунте и будут на всех ваших устройствах" : "Списки, мысли и планы — сохранятся в этом браузере. Войдите в аккаунт, чтобы они были на всех устройствах"} />
+              </div>
+            ) : (
+              <>
+                {view === "archive" && found.length > 0 && (
+                  <div style={{ fontSize: 13, color: C.muted, margin: "0 4px 12px", lineHeight: 1.5 }}>Архив: заметок нет в общем списке, но они не удалены — откройте, чтобы вернуть</div>
+                )}
+                {found.length ? list : (
+                  <div className="nx-notepad-card nx-notepad-none" style={{ border: `1px solid ${C.lineBright}` }}>
+                    <EmptyState compact title={nothing.title} text={nothing.text}
+                      action={<button type="button" className="nx-ghost-btn" onClick={nothing.reset} style={ghost}>{nothing.label}</button>} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          {editor || (
+            <div className="nx-notepad-placeholder nx-notepad-panel" style={{
+              border: `1px solid ${C.lineBright}`, display: "flex", alignItems: "center", justifyContent: "center",
+              color: C.mutedSoft, fontSize: 14, textAlign: "center", padding: 24, boxSizing: "border-box",
+            }}>{empty ? "Здесь откроется заметка" : "Выберите заметку слева или создайте новую"}</div>
+          )}
+        </div>
+      ) : (<>
+      {/* Телефон: фильтры, список (редактор — поверх всего, см. ниже) */}
+      {!empty && (tags.length > 0 || archivedCount > 0) && filters}
 
       {empty && !open ? (
         <div style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, maxWidth: 640 }}>
@@ -183,7 +233,7 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
             action={<button type="button" className="nx-primary" onClick={create} style={primary}>{Icon.plus({ c: C.onFold, s: 16 })} Создать первую заметку</button>} />
         </div>
       ) : (
-        <div className="nx-notepad-body" style={{ display: "grid", gridTemplateColumns: phone ? "minmax(0, 1fr)" : "minmax(260px, 380px) minmax(0, 1fr)", gap: 24, alignItems: "start" }}>
+        <div className="nx-notepad-body" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 24, alignItems: "start" }}>
           <div>
             {view === "archive" && found.length > 0 && (
               <div style={{ fontSize: 13, color: C.muted, margin: "0 4px 12px", lineHeight: 1.5 }}>Архив: заметок нет в общем списке, но они не удалены — откройте, чтобы вернуть</div>
@@ -195,21 +245,19 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
               </div>
             )}
           </div>
-          {!phone && (editor || (
-            <div className="nx-notepad-placeholder" style={{
-              border: `1px dashed ${C.borderStrong}`, borderRadius: 32, minHeight: 320, display: "flex", alignItems: "center", justifyContent: "center",
-              color: C.mutedSoft, fontSize: 14, textAlign: "center", padding: 24,
-            }}>Выберите заметку слева или создайте новую</div>
-          ))}
         </div>
       )}
+      </>)}
       {/* Телефон: создать — круглая кнопка над нижней панелью (заголовок не тесним, панель не трогаем) */}
-      {phone && !empty && !open && (
+      {/* В body, а не внутри экрана: у экрана при открытии анимация со сдвигом — «закреплённая»
+          кнопка ехала бы вместе с ним и на миг оказывалась выше своего места */}
+      {phone && !empty && !open && createPortal(
         <button type="button" className="nx-primary nx-notepad-fab" onClick={create} aria-label="Новая заметка" style={{
           ...btnReset, position: "fixed", right: 16, bottom: "calc(var(--sab) + 88px)", zIndex: 30, width: 56, height: 56, borderRadius: 999,
           display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent",
           background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-        }}>{Icon.plus({ c: C.onFold, s: 22 })}</button>
+        }}>{Icon.plus({ c: C.onFold, s: 22 })}</button>,
+        document.body,
       )}
       {/* На телефоне редактор — поверх всего (и нижней панели), в body: у экрана есть анимация с transform */}
       {phone && editor && createPortal(editor, document.body)}
@@ -456,7 +504,7 @@ function NoteEditor({ id, note, isNew, phone, api, uid, online, sync, knownTags,
 
   return (
     <div role="dialog" aria-modal={phone || undefined} aria-label={exists ? `Заметка «${title.trim() || "Без названия"}»` : "Новая заметка"}
-      className={`nx-notepad-editor${phone ? " is-phone nx-pop" : ""}`} data-no-swipe
+      className={`nx-notepad-editor${phone ? " is-phone nx-pop" : " nx-notepad-panel"}`} data-no-swipe
       style={phone ? {
         position: "fixed", inset: 0, zIndex: 250, background: C.bg, display: "flex", flexDirection: "column",
         padding: "calc(var(--sat) + 12px) 16px calc(var(--sab) + 12px)", boxSizing: "border-box",

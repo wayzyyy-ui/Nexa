@@ -1,11 +1,12 @@
 // Индикатор «потяните, чтобы обновить» (только приложение)
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
-import { PULL_THRESHOLD } from "../lib/hooks.js";
+import { PULL_THRESHOLD, usePullState } from "../lib/hooks.js";
 import { Spinner } from "./base.jsx";
 
 // Значок над страницей: выезжает за пальцем, поворачивается, после порога — крутится
-export function PullIndicator({ pull, busy }) {
+export function PullIndicator() {
+  const { pull, busy } = usePullState(); // своё хранилище: NexaApp при натяжении не перерисовывается
   if (!pull && !busy) return null;
   const ready = pull >= PULL_THRESHOLD;
   return (
