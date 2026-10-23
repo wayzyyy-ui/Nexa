@@ -62,7 +62,7 @@ import { NOTES_KEY, NOTES_MAX, loadNotes, NOTE_CATS, NOTE_PREFS_KEY, loadNotePre
 import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, withWhen, uploadDevice, folderName, sortByRecent, catOf, fileMeta, FILE_SCOPE, setFileScope } from "./lib/fileStore.js";
 import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
-import { ScreenAbout } from "./screens/About.jsx";
+import { ScreenAbout, GateAbout } from "./screens/About.jsx";
 import { ScreenSecurity } from "./screens/Security.jsx";
 import { ScreenDevices } from "./screens/Devices.jsx";
 import { MemorySettings } from "./ui/memory.jsx";
@@ -137,6 +137,7 @@ export default function NexaApp() {
   const files = fileStore.added
     .map((f) => ({ ...withWhen(f), uploaded: true }))
     .map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name }));
+  const [gateAbout, setGateAbout] = useState(false); // «О системе» с экрана входа (до входа)
   const [filesFilter, setFilesFilter] = useState(null);
   const filesBackRef = useRef(null); // { tab, y } — откуда пришли в «Файлы» (из «Медиа») и прокрутка там
   const [openFile, setOpenFile] = useState(null);
@@ -2039,6 +2040,8 @@ export default function NexaApp() {
       if (backState.current.blocked) { CapApp.minimizeApp(); return; }
       // Экран первого запуска на приветствии — сворачиваем. На шаге входа (почта, код, QR)
       // Esc вернёт на шаг назад: с кода — к почте, с почты или QR — к приветствию
+      // «О системе» поверх экрана входа — «Назад» закрывает его, а не сворачивает приложение
+      if (document.querySelector(".nx-gate-about")) { pressEscape(); return; }
       const gate = document.querySelector(".nx-auth-gate");
       if (gate) { if (gate.querySelector(".nx-gate-hello")) CapApp.minimizeApp(); else pressEscape(); return; }
       // Экран NEXA заблокирован (демонстрация) — «Назад» только сворачивает
@@ -2932,7 +2935,8 @@ export default function NexaApp() {
       {syncOpen && <SyncDetails online={online} uid={uid} syncState={syncState} uploads={uploads} trash={uid ? trashCount(uid) : 0}
         onRetry={retrySync} onUploadAction={uploadAction} onLogin={() => { setSyncOpen(false); setAuthOpen(true); }} onClose={() => setSyncOpen(false)} />}
       {/* Первый запуск: экран входа (гостевого входа на нём нет — решение автора) */}
-      {showGate && <AuthGate />}
+      {showGate && <AuthGate onAbout={() => setGateAbout(true)} />}
+      {showGate && gateAbout && <GateAbout onBack={() => setGateAbout(false)} installed={installedVersion} />}
       {authOpen && !auth.user && <AuthModal onClose={() => { setAuthOpen(false); setPendingPair(null); setPendingLogin(null); }}
         hint={pendingPair ? "Войдите той же почтой, что и на другом устройстве, — потом подключим это устройство"
           : pendingLogin ? "Чтобы разрешить вход на другом устройстве, сначала войдите здесь" : null} />}

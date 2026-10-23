@@ -120,7 +120,12 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
     setNewFolder(null);
   };
   // Сменили папку — поле новой папки закрываем
-  useEffect(() => { setNewFolder(null); }, [folder, filter, device]);
+  const folderAfterClear = useRef(false); // «Новая папка» в категории: после сброса фильтра сразу поле имени
+  useEffect(() => { setNewFolder(folderAfterClear.current ? "" : null); folderAfterClear.current = false; }, [folder, filter, device]);
+  const startNewFolder = () => {
+    if (flat) { folderAfterClear.current = true; onClearFilter?.(); return; }
+    setNewFolder("");
+  };
 
   /* Перетаскивание файлов прямо в окно (на компьютере).
      Слушаем всё окно: пока над ним держат файлы — показываем рамку,
@@ -246,8 +251,8 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           {heading}
         </div>
         <div className="nx-files-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          {!flat && (
-            <button type="button" className="nx-ghost-btn" onClick={() => setNewFolder("")} disabled={newFolder !== null} style={{
+          {(
+            <button type="button" className="nx-ghost-btn nx-fa-folder" onClick={startNewFolder} disabled={newFolder !== null} style={{
               ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
               border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
             }}>
@@ -255,20 +260,20 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             </button>
           )}
           {onNearby && (
-            <button type="button" className="nx-ghost-btn" onClick={onNearby} style={{
+            <button type="button" className="nx-ghost-btn nx-fa-near" onClick={onNearby} style={{
               ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
               border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
             }}>
               {Icon.signal({ c: C.text, s: 15 })} Рядом
             </button>
           )}
-          <button type="button" className="nx-ghost-btn" onClick={fromClipboard} disabled={clipBusy} style={{
+          <button type="button" className="nx-ghost-btn nx-fa-clip" onClick={fromClipboard} disabled={clipBusy} style={{
             ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
             border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
           }}>
             {Icon.copy({ c: C.text, s: 15 })} Из буфера
           </button>
-          <button type="button" className="nx-primary" onClick={() => fileInput.current?.click()} style={{
+          <button type="button" className="nx-primary nx-fa-add" onClick={() => fileInput.current?.click()} style={{
             ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
             border: "1px solid transparent", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500,
             color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,

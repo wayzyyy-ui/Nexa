@@ -26,6 +26,7 @@ export const ABOUT_FEATURES = [
 
 // История обновлений — новые сверху. Добавляя версию, впишите её сюда (и в release-notes.md)
 export const ABOUT_UPDATES = [
+  { v: "0.15.4", items: ["Плавный переход из заставки в Главную", "«О системе» прямо с экрана входа", "«Добавить файл» и «Новая папка» в «Файлах» — первыми", "Исправлены верхняя строка при прокрутке и приближение фото"] },
   { v: "0.15.3", items: ["«Рядом» — файл на соседний телефон без интернета", "«Где устройство?» и сообщение на экран, даже когда NEXA закрыта", "Анимация передачи файла сверху", "Новая заставка запуска"] },
   { v: "0.15.1", items: ["Приложение для ПК быстрее узнаёт о новой версии", "Подпись студии на Главной компьютера"] },
   { v: "0.15.0", items: ["«Жидкое стекло»: поиск, ассистент, нижняя панель, кнопки «Сегодня», заметки", "Подпись студии внизу «О системе»"] },
@@ -164,6 +165,24 @@ export function ScreenAbout({ onBack, installed }) {
 
       {/* Подпись студии — в самом низу страницы */}
       <MadeBy style={{ marginTop: 48, paddingBottom: 8 }} />
+    </div>
+  );
+}
+
+/* «О системе» с экрана входа (до входа в аккаунт): тот же экран поверх экрана входа, своим слоем.
+   Esc, «Назад» на экране и «Назад» Android возвращают к входу */
+export function GateAbout({ onBack, installed }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onBack(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onBack]);
+  return (
+    <div className="nx-gate-about nx-scroll" role="dialog" aria-modal="true" aria-label="О системе">
+      <div className="nx-home-glow" aria-hidden="true" />
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <ScreenAbout onBack={onBack} installed={installed} />
+      </div>
     </div>
   );
 }

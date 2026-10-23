@@ -191,6 +191,8 @@ const BOOT_FACETS = [
 ];
 // Когда что начинается (мс от готовности интерфейса): BOOT_OUT — заставка тает, BOOT_DONE — убрана
 const BOOT_OUT = 1750, BOOT_OUT_REDUCED = 700, BOOT_FADE = 480;
+// Переход в Главную: слово NEXA летит в шапку за BOOT_LAND, потом за BOOT_SWAP сменяется логотипом шапки
+const BOOT_LAND = 680, BOOT_SWAP = 160;
 function mountBootLogo() {
   const ease = "cubic-bezier(0.22, 1, 0.36, 1)", soft = "cubic-bezier(0.4, 0, 0.2, 1)";
   const style = document.createElement("style");
@@ -224,6 +226,18 @@ function mountBootLogo() {
     .nx-boot-go .nx-boot-word { opacity: 1; transform: translate(-50%, -50%); transition: opacity 560ms ${soft} 820ms, transform 680ms ${ease} 820ms; }
     .nx-boot-go .nx-boot-made { opacity: 1; transition: opacity 560ms ${soft} 1000ms; }
     .nx-boot-out #nx-boot { opacity: 0; transition: opacity ${BOOT_FADE}ms ${soft}; }
+    /* Переход в Главную (nx-boot-land, без общего затухания): фон растворяется — под ним интерфейс;
+       знак уходит вверх и тает, подпись гаснет вниз; слово NEXA летит в шапку (transform задаёт bootLand) */
+    .nx-boot-land #nx-boot { opacity: 1; background-color: transparent; transition: background-color 520ms ${soft} 60ms; }
+    .nx-boot-land .nx-boot-bg { opacity: 0; transition: opacity 520ms ${soft} 60ms; }
+    .nx-boot-land .nx-boot-mark { opacity: 0; transform: translate(-50%, calc(-50% - 22vh - 48px)) scale(0.72);
+      transition: transform ${BOOT_LAND}ms ${ease}, opacity 380ms ${soft}; }
+    .nx-boot-land .nx-boot-made { opacity: 0; transform: translateY(14px); transition: opacity 300ms ${soft}, transform 420ms ${ease}; }
+    .nx-boot-land .nx-boot-word svg { transition: fill ${BOOT_LAND}ms ${soft}; }
+    .nx-boot-swap .nx-boot-word { opacity: 0; transition: opacity ${BOOT_SWAP}ms linear !important; }
+    /* Пока слово летит, логотип шапки скрыт — потом он проявляется ровно на его месте */
+    .nx-boot-land:not(.nx-boot-swap) .nx-home-head svg[aria-label="NEXA"] { opacity: 0; }
+    .nx-boot-swap .nx-home-head svg[aria-label="NEXA"] { transition: opacity ${BOOT_SWAP}ms linear; }
     @media (prefers-reduced-motion: reduce) {
       #nx-boot *, .nx-boot-go #nx-boot * { transition: none !important; }
       .nx-boot-go .nx-boot-splash { opacity: 0; }
@@ -253,6 +267,39 @@ function mountBootLogo() {
   document.body.appendChild(el);
 }
 
+/* Плавный переход из заставки в Главную: слово NEXA уменьшается и «садится» точно на логотип
+   в шапке телефонной Главной (позиция и размер — по настоящему логотипу, цвет — его цвет темы);
+   знак и подпись уходят, фон растворяется, блоки Главной всплывают по очереди (nx-rise ждал,
+   пока заставка на экране, — .nx-intro-wait в appStyles.js). false — шапки нет, нужен запасной путь */
+function bootLand(root) {
+  const word = document.querySelector(".nx-boot-word");
+  const target = document.querySelector(".nx-home-head svg[aria-label='NEXA']");
+  // Шапка и все её родители не всплывают (nx-rise): иначе логотип сдвинулся бы за время перелёта
+  // и слово село бы мимо. Блоки ниже шапки всплывают как обычно
+  for (let n = target; n && n !== document.body && n.id !== "root"; n = n.parentElement) n.style.animation = "none";
+  const t = target?.getBoundingClientRect();
+  if (!word || !t || !t.width || t.bottom <= 0 || t.top >= innerHeight) return false;
+  const w = word.getBoundingClientRect();
+  const dx = t.left + t.width / 2 - (w.left + w.width / 2);
+  const dy = t.top + t.height / 2 - (w.top + w.height / 2);
+  const k = t.width / w.width;
+  root.classList.remove("nx-intro-wait");
+  root.classList.add("nx-intro-go", "nx-intro-land", "nx-boot-land");
+  word.style.transition = `transform ${BOOT_LAND}ms cubic-bezier(0.65, 0, 0.25, 1)`;
+  word.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${k})`;
+  const svg = word.querySelector("svg");
+  if (svg) svg.style.fill = getComputedStyle(target).color;
+  setTimeout(() => {
+    root.classList.add("nx-boot-swap");
+    setTimeout(() => {
+      document.getElementById("nx-boot")?.remove();
+      // nx-intro-land оставляем: иначе #root сменил бы анимацию и проявился бы второй раз
+      root.classList.remove("nx-boot-land", "nx-boot-swap");
+    }, BOOT_SWAP + 40);
+  }, BOOT_LAND);
+  return true;
+}
+
 export async function startIntro() {
   if (!isNative) return;
   const root = document.documentElement;
@@ -267,8 +314,10 @@ export async function startIntro() {
   setTimeout(() => {
     requestAnimationFrame(() => {
       root.classList.add("nx-boot-go");
-      // Заставка тает, интерфейс проявляется под ней. Таймеры одноразовые — только при запуске
+      // Переход в интерфейс. Таймеры одноразовые — только при запуске
       setTimeout(() => {
+        if (!reduced && bootLand(root)) return;
+        // Запасной путь (нет шапки Главной, «уменьшение движения»): заставка просто тает
         root.classList.remove("nx-intro-wait");
         root.classList.add("nx-intro-go", "nx-boot-out");
         setTimeout(() => document.getElementById("nx-boot")?.remove(), BOOT_FADE + 60);

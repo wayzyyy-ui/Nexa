@@ -414,6 +414,9 @@ export const APP_CSS = `
           .nx-top-search { display: none !important; }
           .nx-top-search-icon { display: inline-flex; }
           .ng-topbar { gap: 2px !important; }
+          /* Подложка при прокрутке: меню слева нет — фон не сдвигаем на его ширину (со сдвигом справа
+             оставалась пустая полоса 96 px, и прокрученное просвечивало под значками) */
+          body:has(.nx-home-glow) .ng-topbar::before { background-position: 0 0; }
           /* Все значки шапки одного размера; профиль на телефоне — в нижней панели */
           .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) svg, .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 19px !important; height: 19px !important; }
           .ng-topbar .nx-tb-user { display: none !important; }
@@ -718,6 +721,13 @@ export const APP_CSS = `
   .nx-gate-logo svg:last-child { height: clamp(28px, 2.6vw, 50px); width: auto; }
   .nx-gate-text { font-size: clamp(18px, 1.9vw, 36px); line-height: 1.28; margin-top: clamp(28px, 4.5vh, 64px); max-width: 640px; }
   .nx-gate-actions { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: clamp(28px, 5vh, 72px); }
+  /* «О системе» на экране входа: тихая ссылка под кнопками */
+  .nx-gate-about-btn { all: unset; box-sizing: border-box; display: block; margin: 18px auto 0; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+    font-size: 14px; color: var(--gate-muted); text-align: center; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: color-mix(in srgb, var(--gate-muted) 45%, transparent); }
+  .nx-gate-about-btn:hover { color: var(--gate-text); }
+  .nx-gate-about-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+  /* Слой «О системе» поверх экрана входа (выше .nx-auth-gate) */
+  .nx-gate-about { position: fixed; inset: 0; z-index: 950; overflow-y: auto; overscroll-behavior: contain; background: var(--bg); padding-top: var(--sat); padding-bottom: var(--sab); }
   .nx-gate-enter {
     border: none; cursor: pointer; font-family: inherit; color: var(--on-fold);
     font-size: clamp(16px, 1.5vw, 28px); height: clamp(52px, 5.2vw, 100px); padding: 0 clamp(48px, 5.4vw, 104px); border-radius: 999px;
@@ -1255,6 +1265,14 @@ export const APP_CSS = `
         #root { animation: nx-intro 650ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* В приложении: ждём, пока уйдёт заставка Android, и только тогда проявляемся */
         .nx-intro-wait #root { animation: none; opacity: 0; }
+        /* Пока на экране заставка, появление блоков разделов (nx-rise) стоит на старте — его
+           видно уже при переходе из заставки, а не впустую под ней */
+        .nx-intro-wait #root * { animation-play-state: paused !important; }
+        /* Переход «слово NEXA садится в шапку»: интерфейс только проявляется, без сдвига — иначе
+           шапка ехала бы под летящим словом; сама шапка не всплывает, блоки ниже — да */
+        @keyframes nx-intro-fade { from { opacity: 0; } to { opacity: 1; } }
+        .nx-intro-go.nx-intro-land #root { animation: nx-intro-fade 520ms cubic-bezier(0.4, 0, 0.2, 1) 60ms backwards; }
+        .nx-intro-land .ng-home-mobile > .nx-home-top { animation: none !important; }
         .nx-intro-go #root { animation: nx-intro 700ms cubic-bezier(0.22, 1, 0.36, 1) 40ms backwards; }
         /* backwards, а не both: «both» держит transform у #root и после конца — тогда нижняя панель,
            шапка Главной и окна (position: fixed / sticky) считаются от #root, а не от экрана */
@@ -1757,6 +1775,8 @@ export const APP_CSS = `
           .nx-files-head { flex-direction: column; align-items: stretch !important; }
           /* Четыре кнопки («Рядом» есть только в приложении) — сеткой по две, не в одну тесную строку */
           .nx-files-actions { display: grid !important; grid-template-columns: 1fr 1fr; }
+          /* Порядок на телефоне: «Добавить файл» и «Новая папка» — первым рядом, «Рядом» и «Из буфера» — вторым */
+          .nx-fa-add { order: 1; } .nx-fa-folder { order: 2; } .nx-fa-near { order: 3; } .nx-fa-clip { order: 4; }
           .nx-files-actions > button { flex: 1 1 0; padding: 11px 12px !important; }
           /* «Передать на…»: на телефоне только значок, кнопка покрупнее для пальца */
           .nx-transfer-label { display: none; }

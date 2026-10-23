@@ -144,6 +144,11 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
     ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const v = view.current;
     if (ptrs.current.size === 2) {
+      // Второй палец пришёл чуть позже первого: первый уже начал «смахнуть вниз / листать» —
+      // отменяем это (фон снова плотный, фото на месте), иначе щипок шёл бы со сдвинутого фото
+      // на полупрозрачном фоне, сквозь который видно окно файла
+      if (rootRef.current) rootRef.current.style.backgroundColor = "";
+      if (v.s <= 1) { v.x = 0; v.y = 0; apply(false); }
       const [a, b] = [...ptrs.current.values()];
       g.current = { pinch: true, d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: v.s, moved: true };
     } else if (ptrs.current.size === 1) {
@@ -179,7 +184,7 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
     const G = g.current, v = view.current;
     if (!G) return;
     if (G.pinch) {
-      if (ptrs.current.size === 0) { g.current = null; if (v.s < 1.05) resetView(true); }
+      if (ptrs.current.size === 0) { g.current = null; if (rootRef.current) rootRef.current.style.backgroundColor = ""; if (v.s < 1.05) resetView(true); }
       return;
     }
     g.current = null;

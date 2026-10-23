@@ -388,7 +388,8 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
    Гостевого входа здесь нет (решение автора); гостевой режим остаётся у тех, кто уже гость.
    Esc / «Назад» Android на шаге 2 — к шагу 1, на шаге 1 приложение сворачивается.
    Показывается, только если аккаунты доступны (есть настройки Supabase) */
-export function AuthGate() {
+// onAbout — «О системе»: что такое NEXA, до входа (экран открывает NexaApp поверх экрана входа)
+export function AuthGate({ onAbout }) {
   const [step, setStep] = useState(null); // null — приветствие; "email" | "qr" — вход
   return (
     <div className="nx-auth-gate nx-scroll" role="dialog" aria-modal="true" aria-labelledby="nx-auth-title">
@@ -422,6 +423,7 @@ export function AuthGate() {
                 {Icon.qr({ c: C.gateText, s: 30 })}
               </button>
             </div>
+            {onAbout && <button type="button" className="nx-gate-about-btn" onClick={onAbout}>Что такое NEXA — о системе</button>}
           </div>
         )}
       </div>
