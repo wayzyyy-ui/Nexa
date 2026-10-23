@@ -8,6 +8,7 @@ import { C, T, fontDisplay, PHONE_MQ } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { btnReset, EmptyState } from "../ui/base.jsx";
 import { Crumb } from "../ui/layout.jsx";
+import { FoldArt } from "../ui/backdrop.jsx";
 import { useMediaQuery } from "../lib/hooks.js";
 import { newId } from "../lib/sync.js";
 import { dayKey } from "../lib/schedule.js";
@@ -101,10 +102,17 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
 
   const card = (n) => (
     <NoteCard key={n.id} note={n} active={open?.id === n.id} archived={view === "archive"} onOpen={() => setOpen({ id: n.id })}
-      onPin={() => api.save(n.id, { pinned: !n.pinned })} onTag={(t) => { setView("active"); setTag(t); }} />
+      onPin={() => api.save(n.id, { pinned: !n.pinned })} onArchive={() => archive(n, !n.archived)}
+      onDelete={() => {
+        const r = api.remove(n.id);
+        if (!r?.ok) { toast?.({ title: "Не получилось удалить", text: "Браузер не сохранил изменение — попробуйте ещё раз", kind: "error" }); return; }
+        if (open?.id === n.id) setOpen(null);
+        toast?.({ title: "Заметка удалена", text: noteTitle(n) });
+      }}
+      onTag={(t) => { setView("active"); setTag(t); }} />
   );
   const list = (
-    <div className="nx-notepad-list" style={{ display: "grid", gap: 10, alignContent: "start" }}>
+    <div className={`nx-notepad-list${phone ? "" : " nx-scroll"}`} style={{ display: "grid", gap: 10, alignContent: "start" }}>
       {pinned.length > 0 && <div className="nx-notepad-group" style={{ fontSize: 13, color: C.mutedSoft, margin: "2px 4px 0" }}>Закреплённые</div>}
       {pinned.map(card)}
       {pinned.length > 0 && rest.length > 0 && <div className="nx-notepad-group" style={{ fontSize: 13, color: C.mutedSoft, margin: "8px 4px 0" }}>Остальные</div>}
@@ -148,7 +156,9 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
 
   // Поиск по заметкам. На компьютере — таблетка рядом с «Добавить заметку» (макет 2026-10)
   const search = (
-    <label className="nx-notepad-search" style={phone ? {
+    <label className="nx-notepad-search"
+      onMouseDown={(e) => { if (e.target.tagName !== "INPUT" && !e.target.closest("button")) { e.preventDefault(); e.currentTarget.querySelector("input")?.focus(); } }}
+      style={phone ? {
       display: "flex", alignItems: "center", gap: 10, maxWidth: 560, padding: "0 16px", height: 44, boxSizing: "border-box",
       border: `1px solid ${C.lineBright}`, borderRadius: 999, marginBottom: 12,
     } : {
@@ -189,7 +199,9 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
         /* Компьютер: слева — поиск + «Добавить заметку», фильтры, «Все заметки» и список;
            справа — открытая заметка (или подсказка) от строки поиска до низа окна */
         <div className="nx-notepad-body nx-notepad-desk">
-          <div style={{ minWidth: 0 }}>
+          {/* Складка за «стеклянной» панелью заметки (макет 2026-10): видна сквозь неё синим светом */}
+          <div className="nx-notepad-fold" aria-hidden="true"><FoldArt /></div>
+          <div className="nx-notepad-side" style={{ minWidth: 0 }}>
             <div className="nx-notepad-tools">
               {search}
               <button type="button" className="nx-primary nx-notepad-add" onClick={create}>Добавить заметку</button>
@@ -266,17 +278,36 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
 }
 
 // Карточка заметки в списке: заголовок, фрагмент, теги, чек-лист, дата изменения; булавка — закрепить / открепить
-function NoteCard({ note, active, archived, onOpen, onPin, onTag }) {
+/* Карточка заметки в списке: заголовок (булавка — закреплена), фрагмент, теги, чек-лист, дата изменения.
+   Справа «…» — меню (макет 2026-10): закрепить / открепить, в архив / вернуть, удалить (с подтверждением) */
+function NoteCard({ note, active, archived, onOpen, onPin, onArchive, onDelete, onTag }) {
   const preview = notePreview(note);
   const check = checklistStats(note.text);
   const tags = note.tags || [];
+  const [menu, setMenu] = useState(false);
+  const [sure, setSure] = useState(false); // «Удалить?» — второй шаг в меню
+  const box = useRef(null);
+  // Меню закрывается по Esc и нажатию мимо
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); setSure(false); } };
+    const onDown = (e) => { if (!box.current?.contains(e.target)) { setMenu(false); setSure(false); } };
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown);
+    return () => { window.removeEventListener("keydown", onKey, true); document.removeEventListener("pointerdown", onDown); };
+  }, [menu]);
+  const item = { ...btnReset, display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 12, fontSize: 14, color: C.text, textAlign: "left" };
+  const pick = (fn) => () => { setMenu(false); setSure(false); fn(); };
   return (
-    <div className="nx-notepad-card" data-active={active ? "1" : "0"} style={{
+    <div ref={box} className="nx-notepad-card" data-active={active ? "1" : "0"} style={{
       position: "relative", border: `1px solid ${active ? C.mint : C.lineBright}`, borderRadius: 24,
-      background: active ? `color-mix(in srgb, ${C.mint} 6%, transparent)` : "transparent", transition: "border-color 160ms ease",
+      background: active ? `color-mix(in srgb, ${C.mint} 9%, transparent)` : "transparent", transition: "border-color 160ms ease, background-color 160ms ease",
     }}>
-      <button type="button" onClick={onOpen} className="nx-notepad-open" style={{ ...btnReset, display: "block", width: "100%", textAlign: "left", padding: `16px ${archived ? 20 : 56}px ${tags.length ? 8 : 16}px 20px`, boxSizing: "border-box" }}>
-        <span style={{ display: "block", fontFamily: fontDisplay, fontSize: 16, fontWeight: 500, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{noteTitle(note)}</span>
+      <button type="button" onClick={onOpen} className="nx-notepad-open" style={{ ...btnReset, display: "block", width: "100%", textAlign: "left", padding: `16px 56px ${tags.length ? 8 : 16}px 20px`, boxSizing: "border-box" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          {note.pinned && !archived && <span aria-label="Закреплена" title="Закреплена" style={{ display: "flex", flexShrink: 0 }}>{Icon.pin({ c: C.mint, s: 14 })}</span>}
+          <span style={{ fontFamily: fontDisplay, fontSize: 16, fontWeight: 500, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{noteTitle(note)}</span>
+        </span>
         {preview && <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", fontSize: 13, color: C.muted, lineHeight: 1.45, marginTop: 6 }}>{preview}</span>}
         <span style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", fontSize: 12, color: C.mutedSoft, marginTop: 8 }}>
           <span>Изменено {noteWhen(note.updatedAt)}</span>
@@ -284,7 +315,7 @@ function NoteCard({ note, active, archived, onOpen, onPin, onTag }) {
         </span>
       </button>
       {tags.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 20px 14px" }}>
+        <div className="nx-notepad-ctags" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 20px 14px" }}>
           {tags.slice(0, 5).map((t) => (
             <button key={t} type="button" onClick={() => onTag(t)} title={`Показать заметки с тегом «${t}»`}
               style={{ ...btnReset, fontSize: 12, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 999, padding: "2px 9px" }}>#{t}</button>
@@ -292,13 +323,41 @@ function NoteCard({ note, active, archived, onOpen, onPin, onTag }) {
           {tags.length > 5 && <span style={{ fontSize: 12, color: C.mutedSoft, alignSelf: "center" }}>+{tags.length - 5}</span>}
         </div>
       )}
-      {!archived && (
-        <button type="button" className="nx-icon-btn" onClick={onPin} aria-pressed={!!note.pinned}
-          aria-label={note.pinned ? "Открепить заметку" : "Закрепить заметку"} title={note.pinned ? "Открепить" : "Закрепить"}
-          style={{ ...btnReset, position: "absolute", top: 12, right: 12, width: 34, height: 34, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
-            border: `1px solid ${note.pinned ? C.mint : "transparent"}` }}>
-          {Icon.pin({ c: note.pinned ? C.mint : C.mutedSoft, s: 15 })}
-        </button>
+      <button type="button" className="nx-icon-btn nx-notepad-more" onClick={() => { setMenu((v) => !v); setSure(false); }} aria-haspopup="menu" aria-expanded={menu}
+        aria-label={`Действия с заметкой «${noteTitle(note)}»`} title="Ещё"
+        style={{ ...btnReset, position: "absolute", top: "50%", right: 14, transform: "translateY(-50%)", width: 28, height: 28, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
+          background: `color-mix(in srgb, ${C.text} ${menu ? 14 : 8}%, transparent)` }}>
+        {Icon.dots({ c: C.muted, s: 14 })}
+      </button>
+      {menu && (
+        <div role="menu" aria-label={`Заметка «${noteTitle(note)}»`} className="nx-pop" style={{
+          position: "absolute", top: "calc(50% + 20px)", right: 10, zIndex: 20, minWidth: 210, padding: 6, boxSizing: "border-box",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18, boxShadow: `0 12px 32px color-mix(in srgb, ${C.bg} 60%, transparent)`,
+        }}>
+          {sure ? (
+            <div style={{ padding: "6px 8px", display: "grid", gap: 8 }}>
+              <span style={{ fontSize: 13, lineHeight: 1.4 }}>Удалить заметку? Вернуть нельзя</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" role="menuitem" className="nx-ghost-btn" onClick={() => setSure(false)} style={ghost}>Отмена</button>
+                <button type="button" role="menuitem" className="nx-ghost-btn" onClick={pick(onDelete)} style={{ ...ghost, border: `1px solid ${C.red}`, color: C.red }}>Удалить</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {!archived && (
+                <button type="button" role="menuitem" className="nx-row-btn" onClick={pick(onPin)} style={item}>
+                  {Icon.pin({ c: note.pinned ? C.mint : C.muted, s: 15 })} {note.pinned ? "Открепить" : "Закрепить"}
+                </button>
+              )}
+              <button type="button" role="menuitem" className="nx-row-btn" onClick={pick(onArchive)} style={item}>
+                {Icon.archive({ c: C.muted, s: 15 })} {archived ? "Вернуть из архива" : "В архив"}
+              </button>
+              <button type="button" role="menuitem" className="nx-row-btn" onClick={() => setSure(true)} style={{ ...item, color: C.red }}>
+                {Icon.trash({ c: C.red, s: 15 })} Удалить
+              </button>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -509,7 +568,7 @@ function NoteEditor({ id, note, isNew, phone, api, uid, online, sync, knownTags,
         position: "fixed", inset: 0, zIndex: 250, background: C.bg, display: "flex", flexDirection: "column",
         padding: "calc(var(--sat) + 12px) 16px calc(var(--sab) + 12px)", boxSizing: "border-box",
       } : {
-        border: `1px solid ${C.lineBright}`, borderRadius: 32, padding: "18px 24px 22px", display: "flex", flexDirection: "column",
+        border: `1px solid ${C.lineBright}`, borderRadius: 32, display: "flex", flexDirection: "column",
         minHeight: 420, boxSizing: "border-box", position: "sticky", top: 100,
       }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -543,9 +602,10 @@ function NoteEditor({ id, note, isNew, phone, api, uid, online, sync, knownTags,
         </button>
       </div>
 
-      <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: shown.kind === "error" ? C.red : C.muted, minHeight: 18, marginBottom: 12 }}>
-        <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: dotColor, flexShrink: 0 }} />
-        <span style={{ minWidth: 0 }}>{shown.text}</span>
+      <div role="status" aria-live="polite" className="nx-notepad-in nx-notepad-status" title={shown.text} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: shown.kind === "error" ? C.red : C.muted, minHeight: 18, marginBottom: 12 }}>
+        <span aria-hidden="true" className="nx-notepad-dot" style={{ width: 7, height: 7, borderRadius: 999, background: dotColor, flexShrink: 0 }} />
+        {/* Компьютер (макет): «Сохранено…» — только зелёная точка, текст виден при наведении */}
+        <span className={!phone && (shown.kind === "local" || shown.kind === "cloud") ? "nx-sr-only" : undefined} style={{ minWidth: 0 }}>{shown.text}</span>
         {shown.retry && (
           <button type="button" className="nx-link-btn" onClick={() => (shown.retry === "local" ? commit() : api.retry())} style={linkBtn}>Повторить</button>
         )}
@@ -585,13 +645,13 @@ function NoteEditor({ id, note, isNew, phone, api, uid, online, sync, knownTags,
       )}
       {schedDone && !sched && <div style={{ fontSize: 12, color: C.green, marginBottom: 10 }}>{schedDone}</div>}
 
-      <input ref={titleRef} value={title} maxLength={NOTE_TITLE_MAX} placeholder="Заголовок" aria-label="Заголовок заметки"
+      <input ref={titleRef} className="nx-notepad-in nx-notepad-etitle" value={title} maxLength={NOTE_TITLE_MAX} placeholder="Заголовок" aria-label="Заголовок заметки"
         onChange={(e) => change({ title: e.target.value })}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); textRef.current?.focus(); } }}
         style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontFamily: fontDisplay, fontSize: phone ? 22 : 26, fontWeight: 500, padding: "4px 0 8px", width: "100%" }} />
 
       {/* Теги: Enter или запятая — добавить, Backspace в пустом поле — убрать последний */}
-      <div className="nx-notepad-tags" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 12 }}>
+      <div className="nx-notepad-in nx-notepad-tags" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 12 }}>
         {tags.map((t) => (
           <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "3px 6px 3px 10px" }}>
             #{t}
@@ -615,11 +675,11 @@ function NoteEditor({ id, note, isNew, phone, api, uid, online, sync, knownTags,
         </datalist>
       </div>
 
-      <textarea ref={textRef} value={text} maxLength={NOTE_TEXT_MAX} placeholder="Текст заметки. Для списка дел — кнопка ☑ сверху" aria-label="Текст заметки"
-        onChange={(e) => change({ text: e.target.value })} onKeyDown={onTextKey} onClick={onTextClick} className="nx-scroll"
+      <textarea ref={textRef} value={text} maxLength={NOTE_TEXT_MAX} placeholder={phone ? "Текст заметки. Для списка дел — кнопка ☑ сверху" : "Текст"} aria-label="Текст заметки"
+        onChange={(e) => change({ text: e.target.value })} onKeyDown={onTextKey} onClick={onTextClick} className="nx-scroll nx-notepad-in nx-notepad-etext"
         style={{ flex: 1, minHeight: phone ? 0 : 300, resize: "none", background: "transparent", border: "none", outline: "none", color: C.text,
           fontFamily: "inherit", fontSize: 16, lineHeight: 1.65, padding: 0, width: "100%" }} />
-      {exists && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>Изменено {noteWhen(note.updatedAt)}</div>}
+      {exists && <div className="nx-notepad-in" style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>Изменено {noteWhen(note.updatedAt)}</div>}
     </div>
   );
 }

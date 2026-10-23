@@ -73,7 +73,7 @@
 !define NX_btn_next_H 32
 !define NX_btn_install_W 136
 !define NX_btn_install_H 32
-!define NX_btn_launch_W 176
+!define NX_btn_launch_W 172
 !define NX_btn_launch_H 32
 !define NX_btn_retry_W 132
 !define NX_btn_retry_H 32

@@ -404,12 +404,12 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
             aria-label={notesCount ? `Заметки, ${notesCount}` : "Заметки"}
             style={{
               ...btnReset, width: "100%", boxSizing: "border-box",
-              border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "6px 14px",
-              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
+              border: `1.5px solid ${C.lineBright}`, borderRadius: 14, padding: "14px 22px",
+              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 16,
             }}>
             <span />
             <span>Заметки</span>
-            <span style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 8, color: C.mutedSoft, fontSize: 13 }}>
+            <span style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 8, color: C.mutedSoft, fontSize: 14 }}>
               {notesCount > 0 && <span>{notesCount}</span>}
               {Icon.chevron({ c: C.text })}
             </span>
@@ -422,8 +422,8 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
             aria-expanded={forecastOpen} aria-controls="nx-forecast nx-forecast-side"
             style={{
               ...btnReset, width: "100%", boxSizing: "border-box",
-              border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "6px 14px",
-              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 14,
+              border: `1.5px solid ${C.lineBright}`, borderRadius: 14, padding: "14px 22px",
+              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 16,
             }}>
             <span />
             <span>Прогноз на 2 недели</span>

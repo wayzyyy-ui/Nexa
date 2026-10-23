@@ -16,7 +16,7 @@ export const APP_CSS = `
              Цвета — ниже, в блоках тем (и объект C). Здесь — всё остальное, одно для обеих тем.
              В JS те же числа лежат в объекте T (рядом с C).
 
-             Шрифт: заголовки — Space Grotesk (.ng-display), текст — Raleway, цифры — NexaNumbers.
+             Шрифт: Manrope везде — заголовки (.ng-display), текст и цифры.
              Шкала (px): 11 подпись-метка · 12 мелкая подпись · 13 вторичный текст · 14 основной
              · 15 заголовок строки · 16 крупная строка · 18 · 20 · 22 заголовок раздела
              · 24/30 · 40 заголовок экрана (на телефоне 26). Дробные размеры не использовать. */
@@ -39,46 +39,19 @@ export const APP_CSS = `
         .nx-native .ng-assistant-wrapper { top: var(--vvt, 0px) !important; height: var(--vvh, 100%) !important; padding-top: var(--sat); box-sizing: border-box; }
         @media ${PHONE_MQ} {
         }
-        /* Шрифты лежат в public/fonts — так они одинаковые на любом устройстве,
-           даже если у человека они не установлены (раньше Raleway брался
-           только из системы, и на чужих телефонах подменялся системным) */
+        /* Шрифт NEXA — Manrope (переменный, 200–800; лицензия OFL — public/fonts/Manrope-OFL.txt).
+           Лежит в public/fonts — одинаковый на любом устройстве и в приложениях без интернета.
+           Один шрифт на всё: и заголовки, и текст, и цифры (у Manrope хорошие цифры —
+           отдельный шрифт для цифр NexaNumbers больше не нужен) */
         @font-face {
-          font-family: 'Raleway';
-          src: url('/fonts/Raleway-Variable.ttf') format('truetype');
-          font-weight: 100 900;
+          font-family: Manrope;
+          src: url(/fonts/Manrope-Variable.ttf) format(truetype);
+          font-weight: 200 800;
           font-display: swap;
         }
-        @font-face {
-          font-family: 'Space Grotesk';
-          src: url('/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
-          font-weight: 300 700;
-          font-display: swap;
-        }
-        
-        @font-face {
-        font-family: 'NexaNumbers';
-        src: url('/fonts/SpaceGrotesk-Regular.ttf') format('truetype');
-        font-weight: 400;
-        font-display: swap;
-        unicode-range: U+0030-0039;
-}
-        @font-face {
-        font-family: 'NexaNumbers';
-        src: url('/fonts/SpaceGrotesk-Medium.ttf') format('truetype');
-        font-weight: 500;
-        font-display: swap;
-        unicode-range: U+0030-0039;
-}
-        @font-face {
-        font-family: 'NexaNumbers';
-        src: url('/fonts/SpaceGrotesk-Bold.ttf') format('truetype');
-        font-weight: 600 700;
-        font-display: swap;
-        unicode-range: U+0030-0039;
-}
 
         body, button, input, textarea, select {
-          font-family: 'NexaNumbers', 'Raleway', sans-serif;
+          font-family: 'Manrope', sans-serif;
         }
         * {
        -webkit-tap-highlight-color: transparent;
@@ -90,7 +63,7 @@ export const APP_CSS = `
         -webkit-touch-callout: none;
         touch-action: manipulation;
 }
-        .ng-display { font-family: 'Space Grotesk', sans-serif; }
+        .ng-display { font-family: 'Manrope', sans-serif; }
         .ng-greeting {
         font-size: 28px !important;
         line-height: 1.3 !important;
@@ -623,6 +596,7 @@ export const APP_CSS = `
   /* Заметки на телефоне: «Новая заметка» — в одну строку с заголовком, компактнее */
   @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 10px !important; } .nx-notepad-list { padding-bottom: 72px; } }
   .nx-notepad-filters::-webkit-scrollbar { display: none; }
+  .nx-notepad-search-input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; } /* свой крестик «Сбросить поиск» уже есть */
   /* Заметки на компьютере (макет 2026-10, размеры в долях макета 1920 × 1080 — --mk, как на Главной):
      «Назад» и заголовок — в строку с верхней строкой; слева поиск + «Добавить заметку», «Все заметки»,
      список; справа — открытая заметка от строки поиска почти до низа окна */
@@ -631,18 +605,41 @@ export const APP_CSS = `
     .nx-notepad { padding: calc(38 * var(--mk)) calc(145 * var(--mk)) 40px calc(174 * var(--mk)) !important; }
     .nx-notepad-top { display: flex; align-items: center; gap: calc(44 * var(--mk)); min-height: max(40px, calc(50 * var(--mk))); }
     .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
-    .nx-notepad-desk { display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(58 * var(--mk)); align-items: start; margin-top: calc(63 * var(--mk)); }
+    /* Две колонки на всю оставшуюся высоту окна: список прокручивается сам (тонкая полоса), заметка — справа */
+    .nx-notepad-desk { position: relative; display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(72 * var(--mk)); align-items: stretch; margin-top: calc(63 * var(--mk));
+      height: max(480px, calc(100vh - 303 * var(--mk))); }
+    .nx-notepad-side { display: flex; flex-direction: column; min-height: 0; position: relative; z-index: 1; }
+    .nx-notepad-side > * { flex-shrink: 0; }
+    .nx-notepad-desk .nx-notepad-ctags { padding-left: max(26px, calc(40 * var(--mk))) !important; margin-top: -10px; }
+    .nx-notepad-desk .nx-notepad-group { margin-bottom: calc(-18 * var(--mk)) !important; }
+    .nx-notepad-desk .nx-notepad-list { flex: 1 1 auto !important; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: calc(16 * var(--mk)); margin-right: calc(-16 * var(--mk)); gap: calc(33 * var(--mk)) !important; }
+    .nx-notepad-desk .nx-notepad-list::-webkit-scrollbar { width: 4px; }
+    /* Складка за «стеклянной» панелью: правее и ниже, обрезана правым краем окна */
+    .nx-notepad-fold { position: absolute; top: 0; bottom: 0; right: 0; width: 60%; overflow: hidden; border-radius: max(32px, calc(60 * var(--mk))); pointer-events: none; z-index: 0; }
+    .nx-notepad-fold svg { position: absolute; right: -18%; top: 16%; width: 105%; height: auto; display: block; overflow: visible; }
     /* Слово «Поиск» и значок — по центру таблетки, как в макете; поле растёт вместе с набранным */
     .nx-notepad-desk .nx-notepad-search { justify-content: center; }
     .nx-notepad-desk .nx-notepad-search-input { flex: 0 1 auto !important; field-sizing: content; min-width: 5ch !important; max-width: 100%; }
+    /* Вся таблетка — поле: курсор ввода везде, в фокусе — мятная рамка, поле на всю ширину (текст слева) */
+    .nx-notepad-desk .nx-notepad-search { cursor: text; transition: border-color 160ms ease; }
+    .nx-notepad-desk .nx-notepad-search:focus-within { border-color: var(--mint) !important; justify-content: flex-start; }
+    .nx-notepad-desk .nx-notepad-search:focus-within .nx-notepad-search-input { flex: 1 1 auto !important; }
     .nx-notepad-tools { display: flex; gap: calc(27 * var(--mk)); height: max(44px, calc(53 * var(--mk))); }
     .nx-notepad-add { flex-shrink: 0; width: max(124px, calc(152 * var(--mk))); padding: 0 14px; border-radius: 999px; border: 1px solid transparent; cursor: pointer;
       background: linear-gradient(90deg, var(--fold-cyan), var(--fold-blue)); color: var(--on-fold); font: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; white-space: normal; }
     .nx-notepad-desk .nx-notepad-filters { margin: 16px 0 0 !important; }
     .nx-notepad-subtitle { font-size: max(18px, calc(24 * var(--mk))); margin: calc(42 * var(--mk)) 4px calc(20 * var(--mk)); }
     .nx-notepad-desk .nx-notepad-card { border-radius: max(28px, calc(60 * var(--mk))) !important; }
-    .nx-notepad-desk .nx-notepad-open { padding-left: max(26px, calc(36 * var(--mk))) !important; min-height: calc(110 * var(--mk)); }
-    .nx-notepad-panel { border-radius: max(32px, calc(60 * var(--mk))) !important; min-height: max(360px, calc(100vh - 341 * var(--mk))) !important; top: max(104px, calc(130 * var(--mk))) !important; } /* прилипает НИЖЕ верхней строки (поиск, часы — до ~91 px макета): иначе шапка заметки уезжала под неё и кнопки не нажимались */
+    .nx-notepad-desk .nx-notepad-open { padding-left: max(26px, calc(40 * var(--mk))) !important; min-height: calc(132 * var(--mk)); display: flex !important; flex-direction: column; justify-content: center; }
+    /* Панель заметки — «стекло» (макет 2026-10): сквозь неё видна складка */
+    .nx-notepad-panel { position: relative !important; top: auto !important; z-index: 1; min-height: 0 !important; height: 100%;
+      border-radius: max(32px, calc(60 * var(--mk))) !important; background: color-mix(in srgb, var(--panel) 22%, transparent);
+      -webkit-backdrop-filter: blur(28px); backdrop-filter: blur(28px); }
+    .nx-notepad-editor.nx-notepad-panel { padding: max(20px, calc(30 * var(--mk))) max(20px, calc(30 * var(--mk))) max(22px, calc(36 * var(--mk))); overflow: hidden; }
+    .nx-notepad-editor .nx-notepad-in { padding-left: calc(36 * var(--mk)) !important; padding-right: calc(36 * var(--mk)) !important; box-sizing: border-box; }
+    .nx-notepad-editor .nx-notepad-status { margin-top: calc(26 * var(--mk)); }
+    .nx-notepad-editor .nx-notepad-etitle { font-size: max(24px, calc(36 * var(--mk))) !important; }
+    .nx-notepad-editor .nx-notepad-etext { font-size: max(16px, calc(22 * var(--mk))) !important; min-height: 0 !important; }
   }
   body.kb-open .nx-notepad-fab { display: none !important; }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
@@ -1573,7 +1570,7 @@ export const APP_CSS = `
           }
           .nx-assistant-ver {
             display: inline !important; margin-left: 6px;
-            font-family: 'NexaNumbers', 'Raleway', sans-serif; font-size: 11px; font-weight: 400; color: var(--muted-soft); letter-spacing: 0;
+            font-family: 'Manrope', sans-serif; font-size: 11px; font-weight: 400; color: var(--muted-soft); letter-spacing: 0;
           }
           .ng-assistant-inner .nx-assistant-subtitle { display: none !important; }
           .ng-hamburger { width: 40px; height: 40px; margin-left: -8px; }

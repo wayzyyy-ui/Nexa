@@ -79,7 +79,7 @@ export function renderRich(text) {
     } else if (token.startsWith('`')) {
       parts.push(
         <code key={key++} style={{
-          fontFamily: "'Space Grotesk', monospace",
+          fontFamily: "ui-monospace, Consolas, monospace",
           background: "color-mix(in srgb, var(--mint) 10%, transparent)",
           border: "1px solid color-mix(in srgb, var(--mint) 25%, transparent)",
           borderRadius: 12,

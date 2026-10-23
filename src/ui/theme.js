@@ -113,11 +113,10 @@ syncChannel?.addEventListener("message", (e) => {
   window.dispatchEvent(new Event("nexa-theme-change"));
 });
 
-// Два шрифта: Space Grotesk для заголовков (класс ng-display),
-// Inter для всего остального текста.
-export const fontDisplay = "'Space Grotesk', sans-serif";
+// Один шрифт — Manrope: и заголовки (класс ng-display), и текст, и цифры
+export const fontDisplay = "'Manrope', sans-serif";
 
-export const fontBody = "'NexaNumbers', 'Raleway', sans-serif";
+export const fontBody = "'Manrope', sans-serif";
 
 // Слой фона: от боковой панели до правого края (на телефоне — весь экран)
 /* «Это телефон»: узкий экран ИЛИ сенсорный экран высотой до 500 px —

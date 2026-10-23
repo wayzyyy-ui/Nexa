@@ -976,7 +976,7 @@ useEffect(() => {
             <AssistantAura active={inputFocused || !!input.trim()} />
             <div
               className="ng-greeting nx-greeting-anim nx-empty-greet"
-              style={{ position: "relative", textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}
+              style={{ position: "relative", textAlign: "center", fontFamily: "'Manrope', sans-serif" }}
             >
               {greeting}
             </div>

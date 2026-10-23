@@ -1,6 +1,6 @@
 // Графика установщика NEXA для компьютера (NSIS, desktop/src-tauri/installer/) по макету автора.
 // NSIS умеет показывать только BMP, поэтому шапку, заголовки, пункты и кнопки рисует Chrome
-// (тот же шрифт Raleway и тот же логотип, что в приложении), а скрипт режет снимок на картинки.
+// (тот же шрифт Manrope и тот же логотип, что в приложении), а скрипт режет снимок на картинки.
 //   npm run installer:art — нарисовать заново (нужен Chrome; путь — переменная CHROME, если он не в обычном месте):
 //     desktop/src-tauri/installer/art/*.png (5 масштабов экрана) и art/metrics.nsh — размеры для NSIS. Это в git.
 //     Меняете тексты или макет — запустите и закоммитьте папку art.
@@ -52,7 +52,7 @@ L.headerH = 168;
 const C = { bg: "#000000", panel: "#1D1D1D", text: "#FFFFFF", muted: "#92A2AF", green: "#40C977", off: "#5E5E5E",
   track: "#737373", mint: "#00FFDF", ghostText: "#818181", ghostLine: "#4A4A4A", blue: "#236AFC", cyan: "#24BEEA" };
 
-/* ── Что рисуем: тексты экранов (Raleway, размеры подогнаны по ширине надписей на макете) ── */
+/* ── Что рисуем: тексты экранов (Manrope, размеры подогнаны по ширине надписей на макете) ── */
 const TITLE_PX = 34 * K, SUB_PX = 20 * K, ROW_PX = 24 * K;
 const TEXTS = {
   // заголовок + описание каждого экрана; описание null — его пишет установщик сам (версия, причина ошибки)
@@ -70,7 +70,7 @@ const HEADS = { install: "Установка", update: "Обновление" };
 const BUTTONS = { next: ["Дальше", 1], install: ["Установить", 1], launch: ["Запустить NEXA", 1], retry: ["Повторить", 1], done: ["Готово", 0],
   cancel: ["Отмена", 0], close: ["Закрыть", 0], later: ["Не запускать", 0] };
 
-const font = fs.readFileSync(path.join(ROOT, "public/fonts/Raleway-Variable.ttf")).toString("base64");
+const font = fs.readFileSync(path.join(ROOT, "public/fonts/Manrope-Variable.ttf")).toString("base64");
 const markSvg = `<svg viewBox="0 0 46 45" width="${m(57)}" height="${m(54)}" fill="none"><path d="M20.5114 23.6624V28.7977L1.5 41.0349V13.3554L20.5114 2.57495V8.25654M20.5114 28.7977L1.5 13.3554M20.5114 8.25654L28.0739 13.9814M20.5114 8.25654V18.5271M43.8934 25.9569V5.05154L28.0739 13.9814M43.8934 25.9569L28.0739 13.9814M43.8934 25.9569V41.0349L20.5114 23.6624M28.0739 13.9814L20.5114 18.5271M20.5114 18.5271V23.6624" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const wordSvg = `<svg viewBox="0 0 149 25" width="${m(194)}" height="${m(194) * 25 / 149}" fill="#fff"><rect y="0.128967" width="2.89847" height="23.7675"/><rect x="25.521" y="0.143463" width="2.89847" height="23.7675"/><path d="M129.539 0.151154H132.437L118.687 23.9031H115.789L129.539 0.151154Z"/><path d="M134.201 0.151154H131.302L145.113 23.9031H148.011L134.201 0.151154Z"/><rect x="40.2455" y="0.143463" width="2.89847" height="23.7675"/><rect x="43.144" y="2.66751" width="2.52403" height="23.624" transform="rotate(-90 43.144 2.66751)"/><rect x="43.144" y="23.8965" width="2.5248" height="23.624" transform="rotate(-90 43.144 23.8965)"/><rect x="49.5683" y="13.2896" width="2.5248" height="13.2019" transform="rotate(-90 49.5683 13.2896)"/><path d="M0.966423 2.29059L2.89298 0.125062L27.4566 21.754L25.5301 23.9195L0.966423 2.29059Z"/><path fill-rule="evenodd" d="M78.689 0H82.5192L89.789 9.25263H85.9467L78.689 0Z"/><path fill-rule="evenodd" d="M89.7889 14.5148H85.9587L78.6889 23.7675H82.5312L89.7889 14.5148Z"/><path fill-rule="evenodd" d="M103.963 0H100.133L92.8628 9.25263H96.705L103.963 0Z"/><path fill-rule="evenodd" d="M92.8628 14.5148H96.693L103.963 23.7675H100.121L92.8628 14.5148Z"/></svg>`;
 const icon = (on) => `<svg viewBox="0 0 31 31" width="${L.rowIcon}" height="${L.rowIcon}"><circle cx="15.5" cy="15.5" r="14" fill="none" stroke="${on ? C.green : C.off}" stroke-width="2"/>${on ? `<path d="M9.5 15.8l4.2 4.2 7.8-8.3" fill="none" stroke="${C.green}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>` : ""}</svg>`;
@@ -112,12 +112,12 @@ function sheet() {
     return `<div class="blk" data-name="${b.name}" data-auto="${b.w ? 0 : 1}" style="position:absolute;left:0;top:${top}px;${b.w ? `width:${up4(b.w)}px;` : ""}height:${h}px;background:${b.bg};overflow:hidden">${b.html}</div>`;
   }).join("\n");
   return { height: y, html: `<!doctype html><meta charset="utf-8"><style>
-    @font-face { font-family: Raleway; src: url(data:font/ttf;base64,${font}); font-weight: 100 900; }
-    * { margin: 0; box-sizing: border-box; } body { background: #808080; font-family: Raleway; font-weight: 400; -webkit-font-smoothing: antialiased; }
+    @font-face { font-family: Manrope; src: url(data:font/ttf;base64,${font}); font-weight: 200 800; }
+    * { margin: 0; box-sizing: border-box; } body { background: #808080; font-family: Manrope; font-weight: 400; -webkit-font-smoothing: antialiased; }
     .btn { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; font-weight: 500; }
   </style><body>${parts}<pre id="metrics"></pre><script>
     document.fonts.ready.then(() => {
-      // Коэффициент по эталонам (надписи с data-w): во сколько раз наш Raleway шире/уже шрифта макета
+      // Коэффициент по эталонам (надписи с data-w): во сколько раз наш Manrope шире/уже шрифта макета
       const ref = [...document.querySelectorAll(".fit[data-w]:not([data-w='0'])")];
       let ratio = 1;
       for (const el of ref) { const k = Number(el.dataset.w) / el.getBoundingClientRect().width; el.style.fontSize = parseFloat(getComputedStyle(el).fontSize) * k + "px"; ratio = k; }
