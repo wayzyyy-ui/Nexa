@@ -91,9 +91,20 @@
          До Android 12 — обычное разрешение, с Android 12 — «Устройства поблизости» -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- «Рядом» (NexaNearbyPlugin, Nearby Connections): найти соседний телефон с NEXA и передать файл
+         без интернета. Спрашиваются только при первом «Принимать рядом» / «Отправить рядом» -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- «Где устройство?»: место определяется по запросу, только если это включено в Настройках NEXA -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- То же, когда NEXA закрыта (push «Где устройство?», NexaLocator). Android 10+ даёт его только
+         в настройках системы («Местоположение → разрешать всегда»); по умолчанию не выдано -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Голосовой ввод в ассистента (NexaSpeechPlugin): спрашивается при первом нажатии на микрофон.
          Звук не записывается и не хранится — распознаёт системный сервис речи -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

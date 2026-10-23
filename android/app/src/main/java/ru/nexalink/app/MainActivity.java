@@ -29,6 +29,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NexaBluetoothPlugin.class);
         // Push «Найти устройство»: адрес для сервера и нажатие на уведомление (см. NexaPushPlugin)
         registerPlugin(NexaPushPlugin.class);
+        // «Рядом»: файл напрямую на соседний телефон без интернета (Nearby Connections)
+        registerPlugin(NexaNearbyPlugin.class);
         // Обновление изнутри: скачать APK, проверить, открыть установщик (см. NexaUpdatePlugin)
         registerPlugin(NexaUpdatePlugin.class);
         // Голосовой ввод в ассистента: системное распознавание речи (см. NexaSpeechPlugin)

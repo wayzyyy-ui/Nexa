@@ -535,13 +535,6 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
       {Icon.calendar({ c: sched ? C.mint : C.text, s: 15 })}
     </button>
   );
-  const pinBtn = !note?.archived && (
-    <button type="button" className="nx-icon-btn" onClick={togglePin} disabled={!exists} aria-pressed={!!note?.pinned}
-      aria-label={note?.pinned ? "Открепить заметку" : "Закрепить заметку"} title={note?.pinned ? "Открепить" : "Закрепить"}
-      style={{ ...round, borderColor: note?.pinned ? C.mint : C.borderStrong, opacity: exists ? 1 : 0.4 }}>
-      {Icon.pin({ c: note?.pinned ? C.mint : C.text, s: 15 })}
-    </button>
-  );
   const archBtn = (
     <button type="button" className="nx-icon-btn" onClick={toggleArchive} disabled={!canAct} aria-label={note?.archived ? "Вернуть из архива" : "Убрать в архив"} title={note?.archived ? "Вернуть из архива" : "В архив"}
       style={{ ...round, borderColor: note?.archived ? C.mint : C.borderStrong, opacity: canAct ? 1 : 0.4 }}>
@@ -709,7 +702,6 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
         {checkBtn}
         {attachBtn}
         {schedBtn}
-        {pinBtn}
         {archBtn}
         {delBtn}
         {aiButton}

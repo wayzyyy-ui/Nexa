@@ -6,6 +6,7 @@ import { isDesktop } from "./lib/platform.js";
 import { desktopClipboardRead, desktopClipboardWrite, desktopNotify } from "./lib/desktop.js";
 import { targetToLink } from "./lib/deeplink.js";
 import { VERSION } from "./version.js";
+import { LOGO_MARK_D, WORD_RECTS, WORD_PATHS, MONO_PATHS, MONO_RECTS, MONO_DOT, rectsSvg } from "./ui/brandArt.js";
 
 // Запущены ли мы внутри Android-приложения (а не в браузере)
 export const isNative = Capacitor.isNativePlatform();
@@ -169,47 +170,86 @@ export function setSystemBarsTheme(theme) {
    2) Пока грузится интерфейс, поверх него лежит #nx-boot — тот же логотип,
       того же размера и в той же точке экрана (центр, 288×288). Убираем
       системную заставку — на экране ничего не меняется, прыжка нет.
-   3) Грани логотипа чуть разъезжаются и тают (только прозрачность и сдвиг
-      векторных фигур), фон уходит, интерфейс проявляется (прозрачность + сдвиг).
-   При «уменьшить движение» — только плавное исчезновение, без сдвигов.
-   Цвета — как в assets/logo_splash.svg; фон — цвет заставки (не цвет темы),
+   3) Фирменная заставка (макет автора 2026-10-23), одна шкала ~1,8 с от готовности интерфейса:
+      грани логотипа расходятся и тают, на их месте линиями прорисовывается знак NEXA,
+      фон мягко переходит в градиент Главной; знак поднимается, под ним проявляется слово NEXA,
+      внизу — «Разработано mono.engineering». Потом заставка растворяется, интерфейс
+      проявляется под ней (прозрачность + сдвиг на 8 px — nx-intro в appStyles.js).
+      Двигаются только transform, opacity и stroke-dashoffset векторных фигур.
+   При «уменьшить движение» — без сдвигов и прорисовки: заставка просто появляется и тает, короче.
+   Только при настоящем запуске страницы (холодный старт, перезапуск после обновления веб-части):
+   возврат из фона, смена разделов и перерисовки её не трогают.
+   Цвета — как в assets/logo_splash.svg и тёмной теме; фон — цвет заставки (не цвет темы),
    иначе в светлой теме был бы скачок */
 const SPLASH_BG = "#01090F"; // как windowSplashScreenBackground в styles.xml
+const SPLASH_BG_2 = "#031B2C"; // --home-bg-b тёмной темы: тот же градиент, что у Главной
+const BOOT_INK = "#F2FAFF", BOOT_MINT = "#00FFDF";
 const BOOT_FACETS = [
   ["nx-boot-f1", "M735.977 854.646L617.779 491.514L322.477 780.644Z", 'fill="#F2FAFF" fill-opacity="0.17"'],
   ["nx-boot-f2", "M722.457 237.212L798.145 743.09L322.197 555.698Z", 'fill="#F2FAFF" fill-opacity="0.39"'],
   ["nx-boot-f3", "M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z", 'fill="url(#nx-boot-g)"'],
 ];
+// Когда что начинается (мс от готовности интерфейса): BOOT_OUT — заставка тает, BOOT_DONE — убрана
+const BOOT_OUT = 1750, BOOT_OUT_REDUCED = 700, BOOT_FADE = 480;
 function mountBootLogo() {
+  const ease = "cubic-bezier(0.22, 1, 0.36, 1)", soft = "cubic-bezier(0.4, 0, 0.2, 1)";
   const style = document.createElement("style");
   style.textContent = `
-    #nx-boot { position: fixed; inset: 0; z-index: 2147483000; background: ${SPLASH_BG};
-      display: flex; align-items: center; justify-content: center; pointer-events: none; }
-    #nx-boot svg { display: block; width: 288px; height: 288px; flex-shrink: 0; overflow: visible; }
-    /* Одна временная шкала ~700 мс: грани расходятся каждая по своему направлению (единицы — как у
-       логотипа, масштаб 0,1727: 140 ед. ≈ 24 px), тают чуть позже начала движения, фон за ними уходит —
-       под ними проявляется интерфейс (см. nx-intro в appStyles.js) */
-    #nx-boot path { transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 460ms cubic-bezier(0.4, 0, 0.2, 1) 120ms; will-change: transform, opacity; }
-    .nx-boot-go #nx-boot { opacity: 0; transition: opacity 480ms cubic-bezier(0.4, 0, 0.2, 1) 140ms; }
-    .nx-boot-go .nx-boot-f1 { transform: translate(50px, 140px); opacity: 0; }
-    .nx-boot-go .nx-boot-f2 { transform: translate(140px, -50px); opacity: 0; }
-    .nx-boot-go .nx-boot-f3 { transform: translate(-130px, -100px); opacity: 0; }
+    #nx-boot { position: fixed; inset: 0; z-index: 2147483000; background: ${SPLASH_BG}; pointer-events: none; overflow: hidden; }
+    #nx-boot > * { position: absolute; }
+    .nx-boot-bg { inset: 0; opacity: 0; background: linear-gradient(160deg, ${SPLASH_BG} 0%, ${SPLASH_BG} 45%, ${SPLASH_BG_2} 100%); }
+    /* Системный логотип: та же точка и размер, что у заставки Android */
+    .nx-boot-splash { left: 50%; top: 50%; width: 288px; height: 288px; margin: -144px 0 0 -144px; overflow: visible; }
+    .nx-boot-splash path { will-change: transform, opacity; }
+    /* Знак линиями: сначала в центре (на месте граней), потом поднимается к слову */
+    .nx-boot-mark { left: 50%; top: 50%; width: min(36vw, 168px); transform: translate(-50%, -50%); will-change: transform; }
+    .nx-boot-mark svg { display: block; width: 100%; height: auto; overflow: visible; }
+    /* Прорисовка: штрих «1, промежуток 2» сдвинут чуть больше чем на длину — на старте ни одного
+       отрезка нулевой длины (иначе закруглённые концы видны точками); плюс короткое проявление */
+    .nx-boot-mark path { stroke-dasharray: 1 2; stroke-dashoffset: 1.002; opacity: 0; }
+    .nx-boot-word { left: 50%; top: 50%; width: min(78vw, 340px); transform: translate(-50%, calc(-50% + 14px)); opacity: 0; }
+    .nx-boot-word svg { display: block; width: 100%; height: auto; }
+    .nx-boot-made { left: 0; right: 0; bottom: calc(7vh + var(--sab, 0px)); display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: 0;
+      font: 400 12px/1 Manrope, system-ui, sans-serif; color: ${BOOT_INK}; }
+    .nx-boot-made span { opacity: 0.45; }
+    .nx-boot-made svg { display: block; height: 15px; width: auto; }
+
+    .nx-boot-go .nx-boot-bg { opacity: 1; transition: opacity 900ms ${soft}; }
+    .nx-boot-go .nx-boot-splash path { opacity: 0; transition: transform 700ms ${ease}, opacity 420ms ${soft} 80ms; }
+    .nx-boot-go .nx-boot-f1 { transform: translate(50px, 140px); }
+    .nx-boot-go .nx-boot-f2 { transform: translate(140px, -50px); }
+    .nx-boot-go .nx-boot-f3 { transform: translate(-130px, -100px); }
+    .nx-boot-go .nx-boot-mark path { stroke-dashoffset: 0; opacity: 1; transition: stroke-dashoffset 760ms ${soft} 140ms, opacity 160ms ease 140ms; }
+    .nx-boot-go .nx-boot-mark { transform: translate(-50%, calc(-50% - 22vh)); transition: transform 680ms ${ease} 640ms; }
+    .nx-boot-go .nx-boot-word { opacity: 1; transform: translate(-50%, -50%); transition: opacity 560ms ${soft} 820ms, transform 680ms ${ease} 820ms; }
+    .nx-boot-go .nx-boot-made { opacity: 1; transition: opacity 560ms ${soft} 1000ms; }
+    .nx-boot-out #nx-boot { opacity: 0; transition: opacity ${BOOT_FADE}ms ${soft}; }
     @media (prefers-reduced-motion: reduce) {
-      #nx-boot path { transition: none; }
-      .nx-boot-go #nx-boot path { transform: none; }
-      .nx-boot-go #nx-boot { transition: opacity 300ms ease; }
+      #nx-boot *, .nx-boot-go #nx-boot * { transition: none !important; }
+      .nx-boot-go .nx-boot-splash { opacity: 0; }
+      .nx-boot-go .nx-boot-splash path { transform: none; }
+      .nx-boot-go .nx-boot-mark { transform: translate(-50%, calc(-50% - 22vh)); }
+      .nx-boot-out #nx-boot { transition: opacity 260ms ease !important; }
     }`;
   document.head.appendChild(style);
   const el = document.createElement("div");
   el.id = "nx-boot";
   el.setAttribute("aria-hidden", "true");
-  el.innerHTML = `<svg viewBox="0 0 288 288" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="nx-boot-g" x1="503.169" y1="110.956" x2="322.501" y2="780.716" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F2FAFF" stop-opacity="0.54"/><stop offset="1" stop-color="#F2FAFF" stop-opacity="0.46"/>
-    </linearGradient></defs>
-    <g transform="translate(57.65 60.59) scale(0.1727)">
-      ${BOOT_FACETS.map(([cls, d, fill]) => `<path class="${cls}" d="${d}" ${fill}/>`).join("")}
-    </g></svg>`;
+  const wordPaths = WORD_PATHS.map((p) => `<path d="${p.d}"${p.evenodd ? ' fill-rule="evenodd" clip-rule="evenodd"' : ""}/>`).join("");
+  el.innerHTML = `<div class="nx-boot-bg"></div>
+    <svg class="nx-boot-splash" viewBox="0 0 288 288" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="nx-boot-g" x1="503.169" y1="110.956" x2="322.501" y2="780.716" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#F2FAFF" stop-opacity="0.54"/><stop offset="1" stop-color="#F2FAFF" stop-opacity="0.46"/>
+      </linearGradient></defs>
+      <g transform="translate(57.65 60.59) scale(0.1727)">
+        ${BOOT_FACETS.map(([cls, d, fill]) => `<path class="${cls}" d="${d}" ${fill}/>`).join("")}
+      </g></svg>
+    <div class="nx-boot-mark"><svg viewBox="0 0 46 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="${LOGO_MARK_D}" pathLength="1" stroke="${BOOT_INK}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="nx-boot-word"><svg viewBox="0 0 149 25" fill="${BOOT_INK}" xmlns="http://www.w3.org/2000/svg">${rectsSvg(WORD_RECTS)}${wordPaths}</svg></div>
+    <div class="nx-boot-made"><span>Разработано</span>
+      <svg viewBox="0 0 911 77" xmlns="http://www.w3.org/2000/svg"><g fill="${BOOT_INK}" fill-opacity="0.85">${MONO_PATHS.map((d) => `<path d="${d}"/>`).join("")}${rectsSvg(MONO_RECTS)}</g>
+        <circle cx="${MONO_DOT.cx}" cy="${MONO_DOT.cy}" r="${MONO_DOT.r}" fill="${BOOT_MINT}"/></svg></div>`;
   document.body.appendChild(el);
 }
 
@@ -222,13 +262,17 @@ export async function startIntro() {
     // Под заставкой уже лежит такой же логотип — смена незаметна
     await SplashScreen.hide({ fadeOutDuration: 0 });
   } catch {}
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   // Короткая пауза, чтобы системная заставка успела уйти, и сразу раскрываемся
-  // (раньше здесь было ~420 мс простоя — логотип просто стоял)
   setTimeout(() => {
     requestAnimationFrame(() => {
-      root.classList.remove("nx-intro-wait");
-      root.classList.add("nx-intro-go", "nx-boot-go");
-      setTimeout(() => document.getElementById("nx-boot")?.remove(), 900);
+      root.classList.add("nx-boot-go");
+      // Заставка тает, интерфейс проявляется под ней. Таймеры одноразовые — только при запуске
+      setTimeout(() => {
+        root.classList.remove("nx-intro-wait");
+        root.classList.add("nx-intro-go", "nx-boot-out");
+        setTimeout(() => document.getElementById("nx-boot")?.remove(), BOOT_FADE + 60);
+      }, reduced ? BOOT_OUT_REDUCED : BOOT_OUT);
     });
   }, 60);
 }
@@ -375,6 +419,58 @@ export async function nativeSaveLarge(blob, { name, mime, signal, onProgress }) 
     await NexaFiles.streamCancel({ token }).catch(() => {});
     throw new Error("save_failed");
   }
+}
+
+/* ─── «Рядом»: файл на соседний телефон без интернета (NexaNearbyPlugin.java, Nearby Connections) ───
+   Только Android-приложение. nearby(method, args) — вызов модуля (нет модуля / старый APK — ошибка
+   "unsupported"); onNearby(event, cb) — события found / lost / request / waiting / progress / sent /
+   received / failed / disconnected / stopped (см. NexaNearbyPlugin.java).
+   nearbyStage(blob) — положить файл во временный файл отправки кусками по 3 МБ → token */
+const nearbyPlugin = isNative ? registerPlugin("NexaNearby") : null;
+export const nearbySupported = !!nearbyPlugin;
+export async function nearby(method, args = {}) {
+  if (!nearbyPlugin) { const e = new Error("unsupported"); e.code = "unsupported"; throw e; }
+  try { return await nearbyPlugin[method](args); }
+  catch (e) {
+    if (/not implemented|not_implemented/i.test(String(e?.message || e))) { const x = new Error("unsupported"); x.code = "unsupported"; throw x; }
+    throw e;
+  }
+}
+export function onNearby(event, cb) {
+  if (!nearbyPlugin) return () => {};
+  const h = nearbyPlugin.addListener(event, (e) => cb(e));
+  return () => { Promise.resolve(h).then((x) => x?.remove()).catch(() => {}); };
+}
+export async function nearbyStage(blob, { signal, onProgress } = {}) {
+  const { token } = await nearby("stageStart");
+  const CH = 3 * 1024 * 1024;
+  try {
+    for (let pos = 0; pos < blob.size; pos += CH) {
+      if (signal?.aborted) throw new Error("cancelled");
+      await nearby("stageWrite", { token, base64: await blobToBase64(blob.slice(pos, pos + CH)) });
+      onProgress?.(Math.min(pos + CH, blob.size), blob.size);
+    }
+    return token;
+  } catch (e) {
+    await nearby("stageDrop", { token }).catch(() => {});
+    throw e;
+  }
+}
+// Принятый файл целиком в память страницы (для «В Файлы NEXA»): кусками по 3 МБ
+export async function nearbyReadReceived(id, { mime, name } = {}) {
+  const parts = [];
+  let offset = 0, size = Infinity;
+  while (offset < size) {
+    const r = await nearby("readReceived", { id, offset, length: 3 * 1024 * 1024 });
+    size = r.size;
+    const bin = atob(r.base64 || "");
+    if (!bin.length) break;
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    parts.push(buf);
+    offset += buf.length;
+  }
+  return new File(parts, name || "file", { type: mime || "" });
 }
 
 /* ─── NEXA Flow: буфер обмена ───
@@ -608,4 +704,21 @@ export function onPushOpen(cb) {
   if (!pushPlugin) return () => {};
   const h = pushPlugin.addListener("pushOpen", (e) => cb(e));
   return () => { Promise.resolve(h).then((x) => x?.remove()).catch(() => {}); };
+}
+
+/* «Поиск этого устройства» при закрытой NEXA (NexaPushPlugin → NexaLocator.java).
+   locateNativeSet(allow) — передать переключатель из Настроек (push обрабатывается без веб-части);
+   locateNativeStatus() — { location, background, needsBackground } или null (не приложение / старый APK);
+   locateOpenSettings() — страница разрешений NEXA в настройках Android («разрешать всегда») */
+export async function locateNativeSet(allow) {
+  if (!pushPlugin) return false;
+  try { await pushPlugin.setLocate({ allow: !!allow }); return true; } catch { return false; }
+}
+export async function locateNativeStatus() {
+  if (!pushPlugin) return null;
+  try { return await pushPlugin.locateStatus(); } catch { return null; }
+}
+export async function locateOpenSettings() {
+  if (!pushPlugin) return false;
+  try { await pushPlugin.openLocateSettings(); return true; } catch { return false; }
 }

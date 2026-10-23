@@ -284,13 +284,14 @@ public class NexaFilesPlugin extends Plugin {
     }
 
     // Имя без папок и служебных символов — файл не выйдет за пределы своей папки
-    private static String safeName(String name) {
+    // Общие с NexaNearbyPlugin: имя файла без папок и служебных знаков, тип по расширению
+    static String safeName(String name) {
         String s = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
         if (s.isEmpty() || s.equals(".") || s.equals("..")) s = "file";
         return s.length() > 120 ? s.substring(s.length() - 120) : s;
     }
 
-    private static String mimeOf(String mime, String name) {
+    static String mimeOf(String mime, String name) {
         if (mime != null && mime.matches("[a-z]+/[a-z0-9.+-]+")) return mime;
         int dot = name.lastIndexOf('.');
         String fromExt = dot >= 0 ? MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(dot + 1).toLowerCase()) : null;

@@ -21,8 +21,9 @@ import { useModalLock } from "../lib/hooks.js";
 // onAddFiles(список, папка) — добавить файлы, onCreateFolder(имя, родитель) — новая папка
 // onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
 // onUploadAction(id, "cancel" | "retry" | "dismiss") — управление строкой загрузки
+// onNearby — «Рядом»: файл на соседний телефон без интернета (только Android-приложение)
 // onBack — пришли из «Медиа»: «Назад» возвращает туда (вкладка и прокрутка на месте); onToast — всплывающее
-export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast }) {
+export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast, onNearby }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
   const fileInput = useRef(null);
@@ -251,6 +252,14 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
               border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
             }}>
               {Icon.folder({ c: C.text, s: 15 })} Новая папка
+            </button>
+          )}
+          {onNearby && (
+            <button type="button" className="nx-ghost-btn" onClick={onNearby} style={{
+              ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
+              border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
+            }}>
+              {Icon.signal({ c: C.text, s: 15 })} Рядом
             </button>
           )}
           <button type="button" className="nx-ghost-btn" onClick={fromClipboard} disabled={clipBusy} style={{

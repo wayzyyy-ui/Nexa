@@ -16,13 +16,24 @@
    CLIP_PUSH_MAX знаков (data-сообщение FCM — до 4 КБ); длиннее — начало и «откройте NEXA».
    Срок жизни push = оставшийся срок записи. Текст в журнал не пишем.
 
+   «Где устройство?», когда NEXA на телефоне закрыта (supabase/locate-requests.sql):
+   - POST { action: "locate", target_device_id, id } (Bearer) — заводим запрос (в базе только sha256
+     одноразового ключа, срок 5 минут) и шлём телефону push { type: "locate", id, key, api };
+   - POST { action: "locate-reply", id, key, status, lat, lon, acc, at } БЕЗ входа — так отвечает
+     сам телефон (ключа входа в Android-части нет): принимаем, только если ключ совпал, запрос
+     ещё ждёт и не просрочен; ответ записывается один раз;
+   - POST { action: "locate-poll", id } (Bearer) — спросивший забирает ответ; готовый ответ сразу
+     удаляется из базы. Координаты в журнал не пишем.
+   POST { action: "message", target_device_id, id, text } (Bearer) — сообщение на экран блокировки
+   своего телефона («Нашли телефон? Позвоните…»), до MESSAGE_MAX знаков.
+
    Нужны переменные Vercel (только на сервере):
    - FIREBASE_SERVICE_ACCOUNT — JSON ключа сервисного аккаунта Firebase (целиком);
    - SUPABASE_SERVICE_ROLE_KEY и SUPABASE_URL (как у входа по QR).
    Без них отвечает { sent: false, reason: "not_configured" } — приложение пишет об этом честно.
    Ключи и push-адреса в журнал не пишем. */
 import { createClient } from '@supabase/supabase-js';
-import { createSign } from 'node:crypto';
+import { createSign, createHash, randomBytes } from 'node:crypto';
 import { allow } from './_lib/rate-limit.js';
 
 // Android (Capacitor) и приложение для ПК (Tauri: в Windows — http://tauri.localhost, в macOS/Linux — tauri://localhost)
@@ -40,6 +51,37 @@ function applyCors(req, res) {
 
 const isId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 64 && /^[\w-]+$/.test(v);
 const LIMIT_PER_MINUTE = 10; // «Найти» не чаще 10 раз в минуту на аккаунт
+const LOCATE_PER_MINUTE = 6;  // «Где устройство?» и сообщение на экран через push
+const MESSAGE_MAX = 200;
+const LOCATE_STATUS = ['ok', 'off', 'denied', 'background', 'error'];
+const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
+const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
+const missing = (error) => /does not exist|could not find/i.test(error?.message || '');
+// Свой адрес — телефон отвечает именно сюда (только https)
+function selfOrigin(req) {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `https://${host}` : null;
+}
+
+/* Ответ телефона на «Где устройство?» (без входа: проверяем одноразовый ключ из push) */
+async function locateReply(req, res, sb) {
+  const b = req.body || {};
+  if (!isUuid(b.id) || typeof b.key !== 'string' || b.key.length < 20 || b.key.length > 100 || !LOCATE_STATUS.includes(b.status)) return res.status(400).json({ error: 'Неверный запрос' });
+  const ip = sha(String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'none');
+  if (!(await allow([[`loc-reply:${ip}`, 30, 60]]))) return res.status(429).json({ error: 'Слишком часто' });
+  const lat = num(b.lat, -90, 90), lon = num(b.lon, -180, 180), acc = num(b.acc, 0, 1000000);
+  const ok = b.status === 'ok';
+  if (ok && (lat === null || lon === null)) return res.status(400).json({ error: 'Неверный запрос' });
+  const at = num(b.at, 0, Date.now() + 60000);
+  // Записываем один раз: запрос ещё ждёт, ключ совпал, срок не вышел
+  const { data, error } = await sb.from('locate_requests')
+    .update({ status: b.status, lat: ok ? lat : null, lon: ok ? lon : null, acc: ok ? (acc ?? 0) : null, at: ok ? Math.round(at || Date.now()) : null })
+    .eq('id', b.id).eq('secret_hash', sha(b.key)).eq('status', 'waiting').gt('expires_at', new Date().toISOString())
+    .select('id');
+  if (error) return res.status(200).json({ ok: false });
+  return res.status(200).json({ ok: !!data?.length });
+}
 
 function admin() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -89,6 +131,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const sb = admin(), sa = serviceAccount();
+  if (req.body?.action === 'locate-reply') {
+    if (!sb) return res.status(200).json({ ok: false });
+    return locateReply(req, res, sb);
+  }
   if (!sb || !sa) return res.status(200).json({ sent: false, reason: 'not_configured' });
 
   // Кто вошёл
@@ -98,8 +144,27 @@ export default async function handler(req, res) {
   const uid = who.user.id;
 
   const { action, target_device_id: target, id } = req.body || {};
-  if (!['find', 'clip'].includes(action) || !isId(target) || !isId(id)) return res.status(400).json({ error: 'Неверный запрос' });
-  const limit = action === 'clip' ? [[`push-clip:${uid}`, CLIP_PER_MINUTE, 60]] : [[`push:${uid}`, LIMIT_PER_MINUTE, 60]];
+
+  // Забрать ответ телефона (свой запрос). Готовый ответ сразу удаляем — координаты не храним
+  if (action === 'locate-poll') {
+    if (!isUuid(id)) return res.status(400).json({ error: 'Неверный запрос' });
+    if (!(await allow([[`loc-poll:${uid}`, 60, 60]]))) return res.status(429).json({ error: 'Слишком часто' });
+    const { data: rows, error } = await sb.from('locate_requests').select('status, lat, lon, acc, at, expires_at').eq('user_id', uid).eq('id', id).limit(1);
+    if (error) return res.status(200).json({ status: missing(error) ? 'not_configured' : 'error' });
+    const r = rows?.[0];
+    if (!r) return res.status(200).json({ status: 'gone' });
+    if (r.status === 'waiting') return res.status(200).json({ status: Date.parse(r.expires_at) < Date.now() ? 'gone' : 'waiting' });
+    await sb.from('locate_requests').delete().eq('user_id', uid).eq('id', id);
+    return res.status(200).json(r.status === 'ok' ? { status: 'ok', lat: r.lat, lon: r.lon, acc: r.acc, at: Number(r.at) } : { status: r.status });
+  }
+
+  if (!['find', 'clip', 'locate', 'message'].includes(action) || !isId(target) || !isId(id)) return res.status(400).json({ error: 'Неверный запрос' });
+  if (action === 'locate' && !isUuid(id)) return res.status(400).json({ error: 'Неверный запрос' });
+  const text = action === 'message' ? String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, MESSAGE_MAX) : '';
+  if (action === 'message' && !text) return res.status(400).json({ error: 'Пустое сообщение' });
+  const limit = action === 'clip' ? [[`push-clip:${uid}`, CLIP_PER_MINUTE, 60]]
+    : action === 'locate' || action === 'message' ? [[`push-loc:${uid}`, LOCATE_PER_MINUTE, 60]]
+    : [[`push:${uid}`, LIMIT_PER_MINUTE, 60]];
   if (!(await allow(limit))) return res.status(429).json({ error: 'Слишком часто — подождите минуту' });
 
   // Буфер обмена: текст — из своей же записи, не из запроса
@@ -127,6 +192,22 @@ export default async function handler(req, res) {
     if (me?.name) fromName = String(me.name).slice(0, 40);
   }
 
+  // «Где устройство?»: заводим запрос с одноразовым ключом (в базе — только его хеш)
+  let locate = null;
+  if (action === 'locate') {
+    const api = selfOrigin(req);
+    if (!api) return res.status(200).json({ sent: false, reason: 'error' });
+    await sb.from('locate_requests').delete().lt('expires_at', new Date().toISOString()); // просроченное — убираем
+    const key = randomBytes(24).toString('base64url');
+    const { error: insErr } = await sb.from('locate_requests').insert({ id, user_id: uid, device_id: target, secret_hash: sha(key) });
+    if (insErr) return res.status(200).json({ sent: false, reason: missing(insErr) ? 'not_configured' : 'error' });
+    locate = { type: 'locate', id, key, api, from: fromName };
+  }
+  const data = clip ? clipData(clip, id, fromName)
+    : locate ? locate
+    : action === 'message' ? { type: 'message', id, from: fromName, text }
+    : { type: 'find', id, from: fromName, target };
+
   try {
     const access = await googleToken(sa);
     const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
@@ -134,10 +215,10 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: {
         token,
-        data: clip ? clipData(clip, id, fromName) : { type: 'find', id, from: fromName, target },
+        data,
         android: clip
           ? { priority: 'high', ttl: `${Math.max(1, Math.floor((Date.parse(clip.expires_at) - Date.now()) / 1000))}s` }
-          : { priority: 'high', ttl: '60s' },
+          : { priority: 'high', ttl: locate ? '240s' : action === 'message' ? '3600s' : '60s' },
       } }),
     });
     if (await staleToken(r)) {
@@ -145,7 +226,11 @@ export default async function handler(req, res) {
       await sb.from('push_tokens').delete().eq('user_id', uid).eq('device_id', target);
       return res.status(200).json({ sent: false, reason: 'no_token' });
     }
-    if (!r.ok) { console.error('FCM error:', r.status, r.fcmCode || ''); return res.status(200).json({ sent: false, reason: 'error' }); }
+    if (!r.ok) {
+      console.error('FCM error:', r.status, r.fcmCode || '');
+      if (locate) await sb.from('locate_requests').delete().eq('user_id', uid).eq('id', id);
+      return res.status(200).json({ sent: false, reason: 'error' });
+    }
     return res.status(200).json({ sent: true });
   } catch (e) {
     console.error('Push error:', e?.name || 'unknown');

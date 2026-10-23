@@ -16,12 +16,24 @@ import { PREVIEW_SIZE, typeOf, DevicePreview } from "../ui/DevicePreview.jsx";
 export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
   const [url, setUrl] = useState("");
   const [urlNote, setUrlNote] = useState(null);
+  // Сообщение на экран блокировки (push): текст и «отправляем»
+  const [msg, setMsg] = useState("");
+  const [msgBusy, setMsgBusy] = useState(false);
   const fileRef = useRef(null);
   if (d.isSelf) return null;
   // Почему действия недоступны (null — доступны)
   const why = !linkOnline ? "Нет связи с облаком — проверьте интернет" : !d.online ? "Устройство не в сети — действия появятся, когда на нём откроют NEXA" : null;
   // «Найти» у приложения работает и без сети на той стороне — push-уведомлением
   const pushFindOk = linkOnline && !d.online && (d.kind === "app" || d.kind === "both");
+  // Приложению на телефоне можно писать на экран блокировки — в сети оно или нет
+  const pushable = linkOnline && (d.kind === "app" || d.kind === "both");
+  const sendMsg = (e) => {
+    e.preventDefault();
+    const t = msg.trim();
+    if (!t || msgBusy) return;
+    setMsgBusy(true);
+    act.message(d, t).then((ok) => { setMsgBusy(false); if (ok) setMsg(""); });
+  };
   const send = st.send || {};
   const sending = send.state === "uploading";
   const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
@@ -44,8 +56,8 @@ export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
           {Icon.send({ c: why ? C.mutedSoft : C.text, s: 14 })} Отправить файл
         </button>
         <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act.sendFile(d, f); }} />
-        <button type="button" className="nx-ghost-btn" disabled={!!why || st.locate?.state === "asking"} onClick={() => act.locate(d)} style={off(pill)}>
-          {Icon.pin({ c: why ? C.mutedSoft : C.text, s: 14 })} Где устройство?
+        <button type="button" className="nx-ghost-btn" disabled={(!!why && !pushFindOk) || st.locate?.state === "asking"} onClick={() => act.locate(d)} style={pushFindOk ? pill : off(pill)}>
+          {Icon.pin({ c: why && !pushFindOk ? C.mutedSoft : C.text, s: 14 })} Где устройство?
         </button>
       </div>
       <LocateResult r={st.locate} />
@@ -76,7 +88,18 @@ export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
         </button>
       </form>
       {urlNote && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 6 }}>{urlNote}</div>}
-      {why && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>{why}{pushFindOk ? ". «Найти» сработает и сейчас: телефону придёт уведомление, которое звонит" : ""}</div>}
+      {/* Сообщение на экран блокировки: например, если телефон потерян — «Нашли? Позвоните …» */}
+      {pushable && (
+        <form onSubmit={sendMsg} style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <input className="nx-input" value={msg} onChange={(e) => setMsg(e.target.value.slice(0, 200))} maxLength={200}
+            placeholder="Нашли телефон? Позвоните: …" aria-label="Сообщение на экран блокировки"
+            style={{ flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 14, fontFamily: "inherit", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "8px 12px", outline: "none" }} />
+          <button type="submit" className="nx-ghost-btn" disabled={!msg.trim() || msgBusy} style={pill}>
+            {msgBusy ? <Spinner s={11} /> : Icon.send({ c: C.text, s: 14 })} На экран
+          </button>
+        </form>
+      )}
+      {why && <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 10, lineHeight: 1.5 }}>{why}{pushFindOk ? ". «Найти», «Где устройство?» и сообщение на экран сработают и сейчас — через push, если телефон включён и в сети" : ""}</div>}
       {!d.online && linkOnline && (
         <button type="button" className="nx-ghost-btn" onClick={act.reconnect} style={{ ...pill, marginTop: 10 }}>
           {Icon.refresh({ c: C.text, s: 14 })} Подключить снова

@@ -76,6 +76,8 @@ dependencies {
     // «Найти» при закрытом приложении: push через Firebase (NexaMessagingService).
     // Без google-services.json Firebase не запускается — приложение работает как раньше
     implementation "com.google.firebase:firebase-messaging:24.1.0"
+    // «Рядом» (NexaNearbyPlugin): передача файла на соседний телефон без интернета — Bluetooth / прямой Wi-Fi
+    implementation "com.google.android.gms:play-services-nearby:19.3.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

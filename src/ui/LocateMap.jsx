@@ -128,13 +128,20 @@ export function LocateMap({ lat, lon, acc }) {
 // Ответ на «Где устройство?»: карта, точность, когда определено, «Открыть в картах»
 export function LocateResult({ r }) {
   if (!r) return null;
-  if (r.state === "asking") return <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, marginTop: 10 }}><Spinner s={11} /> Спрашиваем устройство…</div>;
+  if (r.state === "asking") return (
+    <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, marginTop: 10, lineHeight: 1.45 }}>
+      <Spinner s={11} /> {r.push ? "Телефону отправлен запрос — ждём ответа. Если NEXA на нём закрыта, это может занять до полутора минут" : "Спрашиваем устройство…"}
+    </div>
+  );
   if (r.state !== "ok") return (
     <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10, lineHeight: 1.45 }}>
       {{ off: "На устройстве не разрешено показывать местоположение — включите это в его Настройках → «Поиск этого устройства»",
          denied: "Устройству не дали доступ к геолокации — разрешите его в настройках телефона или браузера",
          error: "Устройство не смогло определить место — нет сигнала GPS или сети",
-         timeout: "Устройство не ответило — возможно, NEXA на нём закрыта" }[r.state]}
+         background: "Телефон получил запрос, но NEXA на нём закрыта, а места в фоне ей не разрешено — на том телефоне: Настройки NEXA → «Поиск этого устройства» → «Когда NEXA закрыта»",
+         nopush: "Push-уведомления NEXA ещё не настроены (нужен Firebase) — место можно узнать, только когда NEXA на том телефоне открыта",
+         notoken: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
+         timeout: "Устройство не ответило — возможно, оно выключено, без сети или NEXA на нём остановлена" }[r.state]}
     </div>
   );
   const when = new Date(r.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });

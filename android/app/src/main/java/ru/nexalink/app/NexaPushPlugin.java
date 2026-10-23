@@ -48,6 +48,36 @@ public class NexaPushPlugin extends Plugin {
         notifyListeners("pushOpen", o, true);
     }
 
+    /* «Поиск этого устройства» при закрытой NEXA (NexaLocator): веб-часть передаёт сюда переключатель
+       из Настроек, потому что push обрабатывается без неё */
+    @PluginMethod
+    public void setLocate(PluginCall call) {
+        NexaLocator.prefs(getContext()).edit().putBoolean("allow", Boolean.TRUE.equals(call.getBoolean("allow", false))).apply();
+        call.resolve();
+    }
+
+    // Что разрешено: место вообще и место в фоне («разрешать всегда»; до Android 10 — то же самое)
+    @PluginMethod
+    public void locateStatus(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("location", NexaLocator.hasLocation(getContext()));
+        r.put("background", NexaLocator.hasBackground(getContext()));
+        r.put("needsBackground", android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q);
+        call.resolve(r);
+    }
+
+    /* Android не даёт спросить «разрешать всегда» окном внутри приложения — только на странице
+       разрешений NEXA в настройках системы. Открываем её; человек выбирает сам */
+    @PluginMethod
+    public void openLocateSettings(PluginCall call) {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", getContext().getPackageName(), null));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) { call.reject("Не открылись настройки", "error"); }
+    }
+
     @PluginMethod
     public void token(PluginCall call) {
         if (FirebaseApp.getApps(getContext()).isEmpty()) { call.reject("Push не настроен", "not_configured"); return; }

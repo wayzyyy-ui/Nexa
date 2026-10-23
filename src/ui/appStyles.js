@@ -955,6 +955,89 @@ export const APP_CSS = `
           .nx-quick-title { font-size: 15px; }
           .nx-quick-sub { font-size: 13px; }
         }
+        /* ─── Передача файла «по воздуху» (DropBanner, src/ui/drop.jsx) ───
+           Плашка опускается сверху по центру; файл летит по дуге (offset-path) к устройству,
+           кольцо — настоящий процент; доставлено — галочка «щёлкает». Полёт повторяется, только
+           пока файл идёт (это состояние, а не украшение); при «уменьшении движения» — без движения */
+        @keyframes nx-air-in  { from { opacity: 0; transform: translate(-50%, -140%) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+        @keyframes nx-air-out { to { opacity: 0; transform: translate(-50%, -140%) scale(0.96); } }
+        @keyframes nx-air-fly { 0% { offset-distance: 0%; opacity: 0; transform: scale(0.6); } 15% { opacity: 1; transform: scale(1); } 85% { opacity: 1; transform: scale(1); } 100% { offset-distance: 100%; opacity: 0; transform: scale(0.6); } }
+        @keyframes nx-air-pop { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+        .nx-air {
+          position: fixed; top: calc(var(--sat) + 12px); left: 50%; z-index: 520;
+          width: min(470px, calc(100vw - 24px)); box-sizing: border-box;
+          display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: 999px;
+          transform: translate(-50%, 0); color: var(--text);
+          animation: nx-air-in 420ms cubic-bezier(0.22, 1, 0.36, 1);
+          transition: transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 200ms ease;
+          touch-action: none;
+        }
+        .nx-air.is-leaving { animation: nx-air-out 220ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+        .nx-air-scene { position: relative; width: 132px; height: 44px; flex-shrink: 0; }
+        .nx-air-node { position: absolute; top: 2px; width: 40px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+          background: color-mix(in srgb, var(--text) 7%, transparent); border: 1px solid var(--border); }
+        .nx-air-left { left: 0; }
+        .nx-air-right { right: 0; }
+        .nx-air-ring { position: absolute; inset: -8px; width: 56px; height: 56px; }
+        .nx-air.is-in .nx-air-right { border-color: var(--mint); animation: nx-air-pop 420ms ease 820ms both; }
+        .nx-air.is-done .nx-air-right { animation: nx-air-pop 380ms ease; }
+        .nx-air-arc { position: absolute; left: 34px; right: 34px; top: 4px; width: calc(100% - 68px); height: 22px; overflow: visible; }
+        .nx-air-chip { position: absolute; left: 0; top: 0; width: 20px; height: 20px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+          background: linear-gradient(135deg, var(--fold-blue), var(--fold-cyan));
+          offset-path: path("M 20 22 Q 66 -6 112 22"); offset-rotate: 0deg; offset-anchor: 50% 50%;
+          animation: nx-air-fly 1150ms cubic-bezier(0.45, 0, 0.25, 1) 300ms infinite both; }
+        .nx-air.is-in .nx-air-chip { animation: nx-air-fly 900ms cubic-bezier(0.45, 0, 0.25, 1) 160ms 1 both; }
+        /* Приём «Рядом»: файл летит, пока идёт передача; кружок справа не «щёлкает» заранее */
+        .nx-air.is-recv .nx-air-chip { animation: nx-air-fly 1150ms cubic-bezier(0.45, 0, 0.25, 1) 300ms infinite both; }
+        .nx-air.is-recv .nx-air-right { animation: none; border-color: var(--border); }
+        .nx-air.is-recv.is-done .nx-air-right { animation: nx-air-pop 380ms ease; }
+        .nx-air-text { flex: 1; min-width: 0; }
+        .nx-air-title { font-size: 14px; font-weight: 600; line-height: 1.25; }
+        .nx-air.is-done .nx-air-title { color: var(--green); }
+        .nx-air.is-error .nx-air-title { color: var(--red); }
+        .nx-air-sub { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-air.is-error .nx-air-sub { white-space: normal; }
+        .nx-air-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        @media ${PHONE_MQ} {
+          .nx-air { gap: 10px; padding: 8px 8px 8px 10px; }
+          .nx-air-scene { width: 104px; }
+          .nx-air-node { width: 36px; height: 36px; top: 4px; }
+          .nx-air-ring { inset: -8px; width: 52px; height: 52px; }
+          .nx-air-arc { left: 30px; right: 30px; width: calc(100% - 60px); }
+          .nx-air-chip { offset-path: path("M 18 24 Q 52 -4 86 24"); }
+          .nx-air-title { font-size: 13px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-air, .nx-air.is-leaving, .nx-air-right, .nx-air.is-in .nx-air-right, .nx-air.is-done .nx-air-right { animation: none !important; }
+          .nx-air.is-leaving { opacity: 0; transition: opacity 160ms ease; }
+          .nx-air-chip { display: none; }
+        }
+        /* ─── «Рядом» (src/ui/nearby.jsx): телефоны поблизости кружками, как AirDrop.
+           Волны вокруг значка — только пока телефон виден / ищет (состояние, а не украшение) */
+        @keyframes nx-near-wave { from { transform: scale(1); opacity: 0.55; } to { transform: scale(1.9); opacity: 0; } }
+        @keyframes nx-near-blink { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+        .nx-near-radar { position: relative; width: 44px; height: 44px; flex-shrink: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+          border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 5%, transparent); }
+        .nx-near-radar.is-on { border-color: var(--mint); }
+        .nx-near-radar.is-on::before, .nx-near-radar.is-on::after { content: ""; position: absolute; inset: -1px; border-radius: 999px; border: 1px solid var(--mint);
+          animation: nx-near-wave 2.2s cubic-bezier(0.2, 0.6, 0.4, 1) infinite; pointer-events: none; }
+        .nx-near-radar.is-on::after { animation-delay: 1.1s; }
+        .nx-near-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--mint); animation: nx-near-blink 1.4s ease infinite; flex-shrink: 0; }
+        .nx-near-peers { display: flex; flex-wrap: wrap; gap: 14px 18px; margin-top: 16px; }
+        .nx-near-peer { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 76px; animation: nx-pop-in 320ms cubic-bezier(0.22, 1, 0.36, 1); }
+        .nx-near-peer:disabled { cursor: default; opacity: 0.55; }
+        .nx-near-peer.is-active { opacity: 1; }
+        .nx-near-peer:focus-visible .nx-near-avatar { outline: 2px solid var(--mint); outline-offset: 3px; }
+        .nx-near-avatar { position: relative; width: 60px; height: 60px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+          border: 1px solid var(--line-bright); background: color-mix(in srgb, var(--text) 6%, transparent); transition: border-color 200ms ease, transform 200ms ease; }
+        .nx-near-peer:not(:disabled):active .nx-near-avatar { transform: scale(0.94); }
+        .nx-near-peer.is-active .nx-near-avatar { border-color: var(--mint); }
+        .nx-near-peer.is-active .nx-near-avatar::after { content: ""; position: absolute; inset: -1px; border-radius: 999px; border: 1px solid var(--mint); animation: nx-near-wave 1.6s ease-out infinite; }
+        .nx-near-name { font-size: 12px; color: var(--text); max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-near-radar.is-on::before, .nx-near-radar.is-on::after, .nx-near-peer.is-active .nx-near-avatar::after { animation: none; opacity: 0; }
+          .nx-near-dot, .nx-near-peer { animation: none; }
+        }
                 /* ─── Системные уведомления (тосты) ──────────────────
            Плашка сверху справа, как системное уведомление телефона:
            иконка NEXA, заголовок, текст, крестик закрытия. */
@@ -1172,7 +1255,9 @@ export const APP_CSS = `
         #root { animation: nx-intro 650ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* В приложении: ждём, пока уйдёт заставка Android, и только тогда проявляемся */
         .nx-intro-wait #root { animation: none; opacity: 0; }
-        .nx-intro-go #root { animation: nx-intro 700ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both; }
+        .nx-intro-go #root { animation: nx-intro 700ms cubic-bezier(0.22, 1, 0.36, 1) 40ms backwards; }
+        /* backwards, а не both: «both» держит transform у #root и после конца — тогда нижняя панель,
+           шапка Главной и окна (position: fixed / sticky) считаются от #root, а не от экрана */
         @media (prefers-reduced-motion: reduce) { #root, .nx-intro-go #root { animation: none; } .nx-intro-wait #root { opacity: 1; } }
         /* Аура нового диалога: по центру за приветствием и полем ввода.
            Края растворяются маской (не размытие). Приближение — по фокусу/тексту */
@@ -1670,6 +1755,8 @@ export const APP_CSS = `
           .nx-files-search input { font-size: 16px !important; }
           /* Кнопки "Новая папка" / "Добавить файл" — под заголовком, поровну */
           .nx-files-head { flex-direction: column; align-items: stretch !important; }
+          /* Четыре кнопки («Рядом» есть только в приложении) — сеткой по две, не в одну тесную строку */
+          .nx-files-actions { display: grid !important; grid-template-columns: 1fr 1fr; }
           .nx-files-actions > button { flex: 1 1 0; padding: 11px 12px !important; }
           /* «Передать на…»: на телефоне только значок, кнопка покрупнее для пальца */
           .nx-transfer-label { display: none; }

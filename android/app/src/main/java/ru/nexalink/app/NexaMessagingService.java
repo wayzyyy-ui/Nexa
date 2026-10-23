@@ -19,7 +19,8 @@ import java.util.Map;
 
 /**
  * Push «Найти устройство» (api/push.js → Firebase → сюда).
- * Ещё — push общего буфера обмена (type "clip") → NexaClipReceiver.show (уведомление с «Скопировать»).
+ * Ещё — push общего буфера обмена (type "clip") → NexaClipReceiver.show (уведомление с «Скопировать»),
+ * «Где устройство?» (type "locate") и сообщение на экран блокировки (type "message") → NexaLocator.
  *
  * Приложение на экране — ничего не делаем: сигнал уже пришёл по каналу связи
  * и показан внутри NEXA. Иначе — уведомление «Устройство ищут», которое звонит
@@ -33,7 +34,11 @@ public class NexaMessagingService extends FirebaseMessagingService {
     @Override
     public void onMessageReceived(RemoteMessage msg) {
         Map<String, String> data = msg.getData();
+        // Сообщение владельца — показываем всегда (его ждут на экране блокировки)
+        if ("message".equals(data.get("type"))) { NexaLocator.message(this, data); return; }
         if (MainActivity.inForeground) return; // NEXA открыта — справится сама (сигнал пришёл по каналу)
+        // «Где устройство?» при закрытой NEXA — определяем место и отвечаем серверу (NexaLocator)
+        if ("locate".equals(data.get("type"))) { NexaLocator.answer(this, data); return; }
         if ("clip".equals(data.get("type"))) { NexaClipReceiver.show(this, data); return; }
         if (!"find".equals(data.get("type"))) return;
         String from = data.get("from") == null ? "Ваше устройство" : data.get("from");
