@@ -29,6 +29,9 @@ export const API_CHAT_URL = `${API_BASE}/api/chat`;
    Нет сети и ответа в памяти — null, приложение работает как обычно */
 const UPDATE_CACHE = "nexa-update-cache";
 export const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
+// Приложение для ПК живёт в трее неделями, а после выпуска узнать о новой версии нужно быстро —
+// version.json крошечный, поэтому спрашиваем свежий не реже раза в 5 минут
+const DESKTOP_EVERY_MS = 5 * 60 * 1000;
 // Последний ответ version.json { at, latest } — его же читает обновление веб-части (src/lib/ota.js)
 export const readUpdateCache = () => { try { return JSON.parse(localStorage.getItem(UPDATE_CACHE)); } catch { return null; } };
 export async function checkForUpdate({ force = false } = {}) {
@@ -39,7 +42,7 @@ export async function checkForUpdate({ force = false } = {}) {
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem(UPDATE_CACHE)); } catch {}
     let latest = cached?.latest || null;
-    if (force || !cached || Date.now() - cached.at > UPDATE_EVERY_MS) {
+    if (force || !cached || Date.now() - cached.at > (isDesktop ? DESKTOP_EVERY_MS : UPDATE_EVERY_MS)) {
       const res = await fetch(`${API_BASE}/version.json?t=${Date.now()}`, { cache: "no-store" }).catch(() => null);
       if (res?.ok) {
         latest = await res.json().catch(() => latest);

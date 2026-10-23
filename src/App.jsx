@@ -1893,7 +1893,7 @@ export default function NexaApp() {
   const checkUpdate = (force) => checkForUpdate({ force }).then((u) => { setAppUpdate(u); setUpdateCheckedAt(Date.now()); otaCheck({ force }); });
   useEffect(() => {
     // Приложение для ПК: при запуске, раз в 30 минут (NEXA может неделями жить в трее) и при
-    // возврате в окно; сам сайт всё равно спрашивается не чаще раза в 6 часов
+    // возврате в окно; свежий version.json спрашивается не чаще раза в 5 минут (checkForUpdate)
     if (isDesktop) {
       checkUpdate(false);
       const t = setInterval(() => checkUpdate(false), 30 * 60000);
@@ -2637,7 +2637,7 @@ export default function NexaApp() {
           <ScreenHome
             devices={devices}
             received={received}
-            update={homeUpdate}
+            update={isDesktop ? appUpdate : homeUpdate}
             onUpdateLater={laterUpdate}
             onNavigate={goTab}
             onOpenDevice={showDevice}

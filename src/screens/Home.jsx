@@ -3,7 +3,7 @@ import { useRef, useState, useLayoutEffect, useEffect } from "react";
 import { C } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { deviceStatus } from "../lib/devices.js";
-import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.jsx";
+import { EmptyState, StateButton, btnReset, Logo, LogoMark, MadeBy } from "../ui/base.jsx";
 import { QuickBtn } from "../ui/QuickPanel.jsx";
 import { FoldArt, FOLD_INTRO_KEY } from "../ui/backdrop.jsx";
 import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
@@ -386,7 +386,9 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
         {activityBlock && <div className="nx-home-act" data-nosnippet>{activityBlock}</div>}
         {onAbout && (
-          <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+            {/* Подпись студии — слева, «Подробнее о системе» — справа */}
+            <MadeBy style={{ justifyContent: "flex-start" }} />
             <button type="button" className="nx-link-btn nx-about-link nx-home-about" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
               <span aria-hidden="true">→</span> Подробнее о системе
             </button>
