@@ -400,7 +400,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
         </div>
         {/* «Заметки» — свой экран поверх «Сегодня» (src/screens/Notes.jsx, адрес /notes) */}
         <div style={{ gridArea: "notes", alignSelf: "end" }}>
-          <button type="button" className="nx-ghost-btn nx-notepad-entry" onClick={onNotes}
+          <button type="button" className="nx-ghost-btn nx-notepad-entry nx-today-pill nx-glass" onClick={onNotes}
             aria-label={notesCount ? `Заметки, ${notesCount}` : "Заметки"}
             style={{
               ...btnReset, width: "100%", boxSizing: "border-box",
@@ -417,7 +417,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
         </div>
 
         <div style={{ gridArea: "month", alignSelf: "end" }}>
-          <button type="button" className="nx-ghost-btn"
+          <button type="button" className="nx-ghost-btn nx-today-pill nx-glass"
             onClick={() => setForecastOpen(!forecastOpen)}
             aria-expanded={forecastOpen} aria-controls="nx-forecast nx-forecast-side"
             style={{

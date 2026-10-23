@@ -2792,7 +2792,7 @@ export default function NexaApp() {
           <TopBar tab={tab}>
             {/* Компьютер (макет 2026-10): поиск таблеткой, часы, уведомления, быстрые действия, профиль.
                 Телефон: поиск значком (таблетка спрятана стилями); на мобильной Главной строки нет — там своя шапка */}
-            <button type="button" className="nx-ghost-btn nx-top-search" onClick={() => openSearch()} aria-label="Поиск">
+            <button type="button" className="nx-ghost-btn nx-top-search nx-glass" onClick={() => openSearch()} aria-label="Поиск">
               {Icon.search({ c: C.text, s: 16 })} <span className="nx-search-word">Поиск</span>
             </button>
             <TimeDate />

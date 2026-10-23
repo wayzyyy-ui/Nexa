@@ -63,14 +63,13 @@ export function MobileTabBar({ active, onChange }) {
     >
       {/* Сама панель (макет 2026-10): плавающая «таблетка» с отступами от краёв экрана,
           над системной полоской телефона */}
-      <div style={{
-        background: `color-mix(in srgb, ${C.panel} 92%, transparent)`,
-        border: `1px solid ${C.borderStrong}`,
+      {/* «Жидкое стекло» (nx-glass в appStyles.js): заливка, размытие фона, свет на краях */}
+      <div className="nx-tabbar-pill nx-glass" style={{
+        border: "1px solid transparent",
         borderRadius: 999,
         padding: "0 8px",
         display: "flex",
         pointerEvents: "auto",
-        WebkitBackdropFilter: "blur(14px)", backdropFilter: "blur(14px)",
       }}>
         <div style={{ position: "relative", flex: 1, display: "flex", height: 56 }}>
 

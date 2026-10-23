@@ -83,8 +83,8 @@ export function DesktopAppPill({ update }) {
   const st = useUpdState();
   const [got, setGot] = useState(() => { try { return localStorage.getItem(PC_DOWNLOADED_KEY) || ""; } catch { return ""; } });
   const look = (tag, kids, extra) => tag === "a"
-    ? <a className="nx-row-btn nx-pill-card nx-app-pill" {...extra}>{kids}</a>
-    : <button type="button" className="nx-row-btn nx-pill-card nx-app-pill" {...extra}>{kids}</button>;
+    ? <a className="nx-row-btn nx-pill-card nx-app-pill nx-glass" {...extra}>{kids}</a>
+    : <button type="button" className="nx-row-btn nx-pill-card nx-app-pill nx-glass" {...extra}>{kids}</button>;
   const body = (title, sub, icon = Icon.desktop) => (
     <>
       <span aria-hidden="true" className="nx-app-pill-icon">{icon({ c: C.mint, s: 30 })}</span>

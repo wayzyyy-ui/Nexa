@@ -330,7 +330,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
   // Ассистент — крупная таблетка (на компьютере со свечением по макету)
   const aiPill = (cls) => (
-    <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill ${cls || ""}`} onClick={() => onNavigate("assistant")}
+    <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill nx-glass nx-glass-prominent ${cls || ""}`} onClick={() => onNavigate("assistant")}
       style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
       <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.mint, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -409,7 +409,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             </span>
           </div>
           {/* Поиск — широкая таблетка */}
-          <button type="button" className="nx-row-btn nx-home-search" onClick={() => onSearch?.()}>
+          <button type="button" className="nx-row-btn nx-home-search nx-glass" onClick={() => onSearch?.()}>
             {Icon.search({ c: C.text, s: 15 })} Поиск
           </button>
         </div>

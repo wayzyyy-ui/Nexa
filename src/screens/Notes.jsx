@@ -228,7 +228,7 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
             )}
           </div>
           {editor || (
-            <div className="nx-notepad-placeholder nx-notepad-panel" style={{
+            <div className="nx-notepad-placeholder nx-notepad-panel nx-glass nx-glass-subtle" style={{
               border: `1px solid ${C.lineBright}`, display: "flex", alignItems: "center", justifyContent: "center",
               color: C.mutedSoft, fontSize: 14, textAlign: "center", padding: 24, boxSizing: "border-box",
             }}>{empty ? "Здесь откроется заметка" : "Выберите заметку слева или создайте новую"}</div>
@@ -563,7 +563,7 @@ function NoteEditor({ id, note, isNew, phone, api, uid, online, sync, knownTags,
 
   return (
     <div role="dialog" aria-modal={phone || undefined} aria-label={exists ? `Заметка «${title.trim() || "Без названия"}»` : "Новая заметка"}
-      className={`nx-notepad-editor${phone ? " is-phone nx-pop" : " nx-notepad-panel"}`} data-no-swipe
+      className={`nx-notepad-editor${phone ? " is-phone nx-pop" : " nx-notepad-panel nx-glass nx-glass-subtle"}`} data-no-swipe
       style={phone ? {
         position: "fixed", inset: 0, zIndex: 250, background: C.bg, display: "flex", flexDirection: "column",
         padding: "calc(var(--sat) + 12px) 16px calc(var(--sab) + 12px)", boxSizing: "border-box",
