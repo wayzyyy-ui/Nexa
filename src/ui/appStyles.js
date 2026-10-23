@@ -185,6 +185,8 @@ export const APP_CSS = `
         }
         .nx-dev-pill[data-online="0"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--red) 22%, transparent), color-mix(in srgb, var(--red) 4%, transparent) 75%) !important; }
         .nx-dev-pill.is-add { border-style: dashed !important; background-image: none !important; padding-left: 22px !important; }
+        /* «Добавить» в пустой клетке рядом с последним устройством — по центру, без левого отступа */
+        .nx-dev-pill.is-add.is-half { padding-left: 12px !important; padding-right: 12px !important; }
         .nx-dev-pill-icon { width: 30px; display: flex; justify-content: center; flex-shrink: 0; }
         /* Точка статуса со свечением (разрешено новым макетом) */
         .nx-status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 8px 1px currentColor; }
@@ -982,6 +984,7 @@ export const APP_CSS = `
           transition: transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 200ms ease;
           touch-action: none;
         }
+        .nx-air.nx-glass { position: fixed; }
         .nx-air.is-leaving { animation: nx-air-out 220ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
         .nx-air-scene { position: relative; width: 132px; height: 44px; flex-shrink: 0; }
         .nx-air-node { position: absolute; top: 2px; width: 40px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
@@ -1271,7 +1274,7 @@ export const APP_CSS = `
         /* Переход «слово NEXA садится в шапку»: интерфейс только проявляется, без сдвига — иначе
            шапка ехала бы под летящим словом; сама шапка не всплывает, блоки ниже — да */
         @keyframes nx-intro-fade { from { opacity: 0; } to { opacity: 1; } }
-        .nx-intro-go.nx-intro-land #root { animation: nx-intro-fade 520ms cubic-bezier(0.4, 0, 0.2, 1) 60ms backwards; }
+        .nx-intro-go.nx-intro-land #root { animation: nx-intro-fade 760ms cubic-bezier(0.4, 0, 0.2, 1) 80ms backwards; }
         .nx-intro-land .ng-home-mobile > .nx-home-top { animation: none !important; }
         .nx-intro-go #root { animation: nx-intro 700ms cubic-bezier(0.22, 1, 0.36, 1) 40ms backwards; }
         /* backwards, а не both: «both» держит transform у #root и после конца — тогда нижняя панель,
@@ -1805,6 +1808,9 @@ export const APP_CSS = `
           .nx-viewer { align-items: flex-end !important; padding: 0 !important; }
           /* Полоска-«ручка» сверху шторки: подсказка, что её можно смахнуть вниз (useSheetSwipe) */
           .nx-viewer > [role="dialog"] { position: relative; }
+          /* Низ шторки — над системными кнопками Android («Назад», «Домой»…) и полоской жестов:
+             раньше у окон «Рядом», Flow, подключения и др. последняя строка уходила под кнопки */
+          .nx-viewer > [role="dialog"]:not(.nx-viewer-panel) { padding-bottom: calc(20px + var(--sab)) !important; }
           .nx-viewer > [role="dialog"]::before { content: ""; position: absolute; top: 7px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
             border-radius: 2px; background: color-mix(in srgb, var(--text) 22%, transparent); pointer-events: none; }
           .nx-viewer-panel {

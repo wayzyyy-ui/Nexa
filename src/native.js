@@ -73,6 +73,18 @@ export async function checkForUpdate({ force = false } = {}) {
    Новее установленной (VERSION) — показываем «Обновить»; старше minVersion — экран «Обновите NEXA».
    Сама установка — модуль обновлений Tauri с проверкой подписи (updater.rs) */
 const verNum = (v) => { const [a = 0, b = 0, c = 0] = String(v || "").split(".").map((x) => parseInt(x, 10) || 0); return a * 1e6 + b * 1e3 + c; };
+/* «Вышла NEXA X» системным уведомлением, даже когда NEXA закрыта (UpdateCheckWorker.java,
+   раз в ~6 часов при сети). Сюда — что уже знает сама NEXA: последняя версия из version.json,
+   которую она видела (о ней не уведомляем — карточка «Обновить» уже была), текущая веб-часть,
+   включены ли уведомления. Только Android-приложение; старый APK без метода — молча ничего */
+export async function updateWatch(on) {
+  if (!updPlugin) return;
+  let latest = null;
+  try { latest = JSON.parse(localStorage.getItem(UPDATE_CACHE))?.latest || null; } catch {}
+  const known = [latest?.version, latest?.web?.version].filter((v) => typeof v === "string").sort((a, b) => verNum(b) - verNum(a))[0] || VERSION;
+  await updPlugin.watch({ url: `${API_BASE}/version.json`, web: VERSION, known, on: !!on }).catch(() => {});
+}
+
 function desktopUpdate(latest) {
   const d = latest?.desktop;
   if (!d || typeof d.version !== "string" || !(verNum(d.version) > verNum(VERSION))) return null;
@@ -192,7 +204,8 @@ const BOOT_FACETS = [
 // Когда что начинается (мс от готовности интерфейса): BOOT_OUT — заставка тает, BOOT_DONE — убрана
 const BOOT_OUT = 1750, BOOT_OUT_REDUCED = 700, BOOT_FADE = 480;
 // Переход в Главную: слово NEXA летит в шапку за BOOT_LAND, потом за BOOT_SWAP сменяется логотипом шапки
-const BOOT_LAND = 680, BOOT_SWAP = 160;
+// Медленнее, чем было (680 / 160): на загруженном телефоне короткий перелёт «рвался»
+const BOOT_LAND = 950, BOOT_SWAP = 240;
 function mountBootLogo() {
   const ease = "cubic-bezier(0.22, 1, 0.36, 1)", soft = "cubic-bezier(0.4, 0, 0.2, 1)";
   const style = document.createElement("style");
@@ -228,11 +241,12 @@ function mountBootLogo() {
     .nx-boot-out #nx-boot { opacity: 0; transition: opacity ${BOOT_FADE}ms ${soft}; }
     /* Переход в Главную (nx-boot-land, без общего затухания): фон растворяется — под ним интерфейс;
        знак уходит вверх и тает, подпись гаснет вниз; слово NEXA летит в шапку (transform задаёт bootLand) */
-    .nx-boot-land #nx-boot { opacity: 1; background-color: transparent; transition: background-color 520ms ${soft} 60ms; }
-    .nx-boot-land .nx-boot-bg { opacity: 0; transition: opacity 520ms ${soft} 60ms; }
+    .nx-boot-word { will-change: transform; }
+    .nx-boot-land #nx-boot { opacity: 1; background-color: transparent; transition: background-color 760ms ${soft} 80ms; }
+    .nx-boot-land .nx-boot-bg { opacity: 0; transition: opacity 760ms ${soft} 80ms; }
     .nx-boot-land .nx-boot-mark { opacity: 0; transform: translate(-50%, calc(-50% - 22vh - 48px)) scale(0.72);
-      transition: transform ${BOOT_LAND}ms ${ease}, opacity 380ms ${soft}; }
-    .nx-boot-land .nx-boot-made { opacity: 0; transform: translateY(14px); transition: opacity 300ms ${soft}, transform 420ms ${ease}; }
+      transition: transform ${BOOT_LAND}ms ${ease}, opacity 560ms ${soft}; }
+    .nx-boot-land .nx-boot-made { opacity: 0; transform: translateY(14px); transition: opacity 440ms ${soft}, transform 600ms ${ease}; }
     .nx-boot-land .nx-boot-word svg { transition: fill ${BOOT_LAND}ms ${soft}; }
     .nx-boot-swap .nx-boot-word { opacity: 0; transition: opacity ${BOOT_SWAP}ms linear !important; }
     /* Пока слово летит, логотип шапки скрыт — потом он проявляется ровно на его месте */
@@ -283,12 +297,17 @@ function bootLand(root) {
   const dx = t.left + t.width / 2 - (w.left + w.width / 2);
   const dy = t.top + t.height / 2 - (w.top + w.height / 2);
   const k = t.width / w.width;
+  const fill = getComputedStyle(target).color;
   root.classList.remove("nx-intro-wait");
   root.classList.add("nx-intro-go", "nx-intro-land", "nx-boot-land");
-  word.style.transition = `transform ${BOOT_LAND}ms cubic-bezier(0.65, 0, 0.25, 1)`;
-  word.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${k})`;
-  const svg = word.querySelector("svg");
-  if (svg) svg.style.fill = getComputedStyle(target).color;
+  // Перелёт — со следующего кадра: в этом кадре браузер ещё рисует проявившуюся Главную,
+  // и старт движения в нём на телефоне проглатывался рывком
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    word.style.transition = `transform ${BOOT_LAND}ms cubic-bezier(0.65, 0, 0.25, 1)`;
+    word.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${k})`;
+    const svg = word.querySelector("svg");
+    if (svg) svg.style.fill = fill;
+  }));
   setTimeout(() => {
     root.classList.add("nx-boot-swap");
     setTimeout(() => {
@@ -296,7 +315,7 @@ function bootLand(root) {
       // nx-intro-land оставляем: иначе #root сменил бы анимацию и проявился бы второй раз
       root.classList.remove("nx-boot-land", "nx-boot-swap");
     }, BOOT_SWAP + 40);
-  }, BOOT_LAND);
+  }, BOOT_LAND + 40);
   return true;
 }
 

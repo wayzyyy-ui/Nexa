@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
-import { btnReset, Spinner, Toggle } from "./base.jsx";
+import { btnReset, Spinner } from "./base.jsx";
 import { formatBytes } from "../lib/deviceInfo.js";
 import { leftText } from "../lib/nearby.js";
 
@@ -40,6 +40,7 @@ function useLeft(until) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!until) return;
+    setNow(Date.now()); // отсчёт — от включения, а не от открытия окна (иначе сначала «ещё 11 мин»)
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [until]);
@@ -53,6 +54,15 @@ export function NearbySheet({ nb, tab: tab0 = "send", myName, onClose }) {
   const left = useLeft(nb.recv.on ? nb.recv.until : 0);
   const s = nb.send;
   const searching = s && (s.phase === "search" || s.phase === "connecting" || s.phase === "waiting");
+  // Открыли «Принять» — сразу видны на 10 минут, без отдельной кнопки (раз уже здесь — значит, принимаем).
+  // Один раз на открытие вкладки: выключили руками или ошибка — сами снова не включаем
+  const autoRecv = useRef(false);
+  useEffect(() => {
+    if (tab !== "recv") { autoRecv.current = false; return; }
+    if (autoRecv.current) return;
+    autoRecv.current = true;
+    if (!nb.recv.on) nb.startRecv();
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   // Закрыли окно до начала передачи — отправку отменяем (ничего не висит в фоне)
   const closeSheet = () => { if (s && !["sending", "done"].includes(s.phase)) nb.cancelSend(); onClose(); };
 
@@ -84,12 +94,14 @@ export function NearbySheet({ nb, tab: tab0 = "send", myName, onClose }) {
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 16, border: `1px solid ${nb.recv.on ? C.mint : C.border}` }}>
             <div className={nb.recv.on ? "nx-near-radar is-on" : "nx-near-radar"} aria-hidden="true">{Icon.phone({ c: nb.recv.on ? C.mint : C.muted, s: 18 })}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>Принимать файлы рядом</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{nb.recv.on ? "Принимаем файлы рядом" : "Не принимаем"}</div>
               <div style={{ fontSize: 12, color: C.muted, marginTop: 2, lineHeight: 1.45 }}>
-                {nb.recv.on ? `Вас видно как «${myName}» · ещё ${leftText(left)}` : "Телефоны с NEXA поблизости увидят вас на 10 минут"}
+                {nb.recv.on ? `Вас видно как «${myName}» · ещё ${leftText(left)}` : "Телефоны с NEXA поблизости вас сейчас не видят"}
               </div>
             </div>
-            <Toggle on={nb.recv.on} onClick={() => (nb.recv.on ? nb.stopRecv() : nb.startRecv())} label="Принимать файлы рядом" />
+            {nb.recv.on
+              ? <button type="button" className="nx-ghost-btn" onClick={nb.stopRecv} style={{ ...ghost, padding: "7px 12px" }}>Выключить</button>
+              : <button type="button" className="nx-primary" onClick={nb.startRecv} style={{ ...primary, padding: "7px 12px" }}>Включить</button>}
           </div>
           {nb.recv.error && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10, lineHeight: 1.45 }}>{nb.recv.error}</div>}
           <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 12, lineHeight: 1.55 }}>

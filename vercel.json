@@ -1,5 +1,7 @@
 {
-  "regions": ["fra1"],
+  "regions": [
+    "fra1"
+  ],
   "rewrites": [
     {
       "source": "/((?!api/)[^.]*)",
@@ -100,6 +102,25 @@
           "value": "no-cache"
         }
       ]
+    },
+    {
+      "source": "/nexa-sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/webpush?action=kick",
+      "schedule": "0 9 * * *"
     }
   ]
 }

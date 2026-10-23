@@ -1,6 +1,6 @@
 // Экран «Настройки»: это устройство, уведомления и все группы
 import { useState, useEffect } from "react";
-import { isNative, systemNotifyKind } from "../native.js";
+import { isNative, isDesktop, systemNotifyKind } from "../native.js";
 import { thisDeviceKind, NO_DATA, KIND_LABEL, batteryText, netText, diskText } from "../lib/deviceInfo.js";
 import { C, readTheme, switchTheme, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
@@ -12,6 +12,7 @@ import { NOTE_CATS } from "../lib/notes.js";
 import { VERSION } from "../version.js";
 import { InstallSettings } from "../ui/install.jsx";
 import { DesktopSettings } from "../ui/desktop.jsx";
+import { WebPushRow } from "../ui/webpush.jsx";
 import { useEnterSends, touchLike } from "../lib/composer.js";
 
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
@@ -76,13 +77,15 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
     <div id="nx-note-settings" style={{ scrollMarginTop: 80 }}>
       <SectionTitle>Уведомления</SectionTitle>
       <SettingsGroup>
-        <SettingsRow last icon={Icon.bell({ c: C.muted, s: 18 })} title="Уведомления"
+        <SettingsRow last={isNative || isDesktop} icon={Icon.bell({ c: C.muted, s: 18 })} title="Уведомления"
           subtitle={<>
             {on ? `Файлы, текст и ссылки, устройства, синхронизация, расписание, обновления. ${where}` : "Выключены — NEXA ничего не показывает"}
             {on && sysLine && <span style={{ display: "block", marginTop: 6 }}>{sysLine}</span>}
             {account && <span style={{ display: "block", marginTop: 6, color: C.mutedSoft }}>Одинаково на всех ваших устройствах</span>}
           </>}
           right={<Toggle on={on} onClick={flipAll} label="Уведомления" />} />
+        {/* Сайт: «Вышла NEXA …» системным уведомлением и при закрытой вкладке (в приложениях строки нет) */}
+        <WebPushRow last />
       </SettingsGroup>
     </div>
   );

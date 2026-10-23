@@ -449,14 +449,18 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                 </button>
               </div>
             ))}
-            {devices.length > 0 && (
-              /* Во всю ширину, в одну строку (макет 2026-10): без пустого места справа */
-              <button type="button" className="nx-row-btn nx-dev-pill is-add" onClick={onAddDevice}
-                style={{ ...btnReset, gridColumn: "1 / -1", color: C.text, justifyContent: "center", gap: 8 }}>
-                {Icon.plus({ c: C.mint, s: 20 })}
-                <span style={{ fontSize: 15, lineHeight: 1.2 }}>Добавить устройство</span>
-              </button>
-            )}
+            {devices.length > 0 && (() => {
+              /* Чётное число таблеток — «Добавить» во всю ширину, в одну строку (макет 2026-10);
+                 нечётное — встаёт в пустую клетку рядом с последней таблеткой, без дыры справа */
+              const odd = mobList.length % 2 === 1;
+              return (
+                <button type="button" className={`nx-row-btn nx-dev-pill is-add${odd ? " is-half" : ""}`} onClick={onAddDevice} aria-label="Добавить устройство"
+                  style={{ ...btnReset, gridColumn: odd ? "auto" : "1 / -1", minWidth: 0, color: C.text, justifyContent: "center", gap: odd ? 6 : 8 }}>
+                  {Icon.plus({ c: C.mint, s: odd ? 18 : 20 })}
+                  <span style={{ fontSize: odd ? 14 : 15, lineHeight: 1.2, ...(odd ? { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } : {}) }}>{odd ? "Добавить" : "Добавить устройство"}</span>
+                </button>
+              );
+            })()}
           </div>
           {devices.length > HOME_MOB_MAX && (
             <button type="button" className="nx-row-btn nx-pill-card nx-home-more" onClick={onAllDevices}>Все устройства · {devices.length}</button>

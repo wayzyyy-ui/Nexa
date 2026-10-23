@@ -168,6 +168,24 @@ public class NexaUpdatePlugin extends Plugin {
         }
     }
 
+    /* Уведомление «Вышла NEXA X» при закрытой NEXA (UpdateCheckWorker):
+       watch({ url, web, known, on }) — откуда брать version.json, какая веб-часть сейчас стоит,
+       какую последнюю версию NEXA уже видела сама (о ней не уведомляем), включены ли уведомления.
+       Выключено — фоновая проверка снимается */
+    @PluginMethod
+    public void watch(PluginCall call) {
+        String url = call.getString("url", "");
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false)) && url.startsWith("https://");
+        getContext().getSharedPreferences(UpdateCheckWorker.PREFS, android.content.Context.MODE_PRIVATE).edit()
+            .putString("url", url)
+            .putString("web", call.getString("web", ""))
+            .putString("known", call.getString("known", ""))
+            .putBoolean("on", on)
+            .apply();
+        try { UpdateCheckWorker.schedule(getContext(), on); call.resolve(); }
+        catch (Exception e) { call.reject("watch_failed"); }
+    }
+
     @PluginMethod
     public void cleanup(PluginCall call) {
         File f = apkFile();

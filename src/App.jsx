@@ -2,8 +2,9 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, nativeSaveLarge, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen, locateNativeSet, locateNativeStatus, locateOpenSettings, nearby, nearbyReadReceived } from "./native.js";
+import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, nativeSaveLarge, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen, updateWatch, locateNativeSet, locateNativeStatus, locateOpenSettings, nearby, nearbyReadReceived } from "./native.js";
 import { useNearby } from "./lib/nearby.js";
+import { kickWebPush } from "./lib/webpush.js";
 import { NearbySheet, NearbyAsk } from "./ui/nearby.jsx";
 import { App as CapApp } from "@capacitor/app";
 // Стили плавной прокрутки Lenis (сам хук — useSmoothScroll в lib/hooks.js)
@@ -1979,7 +1980,16 @@ export default function NexaApp() {
   // При запуске и при возврате в приложение; сам сайт спрашиваем не чаще раза в 6 часов
   // (между проверками — последний ответ из памяти, см. checkForUpdate)
   // Тот же ответ version.json решает и про APK, и про веб-часть (otaCheck его не скачивает второй раз)
-  const checkUpdate = (force) => checkForUpdate({ force }).then((u) => { setAppUpdate(u); setUpdateCheckedAt(Date.now()); otaCheck({ force }); });
+  const checkUpdate = (force) => checkForUpdate({ force }).then((u) => {
+    setAppUpdate(u); setUpdateCheckedAt(Date.now()); otaCheck({ force });
+    if (isNative) updateWatch(notePrefsRef.current.updates?.app !== false); // для уведомления при закрытой NEXA
+    // Вышла новая версия — «толкнуть» рассылку веб-уведомлений сайта (сервер сам проверит и разошлёт один раз)
+    if (u?.version) kickWebPush(u.version);
+  });
+  // Сайт: при открытии (не чаще раза в 6 часов) — тот же толчок
+  useEffect(() => { if (!isNative && !isDesktop) kickWebPush(); }, []);
+  // Выключили / включили уведомления — фоновая проверка версии тоже
+  useEffect(() => { if (isNative) updateWatch(notePrefs.updates?.app !== false); }, [notePrefs.updates?.app]);
   useEffect(() => {
     // Приложение для ПК: при запуске, раз в 30 минут (NEXA может неделями жить в трее) и при
     // возврате в окно; свежий version.json спрашивается не чаще раза в 5 минут (checkForUpdate)
