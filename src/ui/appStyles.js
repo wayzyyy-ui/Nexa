@@ -634,6 +634,13 @@ export const APP_CSS = `
   /* Заметки на телефоне: «Новая заметка» — в одну строку с заголовком, компактнее */
   @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 10px !important; } .nx-notepad-list { padding-bottom: 72px; } }
   .nx-notepad-filters::-webkit-scrollbar { display: none; }
+  /* Редактор заметки на телефоне въезжает справа и уезжает смахиванием вправо — как экраны NEXA (короткое, без пружины) */
+  @keyframes nx-note-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+  .nx-note-in { animation: nx-note-in 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .nx-note-text { -webkit-tap-highlight-color: transparent; }
+  .nx-note-htitle::placeholder { color: var(--muted-soft); }
+  .nx-note-images { -webkit-overflow-scrolling: auto; }
+  @media (prefers-reduced-motion: reduce) { .nx-note-in { animation: none; } }
   /* У Manrope строчные буквы сидят ниже середины строки — слово «Поиск» поднимаем, чтобы стояло ровно со значком (замерено по пикселям) */
   .nx-search-word { position: relative; top: -0.06em; }
   .nx-notepad-search-input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; } /* свой крестик «Сбросить поиск» уже есть */
@@ -677,7 +684,6 @@ export const APP_CSS = `
       -webkit-backdrop-filter: blur(28px); backdrop-filter: blur(28px); }
     .nx-notepad-editor.nx-notepad-panel { padding: max(20px, calc(30 * var(--mk))) max(20px, calc(30 * var(--mk))) max(22px, calc(36 * var(--mk))); overflow: hidden; }
     .nx-notepad-editor .nx-notepad-in { padding-left: calc(36 * var(--mk)) !important; padding-right: calc(36 * var(--mk)) !important; box-sizing: border-box; }
-    .nx-notepad-editor .nx-notepad-status { margin-top: calc(26 * var(--mk)); }
     .nx-notepad-editor .nx-notepad-etitle { font-size: max(24px, calc(36 * var(--mk))) !important; }
     .nx-notepad-editor .nx-notepad-etext { font-size: max(16px, calc(22 * var(--mk))) !important; min-height: 0 !important; }
   }
@@ -1160,13 +1166,13 @@ export const APP_CSS = `
         /* Запуск: интерфейс один раз проявляется — только прозрачность и небольшой
            сдвиг снизу. Без размытия и масштаба: всё чёткое на каждом кадре */
         @keyframes nx-intro {
-          from { opacity: 0; transform: translateY(10px); }
+          from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: none; }
         }
         #root { animation: nx-intro 650ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* В приложении: ждём, пока уйдёт заставка Android, и только тогда проявляемся */
         .nx-intro-wait #root { animation: none; opacity: 0; }
-        .nx-intro-go #root { animation: nx-intro 750ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-intro-go #root { animation: nx-intro 700ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both; }
         @media (prefers-reduced-motion: reduce) { #root, .nx-intro-go #root { animation: none; } .nx-intro-wait #root { opacity: 1; } }
         /* Аура нового диалога: по центру за приветствием и полем ввода.
            Края растворяются маской (не размытие). Приближение — по фокусу/тексту */
@@ -1456,28 +1462,41 @@ export const APP_CSS = `
         }
 
         /* ─── Фирменный скроллбар NEXA ──────────────────────── */
-        /* Мятный ползунок везде: у страницы и у всех прокручиваемых блоков.
-           scrollbar-color передаётся по наследству, поэтому хватает html —
-           и новые блоки сами получат мятный ползунок */
+        /* Мятный ползунок везде. Страница — системная полоса в цвете NEXA (scrollbar-color у html).
+           У блоков внутри (списки, поля, окна) — свой ползунок: его размер можно задать, а Chrome игнорирует
+           ::-webkit-scrollbar, если у элемента (в том числе по наследству) задан scrollbar-color / scrollbar-width —
+           поэтому у блоков они сброшены в auto. Firefox не знает ::-webkit-scrollbar — для него прежняя тонкая полоса */
         html {
           scrollbar-color: color-mix(in srgb, var(--mint) 70%, transparent) transparent;
         }
-        .nx-scroll { scrollbar-width: thin; }
-        /* Для браузеров, которые не понимают scrollbar-color (старый Safari) */
+        *:not(html) { scrollbar-color: auto; }
+        @supports not selector(::-webkit-scrollbar) {
+          *:not(html) { scrollbar-color: color-mix(in srgb, var(--mint) 70%, transparent) transparent; }
+          .nx-scroll { scrollbar-width: thin; }
+        }
         /* Компьютер: полосы прокрутки у самой страницы нет (колесо, тачпад и клавиши работают) — появилась
            прокрутка (открыли календарь) — верхняя строка и складка не сдвигаются; у блоков внутри — как раньше */
         @media ${DESKTOP_MQ} { html { scrollbar-width: none; } html::-webkit-scrollbar { display: none; } }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        /* Размер ползунка: видимая часть — 6 px (компьютер) / 10 px (палец), а зона нажатия вокруг неё шире —
+           прозрачная кайма входит в полосу (background-clip: padding-box). Короче 48 px ползунок не бывает — за него легко ухватиться */
+        ::-webkit-scrollbar { width: 14px; height: 14px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
           background: color-mix(in srgb, var(--mint) 70%, transparent);
           border-radius: 999px;
-          border: 2px solid transparent;
+          border: 4px solid transparent;
           background-clip: padding-box;
+          min-height: 48px; min-width: 48px;
         }
-        ::-webkit-scrollbar-thumb:hover {
+        ::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active {
           background: var(--mint);
           background-clip: padding-box;
+        }
+        ::-webkit-scrollbar-thumb:active { border-width: 3px; }
+        @media (pointer: coarse) {
+          ::-webkit-scrollbar { width: 20px; height: 20px; }
+          ::-webkit-scrollbar-thumb { border-width: 5px; min-height: 64px; min-width: 64px; }
+          ::-webkit-scrollbar-thumb:active { border-width: 4px; }
         }
 
         /* ─── Планшет ──────────────────────────────────────── */

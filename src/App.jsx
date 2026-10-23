@@ -135,6 +135,7 @@ export default function NexaApp() {
     .map((f) => ({ ...withWhen(f), uploaded: true }))
     .map((f) => ({ ...f, name: fileStore.renamed[f.id] ?? f.name }));
   const [filesFilter, setFilesFilter] = useState(null);
+  const filesBackRef = useRef(null); // { tab, y } — откуда пришли в «Файлы» (из «Медиа») и прокрутка там
   const [openFile, setOpenFile] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchFolder, setSearchFolder] = useState(null);
@@ -1266,6 +1267,7 @@ export default function NexaApp() {
     showToast({ title: "Предложение отменено", text: `На «${o.fromName}» передумали` });
   };
   const [chatOpenReq, setChatOpenReq] = useState(null); // { id, n } — открыть диалог на экране ассистента
+  const [noteChatReq, setNoteChatReq] = useState(null); // { n, noteId, title, text, selection, intent } — заметка (или фрагмент) уходит в ассистента по кнопке в редакторе
   const acceptContinue = () => {
     const o = contOfferRef.current;
     if (!o) return;
@@ -1697,7 +1699,7 @@ export default function NexaApp() {
   useSmoothScroll(tab !== "assistant");
 
   // Переход по меню закрывает и экран устройства
-  const goTab = (t) => { setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(false); setTab(t); };
+  const goTab = (t) => { filesBackRef.current = null; setFilesFilter(null); setFilesDevice(null); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(false); setTab(t); };
   // «Подробнее о системе» — с любого экрана (ассистент — через Главную, как «Активность»)
   const openAbout = () => { if (tab === "assistant") setTab("home"); setOpenDeviceId(null); setActivityOpen(false); setSecurityOpen(false); setAboutOpen(true); };
   // Центр безопасности открывается из Настроек поверх раздела (как «О системе»)
@@ -1718,6 +1720,9 @@ export default function NexaApp() {
     setTab("today"); setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(false); setDevicesOpen(false); setNotesOpen(true); scrollTopNow();
     setNotesReq(req?.create || req?.id ? { ...req, n: Date.now() } : null);
   };
+  // «Обсудить с AI» / «Проанализировать» в заметке: открываем ассистента с этой заметкой во вложении.
+  // Только по нажатию человека и только одна заметка; ответ ассистента заметку сам не меняет
+  const askAiAboutNote = (payload) => { setNoteChatReq({ ...payload, n: Date.now() }); goTab("assistant"); };
   const openSecurity = () => { setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(true); scrollTopNow(); };
   // Открыли устройство, «Активность» или «О системе» (например, из уведомления) — центр закрывается
   useEffect(() => { if (openDeviceId || activityOpen || aboutOpen) setSecurityOpen(false); }, [openDeviceId, activityOpen, aboutOpen]);
@@ -1975,15 +1980,27 @@ export default function NexaApp() {
     setOpenDeviceId(id);
   };
   // Из "Медиа" в "Файлы" с фильтром по категории (null — без фильтра)
-  const openCategory = (cat) => { setFilesFilter(cat); setFilesDevice(null); setTab("files"); };
+  const openCategory = (cat) => {
+    // Запоминаем, откуда пришли и докуда была прокручена «Медиа» — «Назад» вернёт ровно туда
+    filesBackRef.current = { tab: "media", y: window.scrollY || 0 };
+    setFilesFilter(cat); setFilesDevice(null); setTab("files");
+  };
+  const filesBack = () => {
+    const b = filesBackRef.current; filesBackRef.current = null;
+    setFilesFilter(null); setFilesDevice(null);
+    goTab(b?.tab || "media");
+    if (b?.y) requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, b.y)));
+  };
   // Из окна устройства в "Файлы" с отбором по этому устройству
   const openDeviceFiles = (id) => {
+    filesBackRef.current = null;
     setFilesFilter(null);
     setFilesDevice(id);
     setOpenDeviceId(null);
     setTab("files");
   };
   const openFolderFromSearch = (folderId) => {
+    filesBackRef.current = null;
     setFilesFilter(null);
     setFilesDevice(null);
     setSearchFolder(folderId);
@@ -2614,6 +2631,9 @@ export default function NexaApp() {
       <ScreenAssistant
         initialChatId={searchChatId}
         openRequest={chatOpenReq}
+        noteRequest={noteChatReq}
+        onNoteRequestDone={() => setNoteChatReq(null)}
+        onOpenNote={(noteId) => openNotes({ id: noteId })}
         onCurrentChat={(id) => { currentChatRef.current = id; }}
         memory={memory} memoryOn={memoryOn} memoryApi={memoryApi}
         onContinueChat={uid ? (c) => setContSend({ kind: "chat", ref: c.id, title: c.title }) : null}
@@ -2661,6 +2681,8 @@ export default function NexaApp() {
             device={devices.find((d) => d.id === filesDevice)}
             initialFolder={searchFolder}
             onClearFilter={() => { setFilesFilter(null); setFilesDevice(null); }}
+            onBack={filesBackRef.current ? filesBack : undefined}
+            onToast={showToast}
             onOpenFile={setOpenFile}
             folders={folders}
             uploads={uploads}
@@ -2828,8 +2850,8 @@ export default function NexaApp() {
     </div>
   ) : notesOpen ? (
     <div key="notes" className="ng-screen-anim">
-      <ScreenNotes notes={userNotes} api={notesApi} uid={uid} online={online} sync={uid ? syncState.notes : null} onBack={() => setNotesOpen(false)}
-        request={notesReq} schedule={schedule} onAddSchedule={addScheduleItem} toast={showToast} />
+      <ScreenNotes notes={userNotes} api={notesApi} uid={uid} onBack={() => setNotesOpen(false)}
+        request={notesReq} schedule={schedule} onAddSchedule={addScheduleItem} toast={showToast} onAskAi={askAiAboutNote} />
     </div>
   ) : aboutOpen ? (
     <div key="about" className="ng-screen-anim">

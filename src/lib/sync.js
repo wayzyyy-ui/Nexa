@@ -110,7 +110,7 @@ async function fetchCloudList(table, local, meta, rows) {
    chats.pinned — supabase/chats-pinned.sql). Пока миграцию не запустили,
    облако отвечает «нет такой колонки» — тогда шлём строки без неё
    (до перезапуска приложения), а значение живёт только в браузере. */
-const OPTIONAL_COLUMNS = { chats: ["pinned"], notes: ["tags", "archived"] }; // notes — повторный запуск notes.sql
+const OPTIONAL_COLUMNS = { chats: ["pinned"], notes: ["tags", "archived", "images"] }; // notes — повторный запуск notes.sql
 const missingColumns = new Set(); // "chats.pinned" — колонки в базе нет
 const withoutMissing = (table, rows) => {
   const drop = (OPTIONAL_COLUMNS[table] || []).filter((c) => missingColumns.has(`${table}.${c}`));

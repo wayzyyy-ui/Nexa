@@ -20,7 +20,7 @@ export function LiveAnswer({ onGrow }) {
 
 /* Вложение у поля ввода: формат, имя, размер и что с ним сейчас.
    onToFiles — для большого PDF с устройства: положить его в «Файлы» обычной загрузкой */
-export function AttachChip({ att, onRemove, onToFiles }) {
+export function AttachChip({ att, onRemove, onToFiles, onOpenNote }) {
   const p = att.payload;
   const meta = `${formatLabel(att.name)} · ${formatBytes(att.size)}`;
   const status = att.status === "preparing" ? "Готовим файл…"
@@ -44,6 +44,11 @@ export function AttachChip({ att, onRemove, onToFiles }) {
           {att.status === "error" ? status : `${meta} · ${status}`}
         </span>
       </span>
+      {onOpenNote && (
+        <button type="button" className="nx-ghost-btn" onClick={onOpenNote} style={{ ...btnReset, flexShrink: 0, padding: "6px 12px", fontSize: 13, border: `1px solid ${C.borderStrong}`, color: C.text }}>
+          К заметке
+        </button>
+      )}
       {onToFiles && (
         <button type="button" className="nx-ghost-btn" onClick={onToFiles} style={{ ...btnReset, flexShrink: 0, padding: "6px 12px", fontSize: 13, border: `1px solid ${C.borderStrong}`, color: C.text }}>
           В «Файлы»

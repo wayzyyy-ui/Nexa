@@ -35,7 +35,16 @@ const draftKeep = { uid: undefined, chatId: null, input: "", att: null };
 const STREAM_CUT_MARK = String.fromCharCode(0x2063, 0x2063);
 const ANSWER_IDLE_MS = 40000; // столько ждём ответа или следующего куска, дальше — «не ответил»
 
-export function ScreenAssistant({ initialChatId, openRequest, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles }) {
+/* Что просим у ассистента про заметку, пришедшую из редактора (src/screens/notes/NoteEditor.jsx → «Обсудить с AI»).
+   Заметка — обычное вложение-текст: уходит на сервер только вместе с вопросом, как любой файл */
+const NOTE_ASKS = {
+  analyze: "Проанализируй эту заметку: о чём она, главные мысли, что можно улучшить или дополнить.",
+  shorten: "Сократи эту заметку, сохранив главные мысли.",
+  improve: "Улучши эту заметку: сделай формулировки яснее и грамотнее, смысл не меняй.",
+  continue: "Продолжи эту заметку: предложи логичное продолжение.",
+};
+
+export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -321,6 +330,29 @@ useEffect(() => {
     window.addEventListener("nexa-new-chat", onNew);
     return () => window.removeEventListener("nexa-new-chat", onNew);
   }, []);
+  /* Заметка из редактора: новый диалог, заметка (или выделенный фрагмент) — вложением. Один раз на нажатие
+     (App сразу снимает просьбу — экран пересоздаётся при смене раздела и не должен принять её второй раз).
+     «Проанализировать» отправляется сразу, когда заметка прочитана; «Обсудить» — только прикладывает и ждёт вопрос */
+  const pendingNote = useRef(null);
+  const lastNoteN = useRef(0);
+  useEffect(() => {
+    if (!noteRequest?.n || lastNoteN.current === noteRequest.n) return;
+    lastNoteN.current = noteRequest.n;
+    newChatRef.current(); setIsHistoryOpen(false);
+    const base = (noteRequest.selection ? "Фрагмент заметки" : "Заметка") + (noteRequest.title ? ` «${String(noteRequest.title).slice(0, 40)}»` : "");
+    const blob = new Blob([String(noteRequest.text || "")], { type: "text/plain;charset=utf-8" });
+    const safe = base.replace(/[\\/:*?"<>|\r\n]/g, " "); // имя вложения — без знаков, запрещённых в именах файлов
+    attach({ name: `${safe}.txt`, size: blob.size, mime: "text/plain", blob }, { from: "note", noteId: noteRequest.noteId });
+    pendingNote.current = NOTE_ASKS[noteRequest.intent] ? { text: NOTE_ASKS[noteRequest.intent] } : null;
+    if (!pendingNote.current && !window.matchMedia(PHONE_MQ).matches) setTimeout(() => document.querySelector(".ng-input-field")?.focus(), 0);
+    onNoteRequestDone?.();
+  }, [noteRequest?.n]);
+  useEffect(() => {
+    const p = pendingNote.current;
+    if (!p || att?.from !== "note") return;
+    if (att.status === "error") { pendingNote.current = null; return; }
+    if (att.status === "ready" && !isLoading) { pendingNote.current = null; sendMessage(p.text); }
+  }, [att, isLoading]);
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
   // Открыть диалог по просьбе извне (продолжение с другого устройства), даже если экран уже открыт
   useEffect(() => {
@@ -718,7 +750,12 @@ useEffect(() => {
   const canSend = !isLoading && (att ? att.status === "ready" : !!input.trim());
   const sendHint = att?.status === "preparing" ? "Файл ещё готовится" : att?.status === "error" ? "Сначала уберите файл с ошибкой" : "Отправить";
   // Быстрые вопросы по приложенному файлу (поле пустое)
-  const fileAsks = [
+  const fileAsks = att?.from === "note" ? [
+    ["Сократить", NOTE_ASKS.shorten],
+    ["Улучшить", NOTE_ASKS.improve],
+    ["Продолжить", NOTE_ASKS.continue],
+    ["Проанализировать", NOTE_ASKS.analyze],
+  ] : [
     ["Кратко перескажи", "Кратко перескажи этот файл"],
     ["Главные пункты", "Выдели главные пункты файла списком"],
     ["Объясни простыми словами", "Объясни содержимое файла простыми словами"],
@@ -727,6 +764,7 @@ useEffect(() => {
   <div style={{ width: "100%", maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
   {att && (
     <AttachChip att={att} onRemove={clearAtt}
+      onOpenNote={att.from === "note" && att.noteId && onOpenNote ? () => onOpenNote(att.noteId) : null}
       onToFiles={uid && att.from === "device" && att.file && /«Файлы»/.test(att.error || "") ? () => { onAddFiles?.([att.file]); clearAtt(); } : null} />
   )}
   {att?.status === "ready" && !input.trim() && !isLoading && (
@@ -737,10 +775,10 @@ useEffect(() => {
           padding: "6px 12px", fontSize: 13, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
         }}>{label}</button>
       ))}
-      <button type="button" className="nx-ghost-btn" onClick={() => { setInput("Найди в файле: "); setTimeout(() => taRef.current?.focus(), 0); }} style={{
+      {att.from !== "note" && <button type="button" className="nx-ghost-btn" onClick={() => { setInput("Найди в файле: "); setTimeout(() => taRef.current?.focus(), 0); }} style={{
         ...btnReset, flexShrink: 0, whiteSpace: "nowrap", border: `1px solid ${C.borderStrong}`, borderRadius: 999,
         padding: "6px 12px", fontSize: 13, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
-      }}>Найти в файле…</button>
+      }}>Найти в файле…</button>}
     </div>
   )}
   <div className="nx-input-ring" style={{

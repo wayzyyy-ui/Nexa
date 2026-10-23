@@ -1,5 +1,5 @@
 // Экран «Файлы»: папки, загрузки, очередь
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { C, fontDisplay } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { plural } from "../lib/format.js";
@@ -8,6 +8,9 @@ import { FOLDERS, MEDIA_CATS, sortByRecent, folderName, fileMeta } from "../lib/
 import { MediaLayout, MediaTitle, Crumb } from "../ui/layout.jsx";
 import { FolderThumb, FileThumb } from "../ui/files.jsx";
 import { TransferBtn } from "../ui/FileViewer.jsx";
+import { clipboardRead } from "../native.js";
+import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile.js";
+import { useModalLock } from "../lib/hooks.js";
 
 // ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
 // filter — id категории, если пришли сюда из "Медиа" (тогда показываем
@@ -18,10 +21,14 @@ import { TransferBtn } from "../ui/FileViewer.jsx";
 // onAddFiles(список, папка) — добавить файлы, onCreateFolder(имя, родитель) — новая папка
 // onTransfer(файл, карточка, кнопка) — открыть меню «Передать на…»
 // onUploadAction(id, "cancel" | "retry" | "dismiss") — управление строкой загрузки
-export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction }) {
+// onBack — пришли из «Медиа»: «Назад» возвращает туда (вкладка и прокрутка на месте); onToast — всплывающее
+export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
   const fileInput = useRef(null);
+  // Файл из буфера: { kind, text | blob, name } — окно с именем; clipBusy — читаем буфер
+  const [clip, setClip] = useState(null);
+  const [clipBusy, setClipBusy] = useState(false);
   // Новая папка: newFolder — введённое имя (null — поле закрыто)
   const [newFolder, setNewFolder] = useState(null);
   // Тащат ли сейчас файлы над окном (для подсветки зоны)
@@ -82,6 +89,25 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   const target = flat ? null : folder;
   const targetName = folderName(folders, target);
   const upload = (list) => { if (list && list.length) onAddFiles?.(list, target); };
+  // Буфер читаем только по этому нажатию; пусто или нет доступа — понятное сообщение, ничего не создаём
+  const fromClipboard = async () => {
+    if (clipBusy) return;
+    setClipBusy(true);
+    try {
+      const r = await readClipForFile(clipboardRead);
+      if (r.error) { onToast?.({ title: "Файл из буфера не создан", text: r.error, kind: "error" }); return; }
+      setClip({ ...r, name: clipDefaultName(r.kind) });
+    } finally { setClipBusy(false); }
+  };
+  const createClipFile = () => {
+    const name = clipFinalName(clip.name, clip.kind, clip.blob?.type);
+    if (!name) return;
+    const file = clip.kind === "image"
+      ? new File([clip.blob], name, { type: clip.blob.type || "image/png" })
+      : new File([clip.text], name, { type: "text/plain" });
+    setClip(null);
+    onAddFiles?.([file], target);
+  };
 
   // Проверка имени новой папки: не пустое и не повторяет соседнюю папку
   const nfName = (newFolder || "").trim();
@@ -154,17 +180,19 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           >
             {flat ? (
               <>
-                <Crumb onClick={onClearFilter}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Все папки</Crumb>
+                <Crumb onClick={onBack || onClearFilter}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} {onBack ? "Назад" : "Все папки"}</Crumb>
                 <Crumb active>
                   {(device || cat).icon({ c: C.onFold, s: 15 })} {device ? device.name : cat.label} · {list.length} {plural(list.length, ["файл", "файла", "файлов"])}
                 </Crumb>
               </>
             ) : (
               <>
-                {folder && (
+                {folder ? (
                   <Crumb onClick={() => setFolder(folderById(folder).parent)}>
                     {Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад
                   </Crumb>
+                ) : onBack && (
+                  <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
                 )}
                 <Crumb active={!folder} onClick={() => setFolder(null)}>{Icon.drive({ c: C.onFold, s: 15 })} Хранилище</Crumb>
                 {path.map((p, i) => (
@@ -225,6 +253,12 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
               {Icon.folder({ c: C.text, s: 15 })} Новая папка
             </button>
           )}
+          <button type="button" className="nx-ghost-btn" onClick={fromClipboard} disabled={clipBusy} style={{
+            ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
+            border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
+          }}>
+            {Icon.copy({ c: C.text, s: 15 })} Из буфера
+          </button>
           <button type="button" className="nx-primary" onClick={() => fileInput.current?.click()} style={{
             ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
             border: "1px solid transparent", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500,
@@ -396,6 +430,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           )
         )}
       </div>
+      {clip && <ClipFileDialog clip={clip} setClip={setClip} onCreate={createClipFile} />}
     </MediaLayout>
   );
 }
@@ -404,3 +439,41 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
    Общие детали, чтобы эти состояния везде выглядели одинаково.
    hover / pressed / focus / disabled задаются классами в блоке <style>
    (см. «ЕДИНАЯ СИСТЕМА СОСТОЯНИЙ»). */
+
+// Окно «Файл из буфера»: имя можно изменить, перед созданием видно, что именно лежит в буфере
+function ClipFileDialog({ clip, setClip, onCreate }) {
+  useModalLock();
+  const inputRef = useRef(null);
+  useEffect(() => {
+    inputRef.current?.focus(); inputRef.current?.select();
+    const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); setClip(null); } };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, []);
+  const url = useMemo(() => (clip.kind === "image" ? URL.createObjectURL(clip.blob) : null), [clip.blob]);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  const bad = !clipFinalName(clip.name, clip.kind, clip.blob?.type);
+  return (
+    <div className="nx-viewer" onClick={() => setClip(null)} style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--scrim)" }}>
+      <div role="dialog" aria-modal="true" aria-label="Файл из буфера обмена" className="nx-pop" onClick={(e) => e.stopPropagation()} style={{
+        width: "min(440px, calc(100vw - 32px))", boxSizing: "border-box", padding: 20, borderRadius: 28, background: C.panel,
+        border: `1px solid ${C.lineBright}`, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontFamily: fontDisplay, fontSize: 18 }}>Файл из буфера обмена</div>
+        {url ? <img src={url} alt="Картинка из буфера" style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 14, alignSelf: "center" }} />
+          : <div className="nx-scroll" style={{ maxHeight: 130, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13, color: C.muted,
+              padding: "10px 12px", borderRadius: 14, border: `1px solid ${C.border}` }}>{clip.text.length > 600 ? clip.text.slice(0, 600) + "…" : clip.text}</div>}
+        <label style={{ fontSize: 12, color: C.muted, display: "flex", flexDirection: "column", gap: 6 }}>
+          Название файла
+          <input ref={inputRef} value={clip.name} onChange={(e) => setClip({ ...clip, name: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter" && !bad) onCreate(); }}
+            style={{ background: "transparent", color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", fontSize: 14, outline: "none" }} />
+        </label>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="nx-ghost-btn" onClick={() => setClip(null)} style={{ ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13 }}>Отмена</button>
+          <button type="button" className="nx-primary" onClick={onCreate} disabled={bad} style={{ ...btnReset, borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, color: C.onFold,
+            background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, opacity: bad ? 0.5 : 1 }}>Создать</button>
+        </div>
+      </div>
+    </div>
+  );
+}

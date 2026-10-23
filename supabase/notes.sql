@@ -25,6 +25,13 @@ $$;
 alter table public.notes drop constraint if exists notes_tags_check;
 alter table public.notes add constraint notes_tags_check check (public.nexa_note_tags_ok(tags));
 
+-- Картинки в заметках (NEXA 0.15.2): только сведения { id, name, w, h, size } — до 12 штук;
+-- сами картинки лежат в корзине nexa-files под <user_id>/ni-<uuid> (правила корзины — files-storage.sql).
+-- Пока колонки нет, приложение шлёт строки без неё — картинки видны только на этом устройстве.
+alter table public.notes add column if not exists images jsonb not null default '[]'::jsonb;
+alter table public.notes drop constraint if exists notes_images_check;
+alter table public.notes add constraint notes_images_check check (jsonb_typeof(images) = 'array' and jsonb_array_length(images) <= 12 and pg_column_size(images) <= 8192);
+
 -- updated_at ставит база (по нему синхронизация понимает, где новее)
 create or replace function public.nexa_notes_touch() returns trigger language plpgsql as $$
 begin new.updated_at := now(); return new; end; $$;

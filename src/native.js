@@ -186,11 +186,14 @@ function mountBootLogo() {
     #nx-boot { position: fixed; inset: 0; z-index: 2147483000; background: ${SPLASH_BG};
       display: flex; align-items: center; justify-content: center; pointer-events: none; }
     #nx-boot svg { display: block; width: 288px; height: 288px; flex-shrink: 0; overflow: visible; }
-    #nx-boot path { transition: transform 560ms cubic-bezier(0.16, 1, 0.3, 1), opacity 360ms ease 140ms; }
-    .nx-boot-go #nx-boot { opacity: 0; transition: opacity 420ms ease 200ms; }
-    .nx-boot-go .nx-boot-f1 { transform: translate(30px, 90px); opacity: 0; }
-    .nx-boot-go .nx-boot-f2 { transform: translate(90px, -30px); opacity: 0; }
-    .nx-boot-go .nx-boot-f3 { transform: translate(-80px, -60px); opacity: 0; }
+    /* Одна временная шкала ~700 мс: грани расходятся каждая по своему направлению (единицы — как у
+       логотипа, масштаб 0,1727: 140 ед. ≈ 24 px), тают чуть позже начала движения, фон за ними уходит —
+       под ними проявляется интерфейс (см. nx-intro в appStyles.js) */
+    #nx-boot path { transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 460ms cubic-bezier(0.4, 0, 0.2, 1) 120ms; will-change: transform, opacity; }
+    .nx-boot-go #nx-boot { opacity: 0; transition: opacity 480ms cubic-bezier(0.4, 0, 0.2, 1) 140ms; }
+    .nx-boot-go .nx-boot-f1 { transform: translate(50px, 140px); opacity: 0; }
+    .nx-boot-go .nx-boot-f2 { transform: translate(140px, -50px); opacity: 0; }
+    .nx-boot-go .nx-boot-f3 { transform: translate(-130px, -100px); opacity: 0; }
     @media (prefers-reduced-motion: reduce) {
       #nx-boot path { transition: none; }
       .nx-boot-go #nx-boot path { transform: none; }
@@ -217,16 +220,17 @@ export async function startIntro() {
   try {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     // Под заставкой уже лежит такой же логотип — смена незаметна
-    await SplashScreen.hide({ fadeOutDuration: 200 });
+    await SplashScreen.hide({ fadeOutDuration: 0 });
   } catch {}
-  // Ждём, пока системная заставка растворится, и только тогда раскрываемся
+  // Короткая пауза, чтобы системная заставка успела уйти, и сразу раскрываемся
+  // (раньше здесь было ~420 мс простоя — логотип просто стоял)
   setTimeout(() => {
     requestAnimationFrame(() => {
       root.classList.remove("nx-intro-wait");
       root.classList.add("nx-intro-go", "nx-boot-go");
       setTimeout(() => document.getElementById("nx-boot")?.remove(), 900);
     });
-  }, 220);
+  }, 60);
 }
 
 // Запрет масштабирования двумя пальцами — только в приложении

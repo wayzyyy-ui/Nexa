@@ -51,7 +51,7 @@ test("конфликт: текст обеих версий сохраняетс�
 
 test("строка базы ↔ заметка", () => {
   const row = NOTE_ROWS.toRow(n("a", { title: "T", text: "x", pinned: true, createdAt: Date.parse("2026-10-22T10:00:00Z") }));
-  assert.deepEqual(row, { id: "a", title: "T", text: "x", pinned: true, tags: [], archived: false, created_at: "2026-10-22T10:00:00.000Z" });
+  assert.deepEqual(row, { id: "a", title: "T", text: "x", pinned: true, tags: [], archived: false, images: [], created_at: "2026-10-22T10:00:00.000Z" });
   // колонок tags / archived в базе ещё нет — полей нет совсем (NexaApp оставит то, что было на устройстве)
   const old = NOTE_ROWS.fromRow({ id: "a", title: "T", text: "x", pinned: false });
   assert.ok(!("tags" in old) && !("archived" in old));

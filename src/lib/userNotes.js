@@ -1,7 +1,8 @@
 /* Заметки (раздел «Сегодня» → «Заметки»; не путать с уведомлениями — src/lib/notes.js): хранение, поиск, сортировка, подпись «сохранено» (без интерфейса — тесты tests/user-notes.test.mjs).
    Гость — только этот браузер (nexa-notes), вошедший — nexa-notes@<uid> и таблица notes
    (supabase/notes.sql, синхронизация — useCloudList, как у памяти и расписания).
-   Заметка: { id (uuid), title, text, pinned, tags: [строки], archived, createdAt, updatedAt } — время в мс.
+   Заметка: { id (uuid), title, text, pinned, tags: [строки], archived, images: [{ id, name, w, h, size }], createdAt, updatedAt } — время в мс.
+   images — прикреплённые картинки: здесь только сведения, байты лежат как у файлов (IndexedDB этого браузера и своя папка облака, src/lib/noteImages.js).
    tags и archived — колонки из notes.sql (повторный запуск добавит их в уже созданную таблицу);
    пока их в базе нет, облако их не хранит — они живут только на этом устройстве. */
 import { isSensitive } from "./textcheck.js";
@@ -11,6 +12,23 @@ export const NOTE_TEXT_MAX = 100000;
 export const USER_NOTES_MAX = 1000; // столько же разрешает база (supabase/notes.sql)
 export const NOTE_TAGS_MAX = 10;   // тегов у одной заметки (база проверяет так же)
 export const NOTE_TAG_LEN = 30;    // знаков в одном теге
+export const NOTE_IMAGES_MAX = 12; // картинок у одной заметки
+
+/* Прикреплённые картинки: только сведения. id — «ni-<uuid>» (так их отличают от обычных файлов).
+   Лишнего не пропускаем (синхронизация и резервная копия) */
+const IMAGE_ID_RE = /^ni-[0-9a-f-]{36}$/;
+const int = (v, max) => { const n = Math.round(Number(v)); return n > 0 && n <= max ? n : 0; };
+export function cleanImages(list) {
+  const out = [], seen = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    if (!raw || typeof raw.id !== "string" || !IMAGE_ID_RE.test(raw.id) || seen.has(raw.id)) continue;
+    seen.add(raw.id);
+    out.push({ id: raw.id, name: String(raw.name || "Изображение").slice(0, 80), w: int(raw.w, 20000), h: int(raw.h, 20000), size: int(raw.size, 50 * 1024 * 1024) });
+    if (out.length >= NOTE_IMAGES_MAX) break;
+  }
+  return out;
+}
+export const sameImages = (a, b) => JSON.stringify(cleanImages(a)) === JSON.stringify(cleanImages(b));
 
 /* Теги: без «#» и лишних пробелов, не длиннее NOTE_TAG_LEN, без повторов (без учёта регистра),
    не больше NOTE_TAGS_MAX. Порядок — как ввели */
@@ -63,14 +81,14 @@ export function writeUserNotes(key, list) {
 export const sortNotes = (list) => [...list].sort((a, b) => (!!b.pinned - !!a.pinned) || (b.updatedAt || 0) - (a.updatedAt || 0));
 
 // Пустая — ни заголовка, ни текста (такую новую заметку не создаём)
-export const isBlank = (n) => !String(n?.title || "").trim() && !String(n?.text || "").trim();
+export const isBlank = (n) => !String(n?.title || "").trim() && !String(n?.text || "").trim() && !(n?.images || []).length;
 
 // Что показать вместо заголовка: заголовок, иначе первая строка текста, иначе «Без названия»
 export function noteTitle(n) {
   const t = String(n?.title || "").trim();
   if (t) return t;
   const first = String(n?.text || "").split("\n").map((s) => s.trim()).find(Boolean);
-  return first ? first.slice(0, 80) : "Без названия";
+  return first ? first.slice(0, 80) : (n?.images || []).length ? "Изображение" : "Без названия";
 }
 // Короткий фрагмент текста (без первой строки, если она стала заголовком)
 export function notePreview(n, max = 140) {
@@ -96,9 +114,10 @@ export function applyEdit(list, id, patch, now = Date.now()) {
   if ("pinned" in clean) clean.pinned = !!clean.pinned;
   if ("archived" in clean) clean.archived = !!clean.archived;
   if ("tags" in clean) clean.tags = cleanTags(clean.tags);
+  if ("images" in clean) clean.images = cleanImages(clean.images);
   const old = list.find((n) => n.id === id);
-  if (!old) return [{ id, title: "", text: "", pinned: false, tags: [], archived: false, createdAt: now, ...clean, updatedAt: now }, ...list];
-  const same = Object.keys(clean).every((k) => (k === "tags" ? sameTags(old.tags, clean.tags) : old[k] === clean[k]));
+  if (!old) return [{ id, title: "", text: "", pinned: false, tags: [], archived: false, images: [], createdAt: now, ...clean, updatedAt: now }, ...list];
+  const same = Object.keys(clean).every((k) => (k === "tags" ? sameTags(old.tags, clean.tags) : k === "images" ? sameImages(old.images, clean.images) : old[k] === clean[k]));
   return same ? list : list.map((n) => (n.id === id ? { ...n, ...clean, updatedAt: now } : n));
 }
 
@@ -108,18 +127,19 @@ export function applyEdit(list, id, patch, now = Date.now()) {
 const toIso = (ms) => new Date(ms || Date.now()).toISOString();
 const toMs = (iso) => (iso ? Date.parse(iso) || 0 : 0);
 export const NOTE_ROWS = {
-  toRow: (n) => ({ id: n.id, title: n.title || "", text: n.text || "", pinned: !!n.pinned, tags: cleanTags(n.tags), archived: !!n.archived, created_at: toIso(n.createdAt) }),
+  toRow: (n) => ({ id: n.id, title: n.title || "", text: n.text || "", pinned: !!n.pinned, tags: cleanTags(n.tags), archived: !!n.archived, images: cleanImages(n.images), created_at: toIso(n.createdAt) }),
   // tags / archived — только если колонки уже есть в базе (иначе поля нет совсем)
   fromRow: (r) => ({
     id: r.id, title: r.title || "", text: r.text || "", pinned: !!r.pinned,
     ...(r.tags === undefined ? {} : { tags: cleanTags(r.tags) }),
     ...(r.archived === undefined ? {} : { archived: !!r.archived }),
+    ...(r.images === undefined ? {} : { images: cleanImages(r.images) }),
     createdAt: toMs(r.created_at), updatedAt: toMs(r.updated_at),
   }),
   sort: sortNotes,
   label: (n) => noteTitle(n).slice(0, 40),
   resolve: (l, c) => {
-    if (l.title === c.title && l.text === c.text && sameTags(l.tags, c.tags)) return null; // различались только закреплением / архивом — берём новее
+    if (l.title === c.title && l.text === c.text && sameTags(l.tags, c.tags) && sameImages(l.images, c.images)) return null; // различались только закреплением / архивом — берём новее
     const [a, b] = (l.updatedAt || 0) >= (c.updatedAt || 0) ? [l, c] : [c, l];
     return { ...mergeVersions(a, b), pinned: !!(a.pinned || b.pinned), archived: !!a.archived, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) + 1 };
   },
@@ -132,7 +152,7 @@ export const CONFLICT_MARK = "— Версия с другого устройс�
 export function mergeVersions(a, b) {
   const other = [String(b.title || "").trim() && b.title !== a.title ? b.title.trim() : "", b.text !== a.text ? b.text : ""].filter(Boolean).join("\n");
   const text = other ? `${a.text}\n\n${CONFLICT_MARK}\n${other}`.slice(0, NOTE_TEXT_MAX) : a.text;
-  return { ...a, text, tags: cleanTags([...(a.tags || []), ...(b.tags || [])]) };
+  return { ...a, text, tags: cleanTags([...(a.tags || []), ...(b.tags || [])]), images: cleanImages([...(a.images || []), ...(b.images || [])]) };
 }
 
 /* Чек-листы прямо в тексте, без отдельного редактора: строка «☐ дело» — пункт, «☑ дело» — сделано.
