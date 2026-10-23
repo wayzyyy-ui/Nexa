@@ -1,11 +1,11 @@
 {
-  "version": "0.15.0",
-  "notes": "- Новый материал «жидкое стекло»: поиск, ассистент, нижняя панель, кнопки на «Сегодня» и панель заметки\n- Свет по краям стекла и глубина — в обеих темах\n- Подпись студии mono.engineering внизу «О системе»",
-  "pub_date": "2026-10-23T11:32:47.210Z",
+  "version": "0.15.2",
+  "notes": "- Заметки: картинки, ИИ-инструменты (сократить, переписать, исправить, продолжить), серая подсказка при наборе\n- «Обсудить с AI» — заметка уходит ассистенту, оттуда можно вернуться\n- Файл из буфера обмена в «Файлах», кнопка «Назад» в «Медиа»\n- Смахивание заметки вправо, плавное смахивание уведомлений\n- Плавнее запуск приложения",
+  "pub_date": "2026-10-23T15:51:51.932Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTJ0WkRWL3hZM1FsbzlzcGEvTUFQQkN3MDVRcUo5SWhQZm41RUpCUHBVZEFEcy9UbjZhTElBcEhvWjk3SU5PSEI4NG9zeVJGWm0yRE5HS2laUTAyZEFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzU1MTY3CWZpbGU6TkVYQV8wLjE1LjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMApGOElRMmlSOHhmZW1DeU44M2toUTgzaWJLYno5YVBNWndac3ZrczdDQ3lIRis3eTNFVG1sUktTKzl0elNYbElQeWI0bDQyWWNTUDlQOEY5ZWswSDZCdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.0"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTU0MlozYi9IakVzelBOc1gxVysrNWh6am1qYndwSnVWckFzeDIrcnc2WnR1R2UrWkR3VVY0YUlCVS8xVEg0Y3o4TTAxKzdXQXU1S2dvU1B1MGVOK1F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzcwNzExCWZpbGU6TkVYQV8wLjE1LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMgpKcjVndlhvQUhCWkVNcWJZT0dSSHlnRXluZDkwbE5jMUcxVkhDcmRnZ2djWnNNb1RhOU56OU50Ylhab3lvOUhsT1M4ZFRJZ3c1RjRNTjB1TjhDSjZDdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.2"
     }
   }
 }
