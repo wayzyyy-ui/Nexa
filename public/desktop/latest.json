@@ -1,11 +1,11 @@
 {
-  "version": "0.15.4",
-  "notes": "- Плавный переход из заставки в Главную: слово NEXA садится в шапку\n- «О системе» прямо с экрана входа — что такое NEXA ещё до регистрации\n- «Добавить файл» и «Новая папка» в «Файлах» — первыми, «Новая папка» и в категориях\n- Верхняя строка при прокрутке больше не пропускает содержимое справа\n- Приближение фото двумя пальцами больше не сдвигает картинку",
-  "pub_date": "2026-10-23T20:37:20.638Z",
+  "version": "0.15.5",
+  "notes": "- Уведомление «Вышла NEXA X» на телефоне, даже когда NEXA закрыта\n- Уведомления о новой версии в браузере (Настройки → Уведомления); на айфоне — с экрана «Домой»\n- «Рядом»: приём включается сам, как откроете вкладку «Принять»\n- «Добавить устройство» на Главной встаёт в пустую клетку рядом с устройствами\n- Плавнее переход из заставки; исправлены плашка передачи файла и окна над кнопками «Назад / Домой»",
+  "pub_date": "2026-10-23T21:20:19.561Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlMVi9qSVo3MUEyWE9uRTVzc1ZGMXFxSlRleXBROW1obHRDSE5BSG9OYUxrYzF3WjVEWDFTaXBhS0NXVjRkS2svMlhmMUNNMDQ1eWtRNFFndHEzYWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzg3ODQwCWZpbGU6TkVYQV8wLjE1LjRfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuNAovbTBuQVppbnhVT3pFMmF0OVI4VThMQlhDTlNSa0pKQVhVbW0rdmpoYjJzZ0hYbVh3eWpCYnR3dVRyUmE0d3JjdWlnNW02MEN0K0x0YjR4UmZnU1lDZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.4"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WStTczh2MGhwUHg1L1dCTTd5RC96c1M3Z1FMMTRyWW5CeW1NcDFpd1k0aW9JV1V2My9BellEcWdUaXRGRit1TGMyQTlFdStQODdQZHNIL3Rlc2ZvbXdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzkwNDE5CWZpbGU6TkVYQV8wLjE1LjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuNQptaytQdVZqUGVzRjNZOFVmSGhaRFM0TjdVc0RrOEVxYUIvOEhrSnRWMkE5QXIzWTg4NngwWFRibXJGWjd4SDBwamdxMkMrSDBWTHdud0lJaCtnZGtDQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.5"
     }
   }
 }
