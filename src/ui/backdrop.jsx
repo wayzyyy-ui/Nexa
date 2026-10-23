@@ -34,7 +34,9 @@ export function FoldArt({ className, style }) {
   return (
     <svg className={className} style={style} viewBox="130 80 430 500" aria-hidden="true" focusable="false">
       <defs>
-        <filter id={g("glow")} x="-60%" y="-60%" width="180%" height="180%">
+        {/* Область свечения — постоянная (в координатах картинки), а не по размеру граней: когда грани
+            движутся (раскрытие на Главной), Chrome иначе запоминает область первого кадра и обрезает складку */}
+        <filter id={g("glow")} filterUnits="userSpaceOnUse" x="-120" y="-120" width="800" height="820">
           {/* Каждый слой — своя тень от формы граней; потом все слои и сами грани сверху */}
           {HF_GLOW.map(([d, b, o], i) => [
             <feOffset key={"o" + i} in="SourceAlpha" dx={d} dy={d} result={"o" + i} />,
@@ -54,9 +56,10 @@ export function FoldArt({ className, style }) {
         <linearGradient id={g("blue")} x1="372.892" y1="147.858" x2="269.135" y2="516.066" gradientUnits="userSpaceOnUse">{stop(0, "--fold-hf-c1")}{stop(1, "--fold-hf-c2")}</linearGradient>
       </defs>
       <g filter={`url(#${g("glow")})`}>
-        <path d={HF.bottom} fill={`url(#${g("bottom")})`} fillOpacity="0.4" />
-        <g filter={`url(#${g("lift-m")})`}><path d={HF.mint} fill={`url(#${g("mint")})`} fillOpacity="0.39" /></g>
-        <g filter={`url(#${g("lift-b")})`}><path d={HF.blue} fill={`url(#${g("blue")})`} fillOpacity="0.4" /></g>
+        {/* hf-f hf-* — классы граней: на Главной компьютера они раскрываются и сдвигаются за курсором */}
+        <g className="hf-f hf-bottom"><path d={HF.bottom} fill={`url(#${g("bottom")})`} fillOpacity="0.4" /></g>
+        <g className="hf-f hf-mint" filter={`url(#${g("lift-m")})`}><path d={HF.mint} fill={`url(#${g("mint")})`} fillOpacity="0.39" /></g>
+        <g className="hf-f hf-blue" filter={`url(#${g("lift-b")})`}><path d={HF.blue} fill={`url(#${g("blue")})`} fillOpacity="0.4" /></g>
       </g>
     </svg>
   );

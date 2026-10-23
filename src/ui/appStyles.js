@@ -240,6 +240,14 @@ export const APP_CSS = `
         .nx-home-fold { flex: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; }
         /* Края картинки растворяются: свечение не обрывается прямоугольником на любом фоне */
         .nx-home-fold-art { height: calc(400 * var(--mk)); width: auto; display: block; user-select: none; overflow: visible; }
+        /* Движение складки Главной (HomeFoldArt). Точка поворота каждой грани — общий сгиб внизу слева */
+        .nx-hf-live .hf-f { transform-box: fill-box; transition: translate 900ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+        .nx-hf-live .hf-blue { transform-origin: 28% 100%; translate: calc(var(--px, 0) * 9px) calc(var(--py, 0) * 7px); }
+        .nx-hf-live .hf-mint { transform-origin: 0% 63%; translate: calc(var(--px, 0) * 18px) calc(var(--py, 0) * 12px); }
+        .nx-hf-live .hf-bottom { transform-origin: 0% 80%; translate: calc(var(--px, 0) * 4px) calc(var(--py, 0) * 3px); }
+        /* Раскрытие и «вздох» двигает скрипт (foldMotion в Home.jsx): CSS-анимацию граней под SVG-свечением
+           Chrome не перерисовывает — складка застывала в первом кадре */
+        @media (prefers-reduced-motion: reduce) { .nx-hf-live .hf-f { translate: none !important; } }
         /* Светлая тема: объёмная складка светлее и прозрачнее (макет) — рендер нарисован под тёмный фон */
         /* Светлая Главная (макет 2026-10): белая панель меню, «стеклянные» серые карточки,
            сплошная белая «Добавить устройство», насыщенная заливка «не в сети», ассистент от белого к мятному */
@@ -345,6 +353,16 @@ export const APP_CSS = `
         .ng-topbar::before { content: ""; position: absolute; inset: calc(-1 * var(--sat)) 0 -18px 0; z-index: -1; pointer-events: none;
           background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 62%, transparent); opacity: 0; transition: opacity 180ms ease; }
         html.nx-scrolled .ng-topbar::before { opacity: 1; }
+        /* Экраны с фоном .nx-home-glow: подложка — тот же градиент, выровненный по экрану (полоса начинается
+           правее меню — сдвигаем фон на его ширину), а не сплошной цвет: иначе при прокрутке сверху
+           появлялась тёмная полоса. Внизу — плавный переход в прозрачность */
+        body:has(.nx-home-glow) .ng-topbar::before {
+          background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
+                      radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
+                      linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
+          background-size: 100vw 100vh; background-position: -${NAV_W}px 0; background-repeat: no-repeat;
+          -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
         .nx-top-search svg { display: block; flex-shrink: 0; width: max(14px, calc(19 * var(--mk))); height: max(14px, calc(19 * var(--mk)));
           /* Слово «Поиск» — ровно по центру таблетки: значок вынесен влево на свою ширину и отступ */
           margin-left: calc(-1 * (max(14px, calc(19 * var(--mk))) + calc(12 * var(--mk)))); }
@@ -999,6 +1017,33 @@ export const APP_CSS = `
         }
         .nx-stagger > * { animation: nx-unfold 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards; transform-origin: 50% 0; }
         ${Array.from({ length: 14 }, (_, i) => `.nx-stagger > *:nth-child(${i + 2}) { animation-delay: ${(i + 1) * 45}ms; }`).join("\n        ")}
+        /* ── Каскад появления экранов ──
+           Крупные блоки раздела появляются по очереди: всплывают снизу и проявляются (600 мс, шаг 70 мс).
+           Один раз при открытии экрана; раздел, пришедший свайпом (data-quiet) или стоящий «соседом» за краем, —
+           без каскада (он уже на экране). backwards — после появления transform свободен для наведения */
+        @keyframes nx-rise {
+          from { opacity: 0; transform: translateY(16px) scale(0.985); }
+          to   { opacity: 1; transform: none; }
+        }
+        :is(.ng-home-desktop, .ng-home-mobile, .nx-home-grid, .nx-media-main, .nx-notepad-side, .nx-notepad-desk,
+            .nx-about, .nx-security, .nx-all-devices, .nx-device-screen, .ng-screen:not([class*=" "])) > *,
+        .nx-notepad-list > * { animation: nx-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        ${Array.from({ length: 8 }, (_, i) => `:is(.ng-home-desktop, .ng-home-mobile, .nx-home-grid, .nx-media-main, .nx-notepad-side, .nx-notepad-desk, .nx-about, .nx-security, .nx-all-devices, .nx-device-screen, .ng-screen:not([class*=" "]), .nx-notepad-list) > *:nth-child(${i + 2}) { animation-delay: ${(i + 1) * 70}ms; }`).join("\n        ")}
+        /* Вложенные контейнеры начинают позже родителя — карточки Главной идут после бренда */
+        .ng-home-desktop > .nx-home-grid { animation: none; }
+        .nx-home-grid > * { animation-delay: 90ms; }
+        .nx-home-grid > *:nth-child(2) { animation-delay: 170ms; }
+        .nx-notepad-desk > .nx-notepad-side { animation: none; }
+        .ng-home-desktop > .nx-home-act { animation-delay: 250ms; }
+        .ng-home-desktop > .nx-home-about-row { animation-delay: 330ms; }
+        :is(.nx-panel[data-quiet], .nx-panel[aria-hidden]) :is(.ng-home-desktop, .ng-home-mobile, .nx-home-grid, .nx-media-main, .nx-notepad-side, .nx-notepad-desk, .nx-about, .nx-security, .nx-all-devices, .nx-device-screen, .ng-screen, .nx-notepad-list) > * { animation: none !important; }
+        /* Отклик карточек на наведение (компьютер): чуть приподнимаются, рамка светлеет */
+        @media (hover: hover) and (pointer: fine) {
+          :is(.nx-pill-card, .nx-dev-row, .nx-cat-card, .nx-notepad-card, .nx-app-pill, .nx-home-act > section) {
+            transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 180ms ease, box-shadow 220ms ease; }
+          :is(.nx-pill-card, .nx-dev-row, .nx-cat-card, .nx-notepad-card, .nx-app-pill):hover { transform: translateY(-2px); }
+          .nx-app-pill:hover, .nx-notepad-card:hover { border-color: var(--mint) !important; }
+        }
         /* Капли дождя: наклонены как складка, три раза пролетают вниз и замирают */
         .nx-drop { transform: rotate(28deg); transform-origin: 50% 0; }
         @keyframes nx-drop-fall {
@@ -1315,6 +1360,8 @@ export const APP_CSS = `
           .nx-greeting-anim, .nx-msg { animation: none !important; }
           .nx-pop, .nx-bar { animation: none !important; }
           .nx-stagger > * { animation: none !important; }
+          :is(.ng-home-desktop, .ng-home-mobile, .nx-home-grid, .nx-media-main, .nx-notepad-side, .nx-notepad-desk, .nx-about, .nx-security, .nx-all-devices, .nx-device-screen, .ng-screen, .nx-notepad-list) > * { animation: none !important; }
+          :is(.nx-pill-card, .nx-dev-row, .nx-cat-card, .nx-notepad-card, .nx-app-pill):hover { transform: none !important; }
           .nx-chev { transition: none !important; }
           .nx-tab-move { transition: none !important; }
           .nx-ping, .nx-scan { display: none; }

@@ -5,7 +5,8 @@ import { Icon } from "../ui/icons.jsx";
 import { deviceStatus } from "../lib/devices.js";
 import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.jsx";
 import { QuickBtn } from "../ui/QuickPanel.jsx";
-import { FoldArt } from "../ui/backdrop.jsx";
+import { FoldArt, FOLD_INTRO_KEY } from "../ui/backdrop.jsx";
+import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner, DesktopAppPill } from "../ui/install.jsx";
 import { isDesktop } from "../native.js";
@@ -252,9 +253,57 @@ function AddDeviceRow({ onClick }) {
   );
 }
 
-/* Складка Главной (компьютер): объёмная складка из макета, векторная (FoldArt в backdrop.jsx) */
-function HomeFoldArt() {
-  return <span data-link-hub style={{ display: "block" }}><FoldArt className="nx-home-fold-art" /></span>;
+/* Складка Главной (компьютер): объёмная складка из макета, векторная (FoldArt в backdrop.jsx).
+   Движение (только transform и прозрачность граней, при «уменьшении движения» — ничего):
+   - первое открытие Главной за сессию — грани раскрываются из общего сгиба (~1,3 с);
+   - за курсором грани расходятся на разную глубину (--px / --py от useBackdropMotion);
+   - стало больше устройств — короткий «вздох» гранями.
+   count — сколько устройств */
+/* Движение граней по кадрам: frame(t) → { rotate, scale } для t от 0 до 1; грани по очереди (stagger мс).
+   Пишем transform прямо в стиль каждой грани — так Chrome перерисовывает свечение */
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+function foldMotion(root, { duration, stagger, frame }) {
+  const faces = ["hf-blue", "hf-mint", "hf-bottom"].map((c) => root?.querySelector("." + c)).filter(Boolean);
+  if (!faces.length) return () => {};
+  let raf = 0;
+  const start = performance.now();
+  const tick = (now) => {
+    let done = true;
+    faces.forEach((el, i) => {
+      const t = Math.min(1, Math.max(0, (now - start - i * stagger) / duration));
+      if (t < 1) done = false;
+      const { rotate, scale } = frame(t);
+      el.style.transform = t >= 1 ? "" : `rotate(${rotate}deg) scale(${scale})`;
+    });
+    if (!done) raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => { cancelAnimationFrame(raf); faces.forEach((el) => { el.style.transform = ""; }); };
+}
+
+function HomeFoldArt({ count = 0 }) {
+  const ref = useRef(null);
+  useBackdropMotion(ref);
+  // Раскрытие — один раз за сессию: грани выходят из общего сгиба по очереди (синяя, мятная, нижняя)
+  useLayoutEffect(() => {
+    let first = false;
+    try { first = !reducedMotion() && !sessionStorage.getItem(FOLD_INTRO_KEY); if (first) sessionStorage.setItem(FOLD_INTRO_KEY, "1"); } catch {}
+    if (!first) return;
+    return foldMotion(ref.current, { duration: 1100, stagger: 140, frame: (t) => { const e = easeOut(t); return { rotate: -38 * (1 - e), scale: 0.05 + 0.95 * e }; } });
+  }, []);
+  // Стало больше устройств — короткий «вздох»: грани чуть раскрываются и возвращаются
+  const prev = useRef(count);
+  useEffect(() => {
+    const grew = count > prev.current;
+    prev.current = count;
+    if (!grew || reducedMotion()) return;
+    return foldMotion(ref.current, { duration: 800, stagger: 70, frame: (t) => { const k = Math.sin(Math.PI * t); return { rotate: -5 * k, scale: 1 + 0.06 * k }; } });
+  }, [count]);
+  return (
+    <span ref={ref} data-link-hub className="nx-hf-live" style={{ display: "block" }}>
+      <FoldArt className="nx-home-fold-art" />
+    </span>
+  );
 }
 
 // Сколько устройств видно на Главной; остальные — «Все устройства».
@@ -326,7 +375,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           </section>
           {/* Справа: складка и ассистент */}
           <div className="nx-home-side">
-            <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt /></div>
+            <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
             {/* Ассистент и «Приложение NEXA» (нечего предложить — ассистент на всю ширину) */}
             <div className="nx-home-pills">
               {aiPill("nx-ai-glow")}
