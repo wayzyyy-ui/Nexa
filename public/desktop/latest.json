@@ -1,11 +1,11 @@
 {
-  "version": "0.14.6",
-  "notes": "- Компьютер: разделы стоят по новому макету — содержимое правее и в точном масштабе\n- «Сегодня» на компьютере: шире карточки погоды, крупнее заголовки",
-  "pub_date": "2026-10-22T20:11:25.617Z",
+  "version": "0.14.7",
+  "notes": "- Новый шрифт во всём приложении — ровные, удобные для чтения цифры\n- Заметки на компьютере по новому макету: «стеклянная» панель, крупнее текст, меню «…» у карточки\n- Поиск в заметках срабатывает от нажатия в любое место\n- «Заметки» и «Прогноз на 2 недели» на «Сегодня» крупнее и заметнее\n- Приложение стало легче",
+  "pub_date": "2026-10-23T09:44:35.805Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WStrc013TnA3bnUvOVZtaEh4RnNTRFI1YXEvR0kybkZGS0trM3UyL3pBZmtvQzJVRnBNdjE5RDB0OSszNGcwanRYVW9HcHR2VW5CTnNydzJaNDgyWmdjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjk5ODg1CWZpbGU6TkVYQV8wLjE0LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuNgphbUxOWmsvTGFkWkcxSW15dTJSWEpYVnFKL3Q0WktKa3RCZjk1anVsREtZK0FMMDdOTDJnWXB6Uyt1bWVJWStXblFXZG5XUzFMOTdoWUNpWEFMQ3pCdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.6"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WThLUThYWHVsU25wNU9Xb2hyVXNSVTFQR1IzcTZ0RHB1U1l2VUZKYVNvWlhwdGxGL0ZROFFHa3laajFQVVh2cy9HQUIrazRucmpjem5sbEs2Q25xV0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQ4Njc1CWZpbGU6TkVYQV8wLjE0LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuNwpkN3VNWVlqTEYxOC8yQkV2UE42VWdqUkVFMFcyTFJUUWZVUUVMMm4zdCtLVXJtTTlKU1djSnpvYzduSmtmRUdQNk1vaVp0Z3ZqVVdHNTZvYmgyTEhBUT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.7"
     }
   }
 }
