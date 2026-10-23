@@ -1,11 +1,11 @@
 {
-  "version": "0.14.9",
-  "notes": "- Плавное появление блоков во всех разделах\n- Складка на Главной компьютера раскрывается и следит за курсором\n- Карточки откликаются на наведение мышью\n- При прокрутке под верхней строкой больше нет тёмной полосы",
-  "pub_date": "2026-10-23T10:31:18.062Z",
+  "version": "0.15.0",
+  "notes": "- Новый материал «жидкое стекло»: поиск, ассистент, нижняя панель, кнопки на «Сегодня» и панель заметки\n- Свет по краям стекла и глубина — в обеих темах\n- Подпись студии mono.engineering внизу «О системе»",
+  "pub_date": "2026-10-23T11:32:47.210Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTdUTjdNMlBqN3k1Q0tieEtRdU9sT3hvQ1hESU8rbnVUMFNsKzVSdmxIb0RkV1BIN2Q5c0c5OU1SaWhRbjFBREpJWjFyYStleWxQSTVkRVRSMVZ6TndBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzUxNDc3CWZpbGU6TkVYQV8wLjE0LjlfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuOQpNR2x4Z3gzVnpZR0lEZW5oOXhKQVl2Rnd1MEpkTUVSaU1YV1B2VTFzUlF1Q09vaEdpRExnclpVOFNjQXo4ai8wa3dxaTQvT1hwdUpUcEFMMnJCRHhCZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.9"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTJ0WkRWL3hZM1FsbzlzcGEvTUFQQkN3MDVRcUo5SWhQZm41RUpCUHBVZEFEcy9UbjZhTElBcEhvWjk3SU5PSEI4NG9zeVJGWm0yRE5HS2laUTAyZEFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzU1MTY3CWZpbGU6TkVYQV8wLjE1LjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMApGOElRMmlSOHhmZW1DeU44M2toUTgzaWJLYno5YVBNWndac3ZrczdDQ3lIRis3eTNFVG1sUktTKzl0elNYbElQeWI0bDQyWWNTUDlQOEY5ZWswSDZCdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.0"
     }
   }
 }
