@@ -1,11 +1,11 @@
 {
-  "version": "0.15.2",
-  "notes": "- Заметки: картинки, ИИ-инструменты (сократить, переписать, исправить, продолжить), серая подсказка при наборе\n- «Обсудить с AI» — заметка уходит ассистенту, оттуда можно вернуться\n- Файл из буфера обмена в «Файлах», кнопка «Назад» в «Медиа»\n- Смахивание заметки вправо, плавное смахивание уведомлений\n- Плавнее запуск приложения",
-  "pub_date": "2026-10-23T15:51:51.932Z",
+  "version": "0.15.3",
+  "notes": "- «Рядом»: файл на соседний телефон с NEXA напрямую, без интернета — как AirDrop\n- «Где устройство?» работает, даже когда NEXA на телефоне закрыта и экран выключен\n- Сообщение на экран блокировки потерянного телефона\n- Передача файла с анимацией сверху: ход, процент и «Доставлено»\n- Новая заставка запуска; исправлена нижняя панель, которая уезжала при прокрутке",
+  "pub_date": "2026-10-23T20:02:34.694Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTU0MlozYi9IakVzelBOc1gxVysrNWh6am1qYndwSnVWckFzeDIrcnc2WnR1R2UrWkR3VVY0YUlCVS8xVEg0Y3o4TTAxKzdXQXU1S2dvU1B1MGVOK1F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzcwNzExCWZpbGU6TkVYQV8wLjE1LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMgpKcjVndlhvQUhCWkVNcWJZT0dSSHlnRXluZDkwbE5jMUcxVkhDcmRnZ2djWnNNb1RhOU56OU50Ylhab3lvOUhsT1M4ZFRJZ3c1RjRNTjB1TjhDSjZDdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.2"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTRVZCtIYmJ4d2F1SHEzMVhIZStraWU3L1dpTWNSMmFzMHQ1UUMwL3F6aW45ZXA2Y0hvdlpGYXIwem1PTXZjWW5ER3l5ajIyNzhwK2JFR0hMZVpnVWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzg1NzU0CWZpbGU6TkVYQV8wLjE1LjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMwpMMTMwdjIvSU1zRjdOZUUrMmpNQWxLUnBKNWE4TXljMXpxOElIci85czVkQm1rbDBmRWV2dVJ0OGhMcEJFUzZ1Z1NjQ2J1OVV1UEFKOTd4N2tXNUFEZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.3"
     }
   }
 }
