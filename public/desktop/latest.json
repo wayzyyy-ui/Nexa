@@ -1,11 +1,11 @@
 {
-  "version": "0.15.3",
-  "notes": "- «Рядом»: файл на соседний телефон с NEXA напрямую, без интернета — как AirDrop\n- «Где устройство?» работает, даже когда NEXA на телефоне закрыта и экран выключен\n- Сообщение на экран блокировки потерянного телефона\n- Передача файла с анимацией сверху: ход, процент и «Доставлено»\n- Новая заставка запуска; исправлена нижняя панель, которая уезжала при прокрутке",
-  "pub_date": "2026-10-23T20:02:34.694Z",
+  "version": "0.15.4",
+  "notes": "- Плавный переход из заставки в Главную: слово NEXA садится в шапку\n- «О системе» прямо с экрана входа — что такое NEXA ещё до регистрации\n- «Добавить файл» и «Новая папка» в «Файлах» — первыми, «Новая папка» и в категориях\n- Верхняя строка при прокрутке больше не пропускает содержимое справа\n- Приближение фото двумя пальцами больше не сдвигает картинку",
+  "pub_date": "2026-10-23T20:37:20.638Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTRVZCtIYmJ4d2F1SHEzMVhIZStraWU3L1dpTWNSMmFzMHQ1UUMwL3F6aW45ZXA2Y0hvdlpGYXIwem1PTXZjWW5ER3l5ajIyNzhwK2JFR0hMZVpnVWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzg1NzU0CWZpbGU6TkVYQV8wLjE1LjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMwpMMTMwdjIvSU1zRjdOZUUrMmpNQWxLUnBKNWE4TXljMXpxOElIci85czVkQm1rbDBmRWV2dVJ0OGhMcEJFUzZ1Z1NjQ2J1OVV1UEFKOTd4N2tXNUFEZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.3"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlMVi9qSVo3MUEyWE9uRTVzc1ZGMXFxSlRleXBROW1obHRDSE5BSG9OYUxrYzF3WjVEWDFTaXBhS0NXVjRkS2svMlhmMUNNMDQ1eWtRNFFndHEzYWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzg3ODQwCWZpbGU6TkVYQV8wLjE1LjRfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuNAovbTBuQVppbnhVT3pFMmF0OVI4VThMQlhDTlNSa0pKQVhVbW0rdmpoYjJzZ0hYbVh3eWpCYnR3dVRyUmE0d3JjdWlnNW02MEN0K0x0YjR4UmZnU1lDZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.4"
     }
   }
 }
