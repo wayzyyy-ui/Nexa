@@ -7,7 +7,8 @@ import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.js
 import { QuickBtn } from "../ui/QuickPanel.jsx";
 import { FoldArt } from "../ui/backdrop.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
-import { UpdateCard, InstallBanner } from "../ui/install.jsx";
+import { UpdateCard, InstallBanner, DesktopAppPill } from "../ui/install.jsx";
+import { isDesktop } from "../native.js";
 
 /* ---------- 5. ЭКРАНЫ ---------- */
 // Карточка одного устройства — для мобильной 2×2 сетки.
@@ -304,7 +305,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           </span>
           <div className="nx-home-eco">Ваша экосистема</div>
         </div>
-        {update && <div style={{ marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
+        {/* В приложении для ПК обновление — таблеткой рядом с ассистентом (DesktopAppPill) */}
+        {update && !isDesktop && <div style={{ marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
 
         <div className="nx-home-grid">
           {/* Мои устройства */}
@@ -325,7 +327,11 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           {/* Справа: складка и ассистент */}
           <div className="nx-home-side">
             <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt /></div>
-            {aiPill("nx-ai-glow")}
+            {/* Ассистент и «Приложение NEXA» (нечего предложить — ассистент на всю ширину) */}
+            <div className="nx-home-pills">
+              {aiPill("nx-ai-glow")}
+              <DesktopAppPill update={isDesktop ? update : null} />
+            </div>
           </div>
         </div>
 

@@ -167,7 +167,7 @@ export function ScreenNotes({ notes, api, uid, online, sync, onBack, request, sc
     }}>
       {Icon.search({ c: C.muted, s: 16 })}
       <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={phone ? "Поиск по заметкам и тегам" : "Поиск"}
-        aria-label="Поиск по заметкам и тегам" className="nx-notepad-search-input"
+        aria-label="Поиск по заметкам и тегам" className="nx-notepad-search-input nx-search-word"
         style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 15, fontFamily: "inherit" }} />
       {query && (
         <button type="button" onClick={() => setQuery("")} aria-label="Сбросить поиск" style={{ ...btnReset, display: "flex" }}>

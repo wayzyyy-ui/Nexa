@@ -2793,7 +2793,7 @@ export default function NexaApp() {
             {/* Компьютер (макет 2026-10): поиск таблеткой, часы, уведомления, быстрые действия, профиль.
                 Телефон: поиск значком (таблетка спрятана стилями); на мобильной Главной строки нет — там своя шапка */}
             <button type="button" className="nx-ghost-btn nx-top-search" onClick={() => openSearch()} aria-label="Поиск">
-              {Icon.search({ c: C.text, s: 16 })} Поиск
+              {Icon.search({ c: C.text, s: 16 })} <span className="nx-search-word">Поиск</span>
             </button>
             <TimeDate />
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />

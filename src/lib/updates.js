@@ -40,6 +40,7 @@ export function useSiteApkUpdate(enabled) {
    Приложение работает, но баннер закрыть нельзя — мягко подталкиваем обновиться.
    Если версия совсем старая (required), вместо него — ForceUpdateScreen */
 export const UPDATE_DISMISS_KEY = "nexa-update-dismissed"; // сайт: какую версию уже скрыли
+export const PC_DOWNLOADED_KEY = "nexa-pc-downloaded"; // сайт на компьютере: версия скачанного установщика для ПК
 
 /* ═══ ОБНОВЛЕНИЕ ИЗНУТРИ ПРИЛОЖЕНИЯ (только Android, NexaUpdatePlugin) ═══
    Ход один на всё приложение (Главная, Настройки, экран «Обновите»):

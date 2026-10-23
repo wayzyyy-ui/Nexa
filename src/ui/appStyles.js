@@ -315,6 +315,19 @@ export const APP_CSS = `
           box-shadow: 0 0 calc(22 * var(--mk)) color-mix(in srgb, var(--mint) 28%, transparent), 0 0 calc(44 * var(--mk)) color-mix(in srgb, var(--blue) 22%, transparent); }
         .nx-ai-glow .nx-ai-pill-icon { width: max(30px, calc(42 * var(--mk))); height: max(30px, calc(42 * var(--mk))); }
         .nx-ai-glow .nx-ai-pill-title { font-size: max(14px, calc(18 * var(--mk))); font-weight: 400; margin-top: calc(3 * var(--mk)); }
+        /* Ряд под складкой: ассистент и «Приложение NEXA» поровну; узкое окно — друг под другом */
+        .nx-home-pills { display: flex; flex-wrap: wrap; gap: calc(16 * var(--mk)); }
+        .nx-home-pills > * { flex: 1 1 200px; min-width: 0; }
+        .nx-home-pills:has(.nx-app-pill) .nx-ai-glow > svg:last-child { display: none; } /* в половине ширины стрелка лишняя */
+        .nx-home-pills:has(.nx-app-pill) .nx-ai-glow { padding: 0 calc(18 * var(--mk)) !important; gap: calc(14 * var(--mk)) !important; }
+        .nx-app-pill { display: flex; align-items: center; gap: calc(12 * var(--mk)); box-sizing: border-box; min-height: max(60px, calc(96 * var(--mk)));
+          padding: 0 calc(18 * var(--mk)) !important; border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
+          background: color-mix(in srgb, var(--panel) 35%, transparent) !important; color: var(--text) !important; text-decoration: none; text-align: left; font: inherit; cursor: pointer; }
+        .nx-app-pill:disabled { cursor: default; opacity: 1 !important; }
+        .nx-app-pill-icon { display: flex; flex-shrink: 0; }
+        .nx-app-pill-icon svg { width: max(22px, calc(32 * var(--mk))); height: max(22px, calc(32 * var(--mk))); }
+        .nx-app-pill-title { display: block; font-size: max(14px, calc(18 * var(--mk))); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-app-pill-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: max(3px, calc(5 * var(--mk))); line-height: 1.3; }
         .nx-ai-glow .nx-ai-pill-sub { font-size: max(12px, calc(14 * var(--mk))) !important; margin-top: max(4px, calc(7 * var(--mk))) !important; }
         /* Верхняя строка (компьютер): поиск таблеткой, часы, значки — тоже в долях макета */
         /* Поиск-таблетка (макет): значок и слово ровно по центру, одна линия; «стекло» —
@@ -596,13 +609,15 @@ export const APP_CSS = `
   /* Заметки на телефоне: «Новая заметка» — в одну строку с заголовком, компактнее */
   @media ${PHONE_MQ} { .nx-notepad-head { flex-wrap: nowrap !important; margin: 18px 0 16px !important; } .nx-notepad-head .ng-display.nx-page-title { padding-right: 0 !important; margin: 0 !important; } .nx-notepad-head .nx-primary { padding: 8px 14px !important; font-size: 13px !important; } .nx-notepad-search { margin-bottom: 10px !important; } .nx-notepad-list { padding-bottom: 72px; } }
   .nx-notepad-filters::-webkit-scrollbar { display: none; }
+  /* У Manrope строчные буквы сидят ниже середины строки — слово «Поиск» поднимаем, чтобы стояло ровно со значком (замерено по пикселям) */
+  .nx-search-word { position: relative; top: -0.06em; }
   .nx-notepad-search-input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; } /* свой крестик «Сбросить поиск» уже есть */
   /* Заметки на компьютере (макет 2026-10, размеры в долях макета 1920 × 1080 — --mk, как на Главной):
      «Назад» и заголовок — в строку с верхней строкой; слева поиск + «Добавить заметку», «Все заметки»,
      список; справа — открытая заметка от строки поиска почти до низа окна */
   @media ${DESKTOP_MQ} {
     .ng-main-content:has(.nx-notepad) { max-width: none !important; }
-    .nx-notepad { padding: calc(38 * var(--mk)) calc(145 * var(--mk)) 40px calc(174 * var(--mk)) !important; }
+    .nx-notepad { padding: calc(38 * var(--mk)) calc(222 * var(--mk)) 40px calc(174 * var(--mk)) !important; } /* справа место под складку (макет) */
     .nx-notepad-top { display: flex; align-items: center; gap: calc(44 * var(--mk)); min-height: max(40px, calc(50 * var(--mk))); }
     .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
     /* Две колонки на всю оставшуюся высоту окна: список прокручивается сам (тонкая полоса), заметка — справа */
@@ -614,9 +629,9 @@ export const APP_CSS = `
     .nx-notepad-desk .nx-notepad-group { margin-bottom: calc(-18 * var(--mk)) !important; }
     .nx-notepad-desk .nx-notepad-list { flex: 1 1 auto !important; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: calc(16 * var(--mk)); margin-right: calc(-16 * var(--mk)); gap: calc(33 * var(--mk)) !important; }
     .nx-notepad-desk .nx-notepad-list::-webkit-scrollbar { width: 4px; }
-    /* Складка за «стеклянной» панелью: правее и ниже, обрезана правым краем окна */
-    .nx-notepad-fold { position: absolute; top: 0; bottom: 0; right: 0; width: 60%; overflow: hidden; border-radius: max(32px, calc(60 * var(--mk))); pointer-events: none; z-index: 0; }
-    .nx-notepad-fold svg { position: absolute; right: -18%; top: 16%; width: 105%; height: auto; display: block; overflow: visible; }
+    /* Складка у правого края окна (макет 2026-10): видна справа от панели, край заходит под «стекло» и просвечивает светом */
+    .nx-notepad-fold { position: absolute; left: calc(100% - 320 * var(--mk)); top: calc(-70 * var(--mk)); width: calc(640 * var(--mk)); pointer-events: none; z-index: 0; }
+    .nx-notepad-fold svg { width: 100%; height: auto; display: block; overflow: visible; }
     /* Слово «Поиск» и значок — по центру таблетки, как в макете; поле растёт вместе с набранным */
     .nx-notepad-desk .nx-notepad-search { justify-content: center; }
     .nx-notepad-desk .nx-notepad-search-input { flex: 0 1 auto !important; field-sizing: content; min-width: 5ch !important; max-width: 100%; }

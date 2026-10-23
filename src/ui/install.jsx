@@ -4,7 +4,7 @@ import { updateCancel, updateOpenSettings, openUpdate, isDesktop } from "../nati
 import { C, fontDisplay } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { mbText } from "../lib/format.js";
-import { APK_URL, rememberApkDownload, useSiteApkUpdate, INSTALL_DISMISS_KEY, APK_DOWNLOADED_KEY, UPDATE_DISMISS_KEY, useUpdState, updStart } from "../lib/updates.js";
+import { APK_URL, rememberApkDownload, useSiteApkUpdate, INSTALL_DISMISS_KEY, APK_DOWNLOADED_KEY, UPDATE_DISMISS_KEY, PC_DOWNLOADED_KEY, versionCode, useUpdState, updStart } from "../lib/updates.js";
 import { installPlatform } from "../lib/hooks.js";
 import { openExternal } from "../lib/desktop.js";
 import { SectionTitle, SettingsGroup, SettingsRow, QrCode, btnReset, LogoMark, Logo } from "./base.jsx";
@@ -68,6 +68,56 @@ function useDesktopRelease(enabled) {
     return () => { stop = true; };
   }, [enabled]);
   return rel;
+}
+
+/* Таблетка «Приложение NEXA» на Главной компьютера, рядом с ассистентом (макет 2026-10).
+   - Сайт на компьютере с этой системой: ещё не скачивали — «Быстрее и удобнее, чем в браузере»;
+     скачали старую версию, а вышла новее — «Вышла NEXA X»; скачали последнюю — таблетки нет.
+     Нажатие скачивает установщик.
+   - Приложение для ПК, вышла новая версия — «Вышла NEXA X · Нажмите, чтобы обновить»:
+     нажатие ставит обновление изнутри (тот же ход, что в Настройках), ход виден в подписи.
+   Ничего не показываем — возвращает null, и ассистент занимает всю ширину */
+export function DesktopAppPill({ update }) {
+  const site = installPlatform() === "desktop" && !isDesktop && /Windows/i.test(navigator.userAgent);
+  const rel = useDesktopRelease(site);
+  const st = useUpdState();
+  const [got, setGot] = useState(() => { try { return localStorage.getItem(PC_DOWNLOADED_KEY) || ""; } catch { return ""; } });
+  const look = (tag, kids, extra) => tag === "a"
+    ? <a className="nx-row-btn nx-pill-card nx-app-pill" {...extra}>{kids}</a>
+    : <button type="button" className="nx-row-btn nx-pill-card nx-app-pill" {...extra}>{kids}</button>;
+  const body = (title, sub, icon = Icon.desktop) => (
+    <>
+      <span aria-hidden="true" className="nx-app-pill-icon">{icon({ c: C.mint, s: 30 })}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className="nx-app-pill-title">{title}</span>
+        <span className="nx-app-pill-sub">{sub}</span>
+      </span>
+    </>
+  );
+
+  // Приложение для ПК: обновление изнутри
+  if (isDesktop) {
+    if (!update) return null;
+    const mine = st.version === update.version ? st : { state: "idle" };
+    const pct = mine.total ? Math.min(100, Math.round((mine.loaded / mine.total) * 100)) : 0;
+    const sub = mine.state === "downloading" ? (mine.total && mine.loaded >= mine.total ? "Проверяем подпись…" : `Скачиваем — ${pct}%`)
+      : mine.state === "error" ? "Не получилось — нажмите, чтобы повторить"
+      : "Нажмите, чтобы обновить";
+    return look("button", body(`Вышла NEXA ${update.version}`, sub, Icon.refresh), {
+      onClick: () => updStart(update), disabled: mine.state === "downloading",
+      "aria-label": `Обновить NEXA до версии ${update.version}`,
+    });
+  }
+
+  // Сайт: предложить установщик для ПК
+  if (!rel) return null;
+  const newer = got && versionCode(rel.version) > versionCode(got);
+  if (got && !newer) return null;
+  return look("a", body(newer ? `Вышла NEXA ${rel.version}` : "Приложение NEXA", newer ? "Скачайте и установите поверх" : "Быстрее и удобнее, чем в браузере"), {
+    href: rel.exeUrl || "/nexa-setup.exe", download: "NEXA-setup.exe",
+    "aria-label": newer ? `Скачать NEXA ${rel.version} для компьютера` : "Скачать приложение NEXA для компьютера",
+    onClick: () => { try { localStorage.setItem(PC_DOWNLOADED_KEY, rel.version); } catch {} setTimeout(() => setGot(rel.version), 1200); },
+  });
 }
 
 // Предупреждение системы при первом запуске установщика (у NEXA нет платной подписи кода)
@@ -324,7 +374,7 @@ export function UpdateCard({ update, onLater, variant = "home" }) {
   );
 }
 
-/* Экран «Обновите приложение» — только в Android-приложении.
+/* Экран «Обновите приложение» — в Android-приложении и в приложении для ПК.
    Показывается поверх всего, если версия приложения старше минимальной
    из version.json (update.required): интерфейс виден, но размыт и не нажимается.
    Закрыть нельзя — только скачать новую.
@@ -346,8 +396,9 @@ export function ForceUpdateScreen({ update }) {
       </div>
       {/* Сцена занимает всё свободное место, низ уходит под шторку */}
       <div style={{ position: "relative", flex: 1, minHeight: 0, width: "100%", display: "flex", justifyContent: "center", alignItems: "flex-end", marginTop: 16 }}>
-        <img src="/art/update-stage.webp" alt="" draggable={false}
-          style={{ height: "100%", maxHeight: 520, width: "auto", maxWidth: "88%", objectFit: "contain", objectPosition: "bottom", marginBottom: -40, pointerEvents: "none" }} />
+        {/* ПК: пока без объёмной сцены — свой макет экрана будет позже */}
+        {!isDesktop && <img src="/art/update-stage.webp" alt="" draggable={false}
+          style={{ height: "100%", maxHeight: 520, width: "auto", maxWidth: "88%", objectFit: "contain", objectPosition: "bottom", marginBottom: -40, pointerEvents: "none" }} />}
       </div>
       <div className="nx-force-sheet" style={{
         position: "relative", width: "100%", maxWidth: 520, boxSizing: "border-box",
