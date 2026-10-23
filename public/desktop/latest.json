@@ -1,11 +1,11 @@
 {
-  "version": "0.14.7",
-  "notes": "- Новый шрифт во всём приложении — ровные, удобные для чтения цифры\n- Заметки на компьютере по новому макету: «стеклянная» панель, крупнее текст, меню «…» у карточки\n- Поиск в заметках срабатывает от нажатия в любое место\n- «Заметки» и «Прогноз на 2 недели» на «Сегодня» крупнее и заметнее\n- Приложение стало легче",
-  "pub_date": "2026-10-23T09:44:35.805Z",
+  "version": "0.14.8",
+  "notes": "- Сайт на компьютере предлагает скачать NEXA для компьютера — таблетка рядом с ассистентом\n- Приложение для ПК: новая версия ставится одним нажатием прямо с Главной\n- Слово «Поиск» стоит ровно по центру\n- Заметки на компьютере: складка на своём месте, как в макете",
+  "pub_date": "2026-10-23T10:08:24.716Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WThLUThYWHVsU25wNU9Xb2hyVXNSVTFQR1IzcTZ0RHB1U1l2VUZKYVNvWlhwdGxGL0ZROFFHa3laajFQVVh2cy9HQUIrazRucmpjem5sbEs2Q25xV0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQ4Njc1CWZpbGU6TkVYQV8wLjE0LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuNwpkN3VNWVlqTEYxOC8yQkV2UE42VWdqUkVFMFcyTFJUUWZVUUVMMm4zdCtLVXJtTTlKU1djSnpvYzduSmtmRUdQNk1vaVp0Z3ZqVVdHNTZvYmgyTEhBUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.7"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTk0Q3NuZThiaXpEanQ3amZKRStNUEptWUZJb21hUHh6b1VJVEMyeE40Zmthd25vRXRGT0dJQTRjbzFQeXd3cTNVOFVRdmIxblFDbVNFNFB0b3hkeWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzUwMTA0CWZpbGU6TkVYQV8wLjE0LjhfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTQuOApIaE5LQWw2S1JtWi9jVURaWkQ0QmdyWDJ5b2M1RUdSNzJ0aFAxSVcwSmVoTTR1WVlzTk94OHYwNkRkdUdTeXM3Y1lSQlcwSWsvSkxTSnViSWJXeFVBQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.14.8"
     }
   }
 }
