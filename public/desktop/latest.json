@@ -1,11 +1,11 @@
 {
-  "version": "0.15.6",
-  "notes": "- Заметки: ИИ подсказывает следующее дело в списке и выполняет вашу задачу своими словами\n- Фото из буфера обмена прямо в заметку; смахните заметки вправо — вернётесь в «Сегодня»\n- Эффект стекла на карточках; на телефоне нет верхней строки и полос прокрутки\n- Исправления для айфона: кнопки ассистента, выбор города в погоде, экран входа\n- Плашка «Рядом» на телефоне больше не сжимается",
-  "pub_date": "2026-10-25T15:49:15.637Z",
+  "version": "0.15.7",
+  "notes": "- NEXA Mini: своя небольшая нейросеть понимает простые просьбы («открой файлы», «тёмная тема») без запроса к большой модели\n- Исправлены края блока «Активность» на Главной\n- Подпись студии теперь «Разработано»",
+  "pub_date": "2026-10-25T16:01:14.458Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTIyOTlKMjZHYngrd3h4RlJ2R2pwNk16L1FOVlBBNWdkYnVlU3UyTVBOdmkvQW8wTStrd2IzanNVZ3FpRy9EdGNqTDJaYXZWc2p3cmRHMnNGYlNGOGdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQzMzU1CWZpbGU6TkVYQV8wLjE1LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuNgp2RTBKTGxscHVrRG1GN0xOZW05b25VbXhSVzRBRE1UR284TkRpTFg4VVZ3M1kzMVhJcEVWRmFQVFY0K3R1cnllNm9FZW9OM2FrNENvelI2elpCTnVCZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.6"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTRkclIxQnQ5Z2RVMy9kdzZwZFJJVG1WWllmZDhxbkx5cUlicnBMS3lBdUd6eEVIQ1BSaHhVNUo2WUpZVUpiTHRJYWEveWFVcGpJQXFwb2RNSWwxL1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ0MDc0CWZpbGU6TkVYQV8wLjE1LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuNwpZbHZQYkp1RDlGdHZCdlViUnIzZ3RhTXpIUU5DdE5INWxvbk9SbDJmTkhrRm0xUzNYNEVHUlh6Wm8zYzBDMGwzZlVnaTNwdTVxNHFNQy9rcG5IUDRBdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.7"
     }
   }
 }
