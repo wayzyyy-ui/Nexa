@@ -6,14 +6,28 @@ export const SUGGEST_GAP_MS = 2500;       // не чаще одного запр
 export const SUGGEST_MIN_CHARS = 8;       // меньше — ещё нечего продолжать
 export const SUGGEST_MAX_CHARS = 90;      // подсказка длиннее не показывается (обрезаем по слову)
 
-/* Нужна ли подсказка: курсор в самом конце текста, ничего не выделено, текст не пустой и не оборван
-   на пустой строке. Подсказки в середине текста не показываем: серый хвост сдвинул бы текст ниже курсора */
+// Строка-пункт списка: ☐ / ☑, «-», «•», «*», «1.» / «1)»
+const ITEM = /^\s*(?:[☐☑•*\-–—]|\d{1,3}[.)])\s*/;
+const isItem = (line) => ITEM.test(line);
+
+/* Нужна ли подсказка: курсор в самом конце текста, ничего не выделено, текста достаточно.
+   Подсказки в середине текста не показываем: серый хвост сдвинул бы текст ниже курсора.
+   Новая пустая строка: если выше список дел (пункты со значками или 2+ коротких строк подряд) —
+   подсказываем следующий пункт; обычный текст — нет (человек начал новый абзац сам) */
 export function suggestionWanted(text, selStart, selEnd) {
   if (selStart !== selEnd || selEnd !== text.length) return false;
   const t = text.replace(/\s+$/, "");
   if (t.length < SUGGEST_MIN_CHARS) return false;
-  if (/\n\s*$/.test(text)) return false; // новая строка — человек начал новый абзац сам
+  if (/\n\s*$/.test(text)) return isListAbove(text);
   return true;
+}
+// Похоже ли написанное выше на список дел
+export function isListAbove(text) {
+  const lines = text.replace(/\s+$/, "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return false;
+  if (isItem(lines[lines.length - 1])) return true;
+  const last = lines.slice(-3);
+  return last.length >= 2 && last.every((l) => l.length <= 60);
 }
 
 /* Что показать серым: убираем переводы строк, лишние пробелы, обрезаем по слову.

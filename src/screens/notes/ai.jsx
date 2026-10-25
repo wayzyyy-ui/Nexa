@@ -1,13 +1,13 @@
 // ИИ в редакторе заметки: меню ✨, панель результата («Применить» / «Отменить») и серая подсказка в строке.
 // Запросы — src/lib/noteAi.js, правила — src/lib/noteText.js. Здесь только вид.
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { btnReset } from "../../ui/base.jsx";
-import { NOTE_AI_TASKS } from "../../lib/noteAi.js";
+import { NOTE_AI_TASKS, NOTE_PROMPT_MAX } from "../../lib/noteAi.js";
 import { ghost, primary } from "./shared.js";
 
-const TASK_LABEL = Object.fromEntries(NOTE_AI_TASKS.map((t) => [t.id, t.label]));
+const TASK_LABEL = { ...Object.fromEntries(NOTE_AI_TASKS.map((t) => [t.id, t.label])), custom: "Своя задача" };
 
 /* Меню ✨ (role="menu": Esc и «Назад» закрывают). onPick(id) — действие над текстом,
    onDiscuss — «Обсудить с AI», suggestOn / setSuggestOn — подсказки при наборе */
@@ -21,12 +21,24 @@ export function AiMenu({ onClose, onPick, onDiscuss, onAnalyze, canDiscuss, sugg
     return () => { window.removeEventListener("keydown", onKey, true); document.removeEventListener("pointerdown", onDown); };
   }, [onClose, anchorRef]);
   const item = { ...btnReset, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, width: "100%", padding: "9px 12px", borderRadius: 12, textAlign: "left", color: C.text };
+  // Своя задача: человек пишет, что сделать, своими словами («составь список покупок», «переведи на английский»…)
+  const [prompt, setPrompt] = useState("");
+  const sendPrompt = (e) => { e.preventDefault(); const p = prompt.trim(); if (p) onPick("custom", p); };
   return (
     <div ref={box} role="menu" aria-label="ИИ в заметке" className="nx-pop nx-note-menu" style={{
       position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 40, width: 262, padding: 6, boxSizing: "border-box",
       background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 20, boxShadow: `0 14px 36px color-mix(in srgb, ${C.bg} 65%, transparent)`,
     }}>
       <div style={{ fontSize: 12, color: C.mutedSoft, padding: "6px 12px 4px" }}>{hasSelection ? "Для выделенного фрагмента" : "Для всей заметки"}</div>
+      <form onSubmit={sendPrompt} style={{ display: "flex", gap: 6, padding: "4px 6px 6px" }}>
+        <input value={prompt} onChange={(e) => setPrompt(e.target.value.slice(0, NOTE_PROMPT_MAX))} maxLength={NOTE_PROMPT_MAX}
+          placeholder="Своя задача: что сделать?" aria-label="Своя задача для ИИ" enterKeyHint="send"
+          style={{ flex: 1, minWidth: 0, background: "transparent", color: C.text, fontSize: 14, fontFamily: "inherit", border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "8px 10px", outline: "none" }} />
+        <button type="submit" className="nx-icon-btn" disabled={!prompt.trim()} aria-label="Выполнить свою задачу"
+          style={{ ...btnReset, width: 36, height: 36, flexShrink: 0, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${prompt.trim() ? C.mint : C.borderStrong}`, opacity: prompt.trim() ? 1 : 0.5 }}>
+          {Icon.send({ c: prompt.trim() ? C.mint : C.muted, s: 14 })}
+        </button>
+      </form>
       {NOTE_AI_TASKS.map((t) => (
         <button key={t.id} type="button" role="menuitem" className="nx-row-btn" style={item} onClick={() => onPick(t.id)}>
           <span style={{ fontSize: 14 }}>{t.label}</span>

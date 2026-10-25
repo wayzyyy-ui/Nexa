@@ -164,7 +164,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
       </div>
 
       <div className="nx-storage-box" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 48, padding: "22px 30px 20px", marginBottom: 34 }}>
-        <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+        <div className="ng-storage-card nx-glass nx-glass-subtle" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
           <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 180 }}>
             {Icon.drive({ c: C.text, s: 24 })}
             {/* Колонка узкая: только объём и полоска. Пояснение — внизу карточки,
@@ -242,7 +242,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         {MEDIA_CATS.map((cat) => {
           const n = countOf(cat.id);
           return (
-            <button type="button" key={cat.id} className="nx-cat-card" onClick={() => onOpenCategory(cat.id)} style={{
+            <button type="button" key={cat.id} className="nx-cat-card nx-glass nx-glass-subtle" onClick={() => onOpenCategory(cat.id)} style={{
               ...btnReset, border: `1px solid ${C.lineBright}`, borderRadius: 64,
               background: `color-mix(in srgb, ${C.panel} 35%, transparent)`,
               padding: "14px 24px 16px 28px", height: 122, boxSizing: "border-box",

@@ -252,7 +252,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         </div>
         <div className="nx-files-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           {(
-            <button type="button" className="nx-ghost-btn nx-fa-folder" onClick={startNewFolder} disabled={newFolder !== null} style={{
+            <button type="button" className="nx-ghost-btn nx-fa-folder nx-glass" onClick={startNewFolder} disabled={newFolder !== null} style={{
               ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
               border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
             }}>
@@ -260,14 +260,14 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             </button>
           )}
           {onNearby && (
-            <button type="button" className="nx-ghost-btn nx-fa-near" onClick={onNearby} style={{
+            <button type="button" className="nx-ghost-btn nx-fa-near nx-glass" onClick={onNearby} style={{
               ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
               border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
             }}>
               {Icon.signal({ c: C.text, s: 15 })} Рядом
             </button>
           )}
-          <button type="button" className="nx-ghost-btn nx-fa-clip" onClick={fromClipboard} disabled={clipBusy} style={{
+          <button type="button" className="nx-ghost-btn nx-fa-clip nx-glass" onClick={fromClipboard} disabled={clipBusy} style={{
             ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
             border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13,
           }}>

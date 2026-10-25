@@ -270,7 +270,9 @@ export const panelOf = (tab) => document.querySelector(`[data-panel="${tab}"]`);
 // Что двигать у раздела: у ассистента — его закреплённую обёртку, у остальных — сам блок раздела
 const moverOf = (panel) => panel && (panel.querySelector(".ng-assistant-wrapper") || panel);
 // Видна ли общая верхняя строка в этом разделе (на телефонной Главной своя шапка)
-const topbarShown = (tab) => tab !== "home";
+// На телефоне верхняя строка со значками есть только у ассистента (у Главной своя шапка; на остальных
+// разделах её убрали по просьбе автора 2026-10-25) — при свайпе она проявляется / гаснет вместе с ходом
+const topbarShown = (tab) => tab === "assistant";
 const EASE = "cubic-bezier(0.2, 0.9, 0.3, 1)"; // быстро стартует (как палец) и мягко останавливается
 
 /* getCtx() → { tab, sub }; handlers:

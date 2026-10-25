@@ -69,6 +69,38 @@ export async function uploadNoteImage(uid, img, scope) {
   }
 }
 
+/* Картинка из буфера обмена — только по нажатию кнопки. Сайт и ПК — navigator.clipboard.read;
+   приложение Android — ещё @capacitor/clipboard (если отдаёт картинку как data:image/…).
+   Ответ: { file } или { error } — понятная причина */
+export async function readClipboardImage() {
+  try {
+    if (navigator.clipboard?.read) {
+      const items = await navigator.clipboard.read();
+      for (const it of items) {
+        const t = it.types.find((x) => /^image\/(png|jpeg|webp|gif)$/.test(x));
+        if (t) {
+          const blob = await it.getType(t);
+          if (blob.size) return { file: new File([blob], `Из буфера.${t.split("/")[1].replace("jpeg", "jpg")}`, { type: t }) };
+        }
+      }
+    }
+  } catch { /* браузер не дал прочитать картинку — попробуем способ приложения */ }
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (Capacitor.isNativePlatform()) {
+      const { Clipboard } = await import("@capacitor/clipboard");
+      const r = await Clipboard.read();
+      const m = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/.exec(r?.value || "");
+      if (m) {
+        const bin = atob(m[2]);
+        const buf = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        return { file: new File([buf], `Из буфера.${m[1].split("/")[1].replace("jpeg", "jpg")}`, { type: m[1] }) };
+      }
+    }
+  } catch { /* нет доступа */ }
+  return { error: "В буфере нет картинки — скопируйте фото и нажмите ещё раз. Ещё можно вставить его в текст заметки (долгое нажатие → «Вставить»)" };
+}
+
 // Картинку убрали из заметки (или удалили заметку): стираем копию здесь и в облаке
 export async function purgeNoteImages(uid, scope, images) {
   for (const img of images || []) {

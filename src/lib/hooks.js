@@ -407,11 +407,15 @@ export function useKeyboardViewport() {
       // Без поля в фокусе клавиатуры нет — эта высота и есть обычная
       baseH = field ? Math.max(baseH, h) : h;
       root.style.setProperty("--vvh", `${h}px`);
-      root.style.setProperty("--vvt", `${vv ? vv.offsetTop : 0}px`);
+      // Сдвиг видимой области бывает только при открытой клавиатуре. Без поля в фокусе — 0:
+      // Safari на айфоне иногда оставляет старый сдвиг после закрытия клавиатуры, и весь
+      // закреплённый экран (ассистент) рисовался выше места, куда приходят нажатия
+      root.style.setProperty("--vvt", `${vv && field ? vv.offsetTop : 0}px`);
       document.body.classList.toggle("kb-open", field && baseH - h > 120);
     };
     // Фокус уходит — activeElement меняется чуть позже, проверяем в следующем кадре
-    const syncSoon = () => requestAnimationFrame(sync);
+    // и ещё раз после того, как клавиатура доехала (на айфоне событий от неё может не быть)
+    const syncSoon = () => { requestAnimationFrame(sync); setTimeout(sync, 400); };
     sync();
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync);

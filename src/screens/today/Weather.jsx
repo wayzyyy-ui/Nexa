@@ -1,5 +1,5 @@
 // Карточка погоды, выбор города, прогноз на 2 недели, подпись источника
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, fontDisplay } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { weatherKind, searchCities, forecastDayLabel } from "../../lib/weather.js";
@@ -74,7 +74,7 @@ export function RainDrops() {
 // rain — идёт дождь (капли на складке температуры)
 export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, rain, details, art, veil, footer, grow, onCity, cityPicker }) {
   return (
-    <div className="nx-weather" style={{
+    <div className="nx-weather nx-glass nx-glass-subtle" style={{
       position: "relative", overflow: "hidden",
       border: `1px solid ${C.borderStrong}`, borderRadius: 16, padding: "22px 24px",
       display: "flex", flexDirection: "column", boxSizing: "border-box",
@@ -232,6 +232,7 @@ export function WeatherAttribution({ w, style }) {
 export function CityPicker({ onPick, onAuto, onClose, isManual }) {
   const [q, setQ] = useState("");
   const [state, setState] = useState({ loading: false, list: [], error: null });
+  const touch = useRef(null); // где палец коснулся варианта (отличить нажатие от прокрутки)
   useEffect(() => {
     const text = q.trim();
     if (text.length < 2) { setState({ loading: false, list: [], error: null }); return; }
@@ -267,7 +268,15 @@ export function CityPicker({ onPick, onAuto, onClose, isManual }) {
           <div style={{ fontSize: 13, color: C.mutedSoft, padding: "6px 2px" }}>Ничего не нашлось</div>
         )}
         {state.list.map((c) => (
-          <button key={c.lat + "," + c.lon} type="button" className="nx-row-btn" onClick={() => onPick(c)} style={{
+          // Город выбирается уже при отпускании пальца (tap): иначе на айфоне поле теряло фокус,
+          // клавиатура закрывалась, список съезжал — и нажатие уходило мимо города
+          <button key={c.lat + "," + c.lon} type="button" className="nx-row-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(c)}
+            onTouchStart={(e) => { touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+            onTouchEnd={(e) => {
+              const t = touch.current, p = e.changedTouches[0]; touch.current = null;
+              if (!t || Math.abs(p.clientX - t.x) > 10 || Math.abs(p.clientY - t.y) > 10) return; // это была прокрутка
+              e.preventDefault(); onPick(c);
+            }} style={{
             ...btnReset, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "baseline", gap: 8,
             padding: "8px 4px", borderBottom: "1px solid " + C.border, fontSize: 14,
           }}>

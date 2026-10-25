@@ -99,7 +99,7 @@ export function DropBanner({ drop, st, onClose }) {
 
   return (
     <div ref={ref} role={error ? "alert" : "status"} aria-live="polite" data-no-swipe
-      className={`nx-air nx-glass nx-glass-prominent ${send ? "is-send" : "is-in"}${recv ? " is-recv" : ""}${done ? " is-done" : ""}${error ? " is-error" : ""}${leaving ? " is-leaving" : ""}`}>
+      className={`nx-air nx-glass nx-glass-prominent ${send ? "is-send" : "is-in"}${recv ? " is-recv" : ""}${done ? " is-done" : ""}${error ? " is-error" : ""}${actions?.length > 1 ? " has-acts" : ""}${leaving ? " is-leaving" : ""}`}>
       {/* Сцена: файл ↔ дуга ↔ устройство */}
       <div className="nx-air-scene" aria-hidden="true">
         <div className="nx-air-node nx-air-left">

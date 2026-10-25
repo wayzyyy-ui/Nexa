@@ -9,7 +9,14 @@ test("подсказка нужна только когда курсор в ко
   assert.equal(suggestionWanted(t, 3, 3), false, "курсор не в конце");
   assert.equal(suggestionWanted(t, 0, t.length), false, "есть выделение");
   assert.equal(suggestionWanted("Привет", 6, 6), false, "слишком коротко");
-  assert.equal(suggestionWanted("Сегодня я хочу работать\n", 24, 24), false, "новая строка");
+  const para = "Сегодня я хочу работать над длинной статьёй про устройство системы и её части.\n";
+  assert.equal(suggestionWanted(para, para.length, para.length), false, "новая строка после абзаца");
+  const list = "Дела на завтра\n☐ Купить молоко\n☐ ";
+  assert.equal(suggestionWanted(list, list.length, list.length), true, "пустой пункт списка — подсказать следующий");
+  const plain = "Купить молоко\nПозвонить маме\n";
+  assert.equal(suggestionWanted(plain, plain.length, plain.length), true, "короткие строки подряд — тоже список");
+  const dash = "Покупки:\n- хлеб\n";
+  assert.equal(suggestionWanted(dash, dash.length, dash.length), true, "пункт с дефисом");
   assert.equal(suggestionWanted("Сегодня я хочу работать ", 24, 24), true, "пробел в конце — можно");
 });
 

@@ -22,6 +22,55 @@ import { ghost, primary, chip, readOpen, writeOpen } from "./notes/shared.js";
    n — метка нажатия, чтобы та же просьба второй раз тоже сработала */
 export function ScreenNotes({ notes, api, uid, onBack, request, schedule = [], onAddSchedule, toast, onAskAi }) {
   const phone = useMediaQuery(PHONE_MQ);
+  const screenRef = useRef(null);
+  const backRef = useRef(onBack); backRef.current = onBack;
+  /* Телефон: смахнуть список заметок вправо — назад в «Сегодня» (как «← Сегодня»). Экран едет за пальцем;
+     дальше трети ширины или быстрый флик — уезжает, иначе возвращается. Не мешаем: поля ввода, ряды,
+     которые листаются вбок (data-no-swipe), меню, 24 px у левого края (там системный «Назад»).
+     Открытая заметка — свой экран поверх (у неё своё смахивание), сюда её касания не доходят */
+  useEffect(() => {
+    const el = screenRef.current;
+    if (!phone || !el) return;
+    const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let g = null;
+    const reset = () => { el.style.transition = "transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 220ms ease"; el.style.transform = ""; el.style.opacity = ""; };
+    const down = (e) => {
+      g = null;
+      const t = e.touches[0];
+      // Жест — по всему экрану (не только по списку: заметок может быть мало, ниже — пустое место),
+      // кроме открытой заметки, окон, нижней панели и того, что листается вбок
+      if (e.touches.length !== 1 || t.clientX < 24 || document.querySelector(".nx-notepad-editor")
+        || e.target.closest?.('input, textarea, select, [data-no-swipe], [role="menu"], [role="dialog"], .nx-viewer, .nx-tabbar-pill, .nx-notepad-fab')) return;
+      g = { x: t.clientX, y: t.clientY, at: performance.now(), dx: 0, axis: null };
+    };
+    const move = (e) => {
+      if (!g) return;
+      const t = e.touches[0], dx = t.clientX - g.x, dy = t.clientY - g.y;
+      if (!g.axis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) g.axis = dx > 0 && dx > Math.abs(dy) * 1.5 ? "x" : "y";
+      if (g.axis !== "x") return;
+      g.dx = Math.max(0, dx);
+      if (still()) return;
+      el.style.transition = "none";
+      el.style.transform = `translateX(${g.dx}px)`;
+      el.style.opacity = String(1 - Math.min(0.4, g.dx / el.offsetWidth / 1.5));
+    };
+    const up = () => {
+      const s0 = g; g = null;
+      if (!s0 || s0.axis !== "x") return;
+      const w = el.offsetWidth || innerWidth, fast = s0.dx > 50 && s0.dx / Math.max(1, performance.now() - s0.at) > 0.5;
+      if (s0.dx > w / 3 || fast) {
+        if (still()) { backRef.current(); return; }
+        el.style.transition = "transform 200ms cubic-bezier(0.4, 0, 1, 1), opacity 200ms ease";
+        el.style.transform = `translateX(${w}px)`; el.style.opacity = "0";
+        setTimeout(() => backRef.current(), 190);
+      } else reset();
+    };
+    document.addEventListener("touchstart", down, { passive: true });
+    document.addEventListener("touchmove", move, { passive: true });
+    document.addEventListener("touchend", up, { passive: true });
+    document.addEventListener("touchcancel", up, { passive: true });
+    return () => { document.removeEventListener("touchstart", down); document.removeEventListener("touchmove", move); document.removeEventListener("touchend", up); document.removeEventListener("touchcancel", up); };
+  }, [phone]);
   const [query, setQuery] = useState("");
   const [view, setView] = useState("active"); // "active" | "archive"
   const [tag, setTag] = useState(null);       // фильтр по тегу
@@ -175,7 +224,7 @@ export function ScreenNotes({ notes, api, uid, onBack, request, schedule = [], o
   );
 
   return (
-    <div className="ng-screen nx-notepad" style={phone ? { padding: "28px 40px 40px", textAlign: "left" } : { textAlign: "left" }}>
+    <div ref={screenRef} className="ng-screen nx-notepad" style={phone ? { padding: "28px 40px 40px", textAlign: "left" } : { textAlign: "left" }}>
       {phone ? (
         <>
           <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Сегодня</Crumb>
@@ -296,7 +345,7 @@ function NoteCard({ note, active, archived, onOpen, onPin, onArchive, onDelete, 
   const item = { ...btnReset, display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 12, fontSize: 14, color: C.text, textAlign: "left" };
   const pick = (fn) => () => { setMenu(false); setSure(false); fn(); };
   return (
-    <div ref={box} className="nx-notepad-card" data-active={active ? "1" : "0"} style={{
+    <div ref={box} className="nx-notepad-card nx-glass nx-glass-subtle" data-active={active ? "1" : "0"} style={{
       position: "relative", border: `1px solid ${active ? C.mint : C.lineBright}`, borderRadius: 24,
       background: active ? `color-mix(in srgb, ${C.mint} 9%, transparent)` : "transparent", transition: "border-color 160ms ease, background-color 160ms ease",
     }}>

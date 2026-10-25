@@ -360,7 +360,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
         <div className="nx-home-grid">
           {/* Мои устройства */}
           {/* data-nosnippet — поисковики не берут отсюда текст для описания сайта (тут личные устройства) */}
-          <section className="nx-home-card nx-home-devices" aria-label="Мои устройства" data-nosnippet>
+          <section className="nx-home-card nx-home-devices nx-glass nx-glass-subtle" aria-label="Мои устройства" data-nosnippet>
             <div className="nx-home-card-title">Мои устройства</div>
             <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {empty}
@@ -384,7 +384,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           </div>
         </div>
 
-        {activityBlock && <div className="nx-home-act" data-nosnippet>{activityBlock}</div>}
+        {activityBlock && <div className="nx-home-act nx-glass nx-glass-subtle" data-nosnippet>{activityBlock}</div>}
         {onAbout && (
           <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
             {/* Подпись студии — слева, «Подробнее о системе» — справа */}
@@ -463,14 +463,14 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             })()}
           </div>
           {devices.length > HOME_MOB_MAX && (
-            <button type="button" className="nx-row-btn nx-pill-card nx-home-more" onClick={onAllDevices}>Все устройства · {devices.length}</button>
+            <button type="button" className="nx-row-btn nx-pill-card nx-home-more nx-glass nx-glass-subtle" onClick={onAllDevices}>Все устройства · {devices.length}</button>
           )}
         </div>
 
         <div style={{ marginTop: 24 }}>{aiPill()}</div>
-        {activityBlock && <div className="nx-act-pill" style={{ marginTop: 18 }} data-nosnippet>{activityBlock}</div>}
+        {activityBlock && <div className="nx-act-pill nx-glass nx-glass-subtle" style={{ marginTop: 18 }} data-nosnippet>{activityBlock}</div>}
         {onAbout && (
-          <button type="button" className="nx-row-btn nx-pill-card nx-home-more" onClick={onAbout}>О системе</button>
+          <button type="button" className="nx-row-btn nx-pill-card nx-home-more nx-glass nx-glass-subtle" onClick={onAbout}>О системе</button>
         )}
       </div>
     </div>

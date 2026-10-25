@@ -39,8 +39,9 @@ async function ask(body, signal) {
 }
 
 // Действие над текстом: результат — строка (пустая — модель ничего не вернула)
-export async function runNoteTask({ task, text, signal }) {
-  const out = await ask({ task, text: String(text).slice(0, NOTE_AI_TEXT_MAX) }, signal);
+export const NOTE_PROMPT_MAX = 300; // своя задача — как на сервере
+export async function runNoteTask({ task, text, prompt, signal }) {
+  const out = await ask({ task, text: String(text).slice(0, NOTE_AI_TEXT_MAX), ...(task === "custom" ? { prompt: String(prompt || "").slice(0, NOTE_PROMPT_MAX) } : {}) }, signal);
   return out.replace(/^\s*```[a-z]*\n?|\n?```\s*$/g, "").replace(/\s+$/, "");
 }
 

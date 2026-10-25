@@ -313,9 +313,18 @@ useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
     const back = () => { if (window.scrollY !== 0) window.scrollTo(0, 0); };
+    // Safari на айфоне: страница, оставшаяся прокрученной (пришли с прокрученного раздела,
+    // клавиатура закрылась), сдвигает места нажатий относительно кнопок шапки — возвращаем
+    // сразу при входе и после закрытия клавиатуры
+    const backLater = () => setTimeout(back, 400);
+    back();
     vv.addEventListener('resize', back);
     vv.addEventListener('scroll', back);
-    return () => { vv.removeEventListener('resize', back); vv.removeEventListener('scroll', back); };
+    document.addEventListener('focusout', backLater);
+    return () => {
+      vv.removeEventListener('resize', back); vv.removeEventListener('scroll', back);
+      document.removeEventListener('focusout', backLater);
+    };
   }, []);
 
   const newChat = () => { if (currentChatId) rememberInputPos(); setCurrentChatId(null); setInput(''); };

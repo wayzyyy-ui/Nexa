@@ -375,7 +375,7 @@ export function SettingsRow({ icon, title, subtitle, right, last, wrap, onClick 
 export function SettingsGroup({ children }) {
   return (
     // Фон страницы — карточка лежит на сетке-чертеже как плашка, линии не идут сквозь текст
-    <div className="nx-set-group" style={{ border: `1px solid ${C.border}`, borderRadius: T.r.lg, overflow: "hidden", marginBottom: T.sp[8], background: C.bg }}>
+    <div className="nx-set-group nx-glass nx-glass-subtle" style={{ border: `1px solid ${C.border}`, borderRadius: T.r.lg, overflow: "hidden", marginBottom: T.sp[8], background: C.bg }}>
       {children}
     </div>
   );

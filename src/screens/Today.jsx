@@ -236,12 +236,12 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
         gap: "18px 44px", alignItems: "start",
       }}>
         {/* alignSelf: stretch — рамка расписания всегда по высоте правой колонки */}
-        <section className="nx-sched" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px 30px" }}>
+        <section className="nx-sched nx-glass nx-glass-subtle" style={{ gridArea: "sched", alignSelf: "stretch", border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px 30px" }}>
           <div className="nx-sched-head" style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: fontDisplay, fontSize: 20, marginBottom: 14 }}>
             <span className="nx-sched-name">Расписание</span>
             {/* Своё дело: открывает форму над таймлайном (на телефоне эта кнопка — ниже, рядом с «Календарём») */}
             {!adding && (
-              <button type="button" className="nx-ghost-btn nx-sched-add-top" onClick={() => setAdding(true)} style={{
+              <button type="button" className="nx-ghost-btn nx-sched-add-top nx-glass" onClick={() => setAdding(true)} style={{
                 ...btnReset, marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontFamily: fontBody,
                 fontSize: 13, padding: "6px 12px", borderRadius: 999, border: `1px solid ${C.borderStrong}`,
               }}>
@@ -258,7 +258,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
               Календарь
             </button>
             {!adding && (
-              <button type="button" className="nx-ghost-btn nx-sched-add-row" onClick={() => setAdding(true)}
+              <button type="button" className="nx-ghost-btn nx-sched-add-row nx-glass" onClick={() => setAdding(true)}
                 style={{ ...btnReset, flex: 1, fontSize: 14, padding: "7px 14px", borderRadius: 999, border: `1px solid ${C.lineBright}`, justifyContent: "center", alignItems: "center", gap: 6 }}>
                 {Icon.plus({ c: C.mint, s: 14 })} Добавить
               </button>

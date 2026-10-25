@@ -19,7 +19,7 @@ import {
   NOTE_TITLE_MAX, NOTE_TEXT_MAX, NOTE_TAGS_MAX, NOTE_TAG_LEN, NOTE_IMAGES_MAX,
 } from "../../lib/userNotes.js";
 import { runNoteTask, fetchSuggestion, suggestionWanted, joinSuggestion, replaceRange, appendContinuation, NOTE_AI_TEXT_MAX, SUGGEST_PAUSE_MS, SUGGEST_GAP_MS } from "../../lib/noteAi.js";
-import { storeNoteImage, uploadNoteImage, purgeNoteImages } from "../../lib/noteImages.js";
+import { storeNoteImage, uploadNoteImage, purgeNoteImages, readClipboardImage } from "../../lib/noteImages.js";
 import { PhotoFullscreen } from "../../ui/FileViewer.jsx";
 import { ScheduleForm } from "../Today.jsx";
 import { ghost, round, linkBtn, useSuggestOn } from "./shared.js";
@@ -295,6 +295,12 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
     if (!uid || !navigator.onLine) return;
     (note?.images || []).forEach((img) => { uploadOne(img).catch(() => {}); });
   }, [id]);
+  // Фото из буфера обмена — кнопкой (на телефоне вставить картинку в поле текста получается не всегда)
+  const pasteImage = async () => {
+    const r = await readClipboardImage();
+    if (r.file) addImages([r.file]);
+    else toast?.({ title: "Картинки в буфере нет", text: r.error });
+  };
   const onPaste = (e) => {
     const files = [...(e.clipboardData?.files || [])].filter((f) => /^image\//.test(f.type));
     if (!files.length) return;
@@ -333,7 +339,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
      «Применить» вставляет его на место, «Отменить» ничего не меняет. Запрос отменяется при закрытии заметки */
   const aiCtl = useRef(null);
   const cancelAi = () => { aiCtl.current?.abort(); aiCtl.current = null; setAi(null); };
-  const runAi = async (task) => {
+  const runAi = async (task, prompt = "") => {
     setMenu(null);
     const ta = textRef.current;
     const t = draft.current.text;
@@ -341,15 +347,15 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
     const sel = to > from && !!t.slice(from, to).trim();
     if (!sel) { from = 0; to = t.length; }
     const orig = t.slice(from, to);
-    if (!orig.trim()) { setAi({ task, phase: "error", sel, error: "Сначала напишите текст — ИИ нечего обрабатывать" }); return; }
+    if (!orig.trim() && task !== "custom") { setAi({ task, phase: "error", sel, error: "Сначала напишите текст — ИИ нечего обрабатывать" }); return; }
     if (task !== "continue" && orig.length > NOTE_AI_TEXT_MAX) { setAi({ task, phase: "error", sel, error: "Текст слишком длинный — выделите часть заметки" }); return; }
     aiCtl.current?.abort();
     const ctl = new AbortController(); aiCtl.current = ctl;
-    const ctx = { task, sel, from, to, orig };
+    const ctx = { task, sel, from, to, orig, prompt };
     setAi({ ...ctx, phase: "loading" });
     try {
       const body = task === "continue" ? t.slice(0, to).slice(-NOTE_AI_TEXT_MAX) : orig;
-      const out = await runNoteTask({ task, text: body, signal: ctl.signal });
+      const out = await runNoteTask({ task, text: body, prompt, signal: ctl.signal });
       if (aiCtl.current !== ctl) return;
       if (!out.trim()) throw Object.assign(new Error("empty"), { userMessage: "ИИ ничего не предложил — попробуйте ещё раз" });
       setAi({ ...ctx, phase: "result", result: out });
@@ -490,7 +496,9 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
     const r = continueChecklist(el.value, el.selectionStart);
     if (!r) return;
     e.preventDefault();
+    quiet.current = false;
     setTextAt(r.text, r.pos);
+    scheduleSuggest(); // новый пункт списка — подскажем следующее дело
   };
   const onTextClick = (e) => {
     const el = e.currentTarget;
@@ -522,6 +530,12 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
     <button type="button" className="nx-icon-btn" {...keep} onClick={() => fileRef.current?.click()} disabled={uploading > 0 || images.length >= NOTE_IMAGES_MAX}
       aria-label="Добавить картинку" title="Картинка" style={{ ...round, opacity: images.length >= NOTE_IMAGES_MAX ? 0.4 : 1 }}>
       {uploading > 0 ? <span aria-hidden="true" className="nx-spin" style={{ width: 14, height: 14, borderRadius: 999, border: `2px solid ${C.border}`, borderTopColor: C.mint }} /> : Icon.image({ c: C.text, s: 16 })}
+    </button>
+  );
+  const clipBtn = (
+    <button type="button" className="nx-icon-btn" {...keep} onClick={pasteImage} disabled={uploading > 0 || images.length >= NOTE_IMAGES_MAX}
+      aria-label="Вставить фото из буфера обмена" title="Фото из буфера" style={{ ...round, opacity: images.length >= NOTE_IMAGES_MAX ? 0.4 : 1 }}>
+      {Icon.copy({ c: C.text, s: 15 })}
     </button>
   );
   const checkBtn = (
@@ -638,7 +652,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
   );
   const showTip = ghostTip && ghostTip.base === text;
   const body = (
-    <div style={{ position: "relative", flex: 1, minHeight: phone ? 0 : 300, display: "flex" }}>
+    <div style={{ position: "relative", flex: 1, minHeight: phone ? 0 : 120, display: "flex" }}>
       <textarea ref={textRef} value={text} maxLength={NOTE_TEXT_MAX} placeholder={phone ? "Текст заметки. Для списка дел — кнопка ☑ внизу" : "Текст"} aria-label="Текст заметки"
         onChange={onTextChange} onKeyDown={onTextKey} onClick={onTextClick} onPaste={onPaste}
         onSelect={onSelectionMove} onBlur={drop}
@@ -653,7 +667,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
       <div className="nx-notepad-in">{notices}</div>
       {tagsRow}
       <div className="nx-notepad-in"><NoteImages images={images} uid={uid} scope={scope} phone={phone} onOpen={setViewImg} onRemove={removeImage} /></div>
-      <div className="nx-notepad-in"><AiPanel ai={ai} onApply={applyAi} onCancel={cancelAi} onRetry={() => runAi(ai.task)} /></div>
+      <div className="nx-notepad-in"><AiPanel ai={ai} onApply={applyAi} onCancel={cancelAi} onRetry={() => runAi(ai.task, ai.prompt)} /></div>
       {body}
     </>
   );
@@ -683,6 +697,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
         <div className="nx-note-tools" style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, flexShrink: 0 }}>
           {checkBtn}
           {attachBtn}
+          {clipBtn}
           <span style={{ flex: 1 }} />
           {exists && <span style={{ fontSize: 12, color: C.mutedSoft }}>Изменено {noteWhen(note.updatedAt)}</span>}
         </div>
@@ -701,6 +716,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
         <div style={{ flex: 1 }} />
         {checkBtn}
         {attachBtn}
+        {clipBtn}
         {schedBtn}
         {archBtn}
         {delBtn}

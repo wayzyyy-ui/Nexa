@@ -145,7 +145,7 @@ export const APP_CSS = `
           /* Светлая Главная: панель меню, «стекло» карточек, сплошная «Добавить» */
           --home-side: rgba(255, 255, 255, 0.62); --home-glass: rgba(140, 150, 166, 0.26); --home-glass-line: rgba(255, 255, 255, 0.7);
           --home-add: #F4F7FA; --home-gray: #8C96A6; --on-red: #FFFFFF;
-          --gate-card: rgba(128, 128, 128, 0.62); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.82);
+          --gate-card: rgba(84, 86, 92, 0.74); --gate-text: #ffffff; --gate-muted: rgba(255, 255, 255, 0.9);
           --gate-border: rgba(255, 255, 255, 0.45); --gate-field: rgba(230, 230, 230, 0.86); --gate-field-text: #15181f; --gate-scene: #d9d9db;
           --scrim: rgba(10, 16, 36, 0.38);
           --on-fold: #FFFFFF;  --photo-bg: #070B12; /* фото и в светлой теме — на тёмном */
@@ -412,7 +412,9 @@ export const APP_CSS = `
           font-size: 15px; color: var(--text) !important; background: transparent !important; font-family: inherit; cursor: pointer; }
         @media ${PHONE_MQ} {
           /* .nx-tb-fade — во время свайпа строка проявляется / гаснет за пальцем (useTabSwipe) */
-          .ng-topbar[data-tab="home"]:not(.nx-tb-fade) { display: none !important; }
+          /* Верхняя строка со значками на телефоне — только у ассистента (у Главной своя шапка; на «Сегодня»,
+             «Медиа», «Файлах», в Настройках её убрали по просьбе автора 2026-10-25). Во время свайпа — видна и гаснет */
+          .ng-topbar:not([data-tab="assistant"]):not(.nx-tb-fade) { display: none !important; }
           .nx-top-search { display: none !important; }
           .nx-top-search-icon { display: inline-flex; }
           .ng-topbar { gap: 2px !important; }
@@ -659,7 +661,7 @@ export const APP_CSS = `
     .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
     /* Две колонки на всю оставшуюся высоту окна: список прокручивается сам (тонкая полоса), заметка — справа */
     .nx-notepad-desk { position: relative; display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(72 * var(--mk)); align-items: stretch; margin-top: calc(63 * var(--mk));
-      height: max(480px, calc(100vh - 303 * var(--mk))); }
+      height: max(340px, calc(100vh - 303 * var(--mk))); } /* низ — не меньше 340: на невысоком окне панель с текстом раньше уходила под нижний край окна и текст обрезался */
     .nx-notepad-side { display: flex; flex-direction: column; min-height: 0; position: relative; z-index: 1; }
     .nx-notepad-side > * { flex-shrink: 0; }
     .nx-notepad-desk .nx-notepad-ctags { padding-left: max(26px, calc(40 * var(--mk))) !important; margin-top: -10px; }
@@ -716,6 +718,9 @@ export const APP_CSS = `
     border: 1px solid color-mix(in srgb, var(--gate-text) 10%, transparent);
     -webkit-backdrop-filter: blur(28px) saturate(1.15); backdrop-filter: blur(28px) saturate(1.15);
   }
+  /* Светлая тема: карточка серая, тёмно-мятные ссылки («Изменить почту», «Войти по почте»)
+     на ней почти не видны — внутри карточки мятный тот же яркий, что в тёмной теме */
+  :root[data-theme="light"] .nx-gate-card { --mint: #00FFDF; }
   .nx-gate-mtitle { display: none; }
   .nx-gate-hello { display: flex; flex-direction: column; align-items: center; text-align: center; }
   .nx-gate-logo { display: flex; align-items: center; gap: clamp(20px, 3vw, 64px); }
@@ -760,9 +765,14 @@ export const APP_CSS = `
   @media ${PHONE_MQ} {
     /* Вертикальный рендер на весь экран (gate-*-m.webp), устройства — в верхней половине */
     .nx-gate-scene img { object-position: center top; }
+    /* Шторка всегда прижата к низу экрана: сверху — растущий отступ (не меньше 22% высоты),
+       шторка высокая (шаг с кодом, QR) — экран просто прокручивается. Раньше был жёсткий
+       отступ 58vh: высокая шторка уезжала вниз за край, а прокрученная — «отрывалась» от низа */
+    .nx-auth-gate { display: flex; flex-direction: column; }
+    .nx-auth-gate::before { content: ""; flex: 1 0 22vh; }
     .nx-gate-card {
       position: relative; right: auto; top: auto; transform: none; width: 100%; min-height: 42vh;
-      margin-top: 58vh; border-radius: 32px 32px 0 0; padding: 30px 22px calc(var(--sab) + 28px);
+      margin-top: 0; flex-shrink: 0; border-radius: 32px 32px 0 0; padding: 30px 22px calc(var(--sab) + 28px);
       border-bottom: none; justify-content: flex-start;
     }
     .nx-gate-logo svg:first-child { width: 52px; } .nx-gate-logo svg:last-child { height: 26px; }
@@ -1019,6 +1029,11 @@ export const APP_CSS = `
           .nx-air-arc { left: 30px; right: 30px; width: calc(100% - 60px); }
           .nx-air-chip { offset-path: path("M 18 24 Q 52 -4 86 24"); }
           .nx-air-title { font-size: 13px; }
+          /* Две кнопки («Открыть», «В «Файлы»») не помещаются в одну строку с названием —
+             на телефоне они уходят вторым рядом во всю ширину */
+          .nx-air.has-acts { flex-wrap: wrap; row-gap: 8px; border-radius: 26px; padding: 10px; }
+          .nx-air.has-acts .nx-air-actions { width: 100%; gap: 8px; }
+          .nx-air.has-acts .nx-air-actions > button:not(.nx-icon-btn) { flex: 1; justify-content: center; text-align: center; }
         }
         @media (prefers-reduced-motion: reduce) {
           .nx-air, .nx-air.is-leaving, .nx-air-right, .nx-air.is-in .nx-air-right, .nx-air.is-done .nx-air-right { animation: none !important; }
@@ -1603,6 +1618,13 @@ export const APP_CSS = `
           ::-webkit-scrollbar { width: 20px; height: 20px; }
           ::-webkit-scrollbar-thumb { border-width: 5px; min-height: 64px; min-width: 64px; }
           ::-webkit-scrollbar-thumb:active { border-width: 4px; }
+        }
+
+        /* Телефон: ползунков прокрутки нет совсем — ни у страницы, ни у блоков внутри (просьба автора 2026-10-25):
+           листают пальцем, полоса только мешала. В приложении Android полосу страницы прячет и сам Android (MainActivity) */
+        @media ${PHONE_MQ} {
+          html, body, * { scrollbar-width: none !important; }
+          ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
         }
 
         /* ─── Планшет ──────────────────────────────────────── */
