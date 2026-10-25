@@ -1,11 +1,11 @@
 {
-  "version": "0.15.10",
-  "notes": "- Можно помочь улучшить ассистента: по согласию он присылает непонятые короткие просьбы без аккаунта и устройства (Настройки → «Улучшение ассистента»)\n- «Выключи светлую тему» теперь включает тёмную, и наоборот\n- Вопросы «как подключить…» и просьбы «удали…» ассистент больше не путает с командами",
-  "pub_date": "2026-10-25T17:03:54.762Z",
+  "version": "0.15.11",
+  "notes": "- NEXA Mini — наша собственная нейросеть: простые просьбы ассистент понимает сам, прямо на устройстве\n- Можно помочь ей учиться: окно при входе на Главную, по желанию, без аккаунта и устройства (Настройки → «Улучшение ассистента»)\n- Всем вошедшим придёт уведомление о NEXA Mini",
+  "pub_date": "2026-10-25T17:32:31.428Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXlQcXdXMUZma3JCV3dFeGRXdGc1cVBnNzRYdWlEbHhqZXRFa3R2RGdFYVZlYXZMSFVLci9qanlBaGIxZHI3b2dxMUQzdUc2RWNJbk1OTzl5cmNva2dJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ3ODM0CWZpbGU6TkVYQV8wLjE1LjEwX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjE1LjEwCkxJMGdHSlc3bWpsNUVHZEcwREtBM21OSFYya0h1dFRRbEZkbnJXUUxCeXpDUzc3ekc0ai8zWm5lcGpjeFlWb2wwV29hTm11eDRQSVRnK2JOUDFWVEFBPT0K",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.10"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXl3VzNxV1dtZDdPcmp6RStxekFqRXJ0Q2hwb2ovSDVwOUtkYzE2eVZLMkdyY3loRHczeU94TVBYWUVWN2Nhd2ZPREhTRG84bDVPMXNkcWlOWVpuT0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ5NTUxCWZpbGU6TkVYQV8wLjE1LjExX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjE1LjExCjVpclpRU2svSHVyaVBLWEttYTM2T1E1Q0F3bWNvQ1ZHWHlaYWY5dW1qQSs4WW40NzRpcWtmN0RFeFNha2Vma0tkemt0S1lKTzlUMXlISU45aVlUSUJ3PT0K",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.15.11"
     }
   }
 }
