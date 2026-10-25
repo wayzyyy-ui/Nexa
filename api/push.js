@@ -27,14 +27,20 @@
    POST { action: "message", target_device_id, id, text } (Bearer) — сообщение на экран блокировки
    своего телефона («Нашли телефон? Позвоните…»), до MESSAGE_MAX знаков.
 
+   POST { action: "announce", id, title, text, dry? } с заголовком x-nexa-admin: <NEXA_ADMIN_SECRET> — разовое
+   объявление («Встречайте NEXA Mini») на все телефоны с приложением NEXA, где выполнен вход (push_tokens).
+   Запускает только автор — скриптом scripts/announce.mjs. Уведомление FCM с блоком notification: Android
+   показывает его сам, даже если NEXA закрыта и APK старый; открытой NEXA оно не мешает (там своё объявление,
+   src/lib/announce.js). Одно и то же id — не чаще раза в 30 дней. dry: true — только посчитать телефоны.
+
    Нужны переменные Vercel (только на сервере):
    - FIREBASE_SERVICE_ACCOUNT — JSON ключа сервисного аккаунта Firebase (целиком);
    - SUPABASE_SERVICE_ROLE_KEY и SUPABASE_URL (как у входа по QR).
    Без них отвечает { sent: false, reason: "not_configured" } — приложение пишет об этом честно.
    Ключи и push-адреса в журнал не пишем. */
 import { createClient } from '@supabase/supabase-js';
-import { createSign, createHash, randomBytes } from 'node:crypto';
-import { allow } from './_lib/rate-limit.js';
+import { createSign, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { allow, clientKey } from './_lib/rate-limit.js';
 
 // Android (Capacitor) и приложение для ПК (Tauri: в Windows — http://tauri.localhost, в macOS/Linux — tauri://localhost)
 const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost'];
@@ -83,13 +89,17 @@ async function locateReply(req, res, sb) {
   return res.status(200).json({ ok: !!data?.length });
 }
 
+let testAdmin, testSa; // подмена базы и ключа Firebase в тестах (tests/announce.test.mjs)
+export function __setPushTest({ admin, sa } = {}) { testAdmin = admin; testSa = sa; cachedToken = sa ? { value: 'test', until: Date.now() + 3600e3 } : null; }
 function admin() {
+  if (testAdmin !== undefined) return testAdmin;
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 function serviceAccount() {
+  if (testSa !== undefined) return testSa;
   try {
     const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '');
     return sa.client_email && sa.private_key && sa.project_id ? sa : null;
@@ -131,6 +141,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const sb = admin(), sa = serviceAccount();
+  if (req.body?.action === 'announce') return announce(req, res, sb, sa);
   if (req.body?.action === 'locate-reply') {
     if (!sb) return res.status(200).json({ ok: false });
     return locateReply(req, res, sb);
@@ -252,4 +263,58 @@ async function staleToken(r) {
   if (r.status === 404 || code === 'UNREGISTERED') return true;
   if (r.status !== 400) return false;
   return details.some((d) => (d?.fieldViolations || []).some((v) => String(v?.field || '') === 'message.token'));
+}
+
+/* ── Разовое объявление на все телефоны с NEXA (см. начало файла) ── */
+const ANNOUNCE_TITLE_MAX = 80, ANNOUNCE_TEXT_MAX = 300;
+// Секрет сравниваем по отпечаткам одинаковой длины — время сравнения не подсказывает, сколько символов совпало
+function adminOk(req) {
+  const want = String(process.env.NEXA_ADMIN_SECRET || '');
+  const got = String(req.headers['x-nexa-admin'] || '');
+  if (want.length < 24 || !got) return false;
+  return timingSafeEqual(createHash('sha256').update(want).digest(), createHash('sha256').update(got).digest());
+}
+async function announce(req, res, sb, sa) {
+  // Перебор секрета: не больше 10 попыток в час с адреса (и верных, и неверных)
+  if (!(await allow([[`announce-try:${clientKey(req)}`, 10, 3600]]))) return res.status(429).json({ error: 'Слишком часто' });
+  if (!adminOk(req)) return res.status(403).json({ error: 'Нет доступа' });
+  const { id, dry } = req.body || {};
+  const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, ANNOUNCE_TITLE_MAX);
+  const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, ANNOUNCE_TEXT_MAX);
+  if (typeof id !== 'string' || !/^[a-z0-9-]{1,40}$/.test(id) || !title || !text) return res.status(400).json({ error: 'Неверный запрос' });
+  if (!sb || !sa) return res.status(200).json({ sent: 0, reason: 'not_configured' });
+  // Все push-адреса (порциями), один адрес — один раз (один телефон мог входить в разные аккаунты)
+  const tokens = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from('push_tokens').select('token').order('token').range(from, from + 999);
+    if (error) return res.status(200).json({ sent: 0, reason: missing(error) ? 'not_configured' : 'error' });
+    for (const r of data || []) if (typeof r.token === 'string' && r.token.length >= 10) tokens.add(r.token);
+    if (!data || data.length < 1000) break;
+  }
+  if (dry) return res.status(200).json({ devices: tokens.size, dry: true });
+  // Одно объявление — не чаще раза в 30 дней (повторный запуск скрипта не заспамит людей)
+  if (!(await allow([[`announce-id:${id}`, 1, 30 * 86400]]))) return res.status(409).json({ error: 'Это объявление уже рассылали' });
+  let sent = 0, stale = 0, failed = 0;
+  const access = await googleToken(sa);
+  const list = [...tokens];
+  // По 10 одновременно: и быстро, и не упираемся в ограничения Firebase
+  for (let i = 0; i < list.length; i += 10) {
+    await Promise.all(list.slice(i, i + 10).map(async (token) => {
+      try {
+        const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: {
+            token,
+            notification: { title, body: text },
+            data: { type: 'announce', id },
+            android: { priority: 'normal', ttl: '604800s', notification: { channel_id: 'nexa-updates', icon: 'ic_stat_nexa', tag: `announce-${id}` } },
+          } }),
+        });
+        if (await staleToken(r)) { stale++; await sb.from('push_tokens').delete().eq('token', token); return; }
+        if (r.ok) sent++; else { failed++; console.error('FCM announce:', r.status, r.fcmCode || ''); }
+      } catch { failed++; }
+    }));
+  }
+  return res.status(200).json({ devices: list.length, sent, stale, failed });
 }
