@@ -60,7 +60,7 @@ function RenameField({ name, onSave, onCancel }) {
 
 export function ScreenSecurity({
   onBack, user, onLogin, online, devices, mySid, onRename, onDisconnect, onEndSession, onSignOutOthers,
-  syncLine, locateBlock, flowOn, onOpenFlow, log, memoryInfo, onOpenMemory,
+  syncLine, locateBlock, flowOn, onOpenFlow, log, memoryInfo, onOpenMemory, miniOn, onOpenMini,
 }) {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   // Esc — назад (если не открыто окно или идёт переименование — их Esc обрабатывают сами)
@@ -268,6 +268,11 @@ export function ScreenSecurity({
           <SettingsRow icon={Icon.sparkle({ c: C.muted, s: 18 })} title="Память ассистента"
             subtitle={(memoryInfo.on ? "Учитывается в ответах" : "Выключена") + " · " + (memoryInfo.count ? `записей: ${memoryInfo.count}` : "пусто") + ". Только то, что вы сами попросили запомнить"}
             right={<button type="button" className="nx-ghost-btn" onClick={onOpenMemory} style={ghost}>Настроить</button>} />
+        )}
+        {onOpenMini && (
+          <SettingsRow icon={Icon.sparkle({ c: C.muted, s: 18 })} title="Улучшение ассистента"
+            subtitle={miniOn ? "Включено: непонятые короткие просьбы уходят без аккаунта и устройства, хранятся до 90 дней" : "Выключено — ничего не собирается и не отправляется"}
+            right={<button type="button" className="nx-ghost-btn" onClick={onOpenMini} style={ghost}>Настроить</button>} />
         )}
         <SettingsRow last icon={Icon.send({ c: C.muted, s: 18 })} title="Flow — текст и ссылки"
           subtitle={flowOn ? "Принимает текст и ссылки с ваших устройств. Пароли и ключи в историю не пишутся" : "Выключен — с других устройств ничего не принимается"}

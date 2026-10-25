@@ -33,7 +33,16 @@ export const ACTION_VERBS = [
 ];
 
 // С таких слов начинаются вопросы «про что-то» — это не команды
-export const EXPLAIN_START = /^(расскаж|объясн|почему|зачем|что такое|что значит|в чем разница|чем отлича|напиши|придумай|переведи|сравни)/;
+// «Как подключить…», «как удалить…» (вопрос «как сделать», а не просьба сделать) и «что делать» — тоже вопросы
+export const EXPLAIN_START = /^(расскаж|объясн|почему|зачем|что такое|что значит|в чем разница|чем отлича|напиши|придумай|переведи|сравни|что делать|как \S+(ть|ти|чь)( |$))/;
+
+// Удалить ассистент ничего не умеет — «удали устройство», «сотри файлы» уходят в чат (там объяснят, как это сделать),
+// а не открывают похожий экран
+export const NOT_COMMAND = ["удал", "стер", "сотр", "очист"];
+// «Выключи светлую тему» — это просьба о тёмной (и наоборот)
+export const NEGATE = ["выключ", "отключ", "убер", "убра"];
+// …но только если фраза с этого и начинается («почему не выключается тёмная тема» — вопрос)
+const OFF_START = /^(выключ|отключ|убер|убра)/;
 
 // Если в «сводке на сегодня» речь про это — это вопрос в чат, а не сводка
 export const NOT_SUMMARY = ["новост", "мир", "праздн", "курс", "матч", "футбол", "фильм", "кино", "гороскоп"];
@@ -60,8 +69,10 @@ export const ASSISTANT_COMMANDS = [
     test: ({ has, hasVerb, short }) => has(...DEVICE_WORDS)
       && !has("купить", "куп", "лучше", "выбра", "посовет") // «какие устройства лучше купить» — вопрос в чат
       && (hasVerb || short || has("онлайн", "сети", "подключ", "сколько", "мои", "меня", "список", "статус", "все")) },
-  { action: "theme", params: { mode: "light" }, when: "verb", test: ({ has }) => has("светл", "дневн") },
-  { action: "theme", params: { mode: "dark" }, when: "verb", test: ({ has }) => has("темн", "ночн") },
+  { action: "theme", params: { mode: "dark" }, when: "free", test: ({ n, has }) => OFF_START.test(n) && has("светл", "дневн") && !has("темн", "ночн") },
+  { action: "theme", params: { mode: "light" }, when: "free", test: ({ n, has }) => OFF_START.test(n) && has("темн", "ночн") && !has("светл", "дневн") },
+  { action: "theme", params: { mode: "light" }, when: "verb", test: ({ has }) => has("светл", "дневн") && !has(...NEGATE) },
+  { action: "theme", params: { mode: "dark" }, when: "verb", test: ({ has }) => has("темн", "ночн") && !has(...NEGATE) },
   { action: "theme", params: { mode: "toggle" }, when: "verb",
     test: ({ has }) => has("тем", "оформлен", "режим") && has("переключ", "смен", "помен", "друг", "обрат") },
   { action: "navigate", params: { tab: "files" }, when: "verb", test: ({ has }) => has("файл") },
@@ -80,6 +91,7 @@ export function parseCommand(text) {
   const words = n.split(" ");
   if (words.length > 12) return null; // длинное сообщение — точно разговор, не команда
   const has = (...stems) => words.some((w) => stems.some((st) => w.startsWith(st)));
+  if (has(...NOT_COMMAND)) return null;
   const ctx = {
     n, words, has,
     hasVerb: words.some((w) => ACTION_VERBS.some((v) => w.startsWith(v))),

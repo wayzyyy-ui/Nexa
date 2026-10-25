@@ -16,7 +16,8 @@ import { fileBlob, signedFileUrl } from "../../lib/files.js";
 import { fileBytes, plural } from "../../lib/format.js";
 import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSummary, ASSISTANT_HELP, parseCommand } from "../../lib/commands.js";
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
-import { miniCommand, warmMini } from "../../lib/mini/index.js";
+import { miniCommand, miniDecide, warmMini } from "../../lib/mini/index.js";
+import { MiniAskCard } from "../../ui/miniHelp.jsx";
 import { useMediaQuery } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
 import { enterAction, useEnterSends } from "../../lib/composer.js";
@@ -45,7 +46,7 @@ const NOTE_ASKS = {
   continue: "Продолжи эту заметку: предложи логичное продолжение.",
 };
 
-export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles }) {
+export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles, miniCollect = null }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -633,7 +634,11 @@ useEffect(() => {
 
     // Сначала проверяем, не команда ли это (с файлом — это всегда вопрос по файлу)
     // Порядок: память → правила → NEXA Mini (своя нейросеть) → Gemini. Mini не загрузилась или не уверена — вопрос уходит в Gemini
-    const cmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text) || miniCommand(text));
+    const ruleCmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text));
+    const mini = withFile || ruleCmd ? null : miniDecide(text);
+    const cmd = ruleCmd || mini?.run || null;
+    // Сбор непонятых фраз (только с согласием; без файла — с файлом это вопрос по файлу, его не берём)
+    if (!withFile) miniCollect?.onMessage(text, mini);
     if (isEmpty) rememberInputPos();
     // at — когда написано (мс): по нему история делится на «Сегодня», «Вчера»…
     // file — только сведения (имя, формат, размер), содержимое в историю не пишем
@@ -1095,6 +1100,8 @@ useEffect(() => {
                 {cmdBusy && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
                 {/* Ответ, который сейчас печатается (только в своём диалоге) */}
                 {streamingHere && <LiveAnswer onGrow={() => { scrollToBottom(); if (replyAura) placeReplyAura(); }} />}
+                {/* Один раз после первых вопросов: «Помочь улучшить ассистента?» (не окно поверх — карточка в переписке) */}
+                {miniCollect?.showAsk && !isLoading && <MiniAskCard onYes={() => miniCollect.answerAsk(true)} onNo={() => miniCollect.answerAsk(false)} onClose={miniCollect.dismissAsk} />}
                 <div ref={bottomRef} />
               </div>
             </div>

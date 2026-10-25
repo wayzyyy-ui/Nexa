@@ -67,6 +67,8 @@ import { ScreenAbout, GateAbout } from "./screens/About.jsx";
 import { ScreenSecurity } from "./screens/Security.jsx";
 import { ScreenDevices } from "./screens/Devices.jsx";
 import { MemorySettings } from "./ui/memory.jsx";
+import { MiniHelpSettings } from "./ui/miniHelp.jsx";
+import { useMiniCollect } from "./lib/mini/collectHook.js";
 import { memoryKey, memoryOnKey, loadMemory, loadMemoryOn, MEMORY_ROWS, MEMORY_MAX, checkMemoryText, findSameMemory, isStyleMemory } from "./lib/memory.js";
 import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
 import { CONT_TTL_MS, CONT_ACK_MS, CONT_CONNECT_MS, CONT_FAIL, contDone, contWhat, contFresh } from "./lib/continuity.js";
@@ -666,6 +668,8 @@ export default function NexaApp() {
   const syncNextAt = uid ? Math.min(Infinity, ...Object.values(syncState).map((st) => st?.nextAt || Infinity)) : Infinity;
   const syncGaveUp = !!uid && Object.values(syncState).some((st) => st?.gaveUp);
   const online = useOnline();
+  // Сбор непонятых фраз для NEXA Mini — только по согласию (src/lib/mini/collect.js)
+  const miniCollect = useMiniCollect({ online });
   const [syncOpen, setSyncOpen] = useState(false); // окно «Связь и синхронизация»
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
@@ -2804,6 +2808,7 @@ export default function NexaApp() {
         files={files}
         uid={uid}
         onAddFiles={(list) => addFiles(list, null)}
+        miniCollect={miniCollect}
         account={auth.user ? { email: auth.user.email || "" } : null}
         sync={{ loading: syncLoading && online, text: !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}` : syncError, onRetry: online ? retrySync : null }}
         />
@@ -2895,7 +2900,8 @@ export default function NexaApp() {
             </>
           )}
           onSecurity={openSecurity} user={auth.user}
-          memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
+          memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />}
+          miniBlock={<MiniHelpSettings on={miniCollect.consent} setOn={miniCollect.setConsent} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
           flowBlock={<>{uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
             onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />}<ClipboardSettings clip={clip} account={!!uid} onLogin={() => setAuthOpen(true)} /></>} />}
     </>
@@ -2997,7 +3003,8 @@ export default function NexaApp() {
           : syncError ? { title: "Есть сбой синхронизации", text: syncError }
           : syncLoading || syncPending ? { title: "Синхронизируем…", text: syncPending ? `Ждут подтверждения облака: ${syncPending}` : "Сверяем данные с облаком" }
           : { ok: true, title: "Всё сохранено в облаке", text: "Устройства, диалоги, файлы и расписание подтверждены облаком" }}
-        locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog} memoryInfo={{ on: memoryOn, count: memory.length }}
+        locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog} memoryInfo={{ on: memoryOn, count: memory.length }} miniOn={miniCollect.consent}
+        onOpenMini={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-mini-help")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }}
         onOpenMemory={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-memory-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }}
         onOpenFlow={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-flow-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }} />
     </div>

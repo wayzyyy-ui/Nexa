@@ -28,6 +28,8 @@ export const INTENT_ACTIONS = {
 // «Как включить…», «как подключить…» (вопрос «как сделать», а не просьба сделать) и «что делать» — тоже вопросы.
 const EXPLAIN_START = /^(расскаж|объясн|почему|зачем|что такое|что значит|в чем разница|чем отлича|напиши|придумай|переведи|сравни|что делать|как \S+(ть|ти|чь)( |$))/;
 const MAX_WORDS = 12; // длинное сообщение — разговор, как и в правилах
+// Удалять Mini не умеет: «удали устройство» не должно открывать список устройств — уходит в Gemini
+const NOT_COMMAND = /(^| )(удал|стер|сотр|очист)/;
 
 /* Предохранитель: сеть ошибается чаще всего на фразах, которые лишь похожи на команду («спасибо» → «добавить устройство»).
    Поэтому выбранное намерение должно подтверждаться хотя бы одним характерным словом (началом слова) в самой фразе.
@@ -82,7 +84,7 @@ export function decide(net, text, opts = {}) {
   const n = normalize(text);
   if (!n) return { run: null, reason: "empty" };
   if (n.split(" ").length > MAX_WORDS) return { run: null, reason: "long" };
-  if (EXPLAIN_START.test(n)) return { run: null, reason: "question" };
+  if (EXPLAIN_START.test(n) || NOT_COMMAND.test(n)) return { run: null, reason: "question" };
   const threshold = opts.threshold ?? net.meta?.threshold ?? 0.9;
   const minMargin = opts.margin ?? net.meta?.margin ?? 0.3;
   const r = predict(net, n);
@@ -96,6 +98,11 @@ export function decide(net, text, opts = {}) {
 /* Фраза → { action, params, via: "mini", intent, confidence } или null.
    null, если: сеть ещё не загрузилась, фраза длинная или похожа на вопрос, сеть не уверена,
    предохранитель не нашёл подтверждающих слов, либо намерение выполнять не нужно (тогда решает Gemini). */
+// Полное решение (для сбора непонятых фраз, src/lib/mini/collect.js): { run, reason, guess } или null — сеть не загрузилась
+export function miniDecide(text, opts = {}) {
+  return model ? decide(model, text, opts) : null;
+}
+
 export function miniCommand(text, opts = {}) {
   return model ? decide(model, text, opts).run : null;
 }
