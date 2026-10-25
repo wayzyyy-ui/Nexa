@@ -36,7 +36,7 @@ import { deviceType, uniqueDeviceName, DEVICES_KEY, loadDeviceStore, devicesToLi
 import { ACTIVITY_MAX, loadActivity } from "./lib/activity.js";
 import { PAIR_TTL_MS, PAIR_MAX_TRIES, PAIR_LOCK_MS, PAIR_ANSWER_MS, parseNexaQr, makePairCode, readPairLock, savePairLock } from "./lib/pairing.js";
 import { loadFlow, copyText } from "./lib/flow.js";
-import { useOnline, useModalLock, useSheetSwipe, useKeyboardViewport, scrollTopNow, useSmoothScroll, usePullToRefresh } from "./lib/hooks.js";
+import { useOnline, useModalLock, useSheetSwipe, useKeyboardViewport, keyboardBusy, scrollTopNow, useSmoothScroll, usePullToRefresh } from "./lib/hooks.js";
 import { IconBtn, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } from "./ui/base.jsx";
 import { BackdropFolds, BackdropGrid } from "./ui/backdrop.jsx";
 import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./ui/navigation.jsx";
@@ -2059,6 +2059,9 @@ export default function NexaApp() {
       // Карточки, пришедшие сами («Продолжить здесь?», «Устройство ищут»), своей записи
       // в истории не имеют — закрываем их Esc
       if (document.querySelector(".nx-cont-offer, .nx-find-overlay")) { pressEscape(); return; }
+      // Клавиатура открыта (или только что закрылась этим же жестом) — «Назад» только убирает её:
+      // меню ИИ в заметке и окна под клавиатурой остаются
+      if (keyboardBusy()) { document.activeElement?.blur?.(); return; }
       // 1) Есть куда вернуться по истории: окно, шторка, экран устройства, раздел → Главная
       if (canGoBack()) { goBack(); return; }
       // 2) Запасной путь: окно без записи в истории — закрываем Esc; не Главная — на Главную

@@ -20,7 +20,11 @@ export function clipFinalName(raw, kind, mime = "image/png") {
 
 /* Прочитать буфер (clipboardRead из native.js передаёт экран) — только когда человек нажал кнопку. Возвращает
    { kind: "image", blob } | { kind: "text", text } | { error } (пусто — «Буфер пуст») */
-export async function readClipForFile(clipboardRead) {
+export async function readClipForFile(clipboardRead, readImage) {
+  // Приложение: картинку из буфера читает свой модуль (readImage = clipboardReadImage из native.js;
+  // плагин буфера Capacitor отдаёт только текст)
+  const nat = readImage ? await readImage() : null;
+  if (nat?.blob?.size) return { kind: "image", blob: nat.blob };
   try {
     if (navigator.clipboard?.read) {
       const items = await navigator.clipboard.read();

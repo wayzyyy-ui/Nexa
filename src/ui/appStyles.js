@@ -361,7 +361,7 @@ export const APP_CSS = `
         .ng-topbar > * { pointer-events: auto; }
         .ng-topbar::before { content: ""; position: absolute; inset: calc(-1 * var(--sat)) 0 -18px 0; z-index: -1; pointer-events: none;
           background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 62%, transparent); opacity: 0; transition: opacity 180ms ease; }
-        html.nx-scrolled .ng-topbar::before { opacity: 1; }
+        .ng-topbar.nx-scrolled::before { opacity: 1; }
         /* Экраны с фоном .nx-home-glow: подложка — тот же градиент, выровненный по экрану (полоса начинается
            правее меню — сдвигаем фон на его ширину), а не сплошной цвет: иначе при прокрутке сверху
            появлялась тёмная полоса. Внизу — плавный переход в прозрачность */
@@ -402,7 +402,7 @@ export const APP_CSS = `
             -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
             mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
             opacity: 0; transition: opacity 180ms ease; }
-          html.nx-scrolled .nx-home-top::before { opacity: 1; }
+          .nx-home-top.nx-scrolled::before { opacity: 1; }
         }
         .nx-home-head > :first-child { justify-self: start; }
         .nx-home-search { display: flex !important; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 31px; box-sizing: border-box;
@@ -1219,6 +1219,13 @@ export const APP_CSS = `
         .nx-act-pill.nx-glass { border-radius: 33px; }
         .nx-tabbar-pill.nx-glass { --g-alpha: 0.5; --g-blur: 18px; }
         .nx-notepad-panel.nx-glass { --g-alpha: 0.3; --g-blur: 28px; --g-rim: 1; }
+        /* Скорость на телефоне: «тихое» стекло карточек лежит на неподвижном плавном фоне — его размытие
+           даёт ту же картинку, но видеокарта пересчитывает каждое размытие на каждом кадре прокрутки
+           (40 карточек заметок — 40 размытий). Убираем только размытие: заливка, свет и контур остаются.
+           Нижняя панель, поиск и шапка (под ними едет содержимое) — со своим размытием, как были */
+        @media ${PHONE_MQ} {
+          .nx-glass-subtle { -webkit-backdrop-filter: none; backdrop-filter: none; }
+        }
 
         /* ── Каскад появления экранов ──
            Крупные блоки раздела появляются по очереди: всплывают снизу и проявляются (600 мс, шаг 70 мс).

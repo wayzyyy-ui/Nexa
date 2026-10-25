@@ -195,16 +195,29 @@ export function Sidebar({ active, onChange }) {
 // передаём внутрь при вызове компонента (см. использование в App).
 // Лежит поверх экрана в правом верхнем углу и не занимает свою полосу,
 // поэтому заголовки всех экранов стоят на одной высоте с часами.
-// Закреплена (fixed): при прокрутке остаётся на месте. Страницу прокрутили — у html класс
-// nx-scrolled, и под строкой проявляется фон (иначе карточки ехали бы прямо под кнопками)
+// Закреплена (fixed): при прокрутке остаётся на месте. Страницу прокрутили — у самой строки
+// (и у шапки телефонной Главной) класс nx-scrolled, и под ней проявляется фон (иначе карточки ехали бы
+// прямо под кнопками). Класс — на этих двух полосах, а не на html: смена класса у html заставляла браузер
+// пересчитать стили всей страницы (~100 мс на медленном телефоне в «Заметках» — рывок при прокрутке)
+const SCROLL_BARS = ".ng-topbar, .nx-home-top";
 export function TopBar({ children, tab }) {
   useEffect(() => {
-    const root = document.documentElement;
-    const onScroll = () => root.classList.toggle("nx-scrolled", window.scrollY > 4);
+    let was = null;
+    const onScroll = () => {
+      const s = window.scrollY > 4;
+      if (s === was) return;
+      was = s;
+      document.querySelectorAll(SCROLL_BARS).forEach((el) => el.classList.toggle("nx-scrolled", s));
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => { window.removeEventListener("scroll", onScroll); root.classList.remove("nx-scrolled"); };
+    return () => { window.removeEventListener("scroll", onScroll); document.querySelectorAll(SCROLL_BARS).forEach((el) => el.classList.remove("nx-scrolled")); };
   }, []);
+  // Разделы меняются без прокрутки (шапка Главной появилась заново) — отметку ставим и ей
+  useEffect(() => {
+    const s = window.scrollY > 4;
+    document.querySelectorAll(SCROLL_BARS).forEach((el) => el.classList.toggle("nx-scrolled", s));
+  }, [tab]);
   return (
     <div className="ng-topbar nx-tb-row" data-tab={tab} style={{
       position: "fixed", top: 0, right: 0, zIndex: 50,

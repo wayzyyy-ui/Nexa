@@ -392,6 +392,13 @@ export function useModalLock() {
    Клавиатура открыта = в фокусе поле ввода И экран заметно ниже обычного.
    «Обычная» высота — самая большая для текущей ширины экрана
    (после поворота телефона считается заново). */
+/* Клавиатура открыта сейчас или закрылась только что (≤ 500 мс). Нужна кнопке «Назад» Android:
+   жест «назад» при открытой клавиатуре доходит и до NEXA — он должен только убрать клавиатуру,
+   а не закрывать меню или окно под ней */
+let kbClosedAt = 0;
+export function keyboardBusy() {
+  return document.body.classList.contains("kb-open") || Date.now() - kbClosedAt < 500;
+}
 export function useKeyboardViewport() {
   useEffect(() => {
     const vv = window.visualViewport;
@@ -400,18 +407,25 @@ export function useKeyboardViewport() {
     const isField = (a) => !!a && (a.tagName === "TEXTAREA" || a.isContentEditable ||
       (a.tagName === "INPUT" && !NOT_TEXT.includes(a.type)));
     let baseW = 0, baseH = 0;
+    // Переменные у корня страницы пишем, только когда значение правда изменилось: любая запись туда
+    // заставляет браузер пересчитать стили всей страницы (а на айфоне события видимой области
+    // приходят и во время обычной прокрутки)
+    const put = { "--vvh": "", "--vvt": "" };
+    const setVar = (k, v) => { if (put[k] !== v) { put[k] = v; root.style.setProperty(k, v); } };
     const sync = () => {
       const h = vv ? vv.height : window.innerHeight;
       const field = isField(document.activeElement);
       if (window.innerWidth !== baseW) { baseW = window.innerWidth; baseH = 0; }
       // Без поля в фокусе клавиатуры нет — эта высота и есть обычная
       baseH = field ? Math.max(baseH, h) : h;
-      root.style.setProperty("--vvh", `${h}px`);
+      setVar("--vvh", `${h}px`);
       // Сдвиг видимой области бывает только при открытой клавиатуре. Без поля в фокусе — 0:
       // Safari на айфоне иногда оставляет старый сдвиг после закрытия клавиатуры, и весь
       // закреплённый экран (ассистент) рисовался выше места, куда приходят нажатия
-      root.style.setProperty("--vvt", `${vv && field ? vv.offsetTop : 0}px`);
-      document.body.classList.toggle("kb-open", field && baseH - h > 120);
+      setVar("--vvt", `${vv && field ? vv.offsetTop : 0}px`);
+      const open = field && baseH - h > 120;
+      if (!open && document.body.classList.contains("kb-open")) kbClosedAt = Date.now();
+      document.body.classList.toggle("kb-open", open);
     };
     // Фокус уходит — activeElement меняется чуть позже, проверяем в следующем кадре
     // и ещё раз после того, как клавиатура доехала (на айфоне событий от неё может не быть)

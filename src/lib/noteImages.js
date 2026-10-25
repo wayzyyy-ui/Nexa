@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { cacheKey, cachePut, cacheGet, cacheDel, uploadToCloud, removeFromCloud, fileUrl, forgetUrl, rememberLocal } from "./files.js";
 import { newId } from "./sync.js";
+import { clipboardReadImage } from "../native.js";
 
 export const IMAGE_SIDE_MAX = 1600;               // длинная сторона после уменьшения, px
 export const IMAGE_SOURCE_MAX = 25 * 1024 * 1024; // исходный файл больше — не берём
@@ -73,6 +74,13 @@ export async function uploadNoteImage(uid, img, scope) {
    приложение Android — ещё @capacitor/clipboard (если отдаёт картинку как data:image/…).
    Ответ: { file } или { error } — понятная причина */
 export async function readClipboardImage() {
+  // Приложение: фото из буфера читает свой модуль (плагин буфера Capacitor картинки не отдаёт)
+  const nat = await clipboardReadImage();
+  if (nat === "old_app") return { error: "Чтобы вставлять фото из буфера, обновите NEXA до последней версии" };
+  if (nat?.blob?.size) {
+    const t = nat.blob.type || "image/png";
+    return { file: new File([nat.blob], `Из буфера.${t.split("/")[1].replace("jpeg", "jpg")}`, { type: t }) };
+  }
   try {
     if (navigator.clipboard?.read) {
       const items = await navigator.clipboard.read();

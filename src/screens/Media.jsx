@@ -163,8 +163,8 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6, lineHeight: 1.4 }}>{storeNote}</div>
       </div>
 
-      <div className="nx-storage-box" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 48, padding: "22px 30px 20px", marginBottom: 34 }}>
-        <div className="ng-storage-card nx-glass nx-glass-subtle" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+      <div className="nx-storage-box nx-glass nx-glass-subtle" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 48, padding: "22px 30px 20px", marginBottom: 34 }}>
+        <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
           <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 180 }}>
             {Icon.drive({ c: C.text, s: 24 })}
             {/* Колонка узкая: только объём и полоска. Пояснение — внизу карточки,

@@ -608,6 +608,20 @@ export async function clipboardWriteImage(blobPromise, name = "photo") {
     return true;
   } catch { return isNative ? "old_app" : false; }
 }
+/* Картинка из буфера обмена (только Android-приложение): плагин буфера Capacitor отдаёт лишь текст,
+   поэтому читаем свой модуль. Только по нажатию человека. Ответ: { blob } | null (картинки нет) | "old_app" (APK без метода) */
+export async function clipboardReadImage() {
+  if (!isNative) return null;
+  try {
+    const r = await NexaFiles.readClipboardImage();
+    if (!r?.found || !r.base64) return null;
+    const bin = atob(r.base64);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return { blob: new Blob([bytes], { type: r.mime || "image/png" }) };
+  } catch (e) {
+    return /not implemented|не реализ/i.test(String(e?.message || e?.code || "")) ? "old_app" : null;
+  }
+}
 // Текст из «Поделиться» другого приложения (только Android): cb(text). Возвращает отписку
 export function onSharedText(cb) {
   if (!isNative) return () => {};

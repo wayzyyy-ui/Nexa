@@ -20,6 +20,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -249,6 +250,50 @@ public class NexaFilesPlugin extends Plugin {
                 });
             } catch (Exception e) {
                 call.reject("copy_failed");
+            }
+        }).start();
+    }
+
+    /* Картинка из буфера обмена телефона (кнопка «Фото из буфера»). Плагин буфера Capacitor умеет
+       только текст, а скопированное фото лежит как ссылка на файл — читаем её сами.
+       Вызывается только по нажатию человека. Ответ: { found: false } или { found, mime, base64 } */
+    @PluginMethod
+    public void readClipboardImage(PluginCall call) {
+        new Thread(() -> {
+            try {
+                android.content.ClipboardManager cb = (android.content.ClipboardManager) getContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                android.content.ClipData clip = cb == null ? null : cb.getPrimaryClip();
+                JSObject none = new JSObject();
+                none.put("found", false);
+                if (clip == null) { call.resolve(none); return; }
+                ContentResolver cr = getContext().getContentResolver();
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    Uri uri = clip.getItemAt(i).getUri();
+                    if (uri == null) continue;
+                    String type = cr.getType(uri);
+                    if (type == null || !type.startsWith("image/")) continue;
+                    try (InputStream in = cr.openInputStream(uri)) {
+                        if (in == null) continue;
+                        ByteArrayOutputStream out = new ByteArrayOutputStream();
+                        byte[] buf = new byte[65536];
+                        int n;
+                        long total = 0;
+                        while ((n = in.read(buf)) > 0) {
+                            total += n;
+                            if (total > 25L * 1024 * 1024) { call.reject("too_big"); return; }
+                            out.write(buf, 0, n);
+                        }
+                        JSObject r = new JSObject();
+                        r.put("found", true);
+                        r.put("mime", type);
+                        r.put("base64", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
+                        call.resolve(r);
+                        return;
+                    }
+                }
+                call.resolve(none);
+            } catch (Exception e) {
+                call.reject("read_failed");
             }
         }).start();
     }

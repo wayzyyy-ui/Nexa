@@ -8,7 +8,7 @@ import { FOLDERS, MEDIA_CATS, sortByRecent, folderName, fileMeta } from "../lib/
 import { MediaLayout, MediaTitle, Crumb } from "../ui/layout.jsx";
 import { FolderThumb, FileThumb } from "../ui/files.jsx";
 import { TransferBtn } from "../ui/FileViewer.jsx";
-import { clipboardRead } from "../native.js";
+import { clipboardRead, clipboardReadImage } from "../native.js";
 import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile.js";
 import { useModalLock } from "../lib/hooks.js";
 
@@ -95,7 +95,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
     if (clipBusy) return;
     setClipBusy(true);
     try {
-      const r = await readClipForFile(clipboardRead);
+      const r = await readClipForFile(clipboardRead, clipboardReadImage);
       if (r.error) { onToast?.({ title: "Файл из буфера не создан", text: r.error, kind: "error" }); return; }
       setClip({ ...r, name: clipDefaultName(r.kind) });
     } finally { setClipBusy(false); }

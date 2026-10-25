@@ -346,7 +346,8 @@ function NoteCard({ note, active, archived, onOpen, onPin, onArchive, onDelete, 
   const pick = (fn) => () => { setMenu(false); setSure(false); fn(); };
   return (
     <div ref={box} className="nx-notepad-card nx-glass nx-glass-subtle" data-active={active ? "1" : "0"} style={{
-      position: "relative", border: `1px solid ${active ? C.mint : C.lineBright}`, borderRadius: 24,
+      position: "relative", zIndex: menu ? 30 : undefined, // открытое меню — поверх следующих карточек (у стекла своя стопка слоёв, z-index меню из неё не выходит)
+      border: `1px solid ${active ? C.mint : C.lineBright}`, borderRadius: 24,
       background: active ? `color-mix(in srgb, ${C.mint} 9%, transparent)` : "transparent", transition: "border-color 160ms ease, background-color 160ms ease",
     }}>
       <button type="button" onClick={onOpen} className="nx-notepad-open" style={{ ...btnReset, display: "block", width: "100%", textAlign: "left", padding: `16px 56px ${tags.length ? 8 : 16}px 20px`, boxSizing: "border-box" }}>
