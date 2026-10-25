@@ -212,7 +212,7 @@ export function StateNote({ kind = "error", children }) {
 }
 
 /* Подпись студии внизу страницы («О системе»): обычный текст в потоке страницы, не плавающий.
-   «Сделано» — мелко и приглушённо, дальше логотип mono.engineering — вектор автора (моно.svg) как есть:
+   «Разработано» — мелко и приглушённо, дальше логотип mono.engineering — вектор автора (моно.svg) как есть:
    знак и слово — цветом текста темы (в файле белые), точка — мятная (в файле #00FFDF) */
 // Фигуры — src/ui/brandArt.js (те же берёт заставка запуска)
 export function MonoLogo({ h = 13, color = C.muted }) {
@@ -229,7 +229,7 @@ export function MonoLogo({ h = 13, color = C.muted }) {
 export function MadeBy({ style, h = 13 }) {
   return (
     <div className="nx-made-by" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 9, fontSize: 12, lineHeight: 1, color: C.mutedSoft, ...style }}>
-      <span>Сделано</span>
+      <span>Разработано</span>
       <MonoLogo h={h} />
     </div>
   );

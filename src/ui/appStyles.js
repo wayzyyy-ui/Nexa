@@ -1213,6 +1213,10 @@ export const APP_CSS = `
         .nx-ai-glow.nx-glass { --g-outer: 0 0 calc(22 * var(--mk)) color-mix(in srgb, var(--mint) 28%, transparent), 0 0 calc(44 * var(--mk)) color-mix(in srgb, var(--blue) 22%, transparent); }
         :root[data-theme="light"] .nx-ai-glow.nx-glass { --g-tint: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--mint) 40%, transparent)); }
         .nx-today-pill.nx-glass { border-radius: 999px !important; }
+        /* «Активность»: стекло лежит на обёртке, а скругление задано у внутренней карточки —
+           обёртке даём тот же радиус, иначе подложка торчит прямоугольником за краями */
+        .nx-home-act.nx-glass { border-radius: calc(48 * var(--mk)); }
+        .nx-act-pill.nx-glass { border-radius: 33px; }
         .nx-tabbar-pill.nx-glass { --g-alpha: 0.5; --g-blur: 18px; }
         .nx-notepad-panel.nx-glass { --g-alpha: 0.3; --g-blur: 28px; --g-rim: 1; }
 

@@ -1,2 +1,2 @@
 // Версия NEXA. При выпуске поднимать здесь и в package.json (см. CLAUDE.md)
-export const VERSION = "0.15.6";
+export const VERSION = "0.15.7";
