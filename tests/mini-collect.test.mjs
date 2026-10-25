@@ -85,11 +85,10 @@ test("не больше 20 фраз в сутки; пачкой не чаще р
   assert.equal(takeBatch(q2, { consent: true, online: true, now: now + COLLECT_SEND_GAP_MS + 1 }).batch.length, 1);
 });
 
-test("карточка-вопрос: один раз после трёх вопросов, отказ не переспрашивает", () => {
-  assert.equal(shouldAsk({ consent: false, asked: false, questions: 2 }), false);
-  assert.equal(shouldAsk({ consent: false, asked: false, questions: 3 }), true);
-  assert.equal(shouldAsk({ consent: false, asked: true, questions: 10 }), false);
-  assert.equal(shouldAsk({ consent: true, asked: false, questions: 10 }), false);
+test("окно-вопрос: спрашиваем один раз; отказ или закрытие не переспрашивают", () => {
+  assert.equal(shouldAsk({ consent: false, asked: false }), true);
+  assert.equal(shouldAsk({ consent: false, asked: true }), false);
+  assert.equal(shouldAsk({ consent: true, asked: false }), false);
 });
 
 test("сервер: проверяет фразы сам, пишет без аккаунта, лимит пачки", async () => {

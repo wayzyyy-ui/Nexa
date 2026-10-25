@@ -1,5 +1,5 @@
-// «Помогать улучшать подсказки ассистента»: переключатель в Настройках и одноразовая карточка-вопрос
-// в переписке. Логика — src/lib/mini/collect.js и collectHook.js
+// «Помогать улучшать подсказки ассистента»: переключатель в Настройках и одноразовое окно-вопрос
+// при входе на Главную. Логика — src/lib/mini/collect.js и collectHook.js
 import { useEffect, useRef } from "react";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
@@ -24,9 +24,10 @@ export function MiniHelpSettings({ on, setOn }) {
 
 const pill = { ...btnReset, borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, whiteSpace: "nowrap" };
 
-/* Карточка «Помочь улучшить ассистента?» — не окно поверх: стоит в конце переписки, ничего не блокирует.
-   role="dialog" и Esc (кнопка «Назад» Android закроет её тоже) — закрыли так, больше не спрашиваем */
-export function MiniAskCard({ onYes, onNo, onClose }) {
+/* Окно «Помочь улучшить ассистента?» — один раз при входе на Главную. Перекрывает экран, но закрывается:
+   крестиком, Esc / «Назад» Android, нажатием мимо — это такой же отказ, как «Нет, спасибо»: больше не спрашиваем.
+   По умолчанию ничего не включено — согласие только по кнопке «Да, помогу» */
+export function MiniAskDialog({ onYes, onNo, onClose }) {
   const ref = useRef(null);
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape" && ref.current) { e.stopPropagation(); onClose(); } };
@@ -34,26 +35,32 @@ export function MiniAskCard({ onYes, onNo, onClose }) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
   return (
-    <div ref={ref} role="dialog" aria-label="Помочь улучшить ассистента?" className="nx-pop nx-mini-ask nx-glass nx-glass-subtle" style={{
-      alignSelf: "stretch", maxWidth: 620, margin: "0 auto", width: "100%", boxSizing: "border-box",
-      border: `1px solid ${C.lineBright}`, borderRadius: 24, padding: "16px 18px", position: "relative", textAlign: "left",
+    <div className="nx-viewer nx-mini-ask-wrap" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300, background: `color-mix(in srgb, ${C.bg} 75%, transparent)`,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
     }}>
-      <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть"
-        style={{ ...btnReset, position: "absolute", top: 10, right: 10, width: 28, height: 28, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {Icon.close({ c: C.muted, s: 12 })}
-      </button>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, paddingRight: 30 }}>
-        {Icon.sparkle({ c: C.mint, s: 18 })}
-        <span style={{ fontSize: 15, fontWeight: 500, color: C.text }}>Помочь улучшить ассистента?</span>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label="Помочь улучшить ассистента?" onClick={(e) => e.stopPropagation()}
+        className="nx-pop nx-mini-ask nx-scroll" style={{
+          width: "min(460px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto", boxSizing: "border-box",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 24, padding: "22px 22px 18px", position: "relative", textAlign: "left",
+        }}>
+        <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть"
+          style={{ ...btnReset, position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {Icon.close({ c: C.muted, s: 12 })}
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingRight: 34 }}>
+          {Icon.sparkle({ c: C.mint, s: 20 })}
+          <span style={{ fontSize: 18, fontWeight: 500, color: C.text }}>Помочь улучшить ассистента?</span>
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginTop: 10 }}>{MINI_HELP_TEXT}</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+          <button type="button" className="nx-primary" onClick={onYes}
+            style={{ ...pill, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Да, помогу</button>
+          <button type="button" className="nx-ghost-btn" onClick={onNo}
+            style={{ ...pill, color: C.text, border: `1px solid ${C.borderStrong}` }}>Нет, спасибо</button>
+        </div>
+        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>Передумаете — Настройки → «Улучшение ассистента»</div>
       </div>
-      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginTop: 8 }}>{MINI_HELP_TEXT}</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <button type="button" className="nx-primary" onClick={onYes}
-          style={{ ...pill, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Да, помогу</button>
-        <button type="button" className="nx-ghost-btn" onClick={onNo}
-          style={{ ...pill, color: C.text, border: `1px solid ${C.borderStrong}` }}>Нет, спасибо</button>
-      </div>
-      <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 8 }}>Передумаете — Настройки → «Улучшение ассистента»</div>
     </div>
   );
 }

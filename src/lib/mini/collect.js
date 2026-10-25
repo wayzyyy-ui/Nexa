@@ -12,7 +12,7 @@ export const COLLECT_MAX_WORDS = 12;
 export const COLLECT_MAX_CHARS = 120;
 export const COLLECT_DAY_MAX = 20;            // не больше фраз с устройства за сутки
 export const COLLECT_SEND_GAP_MS = 5 * 60e3;  // пачкой, не чаще раза в 5 минут
-export const COLLECT_ASK_AFTER = 3;           // карточка «Помочь улучшить?» — после третьего вопроса ассистенту
+export const COLLECT_ASK_DELAY_MS = 2500;     // окно «Помочь улучшить?» — через пару секунд после входа на Главную
 const DAY_MS = 24 * 3600e3;
 
 // Ключи на этом устройстве
@@ -108,6 +108,6 @@ export function takeBatch(queue, { consent, online, now = Date.now() }) {
 // (не хранить лишнего важнее, чем не потерять пару примеров)
 
 // Показать ли карточку «Помочь улучшить ассистента?»
-export function shouldAsk({ consent, asked, questions }) {
-  return !consent && !asked && questions >= COLLECT_ASK_AFTER;
+export function shouldAsk({ consent, asked }) {
+  return !consent && !asked;
 }

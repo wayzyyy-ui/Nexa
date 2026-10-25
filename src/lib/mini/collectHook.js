@@ -11,7 +11,7 @@ export const PHRASES_URL = `${API_BASE}/api/phrases`;
 const readJSON = (key, fallback) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 // useSharedState хранит JSON: true / false. Всё, что не true, — согласия нет
 const loadConsent = (key) => readJSON(key, false) === true;
-const loadAsked = (key) => readJSON(key, { asked: false, questions: 0 });
+const loadAsked = (key) => readJSON(key, { asked: false });
 const loadQueue = (key) => ({ ...emptyQueue(), ...readJSON(key, {}) });
 
 export function useMiniCollect({ online }) {
@@ -29,12 +29,11 @@ export function useMiniCollect({ online }) {
   }, [setConsentRaw, setAsk, setQueue]);
 
   /* Решение по сообщению ассистенту (вызывает ScreenAssistant для каждого вопроса без файла):
-     считаем вопросы для карточки и, если согласие есть, кладём непонятую фразу в очередь */
+     с согласием кладём непонятую фразу в очередь, без согласия — ничего */
   const onMessage = useCallback((text, decision) => {
-    if (!consent) setAsk((a) => (a.asked ? a : { ...a, questions: (a.questions || 0) + 1 }));
     if (!consent) return;
     setQueue((q) => enqueuePhrase(q, { text, decision, consent, online }));
-  }, [consent, online, setAsk, setQueue]);
+  }, [consent, online, setQueue]);
 
   // Отправка пачкой: раз в минуту смотрим, не пора ли (сам интервал между пачками — 5 минут, правило в collect.js)
   const flush = useCallback(async () => {
@@ -66,7 +65,7 @@ export function useMiniCollect({ online }) {
 
   return {
     consent, setConsent,
-    showAsk: shouldAsk({ consent, asked: ask.asked, questions: ask.questions || 0 }),
+    showAsk: shouldAsk({ consent, asked: !!ask.asked }),
     answerAsk: (yes) => setConsent(!!yes),
     dismissAsk: () => setAsk((a) => ({ ...a, asked: true })), // закрыли по Esc — тоже больше не спрашиваем
     onMessage,

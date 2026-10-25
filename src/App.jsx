@@ -67,8 +67,10 @@ import { ScreenAbout, GateAbout } from "./screens/About.jsx";
 import { ScreenSecurity } from "./screens/Security.jsx";
 import { ScreenDevices } from "./screens/Devices.jsx";
 import { MemorySettings } from "./ui/memory.jsx";
-import { MiniHelpSettings } from "./ui/miniHelp.jsx";
+import { MiniHelpSettings, MiniAskDialog } from "./ui/miniHelp.jsx";
 import { useMiniCollect } from "./lib/mini/collectHook.js";
+import { COLLECT_ASK_DELAY_MS } from "./lib/mini/collect.js";
+import { loadSeen, saveSeen, unseenAnnouncements } from "./lib/announce.js";
 import { memoryKey, memoryOnKey, loadMemory, loadMemoryOn, MEMORY_ROWS, MEMORY_MAX, checkMemoryText, findSameMemory, isStyleMemory } from "./lib/memory.js";
 import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
 import { CONT_TTL_MS, CONT_ACK_MS, CONT_CONNECT_MS, CONT_FAIL, contDone, contWhat, contFresh } from "./lib/continuity.js";
@@ -670,6 +672,8 @@ export default function NexaApp() {
   const online = useOnline();
   // Сбор непонятых фраз для NEXA Mini — только по согласию (src/lib/mini/collect.js)
   const miniCollect = useMiniCollect({ online });
+  // Окно «Помочь улучшить?» — один раз, на Главной, когда больше ничего не перекрывает экран
+  const [miniAskOpen, setMiniAskOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false); // окно «Связь и синхронизация»
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
@@ -2046,6 +2050,18 @@ export default function NexaApp() {
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
+  // Окно «Помочь улучшить ассистента?»: на Главной, не на экране входа / обновления / блокировки, не поверх другого окна и не под заставкой запуска
+  const miniAskReady = tab === "home" && !showGate && !appUpdate?.required && !locked && !authOpen && miniCollect.showAsk;
+  useEffect(() => {
+    if (!miniAskReady) return;
+    let t;
+    const tryOpen = () => {
+      const busy = document.querySelector('[aria-modal="true"], [role="menu"], .nx-auth-gate, .nx-gate-about, #nx-boot, [data-nx-noback]') || document.documentElement.classList.contains("nx-intro-wait");
+      if (busy) t = setTimeout(tryOpen, 1500); else setMiniAskOpen(true);
+    };
+    t = setTimeout(tryOpen, COLLECT_ASK_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [miniAskReady]);
   backState.current = { tab, blocked: !!appUpdate?.required, plain: !screenSub && !openDeviceId, locked: !!locked };
   useEffect(() => {
     if (!isNative) return;
@@ -2462,6 +2478,23 @@ export default function NexaApp() {
       // поэтому без «через 15 мин»: «Скоро» и точное время начала
       .map(({ it, start }) => ({ key: remindKey(it), at: start - REMIND_MIN * 60000, title: `Скоро: ${it.title}`, body: `Начало в ${it.time}`, target: { tab: "today" } })));
   }, [schedule, nativeReminders]);
+
+  /* ── Разовые объявления («Встречайте NEXA Mini»): вошедшему аккаунту, один раз на этом устройстве ── */
+  useEffect(() => {
+    if (!uid || showGate) return;
+    const todo = unseenAnnouncements(uid, loadSeen(uid));
+    if (!todo.length) return;
+    // Через несколько секунд после входа — когда заставка и окна уже позади
+    const t = setTimeout(() => {
+      const seen = loadSeen(uid);
+      for (const a of unseenAnnouncements(uid, seen)) {
+        notifyRef.current({ cat: "updates", key: `announce:${a.id}:${uid}`, source: "NEXA", target: a.target, title: a.title, text: a.text, toastText: a.toastText, duration: 9000 });
+        seen.push(a.id);
+      }
+      saveSeen(uid, seen);
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [uid, showGate]);
 
   /* ── Обновление приложения: один раз на версию ── */
   useEffect(() => {
@@ -2969,6 +3002,10 @@ export default function NexaApp() {
         onApproved={() => logSecurity("approve", "Разрешён вход на новом устройстве", "По QR-коду или коду с экрана")} />}
       {/* Это устройство ищут */}
       {locked && <LockOverlay from={locked.from} onUnlock={unlockSelf} />}
+      {miniAskOpen && miniCollect.showAsk && (
+        <MiniAskDialog onYes={() => { miniCollect.answerAsk(true); setMiniAskOpen(false); }} onNo={() => { miniCollect.answerAsk(false); setMiniAskOpen(false); }}
+          onClose={() => { miniCollect.dismissAsk(); setMiniAskOpen(false); }} />
+      )}
       {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
       <Sidebar active={tab} onChange={navTo} />
           <MobileTabBar active={tab} onChange={navTo} />

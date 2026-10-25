@@ -17,7 +17,6 @@ import { fileBytes, plural } from "../../lib/format.js";
 import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSummary, ASSISTANT_HELP, parseCommand } from "../../lib/commands.js";
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
 import { miniCommand, miniDecide, warmMini } from "../../lib/mini/index.js";
-import { MiniAskCard } from "../../ui/miniHelp.jsx";
 import { useMediaQuery } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
 import { enterAction, useEnterSends } from "../../lib/composer.js";
@@ -1100,8 +1099,6 @@ useEffect(() => {
                 {cmdBusy && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
                 {/* Ответ, который сейчас печатается (только в своём диалоге) */}
                 {streamingHere && <LiveAnswer onGrow={() => { scrollToBottom(); if (replyAura) placeReplyAura(); }} />}
-                {/* Один раз после первых вопросов: «Помочь улучшить ассистента?» (не окно поверх — карточка в переписке) */}
-                {miniCollect?.showAsk && !isLoading && <MiniAskCard onYes={() => miniCollect.answerAsk(true)} onNo={() => miniCollect.answerAsk(false)} onClose={miniCollect.dismissAsk} />}
                 <div ref={bottomRef} />
               </div>
             </div>
