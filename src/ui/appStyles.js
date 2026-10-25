@@ -1872,18 +1872,18 @@ export const APP_CSS = `
             padding: 8px 14px var(--chat-bottom) 14px !important;
           }
           body.kb-open .ng-assistant-inner { --chat-bottom: 6px; }
-          /* Шапка: одна строка «ИИ — Ассистент», версия мелко рядом, без описания */
+          /* Шапка: «ИИ — Ассистент», версия мелко ПОД названием (рядом она обрезалась до «v0.1…»), без описания */
           .ng-assistant-inner .nx-assistant-title {
             font-size: 20px !important; line-height: 1.2 !important;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           }
           .nx-assistant-ver {
-            display: inline !important; margin-left: 6px;
-            font-family: 'Manrope', sans-serif; font-size: 11px; font-weight: 400; color: var(--muted-soft); letter-spacing: 0;
+            display: block !important; margin: 2px 0 0;
+            font-family: 'Manrope', sans-serif; font-size: 11px; line-height: 1.2; font-weight: 400; color: var(--muted-soft); letter-spacing: 0;
           }
           .ng-assistant-inner .nx-assistant-subtitle { display: none !important; }
           .ng-hamburger { width: 40px; height: 40px; margin-left: -8px; }
-          .nx-ai-head { align-items: center !important; } /* описания нет — кнопка и название в одну строку */
+          .nx-ai-head { align-items: center !important; } /* описания нет — кнопка и название (с версией под ним) по центру */
           /* Переписка вплотную к шапке и полю ввода; сообщения чуть плотнее */
           .nx-chat-area { margin: 6px 0 0 !important; }
           .nx-msg-col { gap: 14px !important; padding-bottom: 22px !important; }

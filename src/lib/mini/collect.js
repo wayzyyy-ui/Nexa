@@ -17,7 +17,7 @@ const DAY_MS = 24 * 3600e3;
 
 // Ключи на этом устройстве
 export const CONSENT_KEY = "nexa-mini-help";      // true — согласие дано; false или нет — выключено
-export const ASKED_KEY = "nexa-mini-help-asked";  // карточку уже показывали (ответ «Нет» — тоже сюда)
+export const ASKED_KEY = "nexa-mini-help-home";   // окно на Главной уже показывали (ответ «Нет» и закрытие — тоже сюда). Ключ новый: старую карточку в переписке (0.15.10) закрывали не на Главной — окно всё равно покажем один раз
 export const QUEUE_KEY = "nexa-mini-queue";       // { items: [{ text, intent, confidence }], sentDay, sentCount, lastSend, seen: [отпечатки] }
 
 // Похоже на личное: ссылка, почта, телефон, длинное число (карта, счёт, код)
