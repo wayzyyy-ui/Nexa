@@ -1,11 +1,11 @@
 {
-  "version": "0.16.0",
-  "notes": "- NEXA Mini — собственная нейросеть NEXA: простые просьбы ассистент понимает сам, прямо на устройстве\n- Новости NEXA приходят уведомлением на телефон, даже когда приложение закрыто\n- Помочь нейросети учиться можно по желанию — без аккаунта и устройства (Настройки → «Улучшение ассистента»)",
-  "pub_date": "2026-10-25T17:52:27.503Z",
+  "version": "0.16.1",
+  "notes": "- Окно «Помочь улучшить ассистента?» покажется на Главной всем — один раз\n- Версия NEXA в шапке ассистента видна целиком — под названием",
+  "pub_date": "2026-10-25T18:07:51.623Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXcxRzdSZjFIajh4WXFzRTJVc0JDZ1BoS0JKaDRpNjcxY3g5cU51R0JmMHlnc09mYUpTNC9jMks1bys0bXgxNmUrbE4zWkhERURNU3YvZmtkRjNqZEFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTUwNzQ3CWZpbGU6TkVYQV8wLjE2LjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuMAphanhRRXFTd1NRTnIxZW9vT1ZsVW9ScFd2TzBNRFZSQU5MN2pMYy9qeFdxenFUZERYWG92Nkllczkvcm9SdzRhSFd4cTJCbE1DbGg2QVVRTzNING9BZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.0"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTdYcFpoOCtpSGgzUk5GZXZhR21wRkE0b1VQSnlhY1diK1NyYTZxMWUwcUpvSzVMc2dLd1JMRlJRZEl3dG5sUjlLTlV1Y3VROGVQaWpLU01SVFZLNVFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTUxNjcxCWZpbGU6TkVYQV8wLjE2LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuMQoralJGeXM1ZjhGUzhPV25iMnhFMzIxUzg4UCtqR1R6TDBOTmhWWWNodUhLNHVhd1hZa25yWGV5b0lTN3BXOGtWRTZTWUZIYjA3MGxvQjgyV09ka0FEZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.1"
     }
   }
 }
