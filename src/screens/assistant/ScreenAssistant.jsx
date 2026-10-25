@@ -16,6 +16,7 @@ import { fileBlob, signedFileUrl } from "../../lib/files.js";
 import { fileBytes, plural } from "../../lib/format.js";
 import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSummary, ASSISTANT_HELP, parseCommand } from "../../lib/commands.js";
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
+import { miniCommand, warmMini } from "../../lib/mini/index.js";
 import { useMediaQuery } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
 import { enterAction, useEnterSends } from "../../lib/composer.js";
@@ -116,6 +117,7 @@ useEffect(() => {
   // Сменили диалог — вложение к нему больше не относится
   useEffect(() => { if (att?.chatId && att.chatId !== currentChatId) clearAtt(); }, [currentChatId]);
   useEffect(() => () => attCtl.current?.abort(), []);
+  useEffect(() => { warmMini(); }, []); // веса NEXA Mini подгружаются заранее, отдельным куском кода
   // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
   const liveChatId = useLiveChatId();
   const [cmdBusy, setCmdBusy] = useState(false);
@@ -621,7 +623,8 @@ useEffect(() => {
     sendLock.current = Date.now();
 
     // Сначала проверяем, не команда ли это (с файлом — это всегда вопрос по файлу)
-    const cmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text));
+    // Порядок: память → правила → NEXA Mini (своя нейросеть) → Gemini. Mini не загрузилась или не уверена — вопрос уходит в Gemini
+    const cmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text) || miniCommand(text));
     if (isEmpty) rememberInputPos();
     // at — когда написано (мс): по нему история делится на «Сегодня», «Вчера»…
     // file — только сведения (имя, формат, размер), содержимое в историю не пишем
@@ -682,7 +685,7 @@ useEffect(() => {
     if (isLoading || !currentChatId) return;
 
     const previous = messages.slice(0, index);
-    const cmd = messages[index].file ? null : (parseMemoryCommand(newText) || parseCommand(newText)); // вопрос по файлу — не команда
+    const cmd = messages[index].file ? null : (parseMemoryCommand(newText) || parseCommand(newText) || miniCommand(newText)); // вопрос по файлу — не команда
     setChats(prev => prev.map(c => {
       if (c.id !== currentChatId) return c;
       return {
