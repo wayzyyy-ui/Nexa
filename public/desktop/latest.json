@@ -1,11 +1,11 @@
 {
-  "version": "0.16.1",
-  "notes": "- Окно «Помочь улучшить ассистента?» покажется на Главной всем — один раз\n- Версия NEXA в шапке ассистента видна целиком — под названием",
-  "pub_date": "2026-10-25T18:07:51.623Z",
+  "version": "0.16.2",
+  "notes": "- Новые Настройки: аккаунт и разделы слева, выбранный раздел справа; на телефоне — профиль и список разделов\n- Центр безопасности теперь прямо в разделе «Безопасность»\n- Новый экран «Обновите NEXA» и новый значок приложения для компьютера\n- Значок во вкладке браузера стал аккуратнее",
+  "pub_date": "2026-10-26T08:22:09.125Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTdYcFpoOCtpSGgzUk5GZXZhR21wRkE0b1VQSnlhY1diK1NyYTZxMWUwcUpvSzVMc2dLd1JMRlJRZEl3dG5sUjlLTlV1Y3VROGVQaWpLU01SVFZLNVFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTUxNjcxCWZpbGU6TkVYQV8wLjE2LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuMQoralJGeXM1ZjhGUzhPV25iMnhFMzIxUzg4UCtqR1R6TDBOTmhWWWNodUhLNHVhd1hZa25yWGV5b0lTN3BXOGtWRTZTWUZIYjA3MGxvQjgyV09ka0FEZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.1"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTdWTXFqWlZiRmxkUFd2eGh0VVRkTTl0dnF5WEdTdlVyTis5eXhBc3VHamR3c0FuWnJteW16OVZUSTJtWVdyaHBRSG5iMnRnWWVKMHZYN1hLbm1mMEFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDAyOTI4CWZpbGU6TkVYQV8wLjE2LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuMgo4SWlvZXpFc0tRVThadEtnKytYcFBCeGFtSHdZVEJ4eUFSUHBWYWdiUDkrOWxLZEJWNjViZWI5cmxQSE0vQThLSTdDZERwSVNLWUtiUlM3YTdsNjlDZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.2"
     }
   }
 }
