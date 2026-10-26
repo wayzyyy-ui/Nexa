@@ -12,7 +12,8 @@ import { predict, modelToJSON } from "../../src/lib/mini/model.js";
 import { INTENT_ACTIONS, decide } from "../../src/lib/mini/index.js";
 
 const OUT = fileURLToPath(new URL("../../src/lib/mini/weights.json", import.meta.url));
-const OPTS = { hidden: 32, epochs: 90, batch: 16, lr: 0.01, typos: 2, seed: 7 };
+// Нейронов в скрытом слое: 32 по умолчанию; для опыта — MINI_HIDDEN=64 npm run mini:train
+const OPTS = { hidden: Number(process.env.MINI_HIDDEN) || 32, epochs: 90, batch: 16, lr: 0.01, typos: 2, seed: 7 };
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
 const { train, val } = splitData(TRAINING_DATA, 5);

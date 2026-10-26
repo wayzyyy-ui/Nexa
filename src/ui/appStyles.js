@@ -412,6 +412,50 @@ export const APP_CSS = `
           color: var(--text) !important; font-size: 13px; font-family: inherit; cursor: pointer; }
         .nx-home-more { display: flex !important; align-items: center; justify-content: center; width: 100%; margin-top: 18px; min-height: 38px; box-sizing: border-box;
           font-size: 15px; color: var(--text) !important; background: transparent !important; font-family: inherit; cursor: pointer; }
+        /* «О системе» → «Обновления» на телефоне: версия и «сейчас» — строкой сверху, пункты — на всю ширину,
+           мельче и плотнее (раньше пункты жались в узкий столбец между версией и меткой) */
+        @media ${PHONE_MQ} {
+          .nx-upd-row { flex-wrap: wrap; gap: 4px 10px !important; padding: 12px 0 !important; align-items: center; }
+          .nx-upd-v { width: auto !important; font-size: 13px !important; }
+          .nx-upd-now { align-self: center !important; font-size: 10px !important; padding: 1px 8px !important; }
+          .nx-upd-items { flex-basis: 100% !important; order: 3; font-size: 12.5px !important; line-height: 1.45 !important; }
+          .nx-upd-items > div + div { margin-top: 3px; }
+        }
+        /* ── Окно файла (макет 2026-10-26): размеры в долях макета 1920 × 1080 на компьютере ── */
+        .nx-fv { padding: 28px 24px 24px; }
+        .nx-fv-title { font-size: 18px; }
+        .nx-fv-meta { font-size: 13px; }
+        .nx-fv-head { margin-bottom: 20px; }
+        .nx-fv-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 40px; gap: 10px; margin-top: 20px; }
+        .nx-fv-actions:has(> :nth-child(3):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)) 40px; }
+        .nx-fv-actions:has(> :nth-child(2):last-child) { grid-template-columns: minmax(0, 1fr) 40px; }
+        .nx-fv-actions > button { height: 40px; padding: 0 12px; }
+        .nx-fv-actions > .nx-fv-del { width: 40px; padding: 0; }
+        .nx-fv-confirm { margin-top: 20px; }
+        .nx-fv-info { margin-top: 18px; margin-bottom: 22px; font-size: 14px; }
+        .nx-fv-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; border-bottom: 1px solid var(--border); }
+        .nx-fv-row:last-child { border-bottom: none; }
+        .nx-fv-send { height: 44px; font-size: 14px; }
+        @media ${DESKTOP_MQ} {
+          .nx-fv.nx-viewer-panel { width: min(max(600px, calc(734 * var(--mk))), 100%) !important; border-radius: max(40px, calc(60 * var(--mk))) !important;
+            padding: max(32px, calc(46 * var(--mk))) max(40px, calc(57 * var(--mk))) max(32px, calc(58 * var(--mk))); }
+          .nx-fv-title { font-size: max(18px, calc(21 * var(--mk))); }
+          .nx-fv-meta { font-size: max(13px, calc(15 * var(--mk))); }
+          .nx-fv-head { margin-bottom: max(18px, calc(24 * var(--mk))); }
+          .nx-fv-preview-wrap .nx-viewer-preview > div { height: max(220px, calc(270 * var(--mk))) !important; }
+          .nx-fv-actions { margin-top: max(16px, calc(20 * var(--mk))); gap: max(10px, calc(16 * var(--mk))); }
+          .nx-fv-info { font-size: max(14px, calc(15 * var(--mk))); }
+          .nx-fv-row { min-height: max(46px, calc(53 * var(--mk))); }
+        }
+        @media ${PHONE_MQ} {
+          .nx-fv.nx-viewer-panel { border-radius: 32px 32px 0 0 !important; padding: 26px 18px calc(18px + var(--sab)) !important; }
+          .nx-fv-actions { gap: 6px; }
+          .nx-fv-actions > button { padding: 0 8px; font-size: 12.5px !important; gap: 5px !important; }
+          .nx-fv-preview-wrap .nx-viewer-preview > div { height: 200px !important; }
+          .nx-fv-preview-wrap .nx-viewer-arrow { width: 40px !important; height: 40px !important; }
+          .nx-fv-preview-wrap .nx-viewer-arrow:first-child { left: 12px !important; }
+          .nx-fv-preview-wrap .nx-viewer-arrow:nth-child(2) { right: 12px !important; }
+        }
         /* ── «Файлы»: меню файла (долгое нажатие / правая кнопка) и выделение нескольких ── */
         .nx-file-row .nx-row-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
         .nx-file-row.is-selected { background: color-mix(in srgb, var(--mint) 9%, transparent); border-radius: 14px; }
@@ -465,7 +509,8 @@ export const APP_CSS = `
           .nx-set-body { max-width: 900px; }
         }
         @media ${PHONE_MQ} {
-          .ng-screen.nx-set-phone { position: relative; padding: calc(60px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: center; }
+          /* Отступ под вырез экрана (--sat) уже даёт body — здесь только свой */
+          .ng-screen.nx-set-phone { position: relative; padding: 44px 16px calc(100px + var(--sab)) !important; text-align: center; }
           /* QR — на одной линии со значками верхней строки (она закреплена — QR тоже) */
           .nx-set-qr { position: fixed !important; z-index: 51; left: 10px; top: calc(19px + var(--sat)); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
             border: none; background: transparent; cursor: pointer; }
@@ -475,7 +520,7 @@ export const APP_CSS = `
           .nx-set-profile .nx-set-mail { max-width: 100%; }
           .nx-set-sheet { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: 32px; text-align: left; }
           .nx-set-sheet .nx-set-about { border-radius: 24px; padding: 14px 18px; }
-          .ng-screen.nx-set-page { padding: calc(18px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: left; }
+          .ng-screen.nx-set-page { padding: 18px 16px calc(100px + var(--sab)) !important; text-align: left; }
           .nx-set-page-title { margin: 14px 0 18px !important; }
           /* Появление: аватар «раскрывается», имя и почта поднимаются, список разделов всплывает следом;
              раздел въезжает справа и уезжает обратно вправо */

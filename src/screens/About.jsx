@@ -26,6 +26,7 @@ export const ABOUT_FEATURES = [
 
 // История обновлений — новые сверху. Добавляя версию, впишите её сюда (и в release-notes.md)
 export const ABOUT_UPDATES = [
+  { v: "0.16.4", items: ["Новое окно файла: крупное превью со стрелками, кнопки «Копировать / Скачать / Поделиться» и сведения строками", "Настройки на телефоне: аватар и имя выше", "«Обновления» в «О системе» на телефоне — компактнее"] },
   { v: "0.16.3", items: ["NEXA работает плавнее: быстрее запуск, длинные диалоги и списки файлов, мягкие свайпы между разделами", "Облегчённый режим для слабых телефонов и экономии заряда — в «Внешнем виде»", "Файлы: долгое нажатие — меню, выделение нескольких и удаление разом; фото HEIC теперь видны", "NEXA mini-1 понимает «открой заметки», «новая заметка» и «какая версия»", "На компьютере правая кнопка мыши открывает быстрые действия"] },
   { v: "0.16.2", items: ["Новые Настройки: аккаунт и разделы слева, выбранный раздел справа; на телефоне — профиль и список разделов", "Центр безопасности теперь прямо в разделе «Безопасность»", "Новый экран «Обновите NEXA» и новый значок приложения для компьютера", "Значок во вкладке браузера стал аккуратнее"] },
   { v: "0.16.1", items: ["Окно «Помочь улучшить ассистента?» теперь покажется на Главной всем — один раз", "Версия NEXA в шапке ассистента видна целиком — под названием"] },
@@ -151,12 +152,12 @@ export function ScreenAbout({ onBack, installed }) {
       <div className="ng-display" style={h2}>Обновления</div>
       <div style={{ ...card, padding: "6px 24px" }}>
         {ABOUT_UPDATES.map((u, i) => (
-          <div key={u.v} style={{ display: "flex", gap: 18, padding: "14px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
-            <div style={{ width: 64, flexShrink: 0, fontSize: 14, fontWeight: 600, color: u.v === VERSION ? C.mint : C.text }}>{u.v}</div>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+          <div key={u.v} className="nx-upd-row" style={{ display: "flex", gap: 18, padding: "14px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
+            <div className="nx-upd-v" style={{ width: 64, flexShrink: 0, fontSize: 14, fontWeight: 600, color: u.v === VERSION ? C.mint : C.text }}>{u.v}</div>
+            <div className="nx-upd-items" style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
               {u.items.map((t) => <div key={t}>{t}</div>)}
             </div>
-            {u.v === VERSION && <span style={{ alignSelf: "flex-start", fontSize: 11, color: C.mint, border: `1px solid ${C.mint}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>сейчас</span>}
+            {u.v === VERSION && <span className="nx-upd-now" style={{ alignSelf: "flex-start", fontSize: 11, color: C.mint, border: `1px solid ${C.mint}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>сейчас</span>}
           </div>
         ))}
       </div>

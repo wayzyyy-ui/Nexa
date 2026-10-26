@@ -389,11 +389,11 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
     return (
       <button type="button" className="nx-icon-btn nx-viewer-arrow" onClick={(e) => { e.stopPropagation(); step(d); }} disabled={!f}
         aria-label={d < 0 ? "Предыдущий файл" : "Следующий файл"} title={f ? f.name : undefined} style={{
-          ...btnReset, position: "absolute", top: "50%", [d < 0 ? "left" : "right"]: 8, transform: "translateY(-50%)", zIndex: 1,
-          width: 36, height: 36, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
-          background: `color-mix(in srgb, ${C.photoBg} 70%, transparent)`, opacity: f ? 1 : 0.35,
+          ...btnReset, position: "absolute", top: "50%", [d < 0 ? "left" : "right"]: 24, transform: "translateY(-50%)", zIndex: 1,
+          width: 50, height: 50, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
+          background: C.panel, opacity: f ? 1 : 0.4, // кружок цвета окна: в тёмной теме тёмный, в светлой белый
         }}>
-        <span style={{ display: "flex", transform: d < 0 ? "rotate(180deg)" : "none" }}>{Icon.chevron({ c: C.onFold, s: 18 })}</span>
+        <span style={{ display: "flex", transform: d < 0 ? "rotate(180deg)" : "none" }}>{Icon.chevron({ c: C.text, s: 20 })}</span>
       </button>
     );
   };
@@ -430,7 +430,11 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
     ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 999,
     padding: "10px 16px", fontSize: 13, display: "flex", alignItems: "center", gap: 8,
   };
+  // Где лежит содержимое — последней строкой сведений (раньше подписью у кнопок)
+  const rows = file.uploaded ? [...info, ["Хранится", FILE_SCOPE === "guest" ? "В этом браузере" : "В облаке аккаунта"]] : info;
 
+  // Окно файла (макет 2026-10-26): крупная скруглённая панель, превью со стрелками внутри,
+  // ряд «Копировать / Скачать / Поделиться» + корзина, сведения строками, градиентная «Отправить на устройство»
   return (
     <div className="nx-viewer" onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 300,
@@ -440,15 +444,15 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
       {/* stopPropagation — клик внутри окна не должен его закрывать */}
       <div
         role="dialog" aria-modal="true" aria-label={file.name}
-        className={`nx-viewer-panel${pop ? " nx-pop" : ""} nx-scroll`}
+        className={`nx-viewer-panel nx-fv${pop ? " nx-pop" : ""} nx-scroll`}
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 16,
+          width: "min(560px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto",
+          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 32,
           boxSizing: "border-box", textAlign: "left",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px" }}>
+        <div className="nx-fv-head" style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {editing ? (
               // Поле с именем: Enter — сохранить, Esc — отменить (окно при этом не закрывается)
@@ -482,144 +486,128 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
               </form>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+                <div className="nx-fv-title" style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
                 <button type="button" className="nx-icon-btn" onClick={startRename} aria-label="Переименовать" title="Переименовать" style={{
                   ...btnReset, width: 28, height: 28, borderRadius: 10, flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
+                  display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.7,
                 }}>
-                  {Icon.edit({ c: C.muted, s: 15 })}
+                  {Icon.edit({ c: C.muted, s: 14 })}
                 </button>
               </div>
             )}
-            <div style={{ fontSize: 12, color: draftError && editing ? C.red : C.mutedSoft, marginTop: 2 }}>
+            <div className="nx-fv-meta" style={{ color: draftError && editing ? C.red : C.muted, marginTop: 4 }}>
               {editing ? draftError || "Enter — сохранить, Esc — отменить" : `${fileMeta(file)}${many ? ` · ${at + 1} из ${siblings.length}` : ""}`}
             </div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{
-            ...btnReset, width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            ...btnReset, width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            {Icon.close({ c: C.muted, s: 18 })}
+            {Icon.close({ c: C.text, s: 18 })}
           </button>
         </div>
 
-        {/* Превью: та же миниатюра, только крупно */}
-        <div style={{ padding: "0 18px" }}>
-          <div style={{ position: "relative" }} onTouchStart={many ? onTouchStart : undefined} onTouchEnd={many ? onTouchEnd : undefined}>
+        {/* Превью: та же миниатюра, только крупно; стрелки и «На весь экран» — внутри */}
+        <div className="nx-fv-preview-wrap" style={{ position: "relative" }} onTouchStart={many ? onTouchStart : undefined} onTouchEnd={many ? onTouchEnd : undefined}>
           {many && arrow(-1)}
           {many && arrow(1)}
           {canFullPhoto ? (
             <button type="button" className="nx-viewer-preview nx-photo-open" onClick={() => setFullPhoto(true)}
               aria-label="Открыть фото на весь экран" title="Открыть на весь экран"
-              style={{ ...btnReset, display: "flex", width: "100%", position: "relative", cursor: "zoom-in", borderRadius: 8 }}>
-              <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
-              {/* Подсказка в углу: превью открывается на весь экран */}
-              <span aria-hidden="true" style={{
-                position: "absolute", right: 10, bottom: 10, display: "flex", alignItems: "center", gap: 6,
-                padding: "6px 10px", borderRadius: 999, fontSize: 12, color: C.onFold,
-                background: `color-mix(in srgb, ${C.photoBg} 70%, transparent)`,
+              style={{ ...btnReset, display: "flex", width: "100%", position: "relative", cursor: "zoom-in", borderRadius: 20, overflow: "hidden" }}>
+              <FileThumb file={file} w="100%" h={270} iconSize={56} radius={20} fit="contain" />
+              <span aria-hidden="true" className="nx-fv-full" style={{
+                position: "absolute", right: 14, bottom: 14, display: "flex", alignItems: "center", gap: 7,
+                padding: "8px 14px", borderRadius: 999, fontSize: 13, color: C.onFold,
+                background: `color-mix(in srgb, ${C.photoBg} 72%, transparent)`,
               }}>
-                {Icon.expand({ c: C.onFold, s: 14 })} На весь экран
+                {Icon.expand({ c: C.onFold, s: 15 })} На весь экран
               </span>
             </button>
           ) : (
-            <div className="nx-viewer-preview" style={{ display: "flex" }}>
-              <FileThumb file={file} w="100%" h={220} iconSize={44} radius={8} fit="contain" />
+            <div className="nx-viewer-preview" style={{ display: "flex", borderRadius: 20, overflow: "hidden" }}>
+              <FileThumb file={file} w="100%" h={270} iconSize={56} radius={20} fit="contain" />
             </div>
           )}
-          </div>
-          {fullPhoto && (
-            <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} />
-          )}
-          {/* Содержимое: открыть и скачать (только у загруженных; у демо-файлов его нет) */}
-          {file.uploaded
-            ? <FileContentActions file={file} onToast={onToast} />
-            : <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10 }}>Демо-файл: содержимого нет, только пример в списке</div>}
         </div>
+        {fullPhoto && (
+          <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} />
+        )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 18px", padding: "18px 18px 4px", fontSize: 13 }}>
-          {info.map(([k, v]) => (
-            <div key={k} style={{ display: "contents" }}>
-              <div style={{ color: C.mutedSoft }}>{k}</div>
-              <div>{v}</div>
+        {confirmDel ? (
+          // Подтверждение удаления заменяет ряд кнопок
+          <div className="nx-pop nx-fv-confirm" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 20, padding: 14 }}>
+            <div style={{ fontSize: 14, marginBottom: 4 }}>Удалить файл?</div>
+            <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
+              «{file.name}» пропадёт из всех папок и списков.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => { onDelete(file); onToast?.({ title: "Файл удалён", text: file.name }); }} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
+                {Icon.trash({ c: C.red, s: 16 })} Удалить
+              </button>
+              <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>Отмена</button>
+            </div>
+          </div>
+        ) : (
+          <FileContentActions file={file} onToast={onToast} onShare={share} onDelete={() => setConfirmDel(true)} />
+        )}
+
+        {/* Сведения: строки «название — значение» с разделителями */}
+        <div className="nx-fv-info">
+          {rows.map(([k, v]) => (
+            <div key={k} className="nx-fv-row">
+              <span style={{ color: C.muted }}>{k}</span>
+              <span style={{ textAlign: "right", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ padding: "16px 18px 18px" }}>
-          {confirmDel ? (
-            // Подтверждение удаления заменяет ряд кнопок
-            <div className="nx-pop" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 14, marginBottom: 4 }}>Удалить файл?</div>
-              <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
-                «{file.name}» пропадёт из всех папок и списков.
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={() => { onDelete(file); onToast?.({ title: "Файл удалён", text: file.name }); }} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
-                  {Icon.trash({ c: C.red, s: 16 })} Удалить
-                </button>
-                <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>Отмена</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="nx-viewer-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="nx-primary" onClick={() => { setSendOpen(!sendOpen); setSend(null); }} aria-expanded={sendOpen} style={{
-                  ...ghostBtn, border: "1px solid transparent", color: C.onFold, fontWeight: 500,
-                  background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-                }}>
-                  {Icon.send({ c: C.onFold, s: 16 })} Отправить на устройство
-                </button>
-                {/* Открыть этот же файл на другом своём устройстве (только файлы в облаке аккаунта) */}
-                {onContinue && file.path && (
-                  <button type="button" className="nx-ghost-btn" onClick={() => onContinue(file)} style={ghostBtn}>
-                    {Icon.shareUp({ c: C.text, s: 16 })} Продолжить на устройстве
-                  </button>
-                )}
-                <button type="button" className="nx-ghost-btn" onClick={share} style={ghostBtn}>
-                  {Icon.share({ c: C.text, s: 16 })} Поделиться
-                </button>
-                <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(true)} style={{ ...ghostBtn, color: C.red }}>
-                  {Icon.trash({ c: C.red, s: 16 })} Удалить
-                </button>
-              </div>
+        <button type="button" className="nx-primary nx-fv-send" onClick={() => { setSendOpen(!sendOpen); setSend(null); }} aria-expanded={sendOpen} style={{
+          ...btnReset, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          borderRadius: 999, color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+        }}>
+          {Icon.send({ c: C.onFold, s: 16 })} Отправить на устройство
+        </button>
+        {/* Открыть этот же файл на другом своём устройстве (только файлы в облаке аккаунта) */}
+        {onContinue && file.path && (
+          <button type="button" className="nx-ghost-btn" onClick={() => onContinue(file)} style={{ ...ghostBtn, width: "100%", justifyContent: "center", marginTop: 10 }}>
+            {Icon.shareUp({ c: C.text, s: 16 })} Продолжить на устройстве
+          </button>
+        )}
 
-              {/* Выбор устройства: само устройство, где лежит файл, не предлагаем */}
-              {sendOpen && (
-                <div className="nx-pop" style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Куда отправить?</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {devices.filter((x) => x.name !== file.device && x.alias !== file.device).map((x) => x.name).map((d) => {
-                      const dev = deviceByName(d);
-                      return (
-                        <StateButton
-                          key={d}
-                          state={send && send.to === d ? send.state : "idle"}
-                          labels={{ loading: "Отправка…", success: "Отправлено", error: "Не в сети" }}
-                          // Отключённые устройства видно сразу: серая точка рядом с именем
-                          icon={<Dot color={dev && !dev.online ? C.mutedSoft : C.green} />}
-                          disabled={send?.state === "loading"}
-                          onClick={() => sendTo(d)}
-                          style={{ padding: "8px 14px" }}
-                        >
-                          {d}
-                        </StateButton>
-                      );
-                    })}
-                  </div>
-                  {send?.state === "error" && (
-                    <div style={{ marginTop: 10 }}>
-                      <StateNote kind="error">
-                        {send.to} сейчас не в сети, файл не отправлен. Подключите устройство
-                        на главном экране и попробуйте ещё раз.
-                      </StateNote>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        {/* Выбор устройства: само устройство, где лежит файл, не предлагаем */}
+        {sendOpen && (
+          <div className="nx-pop" style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Куда отправить?</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {devices.filter((x) => x.name !== file.device && x.alias !== file.device).map((x) => x.name).map((d) => {
+                const dev = deviceByName(d);
+                return (
+                  <StateButton
+                    key={d}
+                    state={send && send.to === d ? send.state : "idle"}
+                    labels={{ loading: "Отправка…", success: "Отправлено", error: "Не в сети" }}
+                    // Отключённые устройства видно сразу: серая точка рядом с именем
+                    icon={<Dot color={dev && !dev.online ? C.mutedSoft : C.green} />}
+                    disabled={send?.state === "loading"}
+                    onClick={() => sendTo(d)}
+                    style={{ padding: "8px 14px" }}
+                  >
+                    {d}
+                  </StateButton>
+                );
+              })}
+            </div>
+            {send?.state === "error" && (
+              <div style={{ marginTop: 10 }}>
+                <StateNote kind="error">
+                  {send.to} сейчас не в сети, файл не отправлен. Подключите устройство
+                  на главном экране и попробуйте ещё раз.
+                </StateNote>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -678,7 +666,7 @@ export async function openFileContent(file, scope, download) {
   return true;
 }
 
-export function FileContentActions({ file, onToast }) {
+export function FileContentActions({ file, onToast, onShare, onDelete }) {
   const [state, setState] = useState(null); // null | "open" | "download" | "copy" — что сейчас готовим
   const go = async (download) => {
     setState(download ? "download" : "open");
@@ -711,23 +699,37 @@ export function FileContentActions({ file, onToast }) {
         : { title: "Не получилось скопировать", text: navigator.onLine === false ? "Нет связи — фото ещё не скачано на это устройство" : "Буфер обмена не принял картинку — попробуйте «Скачать»" });
     } finally { setState(null); }
   };
-  const btn = { ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text };
+  // Ряд кнопок окна файла (макет 2026-10-26): у фото — «Копировать», у остальных — «Открыть»; «Скачать»,
+  // «Поделиться» (onShare) и круглая красная корзина (onDelete). Файл без содержимого — только «Поделиться» и корзина
+  const btn = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, minWidth: 0, whiteSpace: "nowrap" };
+  const has = !!file.uploaded;
   return (
-    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-      <button type="button" className="nx-ghost-btn" onClick={() => go(false)} disabled={!!state} style={btn}>
-        {state === "open" ? <Spinner s={13} /> : Icon.shareUp({ c: C.text, s: 15 })} Открыть
-      </button>
-      <button type="button" className="nx-ghost-btn" onClick={() => go(true)} disabled={!!state} style={btn}>
-        {state === "download" ? <Spinner s={13} /> : Icon.download({ c: C.text, s: 15 })} Скачать
-      </button>
-      {file.cat === "photo" && (
+    <div className="nx-fv-actions">
+      {has && (file.cat === "photo" ? (
         <button type="button" className="nx-ghost-btn" onClick={copy} disabled={!!state} style={btn}>
           {state === "copy" ? <Spinner s={13} /> : Icon.copy({ c: C.text, s: 15 })} Копировать
         </button>
+      ) : (
+        <button type="button" className="nx-ghost-btn" onClick={() => go(false)} disabled={!!state} style={btn}>
+          {state === "open" ? <Spinner s={13} /> : Icon.shareUp({ c: C.text, s: 15 })} Открыть
+        </button>
+      ))}
+      {has && (
+        <button type="button" className="nx-ghost-btn" onClick={() => go(true)} disabled={!!state} style={btn}>
+          {state === "download" ? <Spinner s={13} /> : Icon.download({ c: C.text, s: 15 })} Скачать
+        </button>
       )}
-      <span style={{ alignSelf: "center", fontSize: 12, color: C.mutedSoft }}>
-        {FILE_SCOPE === "guest" ? "Хранится только в этом браузере" : "Хранится в облаке аккаунта"}
-      </span>
+      {onShare && (
+        <button type="button" className="nx-ghost-btn" onClick={onShare} style={btn}>
+          {Icon.share({ c: C.text, s: 15 })} Поделиться
+        </button>
+      )}
+      {onDelete && (
+        <button type="button" className="nx-icon-btn nx-fv-del" onClick={onDelete} aria-label="Удалить файл" title="Удалить файл"
+          style={{ ...btnReset, borderRadius: "50%", border: `1px solid ${C.red}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {Icon.trash({ c: C.red, s: 16 })}
+        </button>
+      )}
     </div>
   );
 }
