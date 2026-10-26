@@ -48,3 +48,7 @@ desktop/src-tauri/gen
 desktop/src-tauri/installer/art/bmp
 *.key
 *.key.pub.bak
+# Разметка непонятых фраз NEXA Mini (npm run mini:review / mini:merge) — только на компьютере автора
+mini-review.csv
+mini-review.csv.tmp
+.mini-review-state.json

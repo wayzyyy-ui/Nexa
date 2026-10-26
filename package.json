@@ -9,6 +9,8 @@
     "lint": "oxlint",
     "test": "node --test tests/*.test.mjs",
     "mini:train": "node scripts/mini/train.mjs",
+    "mini:review": "node scripts/mini/review.mjs",
+    "mini:merge": "node scripts/mini/merge.mjs",
     "preview": "vite preview",
     "build:android": "vite build --mode android && node -e \"const f=require('fs');f.rmSync('dist/nexa.apk',{force:true});f.rmSync('dist/ota',{recursive:true,force:true});f.rmSync('dist/nexa-setup.exe',{force:true});f.rmSync('dist/desktop',{recursive:true,force:true})\" && cap sync android",
     "open:android": "cap open android",

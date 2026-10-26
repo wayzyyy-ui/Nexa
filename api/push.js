@@ -39,8 +39,9 @@
    Без них отвечает { sent: false, reason: "not_configured" } — приложение пишет об этом честно.
    Ключи и push-адреса в журнал не пишем. */
 import { createClient } from '@supabase/supabase-js';
-import { createSign, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { allow, clientKey } from './_lib/rate-limit.js';
+import { createSign, createHash, randomBytes } from 'node:crypto';
+import { allow } from './_lib/rate-limit.js';
+import { adminGate } from './_lib/admin.js';
 
 // Android (Capacitor) и приложение для ПК (Tauri: в Windows — http://tauri.localhost, в macOS/Linux — tauri://localhost)
 const ALLOWED_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost'];
@@ -267,17 +268,10 @@ async function staleToken(r) {
 
 /* ── Разовое объявление на все телефоны с NEXA (см. начало файла) ── */
 const ANNOUNCE_TITLE_MAX = 80, ANNOUNCE_TEXT_MAX = 300;
-// Секрет сравниваем по отпечаткам одинаковой длины — время сравнения не подсказывает, сколько символов совпало
-function adminOk(req) {
-  const want = String(process.env.NEXA_ADMIN_SECRET || '');
-  const got = String(req.headers['x-nexa-admin'] || '');
-  if (want.length < 24 || !got) return false;
-  return timingSafeEqual(createHash('sha256').update(want).digest(), createHash('sha256').update(got).digest());
-}
 async function announce(req, res, sb, sa) {
-  // Перебор секрета: не больше 10 попыток в час с адреса (и верных, и неверных)
-  if (!(await allow([[`announce-try:${clientKey(req)}`, 10, 3600]]))) return res.status(429).json({ error: 'Слишком часто' });
-  if (!adminOk(req)) return res.status(403).json({ error: 'Нет доступа' });
+  // Только автор — по секрету (api/_lib/admin.js; там же счётчик попыток)
+  const gate = await adminGate(req, 'announce');
+  if (gate) return res.status(gate.code).json({ error: gate.error });
   const { id, dry } = req.body || {};
   const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, ANNOUNCE_TITLE_MAX);
   const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, ANNOUNCE_TEXT_MAX);
