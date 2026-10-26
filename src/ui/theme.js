@@ -20,7 +20,8 @@ export const C = {
   mintLight: "var(--mint-light)",// мятный для света
   green: "var(--green)",         // статус "онлайн"
   red: "var(--red)",             // статус "не в сети"
-  onAccent: "var(--on-accent)",  // текст и иконки на мятной или синей заливке
+  onAccent: "var(--on-accent)",
+  avatarBg: "var(--avatar-bg)", avatarInk: "var(--avatar-ink)", // кружок аватара в Настройках  // текст и иконки на мятной или синей заливке
   chip: "var(--chip)",           // нейтральная заливка: выключенный переключатель, заглушки
   textStrong: "var(--text-strong)", // выделенный текст (жирный в ответах ассистента)
   textSoft: "var(--text-soft)",  // текст внутри пузыря ассистента

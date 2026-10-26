@@ -84,6 +84,7 @@ export const APP_CSS = `
           --mint: #00FFDF;  --mint-dark: #0F3D38;  --mint-light: #7EF0E0;
           --green: #47DE8E;  --red: #DE4747;
           --on-accent: #07080C;  --chip: #2A2C34;
+          --avatar-bg: #E3E4E8; --avatar-ink: #0B0F16;
           --glass: rgba(20, 22, 28, 0.92);
           --glass-border: rgba(255, 255, 255, 0.08);
           --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -126,6 +127,7 @@ export const APP_CSS = `
           --mint: #10BFA8;  --mint-dark: #D3F2EC;  --mint-light: #7EE6D8;
           --green: #1C9E5E;  --red: #D23C3C;
           --on-accent: #07080C;  --chip: #CBD3DE;
+          --avatar-bg: #FFFFFF; --avatar-ink: #111933;
           --glass: rgba(248, 250, 252, 0.9);
           --glass-border: rgba(24, 32, 58, 0.10);
           --glass-shadow: 0 6px 20px rgba(24, 32, 58, 0.10);
@@ -221,7 +223,7 @@ export const APP_CSS = `
 
         @media ${DESKTOP_MQ} {
           /* Главная занимает всю ширину окна (у других разделов колонка до 1440 px) */
-          .ng-main-content:has(.ng-home) { max-width: none !important; }
+          .ng-main-content:has(.ng-home), .ng-main-content:has(.nx-set-desk) { max-width: none !important; }
           /* Слева — отступ по макету: содержимое начинается на 270 px макета (меню 96 + 174) */
           .ng-home { padding: calc(58 * var(--mk)) calc(158 * var(--mk)) calc(40 * var(--mk)) calc(174 * var(--mk)) !important; }
         }
@@ -410,11 +412,57 @@ export const APP_CSS = `
           color: var(--text) !important; font-size: 13px; font-family: inherit; cursor: pointer; }
         .nx-home-more { display: flex !important; align-items: center; justify-content: center; width: 100%; margin-top: 18px; min-height: 38px; box-sizing: border-box;
           font-size: 15px; color: var(--text) !important; background: transparent !important; font-family: inherit; cursor: pointer; }
+        /* ── Настройки (макет 2026-10-26) ── */
+        .nx-set-avatar { box-shadow: inset 0 0 0 1px var(--border); }
+        .nx-set-name { display: block; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-set-mail { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-set-nav { display: flex; flex-direction: column; gap: 4px; }
+        .nx-set-nav-item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 18px;
+          border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 16px; color: var(--text); transition: background-color 160ms ease; }
+        .nx-set-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+        .nx-set-nav-item:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+        .nx-set-nav-item.is-active { background: var(--mint); color: var(--on-fold); font-weight: 600; }
+        .nx-set-nav-icon { display: flex; flex-shrink: 0; }
+        .nx-set-nav-chev { margin-left: auto; display: flex; }
+        .nx-set-about { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; border-radius: 28px;
+          cursor: pointer; font-family: inherit; color: var(--text); text-align: left; }
+        .nx-set-about:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+        /* Внутри раздела: заголовок первой группы повторяет название раздела — прячем */
+        .nx-set-notitle > .nx-section-title:first-child, .nx-set-notitle > :first-child > .nx-section-title:first-child { display: none !important; }
+        .nx-set-body > :first-child .nx-section-title:first-child, .nx-set-body > .nx-section-title:first-child { margin-top: 0 !important; }
+        @media ${DESKTOP_MQ} {
+          .nx-set-desk { padding: calc(38 * var(--mk)) calc(140 * var(--mk)) 40px max(40px, calc(174 * var(--mk))) !important; text-align: left; box-sizing: border-box; }
+          .nx-settings-title { font-size: max(32px, calc(50 * var(--mk))) !important; line-height: 1.1 !important; margin-bottom: calc(60 * var(--mk)); }
+          .nx-set-layout { display: grid; grid-template-columns: minmax(300px, calc(480 * var(--mk))) minmax(0, 1fr); gap: calc(48 * var(--mk)); align-items: start; }
+          .nx-set-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: calc(140 * var(--mk)); }
+          .nx-set-side-title { font-size: max(20px, calc(28 * var(--mk))); margin: 0 0 4px 8px; }
+          .nx-set-account { display: flex; align-items: center; gap: 18px; padding: 16px 18px; border-radius: 999px; }
+          .nx-set-account.is-active { box-shadow: inset 0 0 0 1px var(--mint); }
+          .nx-set-navcard { padding: 12px; border-radius: 36px; }
+          .nx-set-panel { border-radius: 48px; padding: calc(36 * var(--mk)) calc(44 * var(--mk)) calc(44 * var(--mk)); min-height: calc(640 * var(--mk)); box-sizing: border-box; }
+          .nx-set-panel-title { display: inline-flex; align-items: center; height: 48px; padding: 0 26px; border-radius: 999px; font-size: 18px; margin-bottom: 26px; }
+          .nx-set-body { max-width: 900px; }
+        }
+        @media ${PHONE_MQ} {
+          .ng-screen.nx-set-phone { position: relative; padding: calc(78px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: center; }
+          .nx-set-qr { position: absolute; left: 12px; top: calc(22px + var(--sat)); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+            border: none; background: transparent; cursor: pointer; }
+          .nx-set-profile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 8px 0 26px; cursor: pointer; }
+          .nx-set-profile .nx-set-avatar { margin-bottom: 14px; }
+          .nx-set-profile .nx-set-name { font-size: 22px; max-width: 100%; }
+          .nx-set-profile .nx-set-mail { max-width: 100%; }
+          .nx-set-sheet { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: 32px; text-align: left; }
+          .nx-set-sheet .nx-set-about { border-radius: 24px; padding: 14px 18px; }
+          .ng-screen.nx-set-page { padding: calc(18px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: left; }
+          .nx-set-page-title { margin: 14px 0 18px !important; }
+          /* Открыт раздел — у него своя шапка с «Назад», общей строки со значками нет */
+          body:has(.nx-set-page) .ng-topbar { display: none !important; }
+        }
         @media ${PHONE_MQ} {
           /* .nx-tb-fade — во время свайпа строка проявляется / гаснет за пальцем (useTabSwipe) */
           /* Верхняя строка со значками на телефоне — только у ассистента (у Главной своя шапка; на «Сегодня»,
-             «Медиа», «Файлах», в Настройках её убрали по просьбе автора 2026-10-25). Во время свайпа — видна и гаснет */
-          .ng-topbar:not([data-tab="assistant"]):not(.nx-tb-fade) { display: none !important; }
+             «Медиа», «Файлах», в Настройках её убрали по просьбе автора 2026-10-25; в Настройках вернули по макету 2026-10-26). Во время свайпа — видна и гаснет */
+          .ng-topbar:not([data-tab="assistant"]):not([data-tab="settings"]):not(.nx-tb-fade) { display: none !important; }
           .nx-top-search { display: none !important; }
           .nx-top-search-icon { display: inline-flex; }
           .ng-topbar { gap: 2px !important; }
@@ -453,6 +501,24 @@ export const APP_CSS = `
           --text: #FFFFFF; --muted: #92A2AF; --muted-soft: #6B6B72; --mint: #00FFDF; --logo: #FFFFFF;
           --border-strong: rgba(255, 255, 255, 0.28); --line-bright: rgba(255, 255, 255, 0.62);
           --hover: rgba(255, 255, 255, 0.05); --pressed: rgba(255, 255, 255, 0.10); color-scheme: dark;
+        }
+        /* Компьютер (макет 2026-10-26, 1920 × 1080): крупнее знак и сцена, шторка 1002 px со скруглением 180 */
+        @media ${DESKTOP_MQ} {
+          .nx-force-update { --panel: #1C1D20; --border: #26282E; }
+          .nx-force-head { padding-top: calc(var(--sat) + 88 * var(--mk)) !important; gap: calc(40 * var(--mk)) !important; }
+          .nx-force-head > svg:first-child { width: auto !important; height: calc(58 * var(--mk)) !important; }
+          .nx-force-head > :last-child, .nx-force-head > :last-child svg { height: calc(36 * var(--mk)) !important; width: auto !important; }
+          .nx-force-stage { max-height: calc(430 * var(--mk)) !important; margin-bottom: calc(-6 * var(--mk)) !important; }
+          .nx-force-acts .nx-upd-hint { display: none; }
+          .nx-force-sheet { max-width: calc(1002 * var(--mk)) !important; border-radius: calc(180 * var(--mk)) calc(180 * var(--mk)) 0 0 !important;
+            padding: calc(56 * var(--mk)) calc(60 * var(--mk)) calc(52 * var(--mk)) !important; flex-shrink: 0; }
+          .nx-force-title { font-size: max(26px, calc(38 * var(--mk))) !important; font-weight: 600 !important; margin-bottom: calc(26 * var(--mk)) !important; }
+          .nx-force-text { font-size: max(17px, calc(27 * var(--mk))) !important; max-width: calc(520 * var(--mk)) !important; line-height: 1.42 !important; font-weight: 300; }
+          .nx-force-safe { font-size: max(13px, calc(18 * var(--mk))) !important; gap: calc(12 * var(--mk)) !important; margin: calc(16 * var(--mk)) 0 calc(54 * var(--mk)) !important; }
+          .nx-force-shield { width: max(16px, calc(22 * var(--mk))); height: auto; }
+          .nx-force-acts { width: min(calc(308 * var(--mk)), 100%) !important; }
+          .nx-force-acts .nx-primary { width: 100%; height: max(48px, calc(64 * var(--mk))); font-size: max(18px, calc(27 * var(--mk))) !important; gap: calc(14 * var(--mk)) !important; }
+          .nx-force-acts .nx-primary svg { width: max(18px, calc(26 * var(--mk))); height: auto; }
         }
         .nx-dev-plate { border: 1px solid var(--border-strong) !important; border-radius: 16px !important; background: var(--panel) !important; min-height: 66px; transition: border-color 160ms ease; }
         .nx-dev-plate:hover { border-color: var(--mint) !important; }

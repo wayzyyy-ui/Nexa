@@ -1,11 +1,13 @@
-// Экран «Настройки»: это устройство, уведомления и все группы
+// Экран «Настройки» (макет 2026-10-26): слева аккаунт и разделы, справа выбранный раздел; на телефоне — список разделов,
+// раздел открывается на весь экран. Группы внутри разделов — прежние компоненты (этот файл и App.jsx)
 import { useState, useEffect } from "react";
 import { isNative, isDesktop, systemNotifyKind } from "../native.js";
 import { thisDeviceKind, NO_DATA, KIND_LABEL, batteryText, netText, diskText } from "../lib/deviceInfo.js";
-import { C, readTheme, switchTheme, T } from "../ui/theme.js";
+import { C, readTheme, switchTheme, T, PHONE_MQ } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { sysTime } from "../lib/format.js";
-import { readTilt, saveTilt, tiltNeedsPermission } from "../lib/hooks.js";
+import { readTilt, saveTilt, tiltNeedsPermission, useMediaQuery } from "../lib/hooks.js";
+import { Crumb } from "../ui/layout.jsx";
 import { SectionTitle, SettingsGroup, SettingsRow, btnReset, Toggle } from "../ui/base.jsx";
 import { AccountSettings } from "./auth.jsx";
 import { NOTE_CATS } from "../lib/notes.js";
@@ -128,7 +130,62 @@ export function NotesWidgetSettings({ hide, setHide, onNotes }) {
   );
 }
 
-export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, miniBlock, updateBlock, widgetBlock, backupBlock }) {
+/* Разделы Настроек (макет 2026-10-26). account — открывается карточкой аккаунта, в списке его нет.
+   notitle — в разделе первый заголовок группы повторяет название раздела: его прячем (класс nx-set-notitle) */
+export const SETTINGS_SECTIONS = [
+  { id: "appearance", title: "Внешний вид", icon: "palette" },
+  { id: "security", title: "Безопасность", icon: "lock" },
+  { id: "notes", title: "Уведомления", icon: "bell", notitle: true },
+  { id: "assistant", title: "Память ассистента", icon: "sparkle", notitle: true },
+  { id: "device", title: "Это устройство", icon: "laptop", notitle: true },
+  { id: "apps", title: "Приложения", icon: "apps" },
+];
+const ACCOUNT = { id: "account", title: "Аккаунт", icon: "user", notitle: true };
+const SEC_KEY = "nexa-settings-sec"; // какой раздел был открыт (компьютер, на эту вкладку)
+const readSec = () => { try { const v = sessionStorage.getItem(SEC_KEY); return [...SETTINGS_SECTIONS, ACCOUNT].some((s) => s.id === v) ? v : "appearance"; } catch { return "appearance"; } };
+
+// Имя для карточки аккаунта: из профиля, иначе часть почты до «@»
+const accountName = (user) => {
+  const m = user?.user_metadata || {};
+  const n = String(m.full_name || m.name || "").trim();
+  if (n) return n;
+  const local = String(user?.email || "").split("@")[0] || "";
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
+};
+
+export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, miniBlock, updateBlock, widgetBlock, backupBlock, securityBlock, request }) {
+  const phone = useMediaQuery(PHONE_MQ);
+  // Компьютер: выбранный раздел справа. Телефон: null — список, иначе открыт раздел на весь экран
+  const [sec, setSecState] = useState(readSec);
+  const [open, setOpen] = useState(null);
+  const setSec = (id) => { setSecState(id); try { sessionStorage.setItem(SEC_KEY, id); } catch { /* не страшно */ } };
+  const choose = (id) => { setSec(id); if (phone) { setOpen(id); window.scrollTo(0, 0); } };
+
+  // Переход «к этим настройкам» из других мест (уведомление, центр безопасности, ссылка): раздел + блок внутри
+  useEffect(() => {
+    if (!request?.sec) return;
+    setSec(request.sec);
+    if (phone) setOpen(request.sec);
+    const t = setTimeout(() => {
+      const el = request.anchor && document.getElementById(request.anchor);
+      if (el) el.scrollIntoView({ block: "start", behavior: "smooth" }); else window.scrollTo(0, 0);
+    }, 120);
+    return () => clearTimeout(t);
+  }, [request?.n]);
+
+  // Телефон: открытый раздел закрывается Esc и «Назад» (у раздела role="dialog" — роутер даёт ему свою запись истории)
+  useEffect(() => {
+    if (!phone || !open) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Поверх раздела открыто своё окно или меню — Esc сначала ему
+      const top = [...document.querySelectorAll('[role="dialog"], [role="menu"]')].filter((el) => !el.classList.contains("nx-set-page"));
+      if (top.length) return;
+      setOpen(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phone, open]);
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -160,81 +217,145 @@ export function ScreenSettings({ onAbout, onSecurity, user, onLogin, onDeleteDat
     }}>{label}</button>
   );
 
-  return (
-    <div className="ng-screen nx-stagger nx-settings" style={{ padding: "28px 40px 40px", maxWidth: 920, marginInline: "auto", boxSizing: "border-box" }}>
-      {/* Колонка настроек не шире 920px и стоит по центру свободного места:
-          переключатели рядом с подписями, по краям — ровные поля.
-          Поиск — значок в верхней строке (отдельное поле здесь его повторяло) */}
-      <div className="nx-settings-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-        <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>Настройки</div>
-        </div>
-
-      <AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} />
-
-      {/* Центр безопасности: устройства, сеансы входа, приватность, журнал (экран ScreenSecurity) */}
-      <SectionTitle>Безопасность и приватность</SectionTitle>
-      <SettingsGroup>
-        <SettingsRow last icon={Icon.lock({ c: C.mint, s: 18 })} title="Устройства, входы и приватность"
-          subtitle={user ? "Где выполнен вход, отключить потерянное устройство, поиск этого устройства, журнал" : "Что доступно без аккаунта и что даёт вход"}
-          right={Icon.chevron({})} onClick={onSecurity} />
-      </SettingsGroup>
-
-      <SectionTitle>Внешний вид</SectionTitle>
-      <SettingsGroup>
-        <SettingsRow
-          last={!touch} wrap
-          icon={
-            // Мини-складка: меняет цвет вместе с темой
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <polygon points="4,14 12,4 12,20 7,22" fill={theme === "dark" ? C.blue : C.mint} />
-            </svg>
-          }
-          title="Тема оформления"
-          subtitle={theme === "dark" ? "Тёмная" : "Светлая"}
-          right={
-            <div className="nx-seg" style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden" }}>
-              {segBtn("light", "Светлая")}
-              {segBtn("dark", "Тёмная")}
-            </div>
-          }
-        />
-        {touch && (
+  // Что лежит в каждом разделе (раскладку утвердил автор 2026-10-26)
+  const content = (id) => {
+    switch (id) {
+      case "appearance": return (
+        <SettingsGroup>
           <SettingsRow
-            last
-            icon={<span style={{ display: "flex", transform: "rotate(-14deg)" }}>{Icon.phone({ c: C.muted, s: 18 })}</span>}
-            title="Фон от наклона телефона"
-            subtitle={tiltNeedsPermission() && !tilt ? "Нужно разрешить доступ к движению" : "Фон чуть сдвигается, когда наклоняете телефон"}
-            right={<Toggle on={tilt} onClick={toggleTilt} />}
+            last={!touch} wrap
+            icon={
+              // Мини-складка: меняет цвет вместе с темой
+              <svg viewBox="0 0 24 24" width="18" height="18">
+                <polygon points="4,14 12,4 12,20 7,22" fill={theme === "dark" ? C.blue : C.mint} />
+              </svg>
+            }
+            title="Тема оформления"
+            subtitle={theme === "dark" ? "Тёмная" : "Светлая"}
+            right={
+              <div className="nx-seg" style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden" }}>
+                {segBtn("light", "Светлая")}
+                {segBtn("dark", "Тёмная")}
+              </div>
+            }
           />
+          {touch && (
+            <SettingsRow
+              last
+              icon={<span style={{ display: "flex", transform: "rotate(-14deg)" }}>{Icon.phone({ c: C.muted, s: 18 })}</span>}
+              title="Фон от наклона телефона"
+              subtitle={tiltNeedsPermission() && !tilt ? "Нужно разрешить доступ к движению" : "Фон чуть сдвигается, когда наклоняете телефон"}
+              right={<Toggle on={tilt} onClick={toggleTilt} />}
+            />
+          )}
+        </SettingsGroup>
+      );
+      case "security": return <>{securityBlock}{backupBlock}</>;
+      case "notes": return noteBlock;
+      case "assistant": return <>{memoryBlock}{miniBlock}<AssistantInputSettings /></>;
+      case "device": return <><ThisDeviceSettings sys={sys} />{flowBlock}{widgetBlock}</>;
+      case "apps": return <>{updateBlock}<DesktopSettings /><InstallSettings /></>;
+      case "account": return <AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} />;
+      default: return null;
+    }
+  };
+  const meta = (id) => [...SETTINGS_SECTIONS, ACCOUNT].find((s) => s.id === id) || SETTINGS_SECTIONS[0];
+
+  const name = user ? accountName(user) : "Гость";
+  const avatar = (size) => (
+    <span className="nx-set-avatar" aria-hidden="true" style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: C.avatarBg }}>
+      {Icon.user({ c: C.avatarInk, s: Math.round(size * 0.48) })}
+    </span>
+  );
+  // Список разделов (компьютер — с выбранным, телефон — просто строки)
+  const navList = (
+    <nav className="nx-set-nav" aria-label="Разделы настроек">
+      {SETTINGS_SECTIONS.map((s) => {
+        const active = !phone && sec === s.id;
+        return (
+          <button key={s.id} type="button" className={`nx-set-nav-item${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => choose(s.id)}>
+            <span className="nx-set-nav-icon">{Icon[s.icon]({ c: active ? C.onFold : C.text, s: 20 })}</span>
+            <span>{s.title}</span>
+            {phone && <span className="nx-set-nav-chev" aria-hidden="true">{Icon.chevron({ c: C.mutedSoft })}</span>}
+          </button>
+        );
+      })}
+    </nav>
+  );
+  const aboutCard = (
+    <button type="button" className="nx-set-about nx-glass nx-glass-subtle" onClick={onAbout}>
+      {Icon.info({ c: C.text, s: 20 })}
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 15 }}>О системе</span>
+        <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 2 }}>NEXA {VERSION} · что умеет, обновления и планы</span>
+      </span>
+    </button>
+  );
+
+  /* ── Телефон ── */
+  if (phone) {
+    if (open) {
+      const m = meta(open);
+      return (
+        <div className="ng-screen nx-settings nx-set-page" role="dialog" aria-label={m.title} data-no-swipe>
+          <Crumb onClick={() => setOpen(null)}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+          <div className="ng-display nx-page-title nx-set-page-title">{m.title}</div>
+          <div className={`nx-set-body${m.notitle ? " nx-set-notitle" : ""}`}>{content(open)}</div>
+        </div>
+      );
+    }
+    return (
+      <div className="ng-screen nx-stagger nx-settings nx-set-phone">
+        {user && onApproveLogin && (
+          <button type="button" className="nx-icon-btn nx-set-qr" onClick={onApproveLogin} aria-label="Войти на другом устройстве по QR" title="Войти на другом устройстве">
+            {Icon.qr({ c: C.text, s: 20 })}
+          </button>
         )}
-      </SettingsGroup>
+        <button type="button" className="nx-set-profile" onClick={() => (user ? choose("account") : onLogin?.())}>
+          {avatar(84)}
+          <span className="nx-set-name">{name}</span>
+          <span className="nx-set-mail">{user ? user.email : "Войдите, чтобы данные были на всех устройствах"}</span>
+        </button>
+        <div className="nx-set-sheet nx-glass nx-glass-subtle">
+          {navList}
+          {aboutCard}
+        </div>
+      </div>
+    );
+  }
 
-      {noteBlock}
-
-      <AssistantInputSettings />
-
-      {memoryBlock}
-
-      {miniBlock}
-
-      {flowBlock}
-
-      {backupBlock}
-
-      {widgetBlock}
-
-      <ThisDeviceSettings sys={sys} />
-
-      {updateBlock}
-
-      <DesktopSettings />
-
-      <InstallSettings />
-
-      <SectionTitle>Система</SectionTitle>
-      <SettingsGroup>
-        <SettingsRow last icon={Icon.info({ c: C.text, s: 18 })} title="О системе" subtitle={`NEXA ${VERSION} · что умеет, обновления и планы`} right={Icon.chevron({})} onClick={onAbout} />
-      </SettingsGroup>
+  /* ── Компьютер: слева аккаунт и разделы, справа выбранный раздел ── */
+  const m = meta(sec);
+  return (
+    <div className="ng-screen nx-stagger nx-settings nx-set-desk">
+      <div className="ng-display nx-page-title nx-settings-title">Настройки</div>
+      <div className="nx-set-layout">
+        <aside className="nx-set-side">
+          <div className="ng-display nx-set-side-title">Аккаунт</div>
+          <div className={`nx-set-account nx-glass nx-glass-subtle${sec === "account" ? " is-active" : ""}`}>
+            {avatar(78)}
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span className="nx-set-name">{name}</span>
+              <span className="nx-set-mail">{user ? user.email : "Вход по почте, без пароля"}</span>
+            </span>
+            {user ? (
+              <button type="button" className="nx-icon-btn" onClick={() => setSec("account")} aria-label="Настройки аккаунта" title="Настройки аккаунта"
+                style={{ ...btnReset, width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {Icon.gear({ c: C.text, s: 24 })}
+              </button>
+            ) : (
+              <button type="button" className="nx-primary" onClick={onLogin}
+                style={{ ...btnReset, borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, flexShrink: 0 }}>Войти</button>
+            )}
+          </div>
+          <div className="nx-set-navcard nx-glass nx-glass-subtle">{navList}</div>
+          {aboutCard}
+        </aside>
+        <section className="nx-set-panel nx-glass nx-glass-subtle" aria-label={m.title}>
+          <div className="ng-display nx-set-panel-title nx-glass">{m.title}</div>
+          <div key={sec} className={`nx-set-body nx-pop${m.notitle ? " nx-set-notitle" : ""}`}>{content(sec)}</div>
+        </section>
+      </div>
     </div>
   );
 }

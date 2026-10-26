@@ -1817,6 +1817,9 @@ export default function NexaApp() {
   // Только по нажатию человека и только одна заметка; ответ ассистента заметку сам не меняет
   const askAiAboutNote = (payload) => { setNoteChatReq({ ...payload, n: Date.now() }); goTab("assistant"); };
   const openSecurity = () => { setOpenDeviceId(null); setActivityOpen(false); setAboutOpen(false); setSecurityOpen(true); scrollTopNow(); };
+  /* Настройки — сразу на нужном разделе (sec — id из SETTINGS_SECTIONS в Settings.jsx) и, если надо, к блоку anchor */
+  const [settingsReq, setSettingsReq] = useState(null);
+  const openSettings = (sec, anchor) => { setSecurityOpen(false); goTabRef.current?.("settings"); setSettingsReq({ sec, anchor, n: Date.now() }); };
   // Открыли устройство, «Активность» или «О системе» (например, из уведомления) — центр закрывается
   useEffect(() => { if (openDeviceId || activityOpen || aboutOpen) setSecurityOpen(false); }, [openDeviceId, activityOpen, aboutOpen]);
   // «Все устройства» закрывается, когда открыли что-то другое поверх раздела (кроме экрана устройства — с него «Назад» вернёт к списку)
@@ -2383,13 +2386,12 @@ export default function NexaApp() {
     }
     if (t.sync) { setSyncOpen(true); return; }
     // Общий буфер обмена — Настройки, сразу к его блоку
-    if (t.clip) { goTab("settings"); setTimeout(() => document.getElementById("nx-clip-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 150); return; }
+    if (t.clip) { openSettings("device", "nx-clip-settings"); return; }
     if (t.activity) { openActivity(); return; }
-    if (t.update) { goTab("settings"); return; }
+    if (t.update) { openSettings("apps"); return; }
     if (t.tab) {
-      goTab(t.tab);
       // Настройки уведомлений — сразу к своему разделу
-      if (t.notes) setTimeout(() => document.getElementById("nx-note-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 120);
+      if (t.notes) openSettings("notes", "nx-note-settings"); else goTab(t.tab);
     }
   };
   openTargetRef.current = openTarget;
@@ -2932,7 +2934,7 @@ export default function NexaApp() {
               </SettingsGroup>
             </>
           )}
-          onSecurity={openSecurity} user={auth.user}
+          securityBlock={<ScreenSecurity embedded {...securityProps} />} request={settingsReq} user={auth.user}
           memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />}
           miniBlock={<MiniHelpSettings on={miniCollect.consent} setOn={miniCollect.setConsent} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
           flowBlock={<>{uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
@@ -2941,6 +2943,19 @@ export default function NexaApp() {
   ));
   /* Блоки разделов: текущий и (во время свайпа) соседний за краем экрана — его двигает useTabSwipe.
      quiet — раздел, пришедший свайпом: своё «появление» ему не нужно (он уже на экране) */
+  const securityProps = {
+    user: auth.user, onLogin: () => setAuthOpen(true), online, mySid,
+    devices: devices.map((d) => ({ ...d, sids: (d.members || [d.id]).map((rid) => deviceStore.state[rid]?.sid).filter(Boolean), canRevoke: deviceSids(d.id).length > 0 })),
+    onRename: renameDevice, onDisconnect: disconnectWithUndo, onEndSession: endSessionWithUndo, onSignOutOthers: signOutOthersWithUndo,
+    syncLine: !online ? { title: "Нет сети", text: syncPending ? `Изменений ждут отправки: ${syncPending}. Уйдут, когда вернётся интернет` : "Всё сохраняется на этом устройстве" }
+      : syncError ? { title: "Есть сбой синхронизации", text: syncError }
+      : syncLoading || syncPending ? { title: "Синхронизируем…", text: syncPending ? `Ждут подтверждения облака: ${syncPending}` : "Сверяем данные с облаком" }
+      : { ok: true, title: "Всё сохранено в облаке", text: "Устройства, диалоги, файлы и расписание подтверждены облаком" },
+    locateBlock, flowOn: flow.on !== false, log: secLog, memoryInfo: { on: memoryOn, count: memory.length }, miniOn: miniCollect.consent,
+    onOpenMini: () => openSettings("assistant", "nx-mini-help"),
+    onOpenMemory: () => openSettings("assistant", "nx-memory-settings"),
+    onOpenFlow: () => openSettings("device", "nx-flow-settings"),
+  };
   const tabPanels = () => [tab, peek?.tab].filter((t, i, all) => t && all.indexOf(t) === i).map((t) => {
     const isPeek = t !== tab;
     const quietHere = isPeek || quiet === t;
@@ -2973,7 +2988,7 @@ export default function NexaApp() {
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
       {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа», «Файлах» и под меню у ассистента */}
       {/* Общий фон-градиент: разделы и экраны поверх них («Активность», «О системе», безопасность) */}
-      {!openDevice && (["home", "today", "media", "files", "assistant"].includes(tab) || aboutOpen || activityOpen || securityOpen) && <div className="nx-home-glow" aria-hidden="true" />}
+      {!openDevice && (["home", "today", "media", "files", "assistant", "settings"].includes(tab) || aboutOpen || activityOpen || securityOpen) && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}
@@ -3033,17 +3048,7 @@ export default function NexaApp() {
     {/* Открыт экран устройства — показываем его вместо текущего раздела */}
     {securityOpen ? (
     <div key="security" className="ng-screen-anim">
-      <ScreenSecurity onBack={() => setSecurityOpen(false)} user={auth.user} onLogin={() => setAuthOpen(true)} online={online} mySid={mySid}
-        devices={devices.map((d) => ({ ...d, sids: (d.members || [d.id]).map((rid) => deviceStore.state[rid]?.sid).filter(Boolean), canRevoke: deviceSids(d.id).length > 0 }))}
-        onRename={renameDevice} onDisconnect={disconnectWithUndo} onEndSession={endSessionWithUndo} onSignOutOthers={signOutOthersWithUndo}
-        syncLine={!online ? { title: "Нет сети", text: syncPending ? `Изменений ждут отправки: ${syncPending}. Уйдут, когда вернётся интернет` : "Всё сохраняется на этом устройстве" }
-          : syncError ? { title: "Есть сбой синхронизации", text: syncError }
-          : syncLoading || syncPending ? { title: "Синхронизируем…", text: syncPending ? `Ждут подтверждения облака: ${syncPending}` : "Сверяем данные с облаком" }
-          : { ok: true, title: "Всё сохранено в облаке", text: "Устройства, диалоги, файлы и расписание подтверждены облаком" }}
-        locateBlock={locateBlock} flowOn={flow.on !== false} log={secLog} memoryInfo={{ on: memoryOn, count: memory.length }} miniOn={miniCollect.consent}
-        onOpenMini={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-mini-help")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }}
-        onOpenMemory={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-memory-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }}
-        onOpenFlow={() => { setSecurityOpen(false); setTab("settings"); setTimeout(() => document.getElementById("nx-flow-settings")?.scrollIntoView({ block: "start", behavior: "smooth" }), 350); }} />
+      <ScreenSecurity onBack={() => setSecurityOpen(false)} {...securityProps} />
     </div>
   ) : devicesOpen && !openDevice ? (
     <div key="devices" className="ng-screen-anim">

@@ -89,6 +89,18 @@ export const Icon = {
       <path d="M11 8h2" strokeLinecap="round" />
     </svg>
   ),
+  palette: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.1-.9-1.4-.9-2.4 0-1 .8-1.6 1.8-1.6h1.9c2.1 0 3.9-1.6 3.9-4.1C20.5 6.7 16.7 3.5 12 3.5Z" strokeLinejoin="round" />
+      <circle cx="7.6" cy="11.4" r="1.1" fill={p.c} stroke="none" /><circle cx="10.4" cy="7.6" r="1.1" fill={p.c} stroke="none" /><circle cx="14.8" cy="7.8" r="1.1" fill={p.c} stroke="none" />
+    </svg>
+  ),
+  apps: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.6" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" /><circle cx="16.75" cy="16.75" r="3.25" />
+    </svg>
+  ),
   laptop: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <rect x="4" y="5" width="16" height="10.5" rx="1.5" />

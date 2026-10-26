@@ -59,6 +59,7 @@
         "languages": [
           "Russian"
         ],
+        "installerIcon": "icons/installer.ico",
         "template": "installer/installer.nsi",
         "installerHooks": "installer/hooks.nsh"
       }

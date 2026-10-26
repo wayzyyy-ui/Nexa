@@ -60,11 +60,13 @@ function RenameField({ name, onSave, onCancel }) {
 
 export function ScreenSecurity({
   onBack, user, onLogin, online, devices, mySid, onRename, onDisconnect, onEndSession, onSignOutOthers,
-  syncLine, locateBlock, flowOn, onOpenFlow, log, memoryInfo, onOpenMemory, miniOn, onOpenMini,
+  syncLine, locateBlock, flowOn, onOpenFlow, log, memoryInfo, onOpenMemory, miniOn, onOpenMini, embedded = false,
 }) {
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  // embedded — внутри раздела «Безопасность» в Настройках: без своей шапки, «Назад» и Esc (там свои)
+  useEffect(() => { if (!embedded) window.scrollTo(0, 0); }, []);
   // Esc — назад (если не открыто окно или идёт переименование — их Esc обрабатывают сами)
   useEffect(() => {
+    if (embedded) return;
     const onKey = (e) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"], [role="menu"]')) return;
       if (document.activeElement?.closest?.(".nx-sec-rename")) return;
@@ -72,7 +74,15 @@ export function ScreenSecurity({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
+  }, [onBack, embedded]);
+  // Обёртка (обычная функция, не компонент — иначе поля внутри теряли бы фокус при каждой перерисовке): свой экран (шапка, «Назад») или содержимое раздела Настроек
+  const shell = (children) => embedded ? <div className="nx-sec-embed" style={{ textAlign: "left" }}>{children}</div> : (
+    <div className="ng-screen nx-security" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 920, marginInline: "auto", boxSizing: "border-box" }}>
+      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+      {h1}
+      {children}
+    </div>
+  );
 
   // Сеансы входа — с сервера (только свои, проверяет база)
   const [sessions, setSessions] = useState({ loading: true });
@@ -110,9 +120,7 @@ export function ScreenSecurity({
   // Гость: что можно без входа, а что только с аккаунтом
   if (!user) {
     return (
-      <div className="ng-screen nx-security" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 920, marginInline: "auto", boxSizing: "border-box" }}>
-        <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
-        {h1}
+      shell(<>
         <SectionTitle>Вы пользуетесь NEXA без аккаунта</SectionTitle>
         <SettingsGroup>
           <SettingsRow icon={Icon.check({ c: C.green, s: 18 })} title="Доступно гостю"
@@ -123,7 +131,7 @@ export function ScreenSecurity({
             subtitle="Данные гостя видит любой, кто откроет NEXA в этом браузере. Удалить их можно, очистив данные сайта в настройках браузера"
             right={onLogin && <button type="button" className="nx-primary" onClick={onLogin} style={{ ...pill, border: "1px solid transparent", color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Войти</button>} />
         </SettingsGroup>
-      </div>
+      </>)
     );
   }
 
@@ -181,10 +189,7 @@ export function ScreenSecurity({
   };
 
   return (
-    <div className="ng-screen nx-security" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 920, marginInline: "auto", boxSizing: "border-box" }}>
-      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
-      {h1}
-
+    shell(<>
       {/* Подключённые устройства */}
       <SectionTitle>Подключённые устройства</SectionTitle>
       <SettingsGroup>
@@ -296,6 +301,6 @@ export function ScreenSecurity({
         Только то, что произошло в этом браузере: входы, подключения и отключения устройств, завершённые сеансы.
         Без кодов и паролей. При выходе из аккаунта журнал стирается вместе с остальными данными
       </div>
-    </div>
+    </>)
   );
 }

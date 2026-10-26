@@ -326,9 +326,10 @@ export function UpdateActions({ update, onLater, big }) {
   return (
     <div>
       {row(primary("Обновить", () => updStart(update)), onLater && ghost("Позже", onLater))}
-      {note(isDesktop
+      {/* nx-upd-hint — на экране «Обновите NEXA» компьютера подсказку прячем (по макету там только кнопка) */}
+      <div className="nx-upd-hint">{note(isDesktop
         ? "NEXA скачает обновление, проверит подпись и поставит его поверх — потом откроется сама. Данные сохранятся."
-        : "Android попросит подтвердить установку в своём окне — данные сохранятся.")}
+        : "Android попросит подтвердить установку в своём окне — данные сохранятся.")}</div>
     </div>
   );
 }
@@ -390,34 +391,34 @@ export function ForceUpdateScreen({ update }) {
       {/* Лёгкий мятный свет сверху — как в макете */}
       <div aria-hidden="true" style={{ position: "absolute", inset: "0 0 auto 0", height: "45%", pointerEvents: "none",
         background: `radial-gradient(80% 60% at 50% 0%, color-mix(in srgb, ${C.mint} 12%, transparent), transparent 70%)` }} />
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 18, paddingTop: "calc(var(--sat) + 40px)" }}>
+      <div className="nx-force-head" style={{ position: "relative", display: "flex", alignItems: "center", gap: 18, paddingTop: "calc(var(--sat) + 40px)" }}>
         <LogoMark s={44} />
         <Logo bare />
       </div>
       {/* Сцена занимает всё свободное место, низ уходит под шторку */}
       <div style={{ position: "relative", flex: 1, minHeight: 0, width: "100%", display: "flex", justifyContent: "center", alignItems: "flex-end", marginTop: 16 }}>
-        {/* ПК: пока без объёмной сцены — свой макет экрана будет позже */}
-        {!isDesktop && <img src="/art/update-stage.webp" alt="" draggable={false}
-          style={{ height: "100%", maxHeight: 520, width: "auto", maxWidth: "88%", objectFit: "contain", objectPosition: "bottom", marginBottom: -40, pointerEvents: "none" }} />}
+        {/* Компьютер (макет 2026-10-26) — та же сцена, крупнее; размеры — в стилях .nx-force-* */}
+        <img className="nx-force-stage" src="/art/update-stage.webp" alt="" draggable={false}
+          style={{ height: "100%", maxHeight: 520, width: "auto", maxWidth: "88%", objectFit: "contain", objectPosition: "bottom", marginBottom: -40, pointerEvents: "none" }} />
       </div>
       <div className="nx-force-sheet" style={{
         position: "relative", width: "100%", maxWidth: 520, boxSizing: "border-box",
         background: C.panel, borderRadius: "36px 36px 0 0", border: `1px solid ${C.border}`, borderBottom: "none",
         padding: "28px 28px calc(var(--sab) + 28px)",
       }}>
-        <div id="nx-force-title" className="ng-display" style={{ fontSize: 24, fontWeight: 500, lineHeight: 1.2, marginBottom: 10 }}>Обновите NEXA</div>
-        <div style={{ fontSize: 14, color: C.muted, maxWidth: 320, margin: "0 auto", lineHeight: 1.5 }}>
+        <div id="nx-force-title" className="ng-display nx-force-title" style={{ fontSize: 24, fontWeight: 500, lineHeight: 1.2, marginBottom: 10 }}>Обновите NEXA</div>
+        <div className="nx-force-text" style={{ fontSize: 14, color: C.muted, maxWidth: 320, margin: "0 auto", lineHeight: 1.5 }}>
           {`Эта версия NEXA больше не работает. Установите ${update.version} поверх — данные сохранятся.`}
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, color: C.muted, margin: "12px 0 18px" }}>
+        <div className="nx-force-safe" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, color: C.muted, margin: "12px 0 18px" }}>
           {/* Щит — данные на месте */}
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+          <svg className="nx-force-shield" viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
             <path d="M8 1.5 13 3.5v4c0 3.2-2.1 5.6-5 7-2.9-1.4-5-3.8-5-7v-4L8 1.5Z" stroke={C.mint} strokeWidth="1.3" strokeLinejoin="round" />
             <path d="m5.6 8 1.7 1.7 3.2-3.4" stroke={C.mint} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Ваши данные останутся на месте
         </div>
-        <div style={{ width: "min(320px, 100%)", margin: "0 auto" }}><UpdateActions update={update} big /></div>
+        <div className="nx-force-acts" style={{ width: "min(320px, 100%)", margin: "0 auto" }}><UpdateActions update={update} big /></div>
       </div>
     </div>
   );
