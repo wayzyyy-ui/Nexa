@@ -449,12 +449,17 @@ export const APP_CSS = `
         }
         @media ${PHONE_MQ} {
           .nx-fv.nx-viewer-panel { border-radius: 32px 32px 0 0 !important; padding: 26px 18px calc(18px + var(--sab)) !important; }
-          .nx-fv-actions { gap: 6px; }
-          .nx-fv-actions > button { padding: 0 8px; font-size: 12.5px !important; gap: 5px !important; }
+          /* Телефон: значок над подписью — в строку «Копировать / Скачать / Поделиться» не помещались */
+          .nx-fv-actions { gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)) 58px; }
+          .nx-fv-actions:has(> :nth-child(3):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)) 58px; }
+          .nx-fv-actions:has(> :nth-child(2):last-child) { grid-template-columns: minmax(0, 1fr) 58px; }
+          .nx-fv-actions > button { height: 58px; padding: 0 6px; font-size: 12px !important; gap: 5px !important;
+            flex-direction: column; border-radius: 20px !important; }
+          .nx-fv-actions > .nx-fv-del { width: 58px; height: 58px; }
           .nx-fv-preview-wrap .nx-viewer-preview > div { height: 200px !important; }
           .nx-fv-preview-wrap .nx-viewer-arrow { width: 40px !important; height: 40px !important; }
-          .nx-fv-preview-wrap .nx-viewer-arrow:first-child { left: 12px !important; }
-          .nx-fv-preview-wrap .nx-viewer-arrow:nth-child(2) { right: 12px !important; }
+          .nx-fv-preview-wrap .nx-viewer-arrow.is-prev { left: 12px !important; }
+          .nx-fv-preview-wrap .nx-viewer-arrow.is-next { right: 12px !important; }
         }
         /* ── «Файлы»: меню файла (долгое нажатие / правая кнопка) и выделение нескольких ── */
         .nx-file-row .nx-row-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -1230,6 +1235,8 @@ export const APP_CSS = `
           width: 380px; max-width: calc(100vw - 32px);
           pointer-events: none;
         }
+        /* Фото на весь экран (z 800) — «Скопировано» / «Сохранено» должно быть видно поверх */
+        html:has(.nx-photo-full) .nx-toast-host { z-index: 810; }
         .nx-toast {
           pointer-events: auto;
           background: var(--glass);
@@ -1909,7 +1916,7 @@ export const APP_CSS = `
             padding-right: 168px; /* место под молнию, колокольчик, поиск и профиль */
           }
           /* Панель уведомлений на телефоне — по ширине экрана */
-          .nx-notes { position: fixed !important; top: 70px !important; left: 12px !important; right: 12px !important; width: auto !important; }
+          .nx-notes { position: fixed !important; top: calc(70px + var(--sat)) !important; left: 12px !important; right: 12px !important; width: auto !important; }
           .nx-page-sub { display: none !important; }
 
           /* Хранилище: те же складки в один ряд, только меньше.

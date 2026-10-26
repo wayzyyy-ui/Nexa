@@ -45,6 +45,11 @@ export function joinSuggestion(before, raw) {
     tail = sp > 8 ? cut.slice(0, sp) : cut;
   }
   tail = tail.replace(/\s+$/, "");
+  // Только одно слово (просьба автора 2026-10-26): посреди слова — дописываем его до конца,
+  // после пробела — одно следующее слово. Новая строка в списке дел — пункт целиком, как раньше
+  const line = before.slice(before.lastIndexOf("\n") + 1);
+  const newItem = before.includes("\n") && !line.replace(ITEM, "").trim();
+  if (!newItem) tail = (tail.match(/^\s*\S+/) || [""])[0];
   return tail.trim() ? tail : "";
 }
 

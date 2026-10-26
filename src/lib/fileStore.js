@@ -64,6 +64,11 @@ export function loadFileStore(key = FILES_KEY) {
 // Категория по типу файла: картинка → "Фото", видео, звук, документы, остальное
 export const DOC_EXT = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "odt", "ods", "odp", "csv", "md", "pages", "key", "numbers"];
 
+// Новый файл без выбранной папки (добавили в корень «Хранилища», из буфера, «Поделиться»…) —
+// сразу в папку по типу: фото → «Фото», видео → «Видео», документы → «Документы», музыка → «Музыка», прочее → «Разное»
+const AUTO_FOLDER = { photo: "photo", video: "video", doc: "docs", music: "music", other: "other" };
+export const autoFolder = (file) => AUTO_FOLDER[catFromFile(file)] || "other";
+
 export function catFromFile(file) {
   const type = file.type || "";
   const ext = (file.name.split(".").pop() || "").toLowerCase();

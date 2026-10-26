@@ -38,17 +38,20 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
   // Закрываем по клику мимо и по Esc
   useEffect(() => {
     if (!open) return;
+    // Одно событие pointerdown вместо mousedown + touchstart: Safari на айфоне шлёт «мышиные»
+    // события касания с задержкой, и то же нажатие, что открыло панель, могло тут же её закрыть.
+    // Первые 350 мс после открытия нажатия мимо не считаем — по той же причине
+    const openedAt = Date.now();
     const down = (e) => {
+      if (Date.now() - openedAt < 350) return;
       const inside = ref.current?.contains(e.target) || panelRef.current?.contains(e.target);
       if (!inside) setOpen(false);
     };
     const key = (e) => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("mousedown", down);
-    window.addEventListener("touchstart", down);
+    window.addEventListener("pointerdown", down);
     window.addEventListener("keydown", key);
     return () => {
-      window.removeEventListener("mousedown", down);
-      window.removeEventListener("touchstart", down);
+      window.removeEventListener("pointerdown", down);
       window.removeEventListener("keydown", key);
     };
   }, [open]);

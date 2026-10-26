@@ -32,7 +32,8 @@ export const PHOTO_ZOOM = 2.5;   // во сколько раз приближа�
 
 export const PHOTO_MAX = 5;      // больше не приближаем
 
-export function PhotoFullscreen({ photos, startId, onClose }) {
+// onToast — есть только у фото из «Файлов»: тогда наверху «Копировать» и «Скачать» (у картинок заметок их нет)
+export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
   const [idx, setIdx] = useState(() => Math.max(0, photos.findIndex((p) => p.id === startId)));
   const photo = photos[Math.min(idx, photos.length - 1)];
   const [load, setLoad] = useState({ url: null, state: "loading" }); // loading | ready | error
@@ -235,6 +236,8 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
     return () => offs.forEach((f) => f());
   }, []);
 
+  const acts = useFileActions(photo || {}, onToast);
+  const canSave = !!onToast && !!photo?.uploaded;
   if (!photo) return null;
   const onFoldC = C.onFold;
   const pill = { ...btnReset, width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
@@ -281,8 +284,23 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
         background: `linear-gradient(${C.photoBg}, transparent)`, ...fade }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.name}</div>
-          {many && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{idx + 1} из {photos.length}</div>}
+          {/* Подпись, как в окне файла: «Фото · Сегодня 11:56 · 519 КБ · 3 из 6» — иначе имя из одних цифр непонятно */}
+          {(canSave || many) && (
+            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {[canSave && fileMeta(photo), many && `${idx + 1} из ${photos.length}`].filter(Boolean).join(" · ")}
+            </div>
+          )}
         </div>
+        {canSave && (
+          <button type="button" className="nx-icon-btn" onClick={acts.copy} disabled={!!acts.state} aria-label="Копировать фото" title="Копировать" style={pill}>
+            {acts.state === "copy" ? <Spinner s={16} /> : Icon.copy({ c: onFoldC, s: 18 })}
+          </button>
+        )}
+        {canSave && (
+          <button type="button" className="nx-icon-btn" onClick={() => acts.go(true)} disabled={!!acts.state} aria-label="Скачать фото" title="Скачать" style={pill}>
+            {acts.state === "download" ? <Spinner s={16} /> : Icon.download({ c: onFoldC, s: 18 })}
+          </button>
+        )}
         {zoomed && (
           <button type="button" className="nx-icon-btn" onClick={() => resetView(true)} aria-label="Показать фото целиком" title="Показать целиком" style={pill}>
             {Icon.shrink({ c: onFoldC, s: 18 })}
@@ -387,7 +405,7 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
   const arrow = (d) => {
     const f = d < 0 ? prevFile : nextFile;
     return (
-      <button type="button" className="nx-icon-btn nx-viewer-arrow" onClick={(e) => { e.stopPropagation(); step(d); }} disabled={!f}
+      <button type="button" className={`nx-icon-btn nx-viewer-arrow ${d < 0 ? "is-prev" : "is-next"}`} onClick={(e) => { e.stopPropagation(); step(d); }} disabled={!f}
         aria-label={d < 0 ? "Предыдущий файл" : "Следующий файл"} title={f ? f.name : undefined} style={{
           ...btnReset, position: "absolute", top: "50%", [d < 0 ? "left" : "right"]: 24, transform: "translateY(-50%)", zIndex: 1,
           width: 50, height: 50, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
@@ -509,8 +527,9 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
 
         {/* Превью: та же миниатюра, только крупно; стрелки и «На весь экран» — внутри */}
         <div className="nx-fv-preview-wrap" style={{ position: "relative" }} onTouchStart={many ? onTouchStart : undefined} onTouchEnd={many ? onTouchEnd : undefined}>
-          {many && arrow(-1)}
-          {many && arrow(1)}
+          {/* Стрелка — только если в эту сторону есть файл (полупрозрачная «выключенная» выглядела сломанной) */}
+          {many && prevFile && arrow(-1)}
+          {many && nextFile && arrow(1)}
           {canFullPhoto ? (
             <button type="button" className="nx-viewer-preview nx-photo-open" onClick={() => setFullPhoto(true)}
               aria-label="Открыть фото на весь экран" title="Открыть на весь экран"
@@ -531,7 +550,7 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
           )}
         </div>
         {fullPhoto && (
-          <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} />
+          <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} onToast={onToast} />
         )}
 
         {confirmDel ? (
@@ -666,7 +685,8 @@ export async function openFileContent(file, scope, download) {
   return true;
 }
 
-export function FileContentActions({ file, onToast, onShare, onDelete }) {
+// «Открыть» / «Скачать» / «Копировать» файла — общий ход для окна файла и фото на весь экран
+function useFileActions(file, onToast) {
   const [state, setState] = useState(null); // null | "open" | "download" | "copy" — что сейчас готовим
   const go = async (download) => {
     setState(download ? "download" : "open");
@@ -699,6 +719,11 @@ export function FileContentActions({ file, onToast, onShare, onDelete }) {
         : { title: "Не получилось скопировать", text: navigator.onLine === false ? "Нет связи — фото ещё не скачано на это устройство" : "Буфер обмена не принял картинку — попробуйте «Скачать»" });
     } finally { setState(null); }
   };
+  return { state, go, copy };
+}
+
+export function FileContentActions({ file, onToast, onShare, onDelete }) {
+  const { state, go, copy } = useFileActions(file, onToast);
   // Ряд кнопок окна файла (макет 2026-10-26): у фото — «Копировать», у остальных — «Открыть»; «Скачать»,
   // «Поделиться» (onShare) и круглая красная корзина (onDelete). Файл без содержимого — только «Поделиться» и корзина
   const btn = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, minWidth: 0, whiteSpace: "nowrap" };

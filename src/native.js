@@ -251,8 +251,8 @@ function mountBootLogo() {
     .nx-boot-land .nx-boot-word svg { transition: fill ${BOOT_LAND}ms ${soft}; }
     .nx-boot-swap .nx-boot-word { opacity: 0; transition: opacity ${BOOT_SWAP}ms linear !important; }
     /* Пока слово летит, логотип шапки скрыт — потом он проявляется ровно на его месте */
-    .nx-boot-land:not(.nx-boot-swap) .nx-home-head svg[aria-label="NEXA"] { opacity: 0; }
-    .nx-boot-swap .nx-home-head svg[aria-label="NEXA"] { transition: opacity ${BOOT_SWAP}ms linear; }
+    .nx-boot-land:not(.nx-boot-swap) .nx-boot-target { opacity: 0; }
+    .nx-boot-swap .nx-boot-target { transition: opacity ${BOOT_SWAP}ms linear; }
     @media (prefers-reduced-motion: reduce) {
       #nx-boot *, .nx-boot-go #nx-boot * { transition: none !important; }
       .nx-boot-go .nx-boot-splash { opacity: 0; }
@@ -288,7 +288,9 @@ function mountBootLogo() {
    пока заставка на экране, — .nx-intro-wait в appStyles.js). false — шапки нет, нужен запасной путь */
 function bootLand(root) {
   const word = document.querySelector(".nx-boot-word");
-  const target = document.querySelector(".nx-home-head svg[aria-label='NEXA']");
+  // Куда садится слово: шапка телефонной Главной или знак с NEXA вверху Главной компьютера (сайт)
+  const target = [...document.querySelectorAll(".nx-home-head svg[aria-label='NEXA'], .nx-home-brand-desk svg[aria-label='NEXA']")]
+    .find((n) => n.getBoundingClientRect().width > 0);
   // Шапка и все её родители не всплывают (nx-rise): иначе логотип сдвинулся бы за время перелёта
   // и слово село бы мимо. Блоки ниже шапки всплывают как обычно
   for (let n = target; n && n !== document.body && n.id !== "root"; n = n.parentElement) n.style.animation = "none";
@@ -299,6 +301,7 @@ function bootLand(root) {
   const dy = t.top + t.height / 2 - (w.top + w.height / 2);
   const k = t.width / w.width;
   const fill = getComputedStyle(target).color;
+  target.classList.add("nx-boot-target");
   root.classList.remove("nx-intro-wait");
   root.classList.add("nx-intro-go", "nx-intro-land", "nx-boot-land");
   // Перелёт — со следующего кадра: в этом кадре браузер ещё рисует проявившуюся Главную,
@@ -315,16 +318,17 @@ function bootLand(root) {
       document.getElementById("nx-boot")?.remove();
       // nx-intro-land оставляем: иначе #root сменил бы анимацию и проявился бы второй раз
       root.classList.remove("nx-boot-land", "nx-boot-swap");
+      target.classList.remove("nx-boot-target");
     }, BOOT_SWAP + 40);
   }, BOOT_LAND + 40);
   return true;
 }
 
 export async function startIntro() {
-  if (!isNative) return;
+  if (!bootIntro) return;
   const root = document.documentElement;
   if (root.classList.contains("nx-boot-go")) return; // уже запускали
-  try {
+  if (isNative) try {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     // Под заставкой уже лежит такой же логотип — смена незаметна
     await SplashScreen.hide({ fadeOutDuration: 0 });
@@ -344,6 +348,23 @@ export async function startIntro() {
       }, reduced ? BOOT_OUT_REDUCED : BOOT_OUT);
     });
   }, 60);
+}
+
+/* Заставка запуска: в приложении — всегда; на сайте (2026-10-26, просьба автора) — при первом открытии
+   во вкладке (sessionStorage): перезагрузка той же вкладки и переходы её не повторяют. Приложение для ПК — без неё */
+const bootIntro = isNative || (!isDesktop && (() => {
+  try {
+    if (sessionStorage.getItem("nexa-boot-intro")) return false;
+    sessionStorage.setItem("nexa-boot-intro", "1");
+    return true;
+  } catch { return false; }
+})());
+if (bootIntro && !isNative) {
+  document.documentElement.classList.add("nx-intro-wait");
+  mountBootLogo();
+  setTimeout(() => {
+    if (!document.documentElement.classList.contains("nx-boot-go")) startIntro();
+  }, 4000);
 }
 
 // Запрет масштабирования двумя пальцами — только в приложении

@@ -404,7 +404,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             {Icon.up({ c: C.mint, s: 26 })}
           </div>
           <div className="ng-display" style={{ fontSize: 22 }}>Отпустите, чтобы добавить</div>
-          <div style={{ fontSize: 13, color: C.muted }}>Файлы попадут в папку «{targetName}»</div>
+          <div style={{ fontSize: 13, color: C.muted }}>{target ? <>Файлы попадут в папку «{targetName}»</> : "Файлы сами разложатся по папкам: фото, видео, документы…"}</div>
         </div>
       )}
 

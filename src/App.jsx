@@ -59,7 +59,7 @@ import { QUICK_EVENT, QuickBtn, QuickPanel } from "./ui/QuickPanel.jsx";
 import { ApproveLoginModal, AuthGate, AuthModal } from "./screens/auth.jsx";
 import { PairModal, PairStatusDialog } from "./ui/pairing.jsx";
 import { NOTES_KEY, NOTES_MAX, loadNotes, NOTE_CATS, NOTE_PREFS_KEY, loadNotePrefs, claimNote } from "./lib/notes.js";
-import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, withWhen, uploadDevice, folderName, sortByRecent, catOf, fileMeta, FILE_SCOPE, setFileScope } from "./lib/fileStore.js";
+import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, autoFolder, withWhen, uploadDevice, folderName, sortByRecent, catOf, fileMeta, FILE_SCOPE, setFileScope } from "./lib/fileStore.js";
 import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
 import { MemorySettings } from "./ui/memory.jsx";
@@ -1428,7 +1428,7 @@ export default function NexaApp() {
       rememberLocal(uid, id, file);
       const now = Date.now();
       setFileStore((s0) => ({ ...s0, added: [...s0.added, {
-        id, name, cat: catFromFile(file), folder: null, device: link.self?.name || uploadDevice(),
+        id, name, cat: catFromFile(file), folder: autoFolder(file), device: link.self?.name || uploadDevice(),
         mb: toMb(file.size), size: file.size, mime: file.type || "", path, addedAt: now, updatedAt: now,
       }] }));
       const ok = await link.emit("file.send", { id, to_device: key, name, size: file.size, mime: file.type || "" });
@@ -2241,6 +2241,7 @@ export default function NexaApp() {
     }
   };
   const startUpload = (file, folder, fileId) => {
+    if (folder == null) folder = autoFolder(file); // корень — раскладываем по типу
     const upId = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     // У гостя id — число (как у демо-файлов), у аккаунта — uuid (как в облаке)
     const id = fileId ?? (uid ? newId() : Date.now() * 100 + (guestSeq.current++ % 100));

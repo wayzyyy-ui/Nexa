@@ -21,18 +21,19 @@ test("подсказка нужна только когда курсор в ко
 });
 
 test("стык подсказки с набранным", () => {
-  assert.equal(joinSuggestion("Сегодня я хочу разра", "ботать интерфейс"), "ботать интерфейс");
+  assert.equal(joinSuggestion("Сегодня я хочу разра", "ботать интерфейс"), "ботать", "посреди слова — только его конец");
   assert.equal(joinSuggestion("Сегодня я хочу ", " работать"), "работать", "второй пробел не нужен");
   assert.equal(joinSuggestion("Сегодня я хочу", " работать"), " работать");
-  assert.equal(joinSuggestion("Привет,", "как дела"), " как дела", "после запятой нужен пробел");
-  assert.equal(joinSuggestion("Привет", "\n\n  как   дела\t"), " как дела".trimStart() === "как дела" ? " как дела" : "", "переводы строк схлопываются");
+  assert.equal(joinSuggestion("Привет,", "как дела"), " как", "после запятой нужен пробел, одно слово");
+  assert.equal(joinSuggestion("Привет", "\n\n  как   дела\t"), " как", "переводы строк схлопываются");
+  assert.equal(joinSuggestion("Дела:\n☐ Купить молоко\n☐ ", "Позвонить маме"), "Позвонить маме", "новый пункт списка — целиком");
 });
 
 test("пустая и длинная подсказка", () => {
   assert.equal(joinSuggestion("Сегодня я хочу", "   "), "");
   assert.equal(joinSuggestion("Сегодня я хочу", ""), "");
   const long = Array.from({ length: 60 }, (_, i) => "слово" + i).join(" ");
-  const out = joinSuggestion("Сегодня я хочу ", long);
+  const out = joinSuggestion("Дела:\n- хлеб\n", long);
   assert.ok(out.length <= SUGGEST_MAX_CHARS && !out.endsWith(" "));
   assert.ok(out.split(" ").every((w) => /^слово\d+$/.test(w)), "режем по слову, не посередине");
 });
