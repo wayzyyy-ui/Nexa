@@ -6,6 +6,7 @@ import { supabase } from "./supabase.js";
 import { DOMAIN_NOT_ALLOWED_MESSAGE } from "./allowedEmailDomains.js";
 import { newId } from "./sync.js";
 import { cacheClearScope } from "./files.js";
+import { flushSharedState } from "./shared.js";
 
 /* ═══ АККАУНТЫ (Supabase) ═══════════════════════════════════
    Вход по коду из письма, без паролей. Клиент — src/lib/supabase.js,
@@ -91,6 +92,9 @@ export const takeManualSignOut = () => { const m = manualOut; manualOut = false;
    Правки, которые не успели уйти в облако без интернета, при этом пропадут */
 export function clearLocalAccountData(uid) {
   if (!uid) return;
+  // Отложенные записи списков (shared.js) — сначала дописать, потом стереть: иначе запись через
+  // долю секунды вернула бы стёртое
+  flushSharedState();
   try {
     const mine = Object.keys(localStorage).filter((k) => k.startsWith("nexa-") && k.endsWith(`@${uid}`));
     mine.forEach((k) => localStorage.removeItem(k));

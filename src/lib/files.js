@@ -235,6 +235,28 @@ export function rememberLocal(scope, id, blob) {
   cachePut(key, blob);
 }
 
+/* HEIC / HEIF (фото со смартфонов): браузеры, кроме Safari, их не рисуют. Для показа переводим
+   в JPEG прямо на устройстве (библиотека heic2any — грузится отдельно и только когда встретился HEIC).
+   Сам файл не меняется: «Открыть» / «Скачать» отдают оригинал */
+export const isHeic = (file) => /\.(heic|heif)$/i.test(file?.name || "") || /^image\/hei[cf]/i.test(file?.mime || "");
+const heicCache = new Map(); // ключ → Promise<ссылка на JPEG>
+async function heicToJpegUrl(url) {
+  const blob = await (await fetch(url)).blob();
+  // Умеет сам (Safari) — оставляем как есть
+  try { const bmp = await createImageBitmap(blob); bmp.close?.(); return url; } catch { /* не умеет — переводим */ }
+  const { default: heic2any } = await import("heic2any");
+  const out = await heic2any({ blob, toType: "image/jpeg", quality: 0.86 });
+  return URL.createObjectURL(Array.isArray(out) ? out[0] : out);
+}
+// Ссылка для показа картинки: как fileUrl, но HEIC — в JPEG
+export async function photoUrl(file, scope) {
+  const url = await fileUrl(file, scope);
+  if (!url || !isHeic(file)) return url;
+  const key = cacheKey(scope, file.id);
+  if (!heicCache.has(key)) heicCache.set(key, heicToJpegUrl(url).catch((e) => { heicCache.delete(key); throw e; }));
+  return heicCache.get(key);
+}
+
 /* Хук: ссылка на содержимое файла (или null, пока не готова / нет содержимого).
    enabled — только для настоящих файлов (у демо-файлов содержимого нет) */
 export function useFileUrl(file, scope, enabled = true) {
@@ -242,7 +264,7 @@ export function useFileUrl(file, scope, enabled = true) {
   useEffect(() => {
     if (!enabled || !file) { setUrl(null); return; }
     let off = false;
-    fileUrl(file, scope).then((u) => { if (!off) setUrl(u); }).catch(() => {});
+    photoUrl(file, scope).then((u) => { if (!off) setUrl(u); }).catch(() => {});
     return () => { off = true; };
   }, [file?.id, file?.path, scope, enabled]);
   return url;

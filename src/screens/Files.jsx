@@ -11,6 +11,8 @@ import { TransferBtn } from "../ui/FileViewer.jsx";
 import { clipboardRead, clipboardReadImage } from "../native.js";
 import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile.js";
 import { useModalLock } from "../lib/hooks.js";
+import { useLongPress, FileMenu, SelectBar } from "../ui/fileSelect.jsx";
+import { vibrate } from "../native.js";
 
 // ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
 // filter — id категории, если пришли сюда из "Медиа" (тогда показываем
@@ -23,7 +25,37 @@ import { useModalLock } from "../lib/hooks.js";
 // onUploadAction(id, "cancel" | "retry" | "dismiss") — управление строкой загрузки
 // onNearby — «Рядом»: файл на соседний телефон без интернета (только Android-приложение)
 // onBack — пришли из «Медиа»: «Назад» возвращает туда (вкладка и прокрутка на месте); onToast — всплывающее
-export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast, onNearby }) {
+const FILES_PAGE = 60; // сколько строк файлов рисовать за раз
+
+/* Строка файла. Нажатие — открыть (в режиме выделения — отметить), долгое нажатие / правая кнопка —
+   меню файла (в режиме выделения — тоже отметить). data-transfer-card — отсюда полетит карточка при передаче */
+function FileRowItem({ f, rowStyle, meta, selecting, selected, onOpen, onToggle, onLong, onTransfer }) {
+  const card = useRef(null);
+  const { handlers, wasLong } = useLongPress((x, y) => onLong(x, y, card.current));
+  return (
+    <div ref={card} data-transfer-card className={`nx-file-row${selected ? " is-selected" : ""}`} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
+      <button type="button" className="nx-row-btn" {...handlers} aria-pressed={selecting ? selected : undefined}
+        onClick={() => { if (wasLong()) return; if (selecting) onToggle(); else onOpen(); }}
+        style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
+        {selecting && (
+          <span className="nx-file-check" aria-hidden="true" style={{
+            width: 22, height: 22, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            border: `1.5px solid ${selected ? C.mint : C.borderStrong}`, background: selected ? C.mint : "transparent",
+          }}>{selected && Icon.check({ c: C.onAccent, s: 14 })}</span>
+        )}
+        <FileThumb file={f} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+          <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</div>
+        </div>
+      </button>
+      {!selecting && onTransfer && <TransferBtn onClick={(e) => onTransfer(f, card.current, e.currentTarget)} />}
+      {!selecting && <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7, paddingRight: 4 }}>{Icon.chevron({ c: C.text, s: 20 })}</span>}
+    </div>
+  );
+}
+
+export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast, onNearby, onDeleteFiles }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
   const fileInput = useRef(null);
@@ -82,6 +114,33 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   const list = sortByRecent((flat
     ? files.filter((f) => (!cat || f.cat === cat.id) && (!device || onDevice(f)))
     : files.filter((f) => f.folder === folder)).filter((f) => match(f.name)));
+  // Длинный список рисуем порциями по FILES_PAGE: следующая — когда прокрутили к концу (меньше работы телефону)
+  const [limit, setLimit] = useState(FILES_PAGE);
+  const listKey = `${folder}|${q}|${cat?.id || ""}|${device?.name || ""}`;
+  useEffect(() => { setLimit(FILES_PAGE); }, [listKey]);
+  // Выделение нескольких файлов и меню одного файла (долгое нажатие / правая кнопка)
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState(() => new Set());
+  const [menu, setMenu] = useState(null); // { file, x, y, card }
+  const exitSelect = () => { setSelecting(false); setSel(new Set()); };
+  useEffect(() => { exitSelect(); setMenu(null); }, [listKey]);
+  const toggleSel = (id) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const startSelect = (id) => { setSelecting(true); setSel(new Set([id])); };
+  const deleteSelected = () => {
+    const doomed = list.filter((f) => sel.has(f.id));
+    if (!doomed.length) return;
+    onDeleteFiles?.(doomed);
+    exitSelect();
+  };
+  const moreRef = useRef(null);
+  const hasMore = list.length > limit;
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!hasMore || !el || !window.IntersectionObserver) return;
+    const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) setLimit((n) => n + FILES_PAGE); }, { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, limit]);
   // Сколько всего лежит внутри папки (подпапки + файлы)
   const countIn = (id) => folders.filter((f) => f.parent === id).length + files.filter((f) => f.folder === id).length;
 
@@ -408,21 +467,29 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         })}
         {/* Строка файла: сама строка открывает файл, справа — «Передать на…».
             data-transfer-card — отсюда полетит карточка при передаче */}
-        {list.map((f) => (
-          <div key={f.id} data-transfer-card style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
-            <button type="button" className="nx-row-btn" onClick={() => onOpenFile({ id: f.id, list: list.map((x) => x.id) })} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
-              <FileThumb file={f} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {fileMeta(f)}{flat ? ` · ${folderName(folders, f.folder)}` : ""}
-                </div>
-              </div>
-            </button>
-            {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
-            <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7, paddingRight: 4 }}>{Icon.chevron({ c: C.text, s: 20 })}</span>
-          </div>
+        {list.slice(0, limit).map((f) => (
+          <FileRowItem key={f.id} f={f} rowStyle={rowStyle} meta={`${fileMeta(f)}${flat ? ` · ${folderName(folders, f.folder)}` : ""}`}
+            selecting={selecting} selected={sel.has(f.id)}
+            onOpen={() => onOpenFile({ id: f.id, list: list.map((x) => x.id) })}
+            onToggle={() => toggleSel(f.id)}
+            onLong={(x, y, card) => { if (selecting) { toggleSel(f.id); return; } vibrate(12); setMenu({ file: f, x, y, card }); }}
+            onTransfer={onTransfer} />
         ))}
+        {menu && (
+          <FileMenu at={{ x: menu.x, y: menu.y }} file={menu.file} onClose={() => setMenu(null)}
+            onOpen={() => onOpenFile({ id: menu.file.id, list: list.map((x) => x.id) })}
+            onSelect={() => startSelect(menu.file.id)}
+            onTransfer={onTransfer ? () => onTransfer(menu.file, menu.card, menu.card) : null}
+            onDelete={() => onDeleteFiles?.([menu.file])} />
+        )}
+        {/* Запас снизу: последние строки не прячутся под панелью выделения */}
+        {selecting && <div aria-hidden="true" style={{ height: 76 }} />}
+        {selecting && (
+          <SelectBar count={sel.size} total={list.length} onExit={exitSelect}
+            onAll={() => setSel(new Set(list.map((f) => f.id)))} onNone={() => setSel(new Set())} onDelete={deleteSelected} />
+        )}
+        {/* Метка конца порции: дошли до неё прокруткой — дорисовываем следующую */}
+        {hasMore && <div ref={moreRef} aria-hidden="true" style={{ height: 1 }} />}
         {subfolders.length === 0 && list.length === 0 && (
           q ? (
             <EmptyState

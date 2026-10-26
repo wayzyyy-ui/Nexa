@@ -1,4 +1,4 @@
-// NEXA Mini (src/lib/mini): своя небольшая нейросеть, которая узнаёт команды ассистента.
+// NEXA mini-1 (src/lib/mini): своя небольшая нейросеть, которая узнаёт команды ассистента.
 // Проверяем: данные чистые, сеть правда учится, сохранённые веса работают, неуверенное и «вопросы» не выполняются,
 // и сколько обращений к Gemini убирает Mini. Запуск: npm test
 import { test } from "node:test";
@@ -75,7 +75,7 @@ test("Mini выполняет только то, что ассистент ум�
   assert.equal(weights.meta.threshold >= 0.8, true);
   for (const [intent, act] of Object.entries(INTENT_ACTIONS)) {
     assert.ok(LABELS.includes(intent));
-    if (act) assert.ok(["theme", "navigate", "summary", "devices", "addDevice", "help"].includes(act.action));
+    if (act) assert.ok(["theme", "navigate", "summary", "devices", "addDevice", "help", "notes", "version"].includes(act.action));
   }
   assert.equal(INTENT_ACTIONS.UPLOAD, null, "окно выбора файла Mini не открывает");
   assert.equal(INTENT_ACTIONS.GENERAL, null);

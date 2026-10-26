@@ -1,5 +1,5 @@
 // Экран «ИИ — Ассистент»: переписка, поле ввода, файлы, команды, потоковый ответ
-import { useLayoutEffect, useState, useEffect, useRef } from "react";
+import { useLayoutEffect, useState, useEffect, useRef, useMemo, memo } from "react";
 import { formatBytes } from "../../lib/deviceInfo.js";
 import { formatLabel, prepareAttachment, SUPPORTED_HINT, attachUnsupported, extOf } from "../../lib/attach.js";
 import { C, NAV_W, PHONE_MQ, readTheme, switchTheme, T } from "../../ui/theme.js";
@@ -45,7 +45,31 @@ const NOTE_ASKS = {
   continue: "Продолжи эту заметку: предложи логичное продолжение.",
 };
 
-export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles, miniCollect = null }) {
+/* Одно сообщение переписки. memo: при наборе текста в поле (и любой другой перерисовке экрана)
+   готовые сообщения не перерисовываются и их текст не разбирается заново — только если изменилось
+   само сообщение (m — тот же объект, пока сообщение не меняли) или его флаги. Обработчики h — постоянные */
+const MSG_PAGE = 40; // сколько последних сообщений диалога рисовать сразу
+const MessageRow = memo(function MessageRow({ m, i, isLastAi, disabled, undoable, speakId, h }) {
+  return (
+    <MessageBubble
+      role={m.role}
+      text={m.text}
+      file={m.file}
+      error={m.error}
+      actionLabel={m.action && m.role === 'ai' ? m.actionLabel : null}
+      undone={m.undone}
+      undoable={undoable}
+      onUndo={() => h.undo(m)}
+      isLastAi={isLastAi}
+      disabled={disabled}
+      onRegenerate={h.regenerate}
+      onEdit={(newText) => h.edit(i, newText)}
+      speakId={speakId}
+    />
+  );
+});
+
+export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onOpenNotes, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles, miniCollect = null }) {
   const greetings = [
   "Что сегодня в повестке дня?",
   "Чем могу помочь сегодня?",
@@ -117,7 +141,7 @@ useEffect(() => {
   // Сменили диалог — вложение к нему больше не относится
   useEffect(() => { if (att?.chatId && att.chatId !== currentChatId) clearAtt(); }, [currentChatId]);
   useEffect(() => () => attCtl.current?.abort(), []);
-  useEffect(() => { warmMini(); }, []); // веса NEXA Mini подгружаются заранее, отдельным куском кода
+  useEffect(() => { warmMini(); }, []); // веса NEXA mini-1 подгружаются заранее, отдельным куском кода
   // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
   const liveChatId = useLiveChatId();
   const [cmdBusy, setCmdBusy] = useState(false);
@@ -218,6 +242,17 @@ useEffect(() => {
   // не показываем — его место занимает LiveAnswer
   const streamingHere = liveChatId !== null && liveChatId === currentChatId;
   const messages = (currentChat?.messages || []).filter((m, i, all) => !(streamingHere && i === all.length - 1 && isPartial(m)));
+  // Длинный диалог: рисуем последние MSG_PAGE сообщений, более ранние — по кнопке «Показать раньше»
+  // (телефону не приходится держать на экране сотни разобранных ответов)
+  const [shownCount, setShownCount] = useState(MSG_PAGE);
+  useEffect(() => { setShownCount(MSG_PAGE); }, [currentChatId]);
+  const firstShown = Math.max(0, messages.length - shownCount);
+  const showEarlier = () => {
+    const el = listRef.current;
+    const prevH = el?.scrollHeight || 0, prevTop = el?.scrollTop || 0;
+    flushSync(() => setShownCount((n) => n + MSG_PAGE));
+    if (el) el.scrollTop = prevTop + (el.scrollHeight - prevH); // остаёмся на том же месте переписки
+  };
   // Новый диалог — приветствие по центру, даже если в другом диалоге ещё печатается ответ
   const isEmpty = messages.length === 0 && !cmdBusy && !streamingHere;
 
@@ -235,8 +270,7 @@ useEffect(() => {
       if (!last) return;
       const box = el.parentElement.getBoundingClientRect();
       const r = last.getBoundingClientRect();
-      el.style.left = `${r.left - box.left + Math.min(r.width / 2, 240)}px`;
-      el.style.top = `${r.top - box.top + r.height / 2}px`;
+      el.style.transform = `translate(${r.left - box.left + Math.min(r.width / 2, 240)}px, ${r.top - box.top + r.height / 2}px)`;
     });
   };
   useLayoutEffect(() => { if (replyAura) placeReplyAura(); }, [replyAura?.id, messages.length, messages[messages.length - 1]?.text, isLoading]);
@@ -563,6 +597,14 @@ useEffect(() => {
       return say("Выберите файлы — они попадут в «Хранилище», и я открою раздел «Файлы»", { actionLabel: "Загрузка файлов" });
     }
     if (action === "help") return say(ASSISTANT_HELP, { actionLabel: "Команды NEXA" });
+    // Заметки: открыть список или сразу новую (тот же openNotes, что у быстрых действий)
+    if (action === "notes") {
+      say(params.create ? "Открываю новую заметку — пишите" : "Открываю заметки", { actionLabel: params.create ? "Новая заметка" : "Переход: Заметки" });
+      clearTimeout(navTimer.current);
+      navTimer.current = setTimeout(() => { navTimer.current = null; onOpenNotes?.(params.create ? { create: true } : undefined); }, NAV_DELAY);
+      return;
+    }
+    if (action === "version") return say(`Сейчас у вас **NEXA ${VERSION}**. Что нового в каждой версии — в «О системе» (внизу Главной).`, { actionLabel: "Версия NEXA" });
   };
 
   // «Отменить» на плашке: тема — вернуть прежнюю, переход — не переходить
@@ -632,7 +674,7 @@ useEffect(() => {
     sendLock.current = Date.now();
 
     // Сначала проверяем, не команда ли это (с файлом — это всегда вопрос по файлу)
-    // Порядок: память → правила → NEXA Mini (своя нейросеть) → Gemini. Mini не загрузилась или не уверена — вопрос уходит в Gemini
+    // Порядок: память → правила → NEXA mini-1 (своя нейросеть) → Gemini. Mini не загрузилась или не уверена — вопрос уходит в Gemini
     const ruleCmd = withFile ? null : (parseMemoryCommand(text) || parseCommand(text));
     const mini = withFile || ruleCmd ? null : miniDecide(text);
     const cmd = ruleCmd || mini?.run || null;
@@ -672,6 +714,13 @@ useEffect(() => {
   const fileFor = (m) => (m?.file && att?.status === "ready" && att.name === m.file.name && att.size === m.file.size ? att.payload : null);
 
   // ПОВТОРИТЬ: удаляет последний ответ и запрашивает новый на тот же вопрос
+  // Постоянные обработчики для MessageRow: зовут свежие функции через ref (без «устаревших» значений)
+  const rowHandlersRef = useRef(null);
+  const rowHandlers = useMemo(() => ({
+    undo: (m) => rowHandlersRef.current.undo(m),
+    regenerate: () => rowHandlersRef.current.regenerate(),
+    edit: (i, t) => rowHandlersRef.current.edit(i, t),
+  }), []);
   const regenerate = () => {
     if (isLoading || !currentChatId) return;
 
@@ -992,6 +1041,7 @@ useEffect(() => {
   overflow: "hidden",
   boxSizing: "border-box", minHeight: 0,
 };
+  rowHandlersRef.current = { undo: (m) => undoAction(currentChatId, m), regenerate, edit: (i, t) => editMessage(i, t) };
   return (
   <div className="ng-assistant-wrapper ng-assistant-anim" style={wrapperStyle}>
     {/* Спектральный фон — под всем содержимым, нажатия и прокрутку не перехватывает */}
@@ -1076,26 +1126,26 @@ useEffect(() => {
             >
               {/* Переписка — колонкой до 1100 px по центру (на широком окне строки не растягиваются) */}
               <div className="nx-msg-col" style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 10, width: "100%", maxWidth: 1100, margin: "0 auto" }}>
-                {messages.map((m, i) => (
-                  <MessageBubble
+                {firstShown > 0 && (
+                  <button type="button" className="nx-ghost-btn" onClick={showEarlier} style={{
+                    alignSelf: "center", padding: "8px 16px", fontSize: 13, borderRadius: 999, cursor: "pointer", fontFamily: "inherit",
+                    background: "transparent", border: `1px solid ${C.border}`, color: C.muted,
+                  }}>Показать раньше · ещё {firstShown}</button>
+                )}
+                {messages.slice(firstShown).map((m, j) => { const i = firstShown + j; return (
+                  <MessageRow
                     key={i}
-                    role={m.role}
-                    text={m.text}
-                    file={m.file}
-                    error={m.error}
-                    actionLabel={m.action && m.role === 'ai' ? m.actionLabel : null}
-                    undone={m.undone}
+                    m={m}
+                    i={i}
+                    h={rowHandlers}
                     // «Отменить»: тему можно вернуть всегда, переход — пока он ещё не случился
                     undoable={!!m.undo && !m.undone && (m.undo.kind === "theme" || m.undo.kind === "memory" || m.undo.kind === "memoryRestore" || pendingNavId === m.id)}
-                    onUndo={() => undoAction(currentChatId, m)}
                     isLastAi={m.role === 'ai' && i === messages.length - 1 && !m.action}
                     disabled={isLoading}
-                    onRegenerate={regenerate}
-                    onEdit={(newText) => editMessage(i, newText)}
                     // Озвучить — только готовый ответ (не ошибка, не оборванный, не пустой)
                     speakId={m.role === 'ai' && !m.error && !m.partial && m.text?.trim() ? speakIdOf(m, i) : null}
                   />
-                ))}
+                ); })}
                 {cmdBusy && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
                 {/* Ответ, который сейчас печатается (только в своём диалоге) */}
                 {streamingHere && <LiveAnswer onGrow={() => { scrollToBottom(); if (replyAura) placeReplyAura(); }} />}

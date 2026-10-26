@@ -412,6 +412,25 @@ export const APP_CSS = `
           color: var(--text) !important; font-size: 13px; font-family: inherit; cursor: pointer; }
         .nx-home-more { display: flex !important; align-items: center; justify-content: center; width: 100%; margin-top: 18px; min-height: 38px; box-sizing: border-box;
           font-size: 15px; color: var(--text) !important; background: transparent !important; font-family: inherit; cursor: pointer; }
+        /* ── «Файлы»: меню файла (долгое нажатие / правая кнопка) и выделение нескольких ── */
+        .nx-file-row .nx-row-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        .nx-file-row.is-selected { background: color-mix(in srgb, var(--mint) 9%, transparent); border-radius: 14px; }
+        .nx-file-menu { position: fixed; z-index: 600; min-width: 220px; max-width: min(300px, calc(100vw - 24px)); padding: 6px;
+          border-radius: 20px; display: flex; flex-direction: column; gap: 2px; transition: opacity 120ms ease;
+          animation: nx-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-file-menu-title { font-size: 12px; color: var(--muted); padding: 8px 12px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-file-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 14px;
+          font-size: 14px; font-family: inherit; text-align: left; cursor: pointer; }
+        .nx-file-menu-item:hover, .nx-file-menu-item:focus-visible { background: color-mix(in srgb, var(--text) 7%, transparent); }
+        .nx-select-bar { position: fixed; z-index: 120; left: 50%; transform: translateX(-50%); bottom: 24px;
+          display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 8px; border-radius: 999px; max-width: calc(100vw - 24px);
+          box-sizing: border-box; animation: nx-selbar-in 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+        /* «Стекло» ниже задаёт position: relative — здесь нужно закрепление */
+        .nx-select-bar.nx-glass, .nx-file-menu.nx-glass { position: fixed; }
+        .nx-select-count { font-size: 14px; font-weight: 600; padding: 0 6px; white-space: nowrap; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        @media ${PHONE_MQ} { .nx-select-bar { bottom: calc(84px + var(--sab)); width: calc(100vw - 24px); justify-content: space-between; } }
+        @keyframes nx-selbar-in { from { opacity: 0; transform: translate(-50%, 14px); } }
+        @media (prefers-reduced-motion: reduce) { .nx-file-menu, .nx-select-bar { animation: none !important; } }
         /* ── Настройки (макет 2026-10-26) ── */
         .nx-set-avatar { box-shadow: inset 0 0 0 1px var(--border); }
         .nx-set-name { display: block; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -421,7 +440,7 @@ export const APP_CSS = `
           border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 16px; color: var(--text); transition: background-color 160ms ease; }
         .nx-set-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
         .nx-set-nav-item:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
-        .nx-set-nav-item.is-active { background: var(--mint); color: var(--on-fold); font-weight: 600; }
+        .nx-set-nav-item.is-active { background: var(--mint); color: var(--on-accent); font-weight: 600; }
         .nx-set-nav-icon { display: flex; flex-shrink: 0; }
         .nx-set-nav-chev { margin-left: auto; display: flex; }
         .nx-set-about { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; border-radius: 28px;
@@ -435,7 +454,9 @@ export const APP_CSS = `
           .nx-settings-title { font-size: max(32px, calc(50 * var(--mk))) !important; line-height: 1.1 !important; margin-bottom: calc(60 * var(--mk)); }
           .nx-set-layout { display: grid; grid-template-columns: minmax(300px, calc(480 * var(--mk))) minmax(0, 1fr); gap: calc(48 * var(--mk)); align-items: start; }
           .nx-set-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: calc(140 * var(--mk)); }
-          .nx-set-side-title { font-size: max(20px, calc(28 * var(--mk))); margin: 0 0 4px 8px; }
+          /* Заголовок «Аккаунт» — своей строкой фиксированной высоты, панель справа начинается вровень с карточкой аккаунта */
+          .nx-set-side-title { font-size: max(20px, calc(28 * var(--mk))); height: 40px; line-height: 40px; margin: 0 0 0 8px; }
+          .nx-set-panel { margin-top: 56px; }
           .nx-set-account { display: flex; align-items: center; gap: 18px; padding: 16px 18px; border-radius: 999px; }
           .nx-set-account.is-active { box-shadow: inset 0 0 0 1px var(--mint); }
           .nx-set-navcard { padding: 12px; border-radius: 36px; }
@@ -444,17 +465,38 @@ export const APP_CSS = `
           .nx-set-body { max-width: 900px; }
         }
         @media ${PHONE_MQ} {
-          .ng-screen.nx-set-phone { position: relative; padding: calc(78px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: center; }
-          .nx-set-qr { position: absolute; left: 12px; top: calc(22px + var(--sat)); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+          .ng-screen.nx-set-phone { position: relative; padding: calc(60px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: center; }
+          /* QR — на одной линии со значками верхней строки (она закреплена — QR тоже) */
+          .nx-set-qr { position: fixed !important; z-index: 51; left: 10px; top: calc(19px + var(--sat)); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
             border: none; background: transparent; cursor: pointer; }
-          .nx-set-profile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 8px 0 26px; cursor: pointer; }
-          .nx-set-profile .nx-set-avatar { margin-bottom: 14px; }
+          .nx-set-profile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 0 0 22px; cursor: pointer; }
+          .nx-set-profile .nx-set-avatar { margin-bottom: 12px; }
           .nx-set-profile .nx-set-name { font-size: 22px; max-width: 100%; }
           .nx-set-profile .nx-set-mail { max-width: 100%; }
           .nx-set-sheet { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: 32px; text-align: left; }
           .nx-set-sheet .nx-set-about { border-radius: 24px; padding: 14px 18px; }
           .ng-screen.nx-set-page { padding: calc(18px + var(--sat)) 16px calc(100px + var(--sab)) !important; text-align: left; }
           .nx-set-page-title { margin: 14px 0 18px !important; }
+          /* Появление: аватар «раскрывается», имя и почта поднимаются, список разделов всплывает следом;
+             раздел въезжает справа и уезжает обратно вправо */
+          .nx-set-phone .nx-set-avatar { animation: nx-set-pop 520ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+          .nx-set-phone .nx-set-name { animation: nx-set-up 480ms 70ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+          .nx-set-phone .nx-set-mail { animation: nx-set-up 480ms 120ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+          .nx-set-qr { animation: nx-set-fade 400ms 100ms ease backwards; }
+          /* QR живёт в body — виден только на открытых Настройках (не у соседнего раздела во время свайпа) */
+          body:not(:has(.ng-topbar[data-tab="settings"])) .nx-set-qr, body:has(.nx-set-page) .nx-set-qr { display: none !important; }
+          .nx-set-phone .nx-set-sheet { animation: nx-set-up 560ms 160ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+          .nx-set-page { animation: nx-set-in 320ms cubic-bezier(0.2, 0.9, 0.3, 1) backwards; }
+          .nx-set-page.is-leaving { animation: nx-set-out 220ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+          @keyframes nx-set-pop { from { opacity: 0; transform: scale(0.82); } }
+          @keyframes nx-set-up { from { opacity: 0; transform: translateY(14px); } }
+          @keyframes nx-set-fade { from { opacity: 0; } }
+          @keyframes nx-set-in { from { opacity: 0; transform: translateX(48px); } }
+          @keyframes nx-set-out { to { opacity: 0; transform: translateX(56px); } }
+          @media (prefers-reduced-motion: reduce) {
+            .nx-set-phone .nx-set-avatar, .nx-set-phone .nx-set-name, .nx-set-phone .nx-set-mail, .nx-set-qr,
+            .nx-set-phone .nx-set-sheet, .nx-set-page, .nx-set-page.is-leaving { animation: none !important; }
+          }
           /* Открыт раздел — у него своя шапка с «Назад», общей строки со значками нет */
           body:has(.nx-set-page) .ng-topbar { display: none !important; }
         }
@@ -1273,6 +1315,12 @@ export const APP_CSS = `
         /* Нет размытия фона (старые браузеры) или система просит меньше прозрачности — стекло плотное, свет на краях остаётся */
         @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nx-glass { --g-alpha: 0.82 !important; } }
         @media (prefers-reduced-transparency: reduce) { .nx-glass { --g-alpha: 0.86 !important; -webkit-backdrop-filter: none; backdrop-filter: none; } }
+        /* Облегчённый режим (src/lib/lite.js): плотное стекло без размытия фона и внешних теней,
+           без аур ассистента и бесконечного перелива приветствия */
+        .nx-lite .nx-glass { --g-alpha: 0.82 !important; --g-outer: 0 0 0 transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+        .nx-lite .nx-aura, .nx-lite .nx-reply-aura-pos { display: none !important; }
+        .nx-lite .nx-greeting-anim { animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+        .nx-lite .nx-ai-glow { box-shadow: none !important; }
         /* Где стекло (первый этап): поиск сверху и на телефонной Главной, ассистент и «Приложение NEXA»,
            нижняя панель телефона, панель открытой заметки. Оттенок и свечение ассистента — по макету, поверх стекла */
         .nx-ai-pill.nx-glass { --g-tint: linear-gradient(100deg, color-mix(in srgb, var(--blue) 12%, transparent), color-mix(in srgb, var(--mint) 7%, transparent)); }
@@ -1394,7 +1442,7 @@ export const APP_CSS = `
         /* Аура за ответом: слева внизу списка, за новым сообщением */
         .nx-reply-aura-pos {
           position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0; pointer-events: none;
-          transition: left 500ms cubic-bezier(0.16, 1, 0.3, 1), top 500ms cubic-bezier(0.16, 1, 0.3, 1);
+          transition: transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
         }
         .nx-reply-aura {
           position: absolute; left: -310px; top: -180px; width: 620px; height: 360px;

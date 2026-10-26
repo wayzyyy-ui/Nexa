@@ -200,7 +200,16 @@ const loadSent = (uid) => loadList(sentKey(uid)).map((x) => (x.status === "sendi
    send (текст), emit (любое событие протокола), removeInbox, clearInbox */
 export function useDeviceLink(uid, handlers) {
   const [status, setStatus] = useState("off");
-  const [peers, setPeers] = useState([]);
+  const [peers, setPeersRaw] = useState([]);
+  // Presence присылает «sync» часто (сведения о заряде и сети, повторные входы) — если список не изменился,
+  // оставляем прежний массив: иначе каждый сигнал перерисовывал всё приложение
+  const peersKey = useRef("[]");
+  const setPeers = (next) => {
+    const key = JSON.stringify(next);
+    if (key === peersKey.current) return;
+    peersKey.current = key;
+    setPeersRaw(next);
+  };
   const [inbox, setInbox] = useState(() => (uid ? loadInbox(uid) : []));
   const [sent, setSent] = useState(() => (uid ? loadSent(uid) : [])); // NEXA Flow: отправленное
   const ackTimers = useRef({}); // id отправленного → таймер «не подтвердило»

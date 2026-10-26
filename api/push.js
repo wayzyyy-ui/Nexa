@@ -28,7 +28,7 @@
    своего телефона («Нашли телефон? Позвоните…»), до MESSAGE_MAX знаков.
 
    POST { action: "announce", id, title, text, dry? } с заголовком x-nexa-admin: <NEXA_ADMIN_SECRET> — разовое
-   объявление («Встречайте NEXA Mini») на все телефоны с приложением NEXA, где выполнен вход (push_tokens).
+   объявление («Встречайте NEXA mini-1») на все телефоны с приложением NEXA, где выполнен вход (push_tokens).
    Запускает только автор — скриптом scripts/announce.mjs. Уведомление FCM с блоком notification: Android
    показывает его сам, даже если NEXA закрыта и APK старый; открытой NEXA оно не мешает (там своё объявление,
    src/lib/announce.js). Одно и то же id — не чаще раза в 30 дней. dry: true — только посчитать телефоны.

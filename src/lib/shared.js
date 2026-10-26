@@ -9,6 +9,22 @@ export function logEvent(note) {
   window.dispatchEvent(new CustomEvent("nexa-log", { detail: note }));
 }
 
+/* Запись больших списков (диалоги, файлы, устройства) — не на каждое изменение, а через WRITE_DELAY_MS
+   после последнего: JSON целого списка на каждое нажатие тормозил телефон. Маленькие значения пишутся сразу.
+   Отложенное дописывается сразу при уходе в фон / закрытии страницы и по flushSharedState() */
+const WRITE_DELAY_MS = 300;
+const BIG_VALUE = 8000; // знаков JSON: больше — пишем с паузой
+const pendingWrites = new Map(); // key → функция «записать сейчас»
+export function flushSharedState() {
+  const all = [...pendingWrites.values()];
+  pendingWrites.clear();
+  all.forEach((fn) => fn());
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", flushSharedState);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSharedState(); });
+}
+
 /* useState, который сам сохраняется в localStorage под key и делится
    с другими вкладками. load(key) — как прочитать значение.
    Пришедшее из другой вкладки сохраняем, но обратно не рассылаем.
@@ -21,15 +37,38 @@ export function useSharedState(key, load) {
   if (cur !== state) setState(cur);
   const fromRemote = useRef(false);
   const savedKey = useRef(null); // под каким ключом сохраняли в прошлый раз
+  const timer = useRef(0);
+  const big = useRef(false); // прошлый JSON был большим — следующий считаем уже при отложенной записи
   useEffect(() => {
-    try { localStorage.setItem(cur.key, JSON.stringify(cur.value)); } catch {}
+    // Ключ сменился (вход / выход): недописанное старым ключом пишем, только если его не стёрли
+    // (выход стирает данные аккаунта — иначе запись «воскресила» бы их)
+    const prevKey = savedKey.current;
+    if (prevKey !== null && prevKey !== cur.key && pendingWrites.has(prevKey)) {
+      const fn = pendingWrites.get(prevKey);
+      pendingWrites.delete(prevKey);
+      clearTimeout(timer.current);
+      try { if (localStorage.getItem(prevKey) !== null) fn(); } catch {}
+    }
     // Начальное значение и значение после смены ключа не рассылаем
-    const switched = savedKey.current !== cur.key;
+    const switched = prevKey !== cur.key;
     savedKey.current = cur.key;
-    if (switched) return;
-    if (fromRemote.current) { fromRemote.current = false; return; }
-    syncChannel?.postMessage({ key: cur.key, value: cur.value, from: TAB_ID });
+    const remote = fromRemote.current;
+    fromRemote.current = false;
+    const send = !switched && !remote;
+    const value = cur.value, key = cur.key;
+    const write = () => {
+      let json = null;
+      try { json = JSON.stringify(value); localStorage.setItem(key, json); } catch {}
+      big.current = !!json && json.length >= BIG_VALUE;
+      if (send) syncChannel?.postMessage({ key, value, from: TAB_ID });
+    };
+    clearTimeout(timer.current);
+    if (switched || !big.current) { pendingWrites.delete(cur.key); write(); return; }
+    pendingWrites.set(cur.key, write);
+    timer.current = setTimeout(() => { if (pendingWrites.get(cur.key) === write) { pendingWrites.delete(cur.key); write(); } }, WRITE_DELAY_MS);
   }, [cur]);
+  // Ушли с экрана (компонент убрали) — дописываем сразу
+  useEffect(() => () => { clearTimeout(timer.current); const k = savedKey.current; const fn = k && pendingWrites.get(k); if (fn) { pendingWrites.delete(k); fn(); } }, []);
   useEffect(() => {
     if (!syncChannel) return;
     const onMessage = (e) => {

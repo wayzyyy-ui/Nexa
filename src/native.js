@@ -202,10 +202,11 @@ const BOOT_FACETS = [
   ["nx-boot-f3", "M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z", 'fill="url(#nx-boot-g)"'],
 ];
 // Когда что начинается (мс от готовности интерфейса): BOOT_OUT — заставка тает, BOOT_DONE — убрана
-const BOOT_OUT = 1750, BOOT_OUT_REDUCED = 700, BOOT_FADE = 480;
+// 2026-10-26: всё примерно на треть быстрее (просьба автора — «медленно»)
+const BOOT_OUT = 1150, BOOT_OUT_REDUCED = 700, BOOT_FADE = 360;
 // Переход в Главную: слово NEXA летит в шапку за BOOT_LAND, потом за BOOT_SWAP сменяется логотипом шапки
-// Медленнее, чем было (680 / 160): на загруженном телефоне короткий перелёт «рвался»
-const BOOT_LAND = 950, BOOT_SWAP = 240;
+// 950 / 240 → 720 / 180 (2026-10-26, быстрее по просьбе автора; 680 / 160 на загруженном телефоне «рвался»)
+const BOOT_LAND = 720, BOOT_SWAP = 180;
 function mountBootLogo() {
   const ease = "cubic-bezier(0.22, 1, 0.36, 1)", soft = "cubic-bezier(0.4, 0, 0.2, 1)";
   const style = document.createElement("style");
@@ -229,24 +230,24 @@ function mountBootLogo() {
     .nx-boot-made span { opacity: 0.45; }
     .nx-boot-made svg { display: block; height: 15px; width: auto; }
 
-    .nx-boot-go .nx-boot-bg { opacity: 1; transition: opacity 900ms ${soft}; }
-    .nx-boot-go .nx-boot-splash path { opacity: 0; transition: transform 700ms ${ease}, opacity 420ms ${soft} 80ms; }
+    .nx-boot-go .nx-boot-bg { opacity: 1; transition: opacity 600ms ${soft}; }
+    .nx-boot-go .nx-boot-splash path { opacity: 0; transition: transform 460ms ${ease}, opacity 280ms ${soft} 50ms; }
     .nx-boot-go .nx-boot-f1 { transform: translate(50px, 140px); }
     .nx-boot-go .nx-boot-f2 { transform: translate(140px, -50px); }
     .nx-boot-go .nx-boot-f3 { transform: translate(-130px, -100px); }
-    .nx-boot-go .nx-boot-mark path { stroke-dashoffset: 0; opacity: 1; transition: stroke-dashoffset 760ms ${soft} 140ms, opacity 160ms ease 140ms; }
-    .nx-boot-go .nx-boot-mark { transform: translate(-50%, calc(-50% - 22vh)); transition: transform 680ms ${ease} 640ms; }
-    .nx-boot-go .nx-boot-word { opacity: 1; transform: translate(-50%, -50%); transition: opacity 560ms ${soft} 820ms, transform 680ms ${ease} 820ms; }
-    .nx-boot-go .nx-boot-made { opacity: 1; transition: opacity 560ms ${soft} 1000ms; }
+    .nx-boot-go .nx-boot-mark path { stroke-dashoffset: 0; opacity: 1; transition: stroke-dashoffset 500ms ${soft} 90ms, opacity 120ms ease 90ms; }
+    .nx-boot-go .nx-boot-mark { transform: translate(-50%, calc(-50% - 22vh)); transition: transform 450ms ${ease} 420ms; }
+    .nx-boot-go .nx-boot-word { opacity: 1; transform: translate(-50%, -50%); transition: opacity 380ms ${soft} 540ms, transform 450ms ${ease} 540ms; }
+    .nx-boot-go .nx-boot-made { opacity: 1; transition: opacity 380ms ${soft} 660ms; }
     .nx-boot-out #nx-boot { opacity: 0; transition: opacity ${BOOT_FADE}ms ${soft}; }
     /* Переход в Главную (nx-boot-land, без общего затухания): фон растворяется — под ним интерфейс;
        знак уходит вверх и тает, подпись гаснет вниз; слово NEXA летит в шапку (transform задаёт bootLand) */
     .nx-boot-word { will-change: transform; }
-    .nx-boot-land #nx-boot { opacity: 1; background-color: transparent; transition: background-color 760ms ${soft} 80ms; }
-    .nx-boot-land .nx-boot-bg { opacity: 0; transition: opacity 760ms ${soft} 80ms; }
+    .nx-boot-land #nx-boot { opacity: 1; background-color: transparent; transition: background-color 520ms ${soft} 60ms; }
+    .nx-boot-land .nx-boot-bg { opacity: 0; transition: opacity 520ms ${soft} 60ms; }
     .nx-boot-land .nx-boot-mark { opacity: 0; transform: translate(-50%, calc(-50% - 22vh - 48px)) scale(0.72);
-      transition: transform ${BOOT_LAND}ms ${ease}, opacity 560ms ${soft}; }
-    .nx-boot-land .nx-boot-made { opacity: 0; transform: translateY(14px); transition: opacity 440ms ${soft}, transform 600ms ${ease}; }
+      transition: transform ${BOOT_LAND}ms ${ease}, opacity 380ms ${soft}; }
+    .nx-boot-land .nx-boot-made { opacity: 0; transform: translateY(14px); transition: opacity 300ms ${soft}, transform 420ms ${ease}; }
     .nx-boot-land .nx-boot-word svg { transition: fill ${BOOT_LAND}ms ${soft}; }
     .nx-boot-swap .nx-boot-word { opacity: 0; transition: opacity ${BOOT_SWAP}ms linear !important; }
     /* Пока слово летит, логотип шапки скрыт — потом он проявляется ровно на его месте */

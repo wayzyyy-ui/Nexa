@@ -67,7 +67,7 @@ export const DOC_EXT = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt
 export function catFromFile(file) {
   const type = file.type || "";
   const ext = (file.name.split(".").pop() || "").toLowerCase();
-  if (type.startsWith("image/")) return "photo";
+  if (type.startsWith("image/") || ext === "heic" || ext === "heif") return "photo"; // HEIC часто приходит без типа
   if (type.startsWith("video/")) return "video";
   if (type.startsWith("audio/")) return "music";
   if (DOC_EXT.includes(ext) || type === "application/pdf" || type.startsWith("text/")) return "doc";

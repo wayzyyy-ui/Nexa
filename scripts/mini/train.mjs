@@ -1,4 +1,4 @@
-// NEXA Mini: обучение, проверка и сохранение весов.
+// NEXA mini-1: обучение, проверка и сохранение весов.
 // Запуск: npm run mini:train
 // 1) делит примеры на обучающие и проверочные, 2) учит сеть, 3) показывает точность и путаницу,
 // 4) подбирает порог уверенности по проверочным данным, 5) обучает финальную сеть на всех примерах
@@ -33,21 +33,22 @@ for (const [name, set] of [["проверочные", val], ["holdout (новы�
    «Опасная ошибка» — фраза выполнена НЕ так, как нужно (вопрос принят за команду или команда за другую).
    Выбираем самую смелую пару порогов без опасных ошибок на проверочных данных; не нашли — берём пару с наименьшим числом ошибок. */
 function stats(set, th, mg) {
-  let need = 0, ok = 0, danger = 0;
+  let need = 0, ok = 0, danger = 0; const wrong = []; // wrong — какие фразы выполнены не так (для разбора)
   for (const ex of set) {
     const want = INTENT_ACTIONS[ex.label] ? ex.label : null;
     if (want) need++;
     const run = decide(model, ex.text, { threshold: th, margin: mg }).run;
     if (run && run.intent === want) ok++;
-    if (run && run.intent !== want) danger++;
+    if (run && run.intent !== want) { danger++; wrong.push(`«${ex.text}» → ${run.intent} (нужно ${want || "в Gemini"})`); }
   }
-  return { need, ok, danger, coverage: need ? ok / need : 0 };
+  return { need, ok, danger, wrong, coverage: need ? ok / need : 0 };
 }
 console.log("\nПорог уверенности: охват команд (сколько нужных команд выполнено) и опасные ошибки");
 const grid = [];
 for (const th of [0.6, 0.7, 0.8, 0.85, 0.9, 0.95]) for (const mg of [0.2, 0.3, 0.5]) grid.push({ th, mg, v: stats(val, th, mg), h: stats(holdout, th, mg) });
 for (const g of grid.filter((x) => x.mg === 0.3)) {
   console.log(`  порог ${g.th} (запас 0.3): проверочные охват ${pct(g.v.coverage)}, опасных ${g.v.danger}  |  holdout охват ${pct(g.h.coverage)}, опасных ${g.h.danger}`);
+  if (g.th >= 0.8) for (const w of [...g.v.wrong, ...g.h.wrong]) console.log(`      опасная: ${w}`);
 }
 // Порог ниже 0.8 не берём, даже если на проверке всё чисто: проверочных фраз мало, лучше запас
 const safe = grid.filter((g) => g.th >= 0.8 && g.v.danger === 0).sort((a, b) => b.v.coverage - a.v.coverage)[0];

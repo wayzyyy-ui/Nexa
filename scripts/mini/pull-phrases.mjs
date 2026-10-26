@@ -1,4 +1,4 @@
-/* Разбор непонятых фраз для дообучения NEXA Mini (собираются api/phrases.js, таблица mini_phrases).
+/* Разбор непонятых фраз для дообучения NEXA mini-1 (собираются api/phrases.js, таблица mini_phrases).
    Запуск на своём компьютере:
      SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/mini/pull-phrases.mjs [--days=30]
    (в PowerShell: $env:SUPABASE_URL = "…"; $env:SUPABASE_SERVICE_ROLE_KEY = "…"; node scripts/mini/pull-phrases.mjs)

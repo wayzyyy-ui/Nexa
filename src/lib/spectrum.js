@@ -57,7 +57,8 @@ function toRgb(color) {
 export function runSpectrum(canvas, getState) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return () => {};
-  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  // Облегчённый режим (lite.js) — как «уменьшение движения»: один неподвижный кадр
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("nx-lite");
   let lowPower = !!navigator.connection?.saveData || (navigator.hardwareConcurrency || 8) <= 2;
   // Мало заряда и нет зарядки — реже кадры
   navigator.getBattery?.().then((b) => {

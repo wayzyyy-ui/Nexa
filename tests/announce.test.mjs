@@ -65,7 +65,7 @@ test("сервер: рассылка объявления только с сек
     await handler({ method: "POST", headers: { "x-forwarded-for": `10.1.0.${++ip}`, ...headers }, body }, res);
     return res;
   };
-  const ann = { action: "announce", id: "mini-1", title: "Встречайте NEXA Mini", text: "Текст объявления" };
+  const ann = { action: "announce", id: "mini-1", title: "Встречайте NEXA mini-1", text: "Текст объявления" };
   try {
     assert.equal((await call(ann)).code, 403, "без секрета — нет доступа");
     assert.equal((await call(ann, { "x-nexa-admin": "неверный" })).code, 403, "неверный секрет");
@@ -77,7 +77,7 @@ test("сервер: рассылка объявления только с сек
     assert.deepEqual(r.body, { devices: 3, sent: 2, stale: 1, failed: 0 });
     assert.deepEqual(deleted, ["token-dead000000"], "устаревший адрес убран");
     const m = sentBodies[0].message;
-    assert.deepEqual(m.notification, { title: "Встречайте NEXA Mini", body: "Текст объявления" });
+    assert.deepEqual(m.notification, { title: "Встречайте NEXA mini-1", body: "Текст объявления" });
     assert.equal(m.android.notification.channel_id, "nexa-updates");
     assert.deepEqual(m.data, { type: "announce", id: "mini-1" });
     assert.equal(JSON.stringify(m).includes("user"), false, "в push нет аккаунта");

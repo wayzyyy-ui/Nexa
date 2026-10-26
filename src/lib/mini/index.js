@@ -1,5 +1,5 @@
-/* NEXA Mini в приложении: второй слой после обычных правил (src/lib/commands.js).
-   Порядок для каждого сообщения: команды памяти → правила → NEXA Mini → Gemini.
+/* NEXA mini-1 в приложении: второй слой после обычных правил (src/lib/commands.js).
+   Порядок для каждого сообщения: команды памяти → правила → NEXA mini-1 → Gemini.
    Mini только ОПРЕДЕЛЯЕТ намерение. Выполняет его тот же runCommand, что и для правил,
    поэтому она не может сделать ничего, чего не умеет ассистент. Не уверена — возвращает null,
    и вопрос уходит в Gemini как раньше. Это классификатор намерений, а не языковая модель. */
@@ -20,6 +20,9 @@ export const INTENT_ACTIONS = {
   NAV_TODAY: { action: "navigate", params: { tab: "today" } },
   NAV_SETTINGS: { action: "navigate", params: { tab: "settings" } },
   NAV_HOME: { action: "navigate", params: { tab: "home" } },
+  NAV_NOTES: { action: "notes", params: {} },
+  NOTE_NEW: { action: "notes", params: { create: true } },
+  VERSION: { action: "version", params: {} },
   UPLOAD: null, // окно выбора файла открывается только сразу по нажатию — этим занимаются правила
   GENERAL: null,
 };
@@ -45,8 +48,22 @@ const CUES = {
   NAV_TODAY: stems(["расписан", "календар", "сегодня", "дел", "план", "повестк"]),
   NAV_SETTINGS: stems(["настро", "параметр", "профил", "аккаунт", "уведомл"]),
   NAV_HOME: stems(["главн", "дом", "начальн", "стартов"]),
+  NAV_NOTES: stems(["замет", "записк", "записн", "блокнот", "запис"]),
+  NOTE_NEW: stems(["замет", "записк", "блокнот", "запис", "запиш", "черкн"]),
+  VERSION: stems(["верси", "сборк", "обновлен", "обновля", "о систем", "релиз", "изменени"]),
   THEME_TOGGLE: stems(["тем", "оформлен", "режим", "цвет", "инверт", "наоборот", "друг", "смен", "поменя", "переключ"]),
 };
+// Сеть и интернет — это не «подключить устройство к NEXA»: «код от wifi», «подключи интернет» уходят в Gemini
+const NOT_ADD_DEVICE = /(wi ?fi|вай ?фай|интернет|роутер|модем|сет[ьи] |блютуз|bluetooth)/;
+// Версия — только самой NEXA: фраза про NEXA / приложение / «у тебя» / «у меня», или совсем короткая («какая версия»).
+// «Какая последняя версия питона» — вопрос про другое, уходит в Gemini
+const VERSION_OF_NEXA = /(nexa|некс|приложен|сборк|о систем|о верси|обновлен|обновля|у тебя|тво[яй]|ты |у меня|стоит|установлен|изменени)/;
+// «Закрой заметки», «выйди из файлов» — это не «открыть»: уходит в Gemini (закрывать разделы ассистент не умеет)
+const CLOSE_START = /^(закрой|закрыть|выйди|выйти|убери|скрой|сверни)( |$)/;
+// «В разделе сегодня», «открой вкладку» — это переход, а не сводка
+const SECTION = /(раздел|вкладк|экран|перейд|зайди)/;
+// Погода не здесь («на луне», «на марсе») — не сводка дня
+const NOT_HERE = /(на|в) (луне|марсе|венере|юпитере|солнце|космосе|другой планете)/;
 const LIGHT = stems(["светл", "бел", "дневн", "ярч", "поярч", "light"]);
 const DARK = stems(["темн", "ночн", "ночь", "черн", "потемн", "затемн", "приглуш", "dark"]);
 
@@ -54,6 +71,10 @@ const DARK = stems(["темн", "ночн", "ночь", "черн", "потем�
 function confirmed(label, n) {
   if (label === "THEME_LIGHT") return LIGHT.test(n) && !DARK.test(n);
   if (label === "THEME_DARK") return DARK.test(n) && !LIGHT.test(n);
+  if (label === "ADD_DEVICE" && NOT_ADD_DEVICE.test(n + " ")) return false;
+  if (label === "VERSION" && !VERSION_OF_NEXA.test(n + " ") && n.split(" ").length > 3) return false;
+  if (label === "SUMMARY" && (NOT_HERE.test(n) || SECTION.test(n))) return false;
+  if (CLOSE_START.test(n) && (label.startsWith("NAV_") || label === "NOTE_NEW")) return false;
   return CUES[label] ? CUES[label].test(n) : true;
 }
 

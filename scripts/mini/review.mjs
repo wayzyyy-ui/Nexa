@@ -1,4 +1,4 @@
-/* npm run mini:review — выгрузить новые непонятые фразы NEXA Mini в mini-review.csv для разметки.
+/* npm run mini:review — выгрузить новые непонятые фразы NEXA mini-1 в mini-review.csv для разметки.
    Фразы лежат на сервере в таблице mini_phrases (Supabase), забираем их через api/phrases.js (action "export")
    по секрету NEXA_ADMIN_SECRET — тому же, что для рассылки. Секрет — только из переменной окружения:
      командная строка:  set NEXA_ADMIN_SECRET=…   затем  npm run mini:review

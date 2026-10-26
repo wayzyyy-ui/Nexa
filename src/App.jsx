@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
@@ -22,7 +22,7 @@ import { bootRoute, navigate, onRoute, titleOf, canGoBack, goBack, layerCount, p
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
 import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cachePut, fileBlob, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
 // Свои модули: lib — логика без интерфейса, ui — общие элементы, screens — экраны
-import { useSharedState, TAB_ID } from "./lib/shared.js";
+import { useSharedState, TAB_ID, flushSharedState } from "./lib/shared.js";
 import { C, fontBody, PHONE_MQ, switchTheme } from "./ui/theme.js";
 import { Icon } from "./ui/icons.jsx";
 import { readManualCity, TODAY } from "./lib/weather.js";
@@ -49,7 +49,6 @@ import { useClipSync } from "./lib/clipboardSync.js";
 import { desktopNotifyClip } from "./lib/desktop.js";
 import { ClipboardSettings } from "./ui/clipboard.jsx";
 import { userNotesKey, loadUserNotes, writeUserNotes, applyEdit, NOTE_ROWS, USER_NOTES_MAX, widgetNote } from "./lib/userNotes.js";
-import { ScreenNotes } from "./screens/Notes.jsx";
 import { ToastHost } from "./ui/toasts.jsx";
 import { SyncStatus, SyncDetails } from "./ui/sync.jsx";
 import { PullIndicator } from "./ui/pull.jsx";
@@ -63,9 +62,6 @@ import { NOTES_KEY, NOTES_MAX, loadNotes, NOTE_CATS, NOTE_PREFS_KEY, loadNotePre
 import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, withWhen, uploadDevice, folderName, sortByRecent, catOf, fileMeta, FILE_SCOPE, setFileScope } from "./lib/fileStore.js";
 import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
-import { ScreenAbout, GateAbout } from "./screens/About.jsx";
-import { ScreenSecurity } from "./screens/Security.jsx";
-import { ScreenDevices } from "./screens/Devices.jsx";
 import { MemorySettings } from "./ui/memory.jsx";
 import { MiniHelpSettings, MiniAskDialog } from "./ui/miniHelp.jsx";
 import { useMiniCollect } from "./lib/mini/collectHook.js";
@@ -89,6 +85,29 @@ import { ScreenHome } from "./screens/Home.jsx";
 import { ScreenFiles } from "./screens/Files.jsx";
 import { DropBanner } from "./ui/drop.jsx";
 import { APP_CSS } from "./ui/appStyles.js";
+
+/* Редкие экраны — отдельными кусками кода (lazy): на старте их не нужно разбирать, это ускоряет запуск,
+   особенно в приложении на слабом телефоне. Сразу после запуска, когда телефон свободен, они
+   подгружаются заранее (preloadRareScreens) — при открытии ждать не приходится */
+const RARE = {
+  notes: () => import("./screens/Notes.jsx"),
+  about: () => import("./screens/About.jsx"),
+  security: () => import("./screens/Security.jsx"),
+  devices: () => import("./screens/Devices.jsx"),
+};
+function lazyScreen(load, name) {
+  const Lazy = lazy(() => load().then((m) => ({ default: m[name] })));
+  return function LazyScreen(props) { return <Suspense fallback={null}><Lazy {...props} /></Suspense>; };
+}
+const ScreenNotes = lazyScreen(RARE.notes, "ScreenNotes");
+const ScreenAbout = lazyScreen(RARE.about, "ScreenAbout");
+const GateAbout = lazyScreen(RARE.about, "GateAbout");
+const ScreenSecurity = lazyScreen(RARE.security, "ScreenSecurity");
+const ScreenDevices = lazyScreen(RARE.devices, "ScreenDevices");
+function preloadRareScreens() {
+  const go = () => Object.values(RARE).forEach((load) => load().catch(() => {}));
+  if (window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 6000 }); else setTimeout(go, 3000);
+}
 
 
 /* ---------- 6. APP — корневой компонент ----------
@@ -670,7 +689,7 @@ export default function NexaApp() {
   const syncNextAt = uid ? Math.min(Infinity, ...Object.values(syncState).map((st) => st?.nextAt || Infinity)) : Infinity;
   const syncGaveUp = !!uid && Object.values(syncState).some((st) => st?.gaveUp);
   const online = useOnline();
-  // Сбор непонятых фраз для NEXA Mini — только по согласию (src/lib/mini/collect.js)
+  // Сбор непонятых фраз для NEXA mini-1 — только по согласию (src/lib/mini/collect.js)
   const miniCollect = useMiniCollect({ online });
   // Окно «Помочь улучшить?» — один раз, на Главной, когда больше ничего не перекрывает экран
   const [miniAskOpen, setMiniAskOpen] = useState(false);
@@ -1979,6 +1998,8 @@ export default function NexaApp() {
   // Сначала обновление веб-части (src/lib/ota.js): «запустились» и, если скачанная ждёт, —
   // перезагрузка под логотипом. Иначе — обычное появление интерфейса
   useEffect(() => { otaStart().then((r) => { if (!r) startIntro(); }, () => startIntro()); }, []);
+  // Редкие экраны подгружаем заранее, когда заставка уже прошла и телефон свободен
+  useEffect(() => { const t = setTimeout(preloadRareScreens, 2500); return () => clearTimeout(t); }, []);
   const ota = useOta();
 
   // Новая версия приложения: проверяем при запуске и когда приложение
@@ -2152,6 +2173,29 @@ export default function NexaApp() {
       if (uid && f.path) removeFromCloud(uid, [f.path]);
     }
     setOpenFile(null);
+  };
+  // Удалить несколько файлов сразу (выделение в «Файлах»): одна запись списка, одно обращение к облаку
+  const deleteFiles = (list) => {
+    if (!list?.length) return;
+    const ids = new Set(list.map((f) => f.id));
+    setFileStore((s) => {
+      const renamed = { ...s.renamed };
+      ids.forEach((id) => { delete renamed[id]; });
+      return {
+        ...s, renamed,
+        added: s.added.filter((x) => !ids.has(x.id)),
+        removed: [...s.removed, ...list.filter((f) => !f.uploaded).map((f) => f.id)],
+      };
+    });
+    const paths = [];
+    list.forEach((f) => {
+      if (!f.uploaded) return;
+      forgetUrl(FILE_SCOPE, f.id);
+      cacheDel(cacheKey(FILE_SCOPE, f.id));
+      if (f.path) paths.push(f.path);
+    });
+    if (uid && paths.length) removeFromCloud(uid, paths);
+    showToast({ title: list.length === 1 ? "Файл удалён" : `Удалено файлов: ${list.length}`, kind: "files" });
   };
   // Переименование меняет только сведения: в хранилище файл лежит под своим id
   const renameFile = (id, name) => {
@@ -2481,7 +2525,7 @@ export default function NexaApp() {
       .map(({ it, start }) => ({ key: remindKey(it), at: start - REMIND_MIN * 60000, title: `Скоро: ${it.title}`, body: `Начало в ${it.time}`, target: { tab: "today" } })));
   }, [schedule, nativeReminders]);
 
-  /* ── Разовые объявления («Встречайте NEXA Mini»): вошедшему аккаунту, один раз на этом устройстве ── */
+  /* ── Разовые объявления («Встречайте NEXA mini-1»): вошедшему аккаунту, один раз на этом устройстве ── */
   useEffect(() => {
     if (!uid || showGate) return;
     const todo = unseenAnnouncements(uid, loadSeen(uid));
@@ -2526,10 +2570,22 @@ export default function NexaApp() {
       e.preventDefault(); // в браузере Ctrl+K иначе прыгает в адресную строку
       if (document.querySelector(".nx-quick-panel")) (quickCloseRef.current ? quickCloseRef.current() : setQuickOpen(false)); else open();
     };
+    /* Приложение для ПК: правая кнопка мыши открывает панель быстрых действий.
+       Обычное меню остаётся там, где оно нужно: поля ввода, выделенный текст, ссылки.
+       Своё меню у элемента (например, у файла в «Файлах») — он сам отменяет событие (preventDefault) */
+    const onCtx = (e) => {
+      if (!isDesktop || e.defaultPrevented) return;
+      const t = e.target;
+      if (t?.closest?.("input, textarea, [contenteditable='true'], [contenteditable=''], a[href]")) return;
+      if (String(window.getSelection?.() || "").trim()) return;
+      e.preventDefault();
+      if (!document.querySelector(".nx-quick-panel")) open();
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener(QUICK_EVENT, open);
+    window.addEventListener("contextmenu", onCtx);
     const offDesktop = onDesktopQuickPanel(open);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener(QUICK_EVENT, open); offDesktop(); };
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener(QUICK_EVENT, open); window.removeEventListener("contextmenu", onCtx); offDesktop(); };
   }, []);
   // Отправить файл, который уже лежит в облаке аккаунта: тот же file.send, что и
   // после загрузки (получатель открывает его по своей ссылке <uid>/<id>)
@@ -2789,6 +2845,7 @@ export default function NexaApp() {
         /* План считали, когда выбрали файл копии, — с тех пор (загрузка файлов, раздумья над
            окном) списки могли измениться: сводка с облаком, правка на другом устройстве.
            Пересчитываем по тому, что лежит сейчас, — иначе свежая правка молча пропала бы */
+        flushSharedState(); // отложенные записи списков — в localStorage до сверки
         const now = (key, fallback) => { try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : fallback; } catch { return fallback; } };
         if (mode) plan = planRestore({
           current: { notes: now(userNotesKey(uid), userNotes), chats: now(CHATS_KEY + scope, chats), schedule: now(SCHEDULE_KEY + scope, schedule), memory: now(memoryKey(uid), memory), folders: plan.next.folders || fileStore.folders, files },
@@ -2829,6 +2886,7 @@ export default function NexaApp() {
         noteRequest={noteChatReq}
         onNoteRequestDone={() => setNoteChatReq(null)}
         onOpenNote={(noteId) => openNotes({ id: noteId })}
+        onOpenNotes={openNotes}
         onCurrentChat={(id) => { currentChatRef.current = id; }}
         memory={memory} memoryOn={memoryOn} memoryApi={memoryApi}
         onContinueChat={uid ? (c) => setContSend({ kind: "chat", ref: c.id, title: c.title }) : null}
@@ -2887,6 +2945,7 @@ export default function NexaApp() {
             onUploadAction={uploadAction}
             onCreateFolder={createFolder}
             onTransfer={openTransfer}
+            onDeleteFiles={deleteFiles}
           />
         )}
         {t === "settings" && <ScreenSettings onAbout={openAbout}

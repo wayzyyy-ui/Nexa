@@ -287,6 +287,9 @@ const moverOf = (panel) => panel && (panel.querySelector(".ng-assistant-wrapper"
 // разделах её убрали по просьбе автора 2026-10-25) — при свайпе она проявляется / гаснет вместе с ходом
 const topbarShown = (tab) => tab === "assistant" || tab === "settings"; // Настройки — по макету 2026-10-26
 const EASE = "cubic-bezier(0.2, 0.9, 0.3, 1)"; // быстро стартует (как палец) и мягко останавливается
+// Глубина при свайпе: уходящий экран слегка гаснет, приходящий проявляется (только opacity — это дёшево
+// для видеокарты; размытие целого экрана на каждом кадре на телефоне давало бы рывки)
+const SWIPE_FADE = 0.4;
 
 /* getCtx() → { tab, sub }; handlers:
    onSwipe(dir) — жест засчитан, но двигать нечего (история ассистента, «уменьшение движения»,
@@ -301,20 +304,25 @@ export function useTabSwipe(getCtx, handlers) {
     const still = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     let start = null;  // текущий жест
     let anim = null;   // доезжающая анимация после отпускания: { finish() }
-    const clear = (el) => { if (el) { el.style.transition = ""; el.style.transform = ""; } };
+    const clear = (el) => { if (el) { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; el.style.willChange = ""; } };
+    // Заранее просим отдельный слой видеокарты — первый кадр жеста без рывка
+    const prepare = (el) => { if (el) el.style.willChange = "transform, opacity"; };
     const topbar = () => document.querySelector(".ng-topbar");
     const resetTopbar = () => { const t = topbar(); if (t) { t.classList.remove("nx-tb-fade"); t.style.opacity = ""; t.style.transition = ""; } };
 
     // Положение обоих экранов: dx — сдвиг от исходного места. Соседний раздел стоит вверху окна
     // (будто его уже открыли и прокрутили к началу): сдвиг вниз на текущую прокрутку страницы
     const place = (s, dx, ms = 0) => {
-      const tr = ms ? `transform ${ms}ms ${EASE}` : "none";
-      if (s.cur) { s.cur.style.transition = tr; s.cur.style.transform = `translate3d(${dx}px, 0, 0)`; }
+      const tr = ms ? `transform ${ms}ms ${EASE}, opacity ${ms}ms ${EASE}` : "none";
+      const p = Math.min(1, Math.abs(dx) / s.w); // насколько прошли путь: 0 — в начале, 1 — соседний на месте
+      if (s.cur) { s.cur.style.transition = tr; s.cur.style.transform = `translate3d(${dx}px, 0, 0)`; s.cur.style.opacity = String(1 - SWIPE_FADE * p); }
       if (s.peekMover) {
         const base = s.dir === "next" ? s.w : -s.w;
         const y = s.peekPanel === s.peekMover ? window.scrollY : 0;
+        prepare(s.peekMover);
         s.peekMover.style.transition = tr;
         s.peekMover.style.transform = `translate3d(${base + dx}px, ${y}px, 0)`;
+        s.peekMover.style.opacity = String(1 - SWIPE_FADE * (1 - p));
         s.peekPanel.style.visibility = "visible";
       }
       // Верхняя строка есть только у одного из двух — плавно проявляется / гаснет вместе с ходом
@@ -335,10 +343,11 @@ export function useTabSwipe(getCtx, handlers) {
     // Вернуть текущий экран на место (жест не засчитан или это не смена раздела)
     const settleCur = (s) => {
       if (!s.cur) return;
-      s.cur.style.transition = `transform 220ms ${EASE}`;
+      s.cur.style.transition = `transform 220ms ${EASE}, opacity 220ms ${EASE}`;
       s.cur.style.transform = "";
+      s.cur.style.opacity = "";
       const el = s.cur;
-      setTimeout(() => { if (el.style.transform === "") el.style.transition = ""; }, 240);
+      setTimeout(() => { if (el.style.transform === "") { el.style.transition = ""; el.style.willChange = ""; } }, 240);
     };
     const dropPeek = (s) => {
       if (s.peekMover) { clear(s.peekMover); s.peekPanel.style.visibility = ""; }
@@ -381,7 +390,7 @@ export function useTabSwipe(getCtx, handlers) {
       const dir = dx < 0 ? "next" : "prev";
       const plan = swipePlan(start.tab, dir);
       if (plan === "history" && document.querySelector(".nx-hist-drawer.is-open")) return; // шторку тянет её свой жест
-      if (!start.cur) { start.curPanel = panelOf(start.tab); start.cur = moverOf(start.curPanel); }
+      if (!start.cur) { start.curPanel = panelOf(start.tab); start.cur = moverOf(start.curPanel); prepare(start.cur); }
       if (!start.cur) return;
       if (plan !== "tab") {
         // История или край — экран чуть поддаётся (как пружина) и потом возвращается
@@ -399,7 +408,11 @@ export function useTabSwipe(getCtx, handlers) {
         h.current.onPeek(target, dir);
       }
       findPeek(start);
-      place(start, dx);
+      start.dx = dx;
+      if (!start.raf) {
+        const s = start;
+        s.raf = requestAnimationFrame(() => { s.raf = 0; if (start === s) place(s, s.dx); });
+      }
     };
 
     // Довести до конца или вернуть: время — по оставшемуся пути и скорости пальца
@@ -407,6 +420,7 @@ export function useTabSwipe(getCtx, handlers) {
     const up = (e) => {
       if (!start) return;
       const s = start; start = null;
+      if (s.raf) { cancelAnimationFrame(s.raf); s.raf = 0; }
       const t = e.changedTouches[0], now = performance.now();
       const dx = t.clientX - s.x, dy = t.clientY - s.y, dt = now - s.at;
       if (now - s.lastAt > 80) s.vx = 0; // палец остановился перед отпусканием — флика нет
@@ -444,6 +458,7 @@ export function useTabSwipe(getCtx, handlers) {
           // Соседний становится текущим: NexaApp синхронно меняет раздел, прокрутка — к началу.
           // Стили «соседа» у блока раздела снимает сам React (тот же элемент), здесь — у ассистента
           h.current.onCommit(s.target);
+          clear(s.cur); // прежний раздел (если он остался в документе) — без прозрачности и сдвига
           clear(s.peekMover);
           if (s.peekPanel) s.peekPanel.style.visibility = "";
           resetTopbar();
@@ -458,6 +473,7 @@ export function useTabSwipe(getCtx, handlers) {
     const cancel = () => {
       const s = start; start = null;
       if (!s) return;
+      if (s.raf) { cancelAnimationFrame(s.raf); s.raf = 0; }
       settleCur(s);
       dropPeek(s);
     };

@@ -1,4 +1,4 @@
-// NEXA Mini: обучение. Запускается на компьютере (npm run mini:train), в приложение не попадает.
+// NEXA mini-1: обучение. Запускается на компьютере (npm run mini:train), в приложение не попадает.
 // Всё написано вручную: прямой проход, ошибка (кросс-энтропия), обратный проход и обновление весов (Adam).
 import { featurize } from "./features.js";
 import { createModel, forward, predict } from "./model.js";

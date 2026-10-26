@@ -1,4 +1,4 @@
-// Дообучение NEXA Mini на настоящих фразах: CSV, повторы, раскладка по файлам, выгрузка с сервера по секрету
+// Дообучение NEXA mini-1 на настоящих фразах: CSV, повторы, раскладка по файлам, выгрузка с сервера по секрету
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { newReviewRows, toCsv, parseCsv, planMerge, insertPhrases, knownKeys, HOLDOUT_EVERY } from "../scripts/mini/review-lib.mjs";

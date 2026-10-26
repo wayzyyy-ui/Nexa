@@ -13,7 +13,7 @@ export function FileThumb({ file, w = 52, h = 34, iconSize = 16, radius = 6, fit
   if (url) {
     return (
       <div style={{ width: w, height: h, borderRadius: radius, flexShrink: 0, overflow: "hidden", background: C.chip }}>
-        <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: fit, display: "block" }} />
+        <img src={url} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: fit, display: "block" }} />
       </div>
     );
   }

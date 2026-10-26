@@ -1,4 +1,4 @@
-/* Дообучение NEXA Mini на настоящих фразах: общие правила для npm run mini:review и npm run mini:merge.
+/* Дообучение NEXA mini-1 на настоящих фразах: общие правила для npm run mini:review и npm run mini:merge.
    Без сети и без записи на диск — только преобразования (тесты — tests/mini-review.test.mjs). */
 import { normalize } from "../../src/lib/mini/features.js";
 import { phraseProblem } from "../../src/lib/mini/collect.js";

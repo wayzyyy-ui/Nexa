@@ -1,12 +1,14 @@
 // Экран «Настройки» (макет 2026-10-26): слева аккаунт и разделы, справа выбранный раздел; на телефоне — список разделов,
 // раздел открывается на весь экран. Группы внутри разделов — прежние компоненты (этот файл и App.jsx)
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { isNative, isDesktop, systemNotifyKind } from "../native.js";
 import { thisDeviceKind, NO_DATA, KIND_LABEL, batteryText, netText, diskText } from "../lib/deviceInfo.js";
 import { C, readTheme, switchTheme, T, PHONE_MQ } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { sysTime } from "../lib/format.js";
 import { readTilt, saveTilt, tiltNeedsPermission, useMediaQuery } from "../lib/hooks.js";
+import { readLitePref, liteActive, liteAutoReason, setLitePref, LITE_EVENT } from "../lib/lite.js";
 import { Crumb } from "../ui/layout.jsx";
 import { SectionTitle, SettingsGroup, SettingsRow, btnReset, Toggle } from "../ui/base.jsx";
 import { AccountSettings } from "./auth.jsx";
@@ -158,6 +160,16 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
   // Компьютер: выбранный раздел справа. Телефон: null — список, иначе открыт раздел на весь экран
   const [sec, setSecState] = useState(readSec);
   const [open, setOpen] = useState(null);
+  // Телефон: раздел уезжает вправо (220 мс), потом убирается; «уменьшение движения» — сразу
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimer = useRef(0);
+  useEffect(() => () => clearTimeout(leaveTimer.current), []);
+  const closeSection = () => {
+    if (leaving) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setOpen(null); return; }
+    setLeaving(true);
+    leaveTimer.current = setTimeout(() => { setOpen(null); setLeaving(false); window.scrollTo(0, 0); }, 220);
+  };
   const setSec = (id) => { setSecState(id); try { sessionStorage.setItem(SEC_KEY, id); } catch { /* не страшно */ } };
   const choose = (id) => { setSec(id); if (phone) { setOpen(id); window.scrollTo(0, 0); } };
 
@@ -181,11 +193,11 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
       // Поверх раздела открыто своё окно или меню — Esc сначала ему
       const top = [...document.querySelectorAll('[role="dialog"], [role="menu"]')].filter((el) => !el.classList.contains("nx-set-page"));
       if (top.length) return;
-      setOpen(null);
+      closeSection();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phone, open]);
+  }, [phone, open, leaving]);
 
   // theme: какая тема выбрана сейчас, "light" или "dark".
   // setTheme меняет её плавно (см. switchTheme наверху файла).
@@ -205,6 +217,21 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
   const [tilt, setTiltState] = useState(readTilt);
   const toggleTilt = async () => setTiltState(await saveTilt(!tilt));
+
+  // Облегчённый режим (src/lib/lite.js): Авто / Вкл / Выкл; «Авто» включается сам на слабом телефоне и при экономии
+  const [lite, setLite] = useState(() => ({ pref: readLitePref(), on: liteActive(), why: liteAutoReason() }));
+  useEffect(() => {
+    const sync = () => setLite({ pref: readLitePref(), on: liteActive(), why: liteAutoReason() });
+    window.addEventListener(LITE_EVENT, sync);
+    return () => window.removeEventListener(LITE_EVENT, sync);
+  }, []);
+  const liteBtn = (value, label) => (
+    <button key={value} onClick={() => setLitePref(value)} style={{
+      flex: 1, padding: "8px 14px", fontSize: 13, border: "none", cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit",
+      background: lite.pref === value ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
+      color: lite.pref === value ? C.onAccent : C.muted, fontWeight: lite.pref === value ? 500 : 400,
+    }}>{label}</button>
+  );
 
   // Кнопка сегментированного переключателя темы
   const segBtn = (value, label) => (
@@ -241,13 +268,25 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
           />
           {touch && (
             <SettingsRow
-              last
               icon={<span style={{ display: "flex", transform: "rotate(-14deg)" }}>{Icon.phone({ c: C.muted, s: 18 })}</span>}
               title="Фон от наклона телефона"
               subtitle={tiltNeedsPermission() && !tilt ? "Нужно разрешить доступ к движению" : "Фон чуть сдвигается, когда наклоняете телефон"}
               right={<Toggle on={tilt} onClick={toggleTilt} />}
             />
           )}
+          <SettingsRow
+            last wrap
+            icon={Icon.quick({ c: C.muted, s: 18 })}
+            title="Облегчённый режим"
+            subtitle={lite.pref === "auto"
+              ? (lite.on ? `Включён сам: ${lite.why}. Без размытия и фоновых анимаций` : "Включится сам на слабом телефоне и при экономии заряда")
+              : lite.on ? "Без размытия и фоновых анимаций — быстрее на слабых телефонах" : "Выключен: все эффекты как обычно"}
+            right={
+              <div className="nx-seg" style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden" }}>
+                {liteBtn("auto", "Авто")}{liteBtn("on", "Вкл")}{liteBtn("off", "Выкл")}
+              </div>
+            }
+          />
         </SettingsGroup>
       );
       case "security": return <>{securityBlock}{backupBlock}</>;
@@ -274,7 +313,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
         const active = !phone && sec === s.id;
         return (
           <button key={s.id} type="button" className={`nx-set-nav-item${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => choose(s.id)}>
-            <span className="nx-set-nav-icon">{Icon[s.icon]({ c: active ? C.onFold : C.text, s: 20 })}</span>
+            <span className="nx-set-nav-icon">{Icon[s.icon]({ c: active ? C.onAccent : C.text, s: 20 })}</span>
             <span>{s.title}</span>
             {phone && <span className="nx-set-nav-chev" aria-hidden="true">{Icon.chevron({ c: C.mutedSoft })}</span>}
           </button>
@@ -297,19 +336,21 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
     if (open) {
       const m = meta(open);
       return (
-        <div className="ng-screen nx-settings nx-set-page" role="dialog" aria-label={m.title} data-no-swipe>
-          <Crumb onClick={() => setOpen(null)}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+        // Уходящий раздел — без role="dialog": для «Назад» он уже закрыт
+        <div className={`ng-screen nx-settings nx-set-page${leaving ? " is-leaving" : ""}`} role={leaving ? undefined : "dialog"} aria-label={m.title} data-no-swipe>
+          <Crumb onClick={closeSection}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
           <div className="ng-display nx-page-title nx-set-page-title">{m.title}</div>
           <div className={`nx-set-body${m.notitle ? " nx-set-notitle" : ""}`}>{content(open)}</div>
         </div>
       );
     }
     return (
-      <div className="ng-screen nx-stagger nx-settings nx-set-phone">
-        {user && onApproveLogin && (
+      <div className="ng-screen nx-settings nx-set-phone">
+        {/* QR — в body: у экрана есть сдвиги и анимации, внутри них fixed считался бы от экрана, а не от окна */}
+        {user && onApproveLogin && createPortal(
           <button type="button" className="nx-icon-btn nx-set-qr" onClick={onApproveLogin} aria-label="Войти на другом устройстве по QR" title="Войти на другом устройстве">
             {Icon.qr({ c: C.text, s: 20 })}
-          </button>
+          </button>, document.body
         )}
         <button type="button" className="nx-set-profile" onClick={() => (user ? choose("account") : onLogin?.())}>
           {avatar(84)}

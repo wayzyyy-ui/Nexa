@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { isNative, isDesktop, nativeFile, clipboardWriteImage } from "../native.js";
 import { desktopOpenFile, desktopSaveFile } from "../lib/desktop.js";
 import { formatBytes } from "../lib/deviceInfo.js";
-import { fileUrl, fileBlob, forgetUrl, safeFileName } from "../lib/files.js";
+import { fileUrl, photoUrl, fileBlob, forgetUrl, safeFileName } from "../lib/files.js";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { fileBytes, formatWhen } from "../lib/format.js";
@@ -94,14 +94,14 @@ export function PhotoFullscreen({ photos, startId, onClose }) {
     setLoad({ url: null, state: "loading" });
     view.current = { s: 1, x: 0, y: 0 };
     setZoomed(false);
-    fileUrl(photo, FILE_SCOPE)
+    photoUrl(photo, FILE_SCOPE)
       .then((url) => { if (!off) setLoad(url ? { url, state: "loading" } : { url: null, state: "error" }); })
       .catch(() => { if (!off) setLoad({ url: null, state: "error" }); });
     return () => { off = true; };
   }, [photo?.id, retry]);
   // Соседние фото заранее — листание без ожидания
   useEffect(() => {
-    for (const p of [photos[idx - 1], photos[idx + 1]]) if (p) fileUrl(p, FILE_SCOPE).catch(() => {});
+    for (const p of [photos[idx - 1], photos[idx + 1]]) if (p) photoUrl(p, FILE_SCOPE).catch(() => {});
   }, [idx, photos]);
 
   // Клавиши. Слушаем раньше всех (capture): Esc закрывает только фото, а не окно файла под ним

@@ -1,4 +1,4 @@
-// NEXA Mini: сама нейросеть (только предсказание). Обучение — в train.js.
+// NEXA mini-1: сама нейросеть (только предсказание). Обучение — в train.js.
 // Устройство: вход (признаки фразы) → скрытый слой (ReLU) → выход по числу намерений → softmax.
 import { DIM, featurize } from "./features.js";
 
@@ -61,7 +61,7 @@ export function modelToJSON(model, meta = {}) {
   };
 }
 export function modelFromJSON(json) {
-  if (!json || json.format !== "nexa-mini" || json.version !== 1) throw new Error("Неизвестный формат весов NEXA Mini");
+  if (!json || json.format !== "nexa-mini" || json.version !== 1) throw new Error("Неизвестный формат весов NEXA mini-1");
   if (json.dim !== DIM) throw new Error("Веса обучены для другого размера признаков — переобучите модель");
   if (json.W1.length !== json.dim * json.hidden || json.W2.length !== json.hidden * json.labels.length) throw new Error("Веса повреждены");
   return {

@@ -1,4 +1,4 @@
-// Сбор непонятых фраз NEXA Mini (src/lib/mini/collect.js, api/phrases.js) и исправленные правила команд
+// Сбор непонятых фраз NEXA mini-1 (src/lib/mini/collect.js, api/phrases.js) и исправленные правила команд
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { register } from "node:module";
