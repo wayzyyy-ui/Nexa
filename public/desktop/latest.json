@@ -1,11 +1,11 @@
 {
-  "version": "0.17.2",
-  "notes": "- Новая Главная: погода и ближайшие дела, устройства страницами\n- «Где устройство?»: последнее известное место, даже если телефон выключен\n- Экспериментальный интерфейс телефона — в «Внешнем виде»\n- Подсказки mini-1 понимают контекст, лёгкая вибрация\n- Выбранные файлы можно скачать разом",
-  "pub_date": "2026-10-27T14:12:43.707Z",
+  "version": "0.17.3",
+  "notes": "- Приложение для ПК: своя верхняя панель окна в стиле NEXA\n- Главная выровнена, погода и расписание телефона — как в макете\n- Имена устройств больше не рвутся посреди слова",
+  "pub_date": "2026-10-27T15:19:13.221Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTJXNmRFSlVURjY4alRHc2QzaHFKcFp0QVc0VFVtaEt3ejBpd2E5NkxycHhVMjFPRktPbEN5QXM4SXBsZEZXZ0IvVzhoQ2dJMFRudmdmeVh3WXBMakE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTEwMzYzCWZpbGU6TkVYQV8wLjE3LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuMgpaUlVaTlF1NVVwTHFJMzZhQ0tTaEQvVHdCaW5ia2FrQi9zRy9MMnRNOFVmUGo2ZTNGRkxxZmNzQXVIRkJKakhqNFAwYmJxZkZMWkpWZjJiRll2NHhBZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.2"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlId3psclFTanJpNjhNRFR2M3RDWHVVZGg1YVFIcXhXS1pGZW52RlA3Z1h0bWlRR0RRNXlaa2hpREN4andrZVFlNXpPc004NUVKQkczZlBCQ2JHZ1FRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTE0MzUzCWZpbGU6TkVYQV8wLjE3LjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuMwp5N1N6QXMvMFg3dnZDTmQ3S1J3cVVuQzN3T3d4UTVEZm15aXlvZGp5TTVBSmVmOURlSW5YamFNS3JaUlEzMmREaUJrQlhYZ3BDOTRIL0luODVCQ1lBUT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.3"
     }
   }
 }
