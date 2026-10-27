@@ -30,11 +30,20 @@ const FILES_PAGE = 60; // сколько строк файлов рисоват�
 
 /* Строка файла. Нажатие — открыть (в режиме выделения — отметить), долгое нажатие / правая кнопка —
    меню файла (в режиме выделения — тоже отметить). data-transfer-card — отсюда полетит карточка при передаче */
-function FileRowItem({ f, rowStyle, meta, selecting, selected, onOpen, onToggle, onLong, onTransfer }) {
+function FileRowItem({ f, idx, rowStyle, meta, selecting, selected, onOpen, onToggle, onLong, onTransfer }) {
   const card = useRef(null);
-  const { handlers, wasLong } = useLongPress((x, y) => onLong(x, y, card.current));
+  const { handlers, wasLong } = useLongPress((x, y, how) => onLong(x, y, card.current, how));
+  /* Массовое выделение пальцем: пока ведём по списку, касание не должно прокручивать страницу.
+     Слушатель только у строк файлов (не на всей странице) и ничего не делает, пока выделение не идёт */
+  useEffect(() => {
+    const el = card.current;
+    if (!el) return;
+    const stop = (e) => { if (e.cancelable && document.documentElement.classList.contains("nx-drag-select")) e.preventDefault(); };
+    el.addEventListener("touchmove", stop, { passive: false });
+    return () => el.removeEventListener("touchmove", stop);
+  }, []);
   return (
-    <div ref={card} data-transfer-card className={`nx-file-row${selected ? " is-selected" : ""}`} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
+    <div ref={card} data-transfer-card data-file-idx={idx} className={`nx-file-row${selected ? " is-selected" : ""}`} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: rowStyle.borderBottom }}>
       <button type="button" className="nx-row-btn" {...handlers} aria-pressed={selecting ? selected : undefined}
         onClick={() => { if (wasLong()) return; if (selecting) onToggle(); else onOpen(); }}
         style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
@@ -127,6 +136,64 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   useEffect(() => { exitSelect(); setMenu(null); }, [listKey]);
   const toggleSel = (id) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const startSelect = (id) => { setSelecting(true); setSel(new Set([id])); };
+  /* Быстрое массовое выделение (2026-10-28): долгое нажатие отмечает файл, и, не отпуская палец (или кнопку
+     мыши), можно вести по списку — отмечаются все строки от первой до той, что под пальцем (назад — снимаются,
+     как в галерее телефона). У верхнего / нижнего края список сам прокручивается */
+  const listRef = useRef([]); listRef.current = list;
+  const drag = useRef(null); // { anchor, base: Set, x, y, raf }
+  const startDragSelect = (idx) => {
+    const ids = listRef.current;
+    const id = ids[idx]?.id;
+    if (!id) return;
+    const base = new Set(selecting ? sel : []);
+    base.delete(id);
+    setSelecting(true);
+    setSel(new Set([...base, id]));
+    drag.current = { anchor: idx, last: idx, base, x: 0, y: -1, raf: 0 };
+    const rowAt = (x, y) => {
+      const el = document.elementFromPoint(x, y)?.closest?.("[data-file-idx]");
+      return el ? Number(el.getAttribute("data-file-idx")) : null;
+    };
+    const apply = (cur) => {
+      const d = drag.current;
+      if (!d || cur == null || cur === d.last) return;
+      d.last = cur;
+      const [a, b] = d.anchor <= cur ? [d.anchor, cur] : [cur, d.anchor];
+      const n = new Set(d.base);
+      for (let i = a; i <= b; i++) if (listRef.current[i]) n.add(listRef.current[i].id);
+      setSel(n);
+    };
+    // Прокрутка у края: пока палец у края — страница едет, строки под пальцем отмечаются
+    const edge = () => {
+      const d = drag.current;
+      if (!d) return;
+      const tabbar = document.querySelector(".nx-tabbar-pill")?.getBoundingClientRect();
+      const bottom = tabbar?.height ? tabbar.top : window.innerHeight;
+      const step = d.y < 0 ? 0 : d.y > bottom - 70 ? 10 : d.y < 130 ? -10 : 0;
+      if (step) { window.scrollBy(0, step); apply(rowAt(d.x, d.y)); }
+      d.raf = requestAnimationFrame(edge);
+    };
+    const move = (e) => { const d = drag.current; if (!d) return; d.x = e.clientX; d.y = e.clientY; apply(rowAt(e.clientX, e.clientY)); };
+    // Пока ведём пальцем, страница не прокручивается сама (иначе палец «тащил» бы список)
+    const noScroll = (e) => { if (drag.current && e.cancelable) e.preventDefault(); };
+    const end = () => {
+      cancelAnimationFrame(drag.current?.raf || 0);
+      drag.current = null;
+      document.documentElement.classList.remove("nx-drag-select");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("touchmove", noScroll);
+      window.removeEventListener("touchend", end);
+    };
+    document.documentElement.classList.add("nx-drag-select");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("touchmove", noScroll, { passive: false });
+    window.addEventListener("touchend", end);
+    drag.current.raf = requestAnimationFrame(edge);
+  };
   /* Скачать выбранные — по одному тем же ходом, что «Скачать» в окне файла: телефон — в «Загрузки»,
      сайт — загрузки браузера (он может один раз спросить разрешение на несколько файлов), ПК — «Сохранить как».
      Без содержимого (добавлены до хранилища) — пропускаем */
@@ -489,12 +556,17 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         })}
         {/* Строка файла: сама строка открывает файл, справа — «Передать на…».
             data-transfer-card — отсюда полетит карточка при передаче */}
-        {list.slice(0, limit).map((f) => (
-          <FileRowItem key={f.id} f={f} rowStyle={rowStyle} meta={`${fileMeta(f)}${flat ? ` · ${folderName(folders, f.folder)}` : ""}`}
+        {list.slice(0, limit).map((f, i) => (
+          <FileRowItem key={f.id} f={f} idx={i} rowStyle={rowStyle} meta={`${fileMeta(f)}${flat ? ` · ${folderName(folders, f.folder)}` : ""}`}
             selecting={selecting} selected={sel.has(f.id)}
             onOpen={() => onOpenFile({ id: f.id, list: list.map((x) => x.id) })}
             onToggle={() => toggleSel(f.id)}
-            onLong={(x, y, card) => { if (selecting) { toggleSel(f.id); return; } vibrate(12); setMenu({ file: f, x, y, card }); }}
+            onLong={(x, y, card, how) => {
+              // Правая кнопка мыши — меню файла, как раньше
+              if (how?.context) { if (selecting) { toggleSel(f.id); return; } setMenu({ file: f, x, y, card }); return; }
+              // Долгое нажатие — сразу выделение, и можно вести пальцем по списку
+              vibrate(12); startDragSelect(i);
+            }}
             onTransfer={onTransfer} />
         ))}
         {menu && (

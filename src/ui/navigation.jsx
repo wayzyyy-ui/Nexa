@@ -361,7 +361,19 @@ export function useTabSwipe(getCtx, handlers) {
       s.cur.style.transform = "";
       s.cur.style.opacity = "";
       const el = s.cur;
-      setTimeout(() => { if (el.style.transform === "") { el.style.transition = ""; el.style.willChange = ""; } }, 240);
+      setTimeout(() => {
+        if (el.style.transform === "") { el.style.transition = ""; el.style.willChange = ""; }
+        else if (!start && !anim) clear(el); // жест закончился, а сдвиг остался — убираем
+      }, 240);
+    };
+    /* Страховка (2026-10-28): у ассистента после свайпа экран иногда оставался сдвинутым вбок (виден фон
+       слева, справа обрезано). Перед новым жестом, когда ничего не движется, снимаем остатки сдвига
+       и прозрачности со всех разделов и с экрана ассистента */
+    const sweep = () => {
+      if (start || anim) return;
+      document.querySelectorAll("[data-panel], .ng-assistant-wrapper").forEach((el) => {
+        if (el.style.transform || el.style.opacity) clear(el);
+      });
     };
     const dropPeek = (s) => {
       if (s.peekMover) { clear(s.peekMover); s.peekPanel.style.visibility = ""; }
@@ -373,6 +385,7 @@ export function useTabSwipe(getCtx, handlers) {
     const down = (e) => {
       if (anim) anim.finish(); // новый жест посреди доезда — сразу закончить прежний
       start = null;
+      sweep();
       if (!mobile?.matches || e.touches.length !== 1) return;
       const t = e.touches[0], el = e.target instanceof Element ? e.target : null;
       if (!el || t.clientX < SWIPE_EDGE || t.clientX > window.innerWidth - SWIPE_EDGE) return;
@@ -403,7 +416,9 @@ export function useTabSwipe(getCtx, handlers) {
       if (still()) return;
       const dir = dx < 0 ? "next" : "prev";
       const plan = swipePlan(start.tab, dir);
-      if (plan === "history" && document.querySelector(".nx-hist-drawer.is-open")) return; // шторку тянет её свой жест
+      // Шторку истории тянет её свой жест. Если она открылась посреди нашего жеста — экран ассистента
+      // возвращаем на место (раньше сдвиг-«пружина» мог так и остаться)
+      if (plan === "history" && document.querySelector(".nx-hist-drawer.is-open")) { if (start.cur?.style.transform) settleCur(start); return; }
       if (!start.cur) { start.curPanel = panelOf(start.tab); start.cur = moverOf(start.curPanel); prepare(start.cur); }
       if (!start.cur) return;
       if (plan !== "tab") {

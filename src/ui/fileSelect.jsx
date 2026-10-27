@@ -20,14 +20,15 @@ export function useLongPress(onLong) {
     onPointerDown: (e) => {
       if (e.button !== 0) return;
       const { clientX: x, clientY: y } = e;
-      st.current = { x, y, fired: false, t: setTimeout(() => { st.current.fired = true; onLong(x, y); }, LONG_PRESS_MS) };
+      st.current = { x, y, fired: false, t: setTimeout(() => { st.current.fired = true; onLong(x, y, { press: true }); }, LONG_PRESS_MS) };
     },
     onPointerMove: (e) => { if (st.current.t && Math.hypot(e.clientX - st.current.x, e.clientY - st.current.y) > 10) clear(); },
     onPointerUp: clear,
     onPointerCancel: clear,
     onPointerLeave: clear,
     // Правая кнопка мыши — то же меню (на ПК без долгого удержания); общее меню быстрых действий не открываем
-    onContextMenu: (e) => { e.preventDefault(); clear(); if (!st.current.fired) onLong(e.clientX, e.clientY); },
+    // Сенсорный экран тоже шлёт contextmenu после удержания — его не считаем (там уже сработал таймер)
+    onContextMenu: (e) => { e.preventDefault(); clear(); if (!st.current.fired) onLong(e.clientX, e.clientY, { context: true }); },
   };
   const wasLong = () => { const f = st.current.fired; st.current.fired = false; return f; };
   return { handlers, wasLong };

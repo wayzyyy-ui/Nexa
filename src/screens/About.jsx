@@ -5,7 +5,7 @@ import { C, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { VERSION } from "../version.js";
 import { Crumb } from "../ui/layout.jsx";
-import { MadeBy, btnReset } from "../ui/base.jsx";
+import { btnReset } from "../ui/base.jsx";
 
 // Отдельный экран «Активность»: все события и «Очистить» с подтверждением
 /* ═══ ЭКРАН «О СИСТЕМЕ» ═══════════════════════════════════════
@@ -197,7 +197,7 @@ export function ScreenAbout({ onBack, installed }) {
       </div>
 
       {/* Подпись студии — в самом низу страницы */}
-      <MadeBy style={{ marginTop: 48, paddingBottom: 8 }} />
+      {/* Подпись студии (MadeBy) пока убрана — просьба автора 2026-10-28 */}
     </div>
   );
 }

@@ -221,6 +221,10 @@ export const APP_CSS = `
         }
         /* Боковое меню на Главной прозрачное — градиент виден и под ним (как в макете) */
         body:has(.nx-home-glow) .ng-sidebar { background: transparent !important; }
+        /* Тёмная тема (просьба автора 2026-10-28): меню на всех экранах того же тёмно-синего цвета, каким оно
+           выглядит у ИИ-ассистента (там под прозрачным меню — синий фон спектра); замерено по снимку автора */
+        :root[data-theme="dark"] { --side-bg-top: rgb(9 20 41); --side-bg-bottom: rgb(5 15 33); }
+        :root[data-theme="dark"] body:has(.nx-home-glow) .ng-sidebar { background: linear-gradient(180deg, var(--side-bg-top), var(--side-bg-bottom)) !important; }
         .ng-home { position: relative; z-index: 1; }
 
         @media ${DESKTOP_MQ} {
@@ -355,7 +359,11 @@ export const APP_CSS = `
         /* Общая сетка в два ряда (2026-10-27): устройства и погода — первый ряд, «Активность» и ассистент с
            «Приложением NEXA» — второй; так блоки стоят ровно по верху и низу. Колонки-обёртки — display: contents */
         .nx-home-grid2 { display: grid; grid-template-columns: minmax(0, calc(718 * var(--mk))) minmax(260px, calc(389 * var(--mk))) minmax(0, 1fr);
-          grid-template-areas: "dev wx fold" "act pills fold"; gap: calc(37 * var(--mk)); align-items: stretch; }
+          grid-template-areas: "dev wx fold" "act wx fold" "act pills fold"; grid-template-rows: auto minmax(0, 1fr) auto;
+          gap: calc(37 * var(--mk)); align-items: stretch; }
+        /* Макет 2026-10-28: погода вытянута вниз (на ряд устройств и часть «Активности»), ассистент — сразу под ней,
+           низ ассистента вровень с низом «Активности» */
+        .nx-home-grid2 > .nx-home-colA > .nx-home-act { grid-row: 2 / 4; }
         .nx-home-colA, .nx-home-colB { display: contents; }
         .nx-home-grid2 .nx-home-devices { grid-area: dev; }
         .nx-home-grid2 .nx-hw-desk { grid-area: wx; }
@@ -367,7 +375,8 @@ export const APP_CSS = `
         .nx-home-pills2 { display: flex; flex-direction: column; justify-content: space-between; gap: calc(24 * var(--mk)); }
         .nx-home-pills2 > * { width: 100%; }
         .nx-home-pills2 .nx-ai-glow > svg:last-child { display: none; }
-        .nx-home-fold2 { align-self: stretch; display: flex; align-items: center; justify-content: center; pointer-events: none; margin-right: calc(-120 * var(--mk)); }
+        /* Складка — у верха карточек, как в макете (по центру высоты она съезжала вниз) */
+        .nx-home-fold2 { align-self: stretch; display: flex; align-items: flex-start; justify-content: center; pointer-events: none; margin-right: calc(-120 * var(--mk)); }
         .nx-home-fold2 .nx-home-fold-art { height: calc(560 * var(--mk)); }
         .nx-ai-pill-icon { background: linear-gradient(135deg, var(--blue), color-mix(in srgb, var(--blue) 55%, var(--mint))) !important; }
 
@@ -576,6 +585,9 @@ export const APP_CSS = `
         /* Компьютер: подложки нет совсем (просьба автора 2026-10-27) — полоса высотой с верхнюю строку
            закрывала верх сцены устройства и карточек при прокрутке; кнопки строки и так на своих «стёклах» */
         @media ${DESKTOP_MQ} { .ng-topbar::before { display: none; } }
+        /* Телефон — так же везде, кроме ассистента (2026-10-28): в Настройках полоса при прокрутке
+           закрывала аватар, на «Сегодня» / «Медиа» — заголовки и карточки */
+        @media ${PHONE_MQ} { .ng-topbar:not([data-tab="assistant"])::before { display: none; } }
         /* Экраны с фоном .nx-home-glow: подложка — тот же градиент, выровненный по экрану (полоса начинается
            правее меню — сдвигаем фон на его ширину), а не сплошной цвет: иначе при прокрутке сверху
            появлялась тёмная полоса. Внизу — плавный переход в прозрачность */
@@ -676,6 +688,8 @@ export const APP_CSS = `
         /* ── «Файлы»: меню файла (долгое нажатие / правая кнопка) и выделение нескольких ── */
         .nx-file-row .nx-row-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
         .nx-file-row.is-selected { background: color-mix(in srgb, var(--mint) 9%, transparent); border-radius: 14px; }
+        /* Ведём пальцем / мышью для выделения — текст не выделяется, свайпы разделов не срабатывают */
+        html.nx-drag-select, html.nx-drag-select * { user-select: none !important; -webkit-user-select: none !important; }
         .nx-file-menu { position: fixed; z-index: 600; min-width: 220px; max-width: min(300px, calc(100vw - 24px)); padding: 6px;
           border-radius: 20px; display: flex; flex-direction: column; gap: 2px; transition: opacity 120ms ease;
           animation: nx-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
@@ -801,7 +815,7 @@ export const APP_CSS = `
              значки справа, на линии заголовка). Нет только на Главной — у неё своя шапка */
           .ng-topbar[data-tab="home"]:not(.nx-tb-fade) { display: none !important; }
           /* Заголовок раздела не должен уходить под значки справа */
-          .nx-media-screen .nx-page-title, .nx-today-title { padding-right: 112px; box-sizing: border-box; }
+          .nx-media-screen .nx-page-title, .nx-today-title { padding-right: 0; }
           .nx-top-search { display: none !important; }
           .nx-top-search-icon { display: inline-flex; order: -1; } /* как в макете: поиск, колокольчик, молния */
           .ng-topbar { gap: 2px !important; }
@@ -810,11 +824,18 @@ export const APP_CSS = `
           body:has(.nx-home-glow) .ng-topbar::before { background-position: 0 0; }
           /* Все значки шапки одного размера; профиль на телефоне — в нижней панели */
           .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) svg, .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 19px !important; height: 19px !important; }
+          /* 2026-10-28: значки крупнее (26 px) и кнопки 40 × 40 — удобнее попадать; одинаковые квадраты — ровный шаг,
+             центр — на линии заголовка раздела */
+          .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) { width: 40px !important; height: 40px !important; min-width: 40px; padding: 0 !important;
+            display: inline-flex !important; align-items: center; justify-content: center; box-sizing: border-box; margin: 0 !important; }
+          .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) svg { width: 26px !important; height: 26px !important; }
+          .ng-topbar .nx-top-search-icon > button { width: 40px !important; height: 40px !important; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; }
+          .ng-topbar { gap: 2px !important; align-items: center !important; }
           .ng-topbar .nx-tb-user { display: none !important; }
           /* Карточки ближе к заголовку раздела («Сегодня», «Медиа и файлы»…), но не вплотную */
           .nx-page-gap { height: 18px !important; }
           /* Ассистент: справа в шапке — поиск, уведомления, быстрые действия (общая верхняя строка) */
-          .nx-ai-head { padding-right: 112px; padding-top: 11px; } /* на одной линии со значками справа */
+          .nx-ai-head { padding-right: 140px; padding-top: 11px; } /* на одной линии со значками справа */
           .nx-dev-pill { min-height: 78px; }
           .nx-ai-pill { min-height: 90px; }
           .nx-ai-pill-title { font-size: 19px; }
@@ -2242,7 +2263,9 @@ export const APP_CSS = `
           .ng-cat-grid > .is-other { display: none !important; }
           .nx-title-row { justify-content: space-between; }
           /* «Медиа и файлы» — в одну строку рядом с кнопкой «+» (раньше «файлы» переносились) */
-          .nx-title-row .nx-page-title { white-space: nowrap; font-size: min(32px, 8vw) !important; min-width: 0; }
+          .nx-title-row .nx-page-title { white-space: nowrap; font-size: min(25px, 6.4vw) !important; min-width: 0; letter-spacing: -0.01em; }
+          /* Заголовок раздела не уходит под значки справа (3 × 40 + отступы) */
+          .ng-main-content .nx-page-title { max-width: calc(100% - 116px); overflow: hidden; text-overflow: ellipsis; }
           /* Дата и время — две равные колонки: поле времени в Android шире 124 px и вылезало за рамку формы */
           .nx-sched-form-row { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) !important; }
           .nx-sched-edit-wrap { margin-left: 0 !important; } /* правка дела — на всю ширину карточки, иначе дата не помещалась */
@@ -2402,7 +2425,7 @@ export const APP_CSS = `
             top: var(--sat) !important;
             right: 0 !important;
             left: 0 !important; /* меню на телефоне нет — полоса во всю ширину */
-            padding: 22px 16px 0 0 !important;
+            padding: 26px 12px 0 0 !important;
             z-index: 50 !important;
             gap: 2px !important;
           }

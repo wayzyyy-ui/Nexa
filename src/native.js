@@ -6,7 +6,7 @@ import { isDesktop } from "./lib/platform.js";
 import { desktopClipboardRead, desktopClipboardWrite, desktopNotify } from "./lib/desktop.js";
 import { targetToLink } from "./lib/deeplink.js";
 import { VERSION } from "./version.js";
-import { LOGO_MARK_D, WORD_RECTS, WORD_PATHS, MONO_PATHS, MONO_RECTS, MONO_DOT, rectsSvg } from "./ui/brandArt.js";
+import { LOGO_MARK_D, WORD_RECTS, WORD_PATHS, rectsSvg } from "./ui/brandArt.js";
 
 // Запущены ли мы внутри Android-приложения (а не в браузере)
 export const isNative = Capacitor.isNativePlatform();
@@ -293,10 +293,9 @@ function mountBootLogo() {
       </g></svg>
     <div class="nx-boot-mark"><svg viewBox="0 0 46 45" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="${LOGO_MARK_D}" pathLength="1" stroke="${BOOT_INK}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-    <div class="nx-boot-word"><svg viewBox="0 0 149 25" fill="${BOOT_INK}" xmlns="http://www.w3.org/2000/svg">${rectsSvg(WORD_RECTS)}${wordPaths}</svg></div>
-    <div class="nx-boot-made"><span>Разработано</span>
-      <svg viewBox="0 0 911 77" xmlns="http://www.w3.org/2000/svg"><g fill="${BOOT_INK}" fill-opacity="0.85">${MONO_PATHS.map((d) => `<path d="${d}"/>`).join("")}${rectsSvg(MONO_RECTS)}</g>
-        <circle cx="${MONO_DOT.cx}" cy="${MONO_DOT.cy}" r="${MONO_DOT.r}" fill="${BOOT_MINT}"/></svg></div>`;
+    <div class="nx-boot-word"><svg viewBox="0 0 149 25" fill="${BOOT_INK}" xmlns="http://www.w3.org/2000/svg">${rectsSvg(WORD_RECTS)}${wordPaths}</svg></div>`;
+  // «Разработано mono.engineering» внизу заставки пока убрано (просьба автора 2026-10-28);
+  // вернуть — снова добавить блок .nx-boot-made (MONO_PATHS, MONO_RECTS, MONO_DOT из brandArt.js)
   document.body.appendChild(el);
 }
 
