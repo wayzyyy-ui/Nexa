@@ -25,13 +25,13 @@ export function ActivityList({ items, limit }) {
       {list.map((it, i) => {
         const tone = it.kind === "disconnect" ? C.mutedSoft : it.kind === "connect" ? C.green : C.mint;
         return (
-          <div key={it.id} className={i === 0 ? "nx-pop" : undefined} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
-            <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div key={it.id} className={`nx-act-row${i === 0 ? " nx-pop" : ""}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
+            <span className="nx-act-ico" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {(ACTIVITY_ICON[it.kind] || ACTIVITY_ICON.sent)(tone)}
             </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="nx-act-body" style={{ flex: 1, minWidth: 0 }}>
               <div className="nx-act-title" style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
-              {it.text && <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>}
+              {it.text && <div className="nx-act-text" style={{ fontSize: 12, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>}
             </div>
             <span className="nx-act-time" style={{ fontSize: 12, color: C.mutedSoft, flexShrink: 0, whiteSpace: "nowrap" }}>{activityTime(it.at)}</span>
           </div>

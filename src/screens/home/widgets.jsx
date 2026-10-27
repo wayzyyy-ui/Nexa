@@ -1,6 +1,6 @@
 // Главная (макет 2026-10-27): погода и расписание прямо на Главной, устройства страницами,
 // экспериментальный интерфейс телефона (3D-устройства, «капли» дела и погоды, хранилище)
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { C } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { btnReset } from "../../ui/base.jsx";
@@ -20,18 +20,21 @@ const shortDate = (d = new Date()) => d.toLocaleDateString("ru-RU", { day: "2-di
 // «ясно» → «Ясно»
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 
-// Мятный треугольник за градусом — фирменная грань из макета
+// Мятный треугольник за градусом — фирменная грань из макета.
+// id градиента — свой у каждой карточки: на странице две Главные (компьютер скрыт на телефоне), и общий id
+// брался из скрытой — в Chrome грань тогда не рисовалась вовсе
 function TempFacet() {
+  const gid = `nx-hw-g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <svg className="nx-hw-facet" viewBox="0 0 120 80" aria-hidden="true">
       <defs>
-        <linearGradient id="nx-hw-g" x1="100%" y1="0%" x2="0%" y2="100%">
+        <linearGradient id={gid} x1="100%" y1="0%" x2="0%" y2="100%">
           <stop offset="0" stopColor="var(--mint)" stopOpacity="0.95" />
           <stop offset="0.55" stopColor="var(--mint)" stopOpacity="0.25" />
           <stop offset="1" stopColor="var(--mint)" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d="M120 0 L0 26 L66 80 Z" fill="url(#nx-hw-g)" />
+      <path d="M120 0 L0 26 L66 80 Z" fill={`url(#${gid})`} />
     </svg>
   );
 }
@@ -54,7 +57,7 @@ export function HomeWeatherCard({ onOpen, children, className = "" }) {
         </span>
         <span className={`nx-hw-temp${now ? "" : " is-veil"}`}>
           <TempFacet />
-          <span className="nx-hw-deg">{now ? signedTemp(now.temp) : "—"}<sup>°</sup></span>
+          <span className="nx-hw-deg">{now ? signedTemp(now.temp) : "—"}<i className="nx-deg-ring" aria-hidden="true" /></span>
         </span>
         <span className="nx-hw-cond">{now ? cap(now.text) : w.error ? "Погода недоступна" : "Загружаем…"}</span>
         {now && Number.isFinite(now.feels) && <span className="nx-hw-feels">Ощущается как {signedTemp(now.feels)}</span>}
@@ -99,7 +102,7 @@ export function HomeNextCard({ schedule, onOpen, className = "" }) {
   const next = nextScheduleItem(schedule || []);
   const today = dayKey();
   return (
-    <button type="button" className={`nx-hn nx-glass nx-glass-subtle ${className}`} onClick={onOpen}
+    <button type="button" className={`nx-hn ${className}`} onClick={onOpen}
       aria-label={next ? `Ближайшее дело: ${next.title}, ${next.time}` : "Расписание: дел нет"} style={{ ...btnReset, color: C.text, textAlign: "left" }}>
       <span className="nx-hn-title">Расписание</span>
       {next ? (
@@ -154,6 +157,27 @@ export function DevicePager({ devices, cell, addCell }) {
   );
 }
 
+/* Имя устройства без переноса посреди слова: «Приложение» не рвётся на «Приложени / е».
+   Не влезает даже одно слово (крупный системный шрифт телефона) — шрифт уменьшается шагами до 11 px */
+export function FitName({ children, className = "", style }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.fontSize = "";
+      let size = parseFloat(getComputedStyle(el).fontSize) || 14;
+      for (let i = 0; i < 6 && el.scrollWidth > el.clientWidth + 1 && size > 11; i++) { size -= 1; el.style.fontSize = `${size}px`; }
+    };
+    fit();
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(fit) : null;
+    ro?.observe(el);
+    document.fonts?.ready?.then(fit).catch(() => {});
+    return () => ro?.disconnect();
+  }, [children]);
+  return <span ref={ref} className={`nx-fit-name ${className}`} style={style}>{children}</span>;
+}
+
 /* ── Экспериментальный интерфейс (Настройки → «Внешний вид») ── */
 // 3D-рисунки устройств из макета (public/art/dev3d-*.webp); нет своего — обычный значок
 const ART3D = { phone: "/art/dev3d-phone.webp", tablet: "/art/dev3d-phone.webp", laptop: "/art/dev3d-laptop.webp", desktop: "/art/dev3d-laptop.webp", watch: "/art/dev3d-watch.webp" };
@@ -198,7 +222,7 @@ export function ExpBlobs({ schedule, onToday }) {
       </button>
       <button type="button" className="nx-exp-blob is-weather" onClick={onToday} style={{ ...btnReset, color: C.text }}
         aria-label={now ? `Погода: ${signedTemp(now.temp)}°, ${now.text || ""}` : "Погода"}>
-        <span className="nx-exp-temp"><TempFacet />{now ? signedTemp(now.temp) : "—"}<sup>°</sup></span>
+        <span className="nx-exp-temp"><TempFacet /><span className="nx-hw-deg">{now ? signedTemp(now.temp) : "—"}<i className="nx-deg-ring" aria-hidden="true" /></span></span>
         <span className="nx-exp-blob-cond">{now ? cap(now.text) : "Погода"}</span>
       </button>
     </div>

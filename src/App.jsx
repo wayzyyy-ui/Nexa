@@ -66,6 +66,7 @@ import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, autoFolder, withWhen, u
 import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
 import { Avatar } from "./ui/profile.jsx";
+import { DesktopTitleBar, TITLEBAR_CSS, hasTitleBar } from "./ui/titlebar.jsx";
 import { profileAvatar } from "./lib/profile.js";
 import { MemorySettings } from "./ui/memory.jsx";
 import { MiniHelpSettings, MiniAskDialog } from "./ui/miniHelp.jsx";
@@ -3168,6 +3169,8 @@ export default function NexaApp() {
       fontFamily: fontBody,
     }}>
             <style>{APP_CSS}</style>
+            {/* Приложение для ПК: своя верхняя панель окна вместо рамки Windows (titlebar.jsx) */}
+            {hasTitleBar && <><style>{TITLEBAR_CSS}</style><DesktopTitleBar /></>}
       {/* Фон за содержимым: на «Настройках» — сетка-чертёж, на остальных — грани складки */}
       {tab === "settings" && !openDevice ? <BackdropGrid /> : <BackdropFolds />}
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}

@@ -352,10 +352,19 @@ export const APP_CSS = `
         /* ═══ Главная, макет 2026-10-27 ═══
            Компьютер: слева устройства и «Активность», в середине погода с ближайшими делами, ассистент
            и «Приложение NEXA», справа складка. Размеры — в долях макета 1920 × 1080 (--mk) */
-        .nx-home-grid2 { display: grid; grid-template-columns: minmax(0, calc(718 * var(--mk))) minmax(260px, calc(389 * var(--mk))) minmax(0, 1fr); gap: calc(37 * var(--mk)); align-items: start; }
-        .nx-home-colA, .nx-home-colB { display: flex; flex-direction: column; gap: calc(37 * var(--mk)); min-width: 0; }
-        .nx-home-colA > .nx-home-act { margin-top: 0; }
-        .nx-home-pills2 { display: flex; flex-direction: column; gap: calc(36 * var(--mk)); }
+        /* Общая сетка в два ряда (2026-10-27): устройства и погода — первый ряд, «Активность» и ассистент с
+           «Приложением NEXA» — второй; так блоки стоят ровно по верху и низу. Колонки-обёртки — display: contents */
+        .nx-home-grid2 { display: grid; grid-template-columns: minmax(0, calc(718 * var(--mk))) minmax(260px, calc(389 * var(--mk))) minmax(0, 1fr);
+          grid-template-areas: "dev wx fold" "act pills fold"; gap: calc(37 * var(--mk)); align-items: stretch; }
+        .nx-home-colA, .nx-home-colB { display: contents; }
+        .nx-home-grid2 .nx-home-devices { grid-area: dev; }
+        .nx-home-grid2 .nx-hw-desk { grid-area: wx; }
+        .nx-home-grid2 > .nx-home-colA > .nx-home-act { grid-area: act; margin-top: 0; display: flex; flex-direction: column; }
+        .nx-home-grid2 > .nx-home-colA > .nx-home-act > section { flex: 1; }
+        .nx-home-grid2 .nx-home-pills2 { grid-area: pills; }
+        .nx-home-grid2 > .nx-home-fold2 { grid-area: fold; }
+        /* Ассистент и «Приложение NEXA» — по краям ряда: верх вровень с «Активностью», низ — с её низом */
+        .nx-home-pills2 { display: flex; flex-direction: column; justify-content: space-between; gap: calc(24 * var(--mk)); }
         .nx-home-pills2 > * { width: 100%; }
         .nx-home-pills2 .nx-ai-glow > svg:last-child { display: none; }
         .nx-home-fold2 { align-self: stretch; display: flex; align-items: center; justify-content: center; pointer-events: none; margin-right: calc(-120 * var(--mk)); }
@@ -401,8 +410,7 @@ export const APP_CSS = `
           .nx-hw-tl-row:nth-child(2)::before { display: none; }
           .nx-hw-desk { min-height: 0; }
           .nx-hw-desk .nx-hw-temp { font-size: max(44px, calc(80 * var(--mk))); }
-          .nx-home-pills2 { gap: calc(24 * var(--mk)); }
-          .nx-home-colB { gap: calc(26 * var(--mk)); }
+          .nx-home-pills2 { gap: calc(16 * var(--mk)); }
         }
 
         /* Телефон: «Погода» и «Расписание» — две карточки рядом */
@@ -470,6 +478,56 @@ export const APP_CSS = `
         .nx-exp-temp .nx-hw-facet { width: 70%; right: -22%; top: -32%; }
         .nx-exp-blob-cond { font-size: 18px; margin-top: 8px; }
         @media (max-width: 370px) { .nx-exp-blob-big { font-size: 26px; } .nx-exp-temp { font-size: 38px; } .nx-hn-what { font-size: 22px; } .nx-hw-mob .nx-hw-temp { font-size: 40px; } }
+
+        /* ── Правки по макету 2026-10-27 (второй заход) ── */
+        /* Ассистент: цвет медленно переливается (просьба автора; 14 с на круг, только при обычном движении и не в облегчённом режиме) */
+        .nx-ai-flow { background-image: linear-gradient(110deg, color-mix(in srgb, var(--blue) 16%, transparent), color-mix(in srgb, var(--mint) 12%, transparent), color-mix(in srgb, var(--blue) 6%, transparent), color-mix(in srgb, var(--mint) 16%, transparent)) !important;
+          background-size: 300% 100% !important; animation: nx-ai-flow 14s ease-in-out infinite alternate; }
+        @keyframes nx-ai-flow { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+        @media (prefers-reduced-motion: reduce) { .nx-ai-flow { animation: none; } }
+        .nx-lite .nx-ai-flow { animation: none; }
+        /* Имя устройства в таблетке: переносы только между словами, длинное слово уменьшается (FitName) */
+        .nx-fit-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: normal; word-break: normal; hyphens: none;
+          font-size: 14px; font-weight: 600; line-height: 1.2; }
+        /* Градус — мятное колечко, как в макете */
+        .nx-deg-ring { display: inline-block; width: 0.17em; height: 0.17em; border: max(2px, 0.035em) solid var(--mint); border-radius: 50%; vertical-align: top; margin: 0.06em 0 0 0.04em; box-sizing: border-box; }
+        .nx-hw-deg { white-space: nowrap; }
+
+        /* Телефон, обычный вид: «Погода» и «Расписание» по макету — крупный градус с гранью, у дела мятная рамка и заливка снизу */
+        .nx-hw-mob { min-height: 222px; padding: 18px 16px 12px; border-radius: 30px; }
+        .nx-hw-mob .nx-hw-temp { font-size: 58px; margin: 18px 0 10px; align-self: flex-start; }
+        .nx-hw-mob .nx-hw-facet { width: 78%; right: -30%; top: -26%; }
+        .nx-hw-mob .nx-hw-title { font-size: 18px; }
+        .nx-hn-mob { min-height: 222px; border-radius: 30px !important; padding: 18px 16px !important;
+          border: 1px solid var(--mint) !important;
+          background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 30%, transparent) 0%, color-mix(in srgb, var(--mint) 16%, transparent) 100%) !important; }
+        .nx-hn-mob .nx-hn-title { font-size: 20px; }
+        .nx-hn-mob .nx-hn-time { font-size: 15px; color: var(--text); opacity: 0.85; }
+        .nx-hn-mob .nx-hn-what { font-size: 30px; }
+
+        /* Эксперимент: «Активность» без значков (в половине ширины слова не помещались), время — под заголовком;
+           весь блок — кнопка «Вся активность» */
+        .nx-exp-act > section { position: relative; }
+        .nx-exp-act .nx-act-ico { display: none !important; }
+        .nx-exp-act .nx-act-row { flex-direction: column; align-items: flex-start !important; gap: 2px !important; padding: 8px 0 !important; }
+        .nx-exp-act .nx-act-body { width: 100%; }
+        .nx-exp-act .nx-act-title { font-size: 13px !important; white-space: normal !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.25; }
+        .nx-exp-act .nx-act-text { display: none; }
+        .nx-exp-act .nx-act-time { font-size: 11px !important; }
+        .nx-exp-act > section > div:first-child > button { display: block !important; position: absolute !important; inset: 0; opacity: 0; z-index: 1; border: 0 !important; padding: 0 !important; }
+        /* Эксперимент: «капли» по макету — скруглённые неровные плашки, а не круги */
+        .nx-exp-blobs { gap: 14px; align-items: stretch; }
+        .nx-exp-blob { aspect-ratio: auto; min-height: 168px; padding: 20px 22px !important; }
+        .nx-exp-blob.is-event { border-radius: 46% 54% 42% 58% / 52% 44% 56% 48% !important;
+          background: linear-gradient(160deg, color-mix(in srgb, var(--panel) 30%, transparent) 25%, color-mix(in srgb, var(--mint) 40%, transparent) 100%) !important; }
+        .nx-exp-blob.is-weather { align-items: flex-start !important; text-align: left !important; border-radius: 40% 60% 56% 44% / 58% 46% 54% 42% !important; padding-left: 26px !important; }
+        .nx-exp-blob-big { font-size: 30px; }
+        .nx-exp-temp { font-size: 50px; }
+        .nx-exp-temp .nx-hw-facet { width: 74%; right: -40%; top: -34%; }
+        .nx-exp-blob-cond { font-size: 20px; margin-top: 4px; }
+        /* Эксперимент: имена устройств рядом с 3D-рисунком — тот же FitName, место чуть больше */
+        .nx-dev-pill.is-3d .nx-fit-name { font-size: 14px; }
+        .nx-dev-pill.is-3d .nx-dev-pill-icon { width: 46px; } .nx-dev-pill.is-3d { gap: 6px !important; }
         .nx-app-pill { display: flex; align-items: center; gap: calc(12 * var(--mk)); box-sizing: border-box; min-height: max(60px, calc(96 * var(--mk)));
           padding: 0 calc(18 * var(--mk)) !important; border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
           background: color-mix(in srgb, var(--panel) 35%, transparent) !important; color: var(--text) !important; text-decoration: none; text-align: left; font: inherit; cursor: pointer; }
@@ -627,6 +685,10 @@ export const APP_CSS = `
         .nx-set-avatar { box-shadow: inset 0 0 0 1px var(--border); }
         /* line-height и запас снизу — иначе у «g», «у», «р» срезался хвост (overflow: hidden) */
         .nx-set-name { display: block; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; padding-bottom: 2px; }
+        .nx-avatar-btn { all: unset; cursor: pointer; border-radius: 50%; display: inline-flex; flex-shrink: 0; }
+        .nx-avatar-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+        .nx-avatar-btn:hover .nx-avatar-edit-badge { transform: scale(1.12); }
+        .nx-avatar-edit-badge { transition: transform 160ms ease; }
         /* Значок «изменить» на аватаре (Настройки): профиль можно редактировать */
         .nx-avatar-edit { position: relative; display: inline-flex; flex-shrink: 0; }
         .nx-avatar-edit-badge { position: absolute; right: 0; bottom: 0; width: 28%; height: 28%; min-width: 24px; min-height: 24px; border-radius: 50%;
@@ -1162,6 +1224,9 @@ export const APP_CSS = `
            видно, как мятная плитка переезжает к новому разделу */
         html[data-nav-dir]::view-transition-old(nx-sidebar) { display: none; }
         html[data-nav-dir]::view-transition-new(nx-sidebar) { animation: none; }
+        /* Меню — поверх всех снимков: фон ассистента (nx-ai-bg) закреплён на всё окно, и при переходе в ассистента
+           ложился на меню — оно темнело и пропадало на время перехода (давний баг ПК, 2026-10-27) */
+        html[data-nav-dir]::view-transition-group(nx-sidebar) { z-index: 50; animation: none; }
         /* Ассистент закреплён на всё окно и в общий снимок экрана не попадал — браузер растягивал
            старый экран в новый. Свой снимок с тем же въездом / уходом, что у остальных разделов */
         /* Как у остальных разделов: въезжает и уезжает только содержимое (nx-ai-body),

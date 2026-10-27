@@ -10,7 +10,7 @@ import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner, DesktopAppPill } from "../ui/install.jsx";
 import { isDesktop } from "../native.js";
-import { HomeWeatherCard, HomeTimeline, HomeNextCard, DevicePager, device3d, ExpStorage, ExpBlobs, useExpUi } from "./home/widgets.jsx";
+import { HomeWeatherCard, HomeTimeline, HomeNextCard, DevicePager, device3d, ExpStorage, ExpBlobs, useExpUi, FitName } from "./home/widgets.jsx";
 
 /* ---------- 5. ЭКРАНЫ ---------- */
 // Карточка одного устройства — для мобильной 2×2 сетки.
@@ -334,7 +334,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
   // Ассистент — крупная таблетка (на компьютере со свечением по макету)
   const aiPill = (cls) => (
-    <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill nx-glass nx-glass-prominent ${cls || ""}`} onClick={() => onNavigate("assistant")}
+    <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill nx-ai-flow nx-glass nx-glass-prominent ${cls || ""}`} onClick={() => onNavigate("assistant")}
       style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
       <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.onFold, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -458,7 +458,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                     <span className="nx-dev-pill-icon" aria-hidden="true">{art || deviceArt(d, 28)}</span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       {/* Имя — до двух строк; статус — коротко, как в макете */}
-                      <span className="nx-dev-pill-name" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", fontSize: 14, fontWeight: 600, lineHeight: 1.2, overflow: "hidden", overflowWrap: "anywhere" }}>{d.name}</span>
+                      <FitName className="nx-dev-pill-name">{d.name}</FitName>
                       {received[d.id]
                         ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
                         : <span style={{ display: "block", fontSize: 11, lineHeight: 1.25, color: C.muted, marginTop: 3 }}>{d.isSelf ? "Это устройство" : on ? "В сети" : "Не в сети"}</span>}
@@ -493,7 +493,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             {/* Погода и ближайшее дело — две карточки рядом (макет 2026-10-27) */}
             <div className="nx-home-duo">
               <HomeWeatherCard className="nx-hw-mob" onOpen={toToday} />
-              <HomeNextCard schedule={schedule} onOpen={toToday} />
+              <HomeNextCard schedule={schedule} onOpen={toToday} className="nx-hn-mob" />
             </div>
           </>
         )}

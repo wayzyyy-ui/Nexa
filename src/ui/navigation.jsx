@@ -167,7 +167,9 @@ export function Sidebar({ active, onChange }) {
       aria-label="Разделы"
       className="ng-sidebar" style={{
       width: NAV_W, minWidth: NAV_W, boxSizing: "border-box", background: C.bg, borderRight: `1px solid ${C.border}`,
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: `${SIDE_TOP}px 0`, position: "relative",
+      // position не задаём: на компьютере меню sticky (appStyles), это и точка отсчёта для плитки.
+      // Было relative — оно перебивало sticky, и меню уезжало при прокрутке
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: `${SIDE_TOP}px 0`,
     }}>
       {idx >= 0 && (
         <>

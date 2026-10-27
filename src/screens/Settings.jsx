@@ -411,7 +411,11 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
         <aside className="nx-set-side">
           <div className="ng-display nx-set-side-title">Аккаунт</div>
           <div className={`nx-set-account nx-glass nx-glass-subtle${sec === "account" ? " is-active" : ""}`}>
-            {avatar(78)}
+            {/* Аватар с карандашом — кнопка: открывает «Аккаунт» → «Имя и фото» */}
+            {user ? (
+              <button type="button" className="nx-avatar-btn" onClick={() => { setSec("account"); setTimeout(() => document.querySelector(".nx-profile")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }}
+                aria-label="Изменить имя и фото" title="Изменить имя и фото">{avatar(78)}</button>
+            ) : avatar(78)}
             <span style={{ minWidth: 0, flex: 1 }}>
               <span className="nx-set-name">{name}</span>
               <span className="nx-set-mail">{user ? user.email : "Вход по почте, без пароля"}</span>

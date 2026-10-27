@@ -21,6 +21,8 @@
         "dragDropEnabled": false,
         "backgroundColor": "#01090F",
         "visible": false,
+        "decorations": false,
+        "shadow": true,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows"
       }
     ],
