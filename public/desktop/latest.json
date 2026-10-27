@@ -1,11 +1,11 @@
 {
-  "version": "0.17.5",
+  "version": "0.17.6",
   "notes": "- Новый вид «Медиа и файлы»\n- Поиск и уведомления снова на «Сегодня» и в «Заметках»\n- Подсказки в заметках учатся на ваших ответах\n- Понятная причина, если телефон не удалось найти\n- Логотип на экране входа, длинные дела без разрывов слов",
-  "pub_date": "2026-10-27T21:56:03.526Z",
+  "pub_date": "2026-10-27T22:38:07.267Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlONEpwWmxFcW9jQkw2Yk9LK3N1dUdxWUhRejJ0ZHNCN1hrdkFhdm11ZWtCcUJDZ2hlektyY1Eza3lBNWdLc2hMRUo1M01CUjdxNk9oMGE3UjcwbXc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTM4MTYzCWZpbGU6TkVYQV8wLjE3LjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuNQp5cVQ0eStzZUhnQnRkTVZvMjhnY3NCNklZZi9UdTR6MkJFT3I5ZU1GQlhDc2VVR0x3MGNXaG1XVnd4NWQvemtmbytuVzB0MVJETXJOT096cURLQVBBdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.5"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTNCYmo3Y3BWSHVGUWJZdUw1UHBkL1VISVZ3aENNd2F1dkJqNVdhYnNlblhwY2pNYXhEejdmR2NsVWhLNHpJeTJ4alJKaDlaa05tdGVpc2FvZkhMdkFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTQwNjg2CWZpbGU6TkVYQV8wLjE3LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuNgo2cEZSZFdOV1Z5c21HMjY0NUJtZGxQV0hoRVA0R1hTWW8wTEhmaHJMVEtqYzFUeHhCRFdvUzZVZFpHYnpQaXY3c2ErREwvQWNCRmF1dHJoa1EySGxDZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.6"
     }
   }
 }
