@@ -1,11 +1,11 @@
 {
-  "version": "0.16.7",
-  "notes": "- Передача файлов напрямую между своими устройствами по Wi-Fi — без облака\n- Плеер для видео в «Файлах»\n- Мгновенные подсказки в заметках от NEXA mini-1\n- Своё имя и фото в аккаунте\n- Дела в расписании можно изменять\n- Смахните экран вправо, чтобы вернуться назад",
-  "pub_date": "2026-10-27T09:57:50.762Z",
+  "version": "0.17.0",
+  "notes": "- Ответы ассистента читать проще: списки и заголовки\n- Имена устройств на Главной телефона видны целиком\n- Экран устройства компактнее, больше места под файлы на ноутбуке\n- Передача файлов напрямую по Wi-Fi, плеер видео, своё имя и фото",
+  "pub_date": "2026-10-27T10:18:34.363Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlJcVl6VFM3UXdpQzhKSmFQQi9pUUVWUW9oaE1EV05JNFptNlFJUDI2Q2hCT0RVYVNGTEltRk5GMmhJaThoeHFVN2RvZ3FrL1lTb1BBZnRJWDZQc0FFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDk1MDcwCWZpbGU6TkVYQV8wLjE2LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuNwo0eXVRT0M4dFNQSEUwVDN0V3FGWXdVR1RXekdETmh2TWV4b1d2V0RqbWoyU1g2S01ZamlRWWRnZHJuL0ZDdHN4WDFaNUp5UzhkTjc4ZEtYY0xUWXREUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.7"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WStsTUdSSEQ0SS9YQ1g1WURaS3NoTVdsM3kyUXdETHhBYXFaVy9lRVhkWXNOYXY4dU91QnJuVjE3WUNuSzFOMHA1bWhxWkZNNkNYTStPRE1DR0w1YXd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDk2MzE0CWZpbGU6TkVYQV8wLjE3LjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuMAptYmQyc0paNTk4MGFmWjhyVVQ5alNlaGhnT2RseElTdHI2ZW9PWXVSMkRDVFVHUUVkSEVSTXhVVFcxb2lOVlhGa29kMVA1Q3R4cWIxRlBUOG1XQmhEZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.0"
     }
   }
 }
