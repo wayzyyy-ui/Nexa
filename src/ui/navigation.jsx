@@ -399,6 +399,16 @@ export function useTabSwipe(getCtx, handlers) {
       start = { x: t.clientX, y: t.clientY, at: now, tab: c.tab, locked: null, w: window.innerWidth,
         lastX: t.clientX, lastAt: now, vx: 0, dir: null, target: null,
         curPanel: null, cur: null, peekPanel: null, peekMover: null };
+      /* Конец касания — ещё и на самом элементе под пальцем: если его убрали из страницы посреди жеста
+         (перерисовка), touchend до document не доходит, и экран ассистента оставался сдвинутым вбок.
+         Повторный вызов безвреден — up / cancel выходят, когда жеста уже нет */
+      el.addEventListener("touchend", up, { once: true, passive: true });
+      el.addEventListener("touchcancel", cancel, { once: true, passive: true });
+    };
+    // Страховка по времени: палец давно не двигается, а жест «висит» (конец касания потерялся) — отпускаем
+    const watchdog = (s) => {
+      clearTimeout(s.dog);
+      s.dog = setTimeout(() => { if (start === s) cancel(); }, 1500);
     };
 
     // Палец движется: сначала решаем, жест горизонтальный или это прокрутка
@@ -421,6 +431,7 @@ export function useTabSwipe(getCtx, handlers) {
       if (plan === "history" && document.querySelector(".nx-hist-drawer.is-open")) { if (start.cur?.style.transform) settleCur(start); return; }
       if (!start.cur) { start.curPanel = panelOf(start.tab); start.cur = moverOf(start.curPanel); prepare(start.cur); }
       if (!start.cur) return;
+      watchdog(start);
       if (plan !== "tab") {
         // История или край — экран чуть поддаётся (как пружина) и потом возвращается
         dropPeek(start);

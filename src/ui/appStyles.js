@@ -221,10 +221,10 @@ export const APP_CSS = `
         }
         /* Боковое меню на Главной прозрачное — градиент виден и под ним (как в макете) */
         body:has(.nx-home-glow) .ng-sidebar { background: transparent !important; }
-        /* Тёмная тема (просьба автора 2026-10-28): меню на всех экранах того же тёмно-синего цвета, каким оно
-           выглядит у ИИ-ассистента (там под прозрачным меню — синий фон спектра); замерено по снимку автора */
-        :root[data-theme="dark"] { --side-bg-top: rgb(9 20 41); --side-bg-bottom: rgb(5 15 33); }
-        :root[data-theme="dark"] body:has(.nx-home-glow) .ng-sidebar { background: linear-gradient(180deg, var(--side-bg-top), var(--side-bg-bottom)) !important; }
+        /* Ассистент, открыта история диалогов (компьютер): меню получает тот же цвет, что колонка истории
+           (она — фон экрана на 72 %, см. .nx-hist), чтобы меню и история выглядели одной панелью.
+           Во всех остальных местах меню — прозрачное, как фон экрана (просьба автора 2026-10-28) */
+        body:has(.nx-hist-col:not(.is-leaving)) .ng-sidebar { background: color-mix(in srgb, var(--bg) 72%, transparent) !important; }
         .ng-home { position: relative; z-index: 1; }
 
         @media ${DESKTOP_MQ} {
@@ -244,7 +244,7 @@ export const APP_CSS = `
           padding: calc(40 * var(--mk)) calc(42 * var(--mk)) calc(20 * var(--mk));
           background: color-mix(in srgb, var(--panel) 35%, transparent);
         }
-        .nx-home-card-title { font-size: max(14px, calc(21 * var(--mk))); margin-bottom: calc(30 * var(--mk)); }
+        .nx-home-card-title { font-size: max(17px, calc(28 * var(--mk))); font-weight: 500; margin-bottom: calc(30 * var(--mk)); }
         .nx-home-devices { display: flex; flex-direction: column; min-height: calc(490 * var(--mk)); }
         /* Две плашки и «Добавить» помещаются в карточку высотой 490 из макета — карточка не растёт */
         .nx-home-devices > .nx-stagger { gap: calc(20 * var(--mk)) !important; margin-bottom: calc(20 * var(--mk)); }
@@ -686,7 +686,8 @@ export const APP_CSS = `
           .nx-fv-preview-wrap .nx-viewer-arrow.is-next { right: 12px !important; }
         }
         /* ── «Файлы»: меню файла (долгое нажатие / правая кнопка) и выделение нескольких ── */
-        .nx-file-row .nx-row-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        .nx-file-row .nx-row-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; border-radius: 14px !important; }
+        .nx-file-row.is-selected { overflow: hidden; }
         .nx-file-row.is-selected { background: color-mix(in srgb, var(--mint) 9%, transparent); border-radius: 14px; }
         /* Ведём пальцем / мышью для выделения — текст не выделяется, свайпы разделов не срабатывают */
         html.nx-drag-select, html.nx-drag-select * { user-select: none !important; -webkit-user-select: none !important; }
@@ -1554,6 +1555,7 @@ export const APP_CSS = `
           .nx-toast-host {
             top: calc(var(--sat) + 10px);
             left: 10px; right: 10px; width: auto;
+            max-width: none; /* от общего правила (100vw − 32 px) оставался перекос: справа 22 px вместо 10 */
           }
         }
         @media ${PHONE_MQ} {
