@@ -25,7 +25,7 @@ import { ScheduleForm } from "../Today.jsx";
 import { ghost, round, linkBtn, useSuggestOn } from "./shared.js";
 import { NoteImages } from "./images.jsx";
 import { AiMenu, AiPanel, GhostLayer } from "./ai.jsx";
-import { localSuggest } from "../../lib/mini/t9.js";
+import { localSuggest, loadFeedback, saveFeedback, learnFeedback } from "../../lib/mini/t9.js";
 
 const SAVE_DELAY_MS = 600; // пауза в наборе — и записываем
 const EDGE_PX = 24;        // у самого края экрана жест «Назад» принадлежит системе
@@ -435,15 +435,19 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   /* mini-1 на устройстве — сразу, без сети и паузы: дописать слово или предложить следующее из того,
      что человек сам пишет в заметках. Есть — сервер не спрашиваем; нет — обычный запрос (Gemini) */
   const t9Ref = useRef(t9); t9Ref.current = t9;
+  // Что человек принимал и отклонял — на устройстве, у каждого аккаунта своё
+  const fbRef = useRef(null);
+  if (!fbRef.current || fbRef.current.uid !== uid) fbRef.current = { uid, fb: loadFeedback(uid) };
+  const learn = (g, accepted, weight = 1) => { if (!g?.local) return; learnFeedback(fbRef.current.fb, g.base, g.tail, accepted, weight); saveFeedback(uid, fbRef.current.fb); };
   const tryLocal = () => {
     const ta = textRef.current;
     if (!suggestOn || quiet.current || !ta || document.activeElement !== ta || conflictRef.current || layers.current.ai) return false;
     const base = ta.value;
     if (ta.selectionStart !== base.length || ta.selectionEnd !== base.length || base.length < 2) return false;
     if (isSensitive(base.slice(-120))) return false;
-    const tail = localSuggest(base, t9Ref.current);
+    const tail = localSuggest(base, t9Ref.current, fbRef.current.fb);
     if (!tail) return false;
-    setGhostTip({ base, tail });
+    setGhostTip({ base, tail, local: true });
     return true;
   };
   const scheduleSuggest = () => {
@@ -458,7 +462,8 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
     if (!g || !ta || draft.current.text !== g.base || ta.value !== g.base || ta.selectionStart !== g.base.length || ta.selectionEnd !== g.base.length) return false;
     const next = (g.base + g.tail).slice(0, NOTE_TEXT_MAX);
     drop();
-    undoTip.current = { before: g.base, after: next };
+    learn(g, true);
+    undoTip.current = { before: g.base, after: next, tip: g };
     quiet.current = true; // следующий Enter — обычный перенос строки
     setTextAt(next, next.length);
     return true;
@@ -469,6 +474,8 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
     undoTip.current = null;
     quiet.current = true; // после возврата подсказка не появляется снова, Enter — перенос строки
     drop();
+    // Приняли и сразу вернули — значит, не то: отменяем «плюс» и ставим «минус»
+    learn(u.tip, false, 3);
     setTextAt(u.before, u.before.length);
     return true;
   };
@@ -494,7 +501,13 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   }, []);
   const onTextChange = (e) => {
     quiet.current = false; undoTip.current = null;
-    if (tipRef.current) setGhostTip(null);
+    const g = tipRef.current;
+    if (g) {
+      // Подсказку видели и напечатали другое — это отказ. Печатают по ней же буква за буквой или стирают — не считаем
+      const v = e.target.value;
+      if (g.local && v.length > g.base.length && v.startsWith(g.base) && !(g.base + g.tail).startsWith(v)) learn(g, false);
+      setGhostTip(null);
+    }
     sugCtl.current?.abort(); sugSeq.current++;
     change({ text: e.target.value });
     scheduleSuggest();

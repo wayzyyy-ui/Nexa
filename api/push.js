@@ -268,12 +268,15 @@ export default async function handler(req, res) {
     if (!r.ok) {
       console.error('FCM error:', r.status, r.fcmCode || '');
       if (locate) await sb.from('locate_requests').delete().eq('user_id', uid).eq('id', id);
-      return res.status(200).json({ sent: false, reason: 'error' });
+      // Наружу — только код ответа Google (например SENDER_ID_MISMATCH: google-services.json в APK
+      // от другого проекта Firebase, чем ключ сервера), без адреса телефона и текста ошибки
+      return res.status(200).json({ sent: false, reason: 'fcm', code: r.status, fcm: String(r.fcmCode || '').slice(0, 40) });
     }
     return res.status(200).json({ sent: true });
   } catch (e) {
     console.error('Push error:', e?.name || 'unknown');
-    return res.status(200).json({ sent: false, reason: 'error' });
+    // Не получили ключ доступа Google (ключ сервисного аккаунта испорчен) или Google не ответил
+    return res.status(200).json({ sent: false, reason: 'fcm', code: 0, fcm: e?.name === 'TypeError' ? 'NETWORK' : 'AUTH' });
   }
 }
 

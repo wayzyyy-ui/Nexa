@@ -116,7 +116,10 @@ export function mergeSamePhone(list, d) {
   if (i < 0) return [...list, d];
   const a = list[i];
   const all = [...(a.parts || [a]), d];
-  const main = all.find((x) => x.kind === "app") || all[0];
+  // Приложение переустановили — у телефона две записи «приложение»: главной берём ту, что была в сети
+  // позже (у старой push-адрес уже не работает, и «Найти» / «Где устройство?» уходили бы в пустоту)
+  const apps = all.filter((x) => x.kind === "app").sort((x, y) => (y.seenAt || 0) - (x.seenAt || 0));
+  const main = apps[0] || all[0];
   const live = all.find((x) => x.online && x.kind === "app") || all.find((x) => x.online);
   const merged = {
     ...main, parts: all, members: all.map((x) => x.id),

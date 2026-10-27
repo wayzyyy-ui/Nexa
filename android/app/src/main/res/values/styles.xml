@@ -13,6 +13,9 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Фон окна под интерфейсом: в горизонтальном положении рядом с клавиатурой (у выреза / полосы
+             навигации) было видно серое окно темы по умолчанию — теперь там фон NEXA -->
+        <item name="android:windowBackground">@color/nexaBg</item>
     </style>
 
 

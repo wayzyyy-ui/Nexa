@@ -30,10 +30,12 @@ pub fn run() {
         // Обновления: адрес latest.json и открытый ключ — tauri.conf.json → plugins.updater
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Размер, положение и «развёрнуто» окна — между запусками. Видимость не запоминаем:
-        // окно, закрытое в трей, при следующем запуске всё равно показываем
+        // окно, закрытое в трей, при следующем запуске всё равно показываем.
+        // Рамку Windows тоже не запоминаем: версия до 0.17.3 сохранила «рамка есть», и после обновления
+        // плагин возвращал её поверх своей панели — получалось две полосы с кнопками
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+                .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE & !StateFlags::DECORATIONS)
                 .build(),
         )
         .manage(desktop::Opens::default())

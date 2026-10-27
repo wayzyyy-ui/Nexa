@@ -162,6 +162,7 @@ export function LocateResult({ r, place }) {
            background: "Телефон получил запрос, но NEXA на нём закрыта, а места в фоне ей не разрешено — на том телефоне: Настройки NEXA → «Поиск этого устройства» → «Когда NEXA закрыта»",
            nopush: "Push-уведомления NEXA ещё не настроены (нужен Firebase) — место можно узнать, только когда NEXA на том телефоне открыта",
            notoken: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
+           pushfail: r.text,
            timeout: timeoutText(r) }[r.state]}
       </div>
       {place && <PlaceView p={place} last />}

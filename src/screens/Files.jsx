@@ -545,7 +545,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
    (см. «ЕДИНАЯ СИСТЕМА СОСТОЯНИЙ»). */
 
 // Окно «Файл из буфера»: имя можно изменить, перед созданием видно, что именно лежит в буфере
-function ClipFileDialog({ clip, setClip, onCreate }) {
+export function ClipFileDialog({ clip, setClip, onCreate }) {
   useModalLock();
   const inputRef = useRef(null);
   useEffect(() => {

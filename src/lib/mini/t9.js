@@ -67,10 +67,60 @@ const caseLike = (prefix, rest) => {
   return rest;
 };
 
+/* Обратная связь (2026-10-27): человек принял подсказку (Enter) — это слово и пара «прошлое → слово»
+   набирают вес; отклонил (напечатал другое или вернул Backspace) — теряют. Хранится на устройстве
+   (localStorage, у аккаунта — свой ключ, при выходе стирается вместе с остальными данными аккаунта).
+   fb = { w: { слово: вес }, p: { "прошлое слово": вес } } */
+const FB_MAX = 400;            // столько записей каждого вида храним (лишние — с самым маленьким весом)
+const FB_UP = 1, FB_DOWN = 0.5; // принятие весомее отказа: одно случайное «не то» слово не прячет
+const FB_HI = 8, FB_LO = -6;
+export const emptyFeedback = () => ({ w: {}, p: {} });
+const fbKey = (uid) => (uid ? `nexa-t9-fb@${uid}` : "nexa-t9-fb");
+export function loadFeedback(uid) {
+  try {
+    const v = JSON.parse(localStorage.getItem(fbKey(uid)) || "null");
+    if (v && typeof v.w === "object" && typeof v.p === "object") return v;
+  } catch { /* испорченное — начнём заново */ }
+  return emptyFeedback();
+}
+export function saveFeedback(uid, fb) {
+  try { localStorage.setItem(fbKey(uid), JSON.stringify(fb)); } catch { /* нет места — не страшно */ }
+}
+
+// Какое слово предлагалось и после какого: before — текст до подсказки, tail — сама подсказка
+export function suggestionContext(before, tail) {
+  const text = String(before || "");
+  const m = text.match(/([a-zа-яё]+(?:-[a-zа-яё]*)?)$/i);
+  const head = m ? text.slice(0, text.length - m[1].length) : text;
+  const word = ((m ? m[1] : "") + String(tail || "")).toLowerCase().match(WORD)?.[0] || "";
+  const prev = (head.slice(head.lastIndexOf("\n") + 1).toLowerCase().match(WORD) || []).at(-1) || "";
+  return { word, prev };
+}
+
+const clampFb = (n) => Math.max(FB_LO, Math.min(FB_HI, n));
+const trimFb = (obj) => {
+  const keys = Object.keys(obj);
+  if (keys.length <= FB_MAX) return;
+  keys.sort((a, b) => Math.abs(obj[a]) - Math.abs(obj[b])).slice(0, keys.length - FB_MAX).forEach((k) => delete obj[k]);
+};
+// Учесть ответ человека (weight — во сколько раз сильнее обычного). Возвращает тот же fb (изменённый)
+export function learnFeedback(fb, before, tail, accepted, weight = 1) {
+  const { word, prev } = suggestionContext(before, tail);
+  if (!fb || word.length < 3) return fb;
+  const d = (accepted ? FB_UP : -FB_DOWN) * weight;
+  fb.w[word] = clampFb((fb.w[word] || 0) + d);
+  if (prev) fb.p[`${prev} ${word}`] = clampFb((fb.p[`${prev} ${word}`] || 0) + d);
+  trimFb(fb.w); trimFb(fb.p);
+  return fb;
+}
+
 /* Подсказка для текста before (курсор в конце). Возвращает хвост, который можно показать серым, или "".
-   Посреди слова — окончание этого слова; после пробела — одно следующее слово (без пробела впереди) */
-export function localSuggest(before, model) {
+   Посреди слова — окончание этого слова; после пробела — одно следующее слово (без пробела впереди).
+   fb — обратная связь (принятые / отклонённые подсказки), необязательно */
+export function localSuggest(before, model, fb = null) {
   if (!model || !before) return "";
+  const fbW = (w) => fb?.w?.[w] || 0;
+  const fbP = (p, w) => (p ? fb?.p?.[`${p} ${w}`] || 0 : 0);
   const text = String(before);
   // Сама открытая заметка: её слова (кроме недописанного последнего) тоже в счёт — модель из других
   // заметок про них ещё не знает. Последние 5000 знаков — быстро даже на длинной заметке
@@ -104,7 +154,8 @@ export function localSuggest(before, model) {
     let best = "", score = 0;
     for (const w of new Set([...model.words.keys(), ...own.words.keys()])) {
       if (w.length - low.length < MIN_REST || !w.startsWith(low)) continue;
-      const s = wordsOf(w) + (after?.get(w) || 0) * 3 + (after2?.get(w) || 0) * 6 + topicOf(w) * 1.5;
+      const s = wordsOf(w) + (after?.get(w) || 0) * 3 + (after2?.get(w) || 0) * 6 + topicOf(w) * 1.5 + fbW(w) * 2 + fbP(prevWord, w) * 3;
+      if (s <= 0) continue; // человек от этого слова не раз отказывался
       if (s > score || (s === score && w.length < best.length)) { best = w; score = s; }
     }
     return best ? caseLike(prefix, best.slice(low.length)) : "";
@@ -123,8 +174,11 @@ export function localSuggest(before, model) {
   for (const w of new Set([...(next?.keys() || []), ...(next2?.keys() || [])])) {
     if (w.length < 3) continue;
     const bi = next?.get(w) || 0, t = next2?.get(w) || 0;
-    if (bi < MIN_NEXT && !(t >= 1 && bi >= 1) && t < MIN_NEXT) continue;
-    const sc = bi + t * 2 + topicOf(w) * 0.5;
+    const f = fbP(prev, w);
+    if (f <= -1.5) continue; // это продолжение человек уже несколько раз отклонял
+    // Принятое раньше продолжение показываем и после одного раза
+    if (bi < MIN_NEXT && !(t >= 1 && bi >= 1) && t < MIN_NEXT && !(f >= 1 && bi >= 1)) continue;
+    const sc = bi + t * 2 + topicOf(w) * 0.5 + f * 1.5;
     if (sc > score || (sc === score && w.length < best.length)) { best = w; score = sc; }
   }
   return best;

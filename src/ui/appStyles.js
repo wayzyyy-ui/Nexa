@@ -404,6 +404,14 @@ export const APP_CSS = `
         .nx-hw-tl-row.is-next .nx-hw-tl-time { color: var(--mint); }
         .nx-hw-tl-row:hover .nx-hw-tl-pill { border-color: var(--mint); }
         .nx-hw-tl-empty { font-size: max(12px, calc(15 * var(--mk))); text-align: left; padding: 6px 0; }
+        /* Макет 2026-10-28: «Заметки» — таблетка внизу карточки погоды; ассистент под погодой один, по центру ряда */
+        .nx-hw-desk { display: flex; flex-direction: column; }
+        .nx-hw-notes { margin-top: auto; align-self: stretch; display: flex !important; align-items: center; justify-content: center; gap: 8px;
+          height: max(40px, calc(58 * var(--mk))); font-size: max(14px, calc(17 * var(--mk))) !important;
+          background: transparent !important; border: 1px solid var(--line-bright) !important; color: var(--text) !important; border-radius: 999px !important; }
+        .nx-hw-notes:hover { border-color: var(--mint) !important; }
+        .nx-hw-desk .nx-hw-tl { margin-bottom: calc(22 * var(--mk)); }
+        .nx-home-pills2.is-single { justify-content: center; }
         /* Невысокое окно (ноутбук): два ближайших дела и компактнее погода — ассистент и «Приложение NEXA» помещаются в экран */
         @media (max-height: 900px) {
           .nx-hw-tl-row:nth-child(n + 3) { display: none !important; }
@@ -467,9 +475,6 @@ export const APP_CSS = `
         .nx-exp-chip-n { font-size: 10px; color: var(--muted); }
         .nx-exp-blobs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; align-items: center; }
         .nx-exp-blob { aspect-ratio: 1; display: flex !important; flex-direction: column; justify-content: center; box-sizing: border-box; padding: 22px !important; min-width: 0; }
-        .nx-exp-blob.is-event { align-items: flex-start; border-radius: 52% 48% 46% 54% / 40% 52% 48% 60%; border: 1px solid color-mix(in srgb, var(--mint) 60%, transparent) !important;
-          background: radial-gradient(120% 90% at 85% 100%, color-mix(in srgb, var(--mint) 38%, transparent), transparent 70%), color-mix(in srgb, var(--panel) 40%, transparent) !important; }
-        .nx-exp-blob.is-weather { align-items: center; text-align: center; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--text) 75%, transparent) !important; }
         .nx-exp-blob-time { font-size: 14px; color: var(--text); opacity: 0.85; }
         .nx-exp-blob-big { font-size: 34px; font-weight: 700; line-height: 1.05; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .nx-exp-blob-big.is-small { font-size: 24px; }
@@ -504,6 +509,11 @@ export const APP_CSS = `
         .nx-hn-mob .nx-hn-title { font-size: 20px; }
         .nx-hn-mob .nx-hn-time { font-size: 15px; color: var(--text); opacity: 0.85; }
         .nx-hn-mob .nx-hn-what { font-size: 30px; }
+        /* Название дела: переносы только между словами; длинное — мельче (класс по длине — fitClass) */
+        .nx-hn-what, .nx-exp-blob-big { overflow-wrap: normal !important; word-break: normal; hyphens: none; max-width: 100%; }
+        .nx-hn-mob .nx-hn-what.is-m, .nx-exp-blob-big.is-m { font-size: 24px; }
+        .nx-hn-mob .nx-hn-what.is-s, .nx-exp-blob-big.is-s { font-size: 19px; }
+        .nx-hn-mob .nx-hn-what.is-xs, .nx-exp-blob-big.is-xs { font-size: 16px; }
 
         /* Эксперимент: «Активность» без значков (в половине ширины слова не помещались), время — под заголовком;
            весь блок — кнопка «Вся активность» */
@@ -515,16 +525,26 @@ export const APP_CSS = `
         .nx-exp-act .nx-act-text { display: none; }
         .nx-exp-act .nx-act-time { font-size: 11px !important; }
         .nx-exp-act > section > div:first-child > button { display: block !important; position: absolute !important; inset: 0; opacity: 0; z-index: 1; border: 0 !important; padding: 0 !important; }
-        /* Эксперимент: «капли» по макету — скруглённые неровные плашки, а не круги */
-        .nx-exp-blobs { gap: 14px; align-items: stretch; }
-        .nx-exp-blob { aspect-ratio: auto; min-height: 168px; padding: 20px 22px !important; }
-        .nx-exp-blob.is-event { border-radius: 46% 54% 42% 58% / 52% 44% 56% 48% !important;
-          background: linear-gradient(160deg, color-mix(in srgb, var(--panel) 30%, transparent) 25%, color-mix(in srgb, var(--mint) 40%, transparent) 100%) !important; }
-        .nx-exp-blob.is-weather { align-items: flex-start !important; text-align: left !important; border-radius: 40% 60% 56% 44% / 58% 46% 54% 42% !important; padding-left: 26px !important; }
-        .nx-exp-blob-big { font-size: 30px; }
+        /* Эксперимент: «капли» по макету — наклонённые капсулы. Сама кнопка прозрачная, капсулу рисует ::before
+           (повёрнута на 30°), текст стоит прямо по центру */
+        .nx-exp-blobs { gap: 10px; align-items: stretch; margin-top: 26px; }
+        .nx-exp-blob { aspect-ratio: auto; height: 236px; padding: 0 8px !important; position: relative; isolation: isolate;
+          align-items: center !important; justify-content: center; text-align: center !important;
+          border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; overflow: visible; }
+        .nx-exp-blob::before { content: ""; position: absolute; left: 50%; top: 50%; width: 64%; height: 96%; z-index: -1;
+          transform: translate(-50%, -50%) rotate(-30deg); border-radius: 999px; box-sizing: border-box; pointer-events: none;
+          transition: transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+        .nx-exp-blob:active::before { transform: translate(-50%, -50%) rotate(-30deg) scale(0.97); }
+        .nx-exp-blob.is-event::before { border: 1.5px solid var(--mint);
+          background: linear-gradient(180deg, color-mix(in srgb, var(--mint) 6%, transparent) 0%, color-mix(in srgb, var(--mint) 42%, transparent) 100%); }
+        .nx-exp-blob.is-weather::before { border: 1.5px solid color-mix(in srgb, var(--text) 85%, transparent);
+          background: color-mix(in srgb, var(--panel) 18%, transparent); }
+        .nx-exp-blob-time { font-size: 15px; }
+        .nx-exp-blob-big { font-size: 30px; max-width: 100%; }
         .nx-exp-temp { font-size: 50px; }
-        .nx-exp-temp .nx-hw-facet { width: 74%; right: -40%; top: -34%; }
-        .nx-exp-blob-cond { font-size: 20px; margin-top: 4px; }
+        .nx-exp-temp .nx-hw-facet { width: 74%; right: -38%; top: -30%; }
+        .nx-exp-blob-cond { font-size: 18px; margin-top: 6px; }
+        @media (prefers-reduced-motion: reduce) { .nx-exp-blob::before { transition: none; } }
         /* Эксперимент: имена устройств рядом с 3D-рисунком — тот же FitName, место чуть больше */
         .nx-dev-pill.is-3d .nx-fit-name { font-size: 14px; }
         .nx-dev-pill.is-3d .nx-dev-pill-icon { width: 46px; } .nx-dev-pill.is-3d { gap: 6px !important; }
@@ -553,6 +573,9 @@ export const APP_CSS = `
         .ng-topbar::before { content: ""; position: absolute; inset: calc(-1 * var(--sat)) 0 -18px 0; z-index: -1; pointer-events: none;
           background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 62%, transparent); opacity: 0; transition: opacity 180ms ease; }
         .ng-topbar.nx-scrolled::before { opacity: 1; }
+        /* Компьютер: подложки нет совсем (просьба автора 2026-10-27) — полоса высотой с верхнюю строку
+           закрывала верх сцены устройства и карточек при прокрутке; кнопки строки и так на своих «стёклах» */
+        @media ${DESKTOP_MQ} { .ng-topbar::before { display: none; } }
         /* Экраны с фоном .nx-home-glow: подложка — тот же градиент, выровненный по экрану (полоса начинается
            правее меню — сдвигаем фон на его ширину), а не сплошной цвет: иначе при прокрутке сверху
            появлялась тёмная полоса. Внизу — плавный переход в прозрачность */
@@ -774,9 +797,13 @@ export const APP_CSS = `
           /* .nx-tb-fade — во время свайпа строка проявляется / гаснет за пальцем (useTabSwipe) */
           /* Верхняя строка со значками на телефоне — только у ассистента (у Главной своя шапка; на «Сегодня»,
              «Медиа», «Файлах», в Настройках её убрали по просьбе автора 2026-10-25; в Настройках вернули по макету 2026-10-26). Во время свайпа — видна и гаснет */
-          .ng-topbar:not([data-tab="assistant"]):not([data-tab="settings"]):not(.nx-tb-fade) { display: none !important; }
+          /* 2026-10-28: вернули на «Сегодня», в «Заметки», «Медиа» и «Файлы» (просьба автора, макет «Медиа и файлы»:
+             значки справа, на линии заголовка). Нет только на Главной — у неё своя шапка */
+          .ng-topbar[data-tab="home"]:not(.nx-tb-fade) { display: none !important; }
+          /* Заголовок раздела не должен уходить под значки справа */
+          .nx-media-screen .nx-page-title, .nx-today-title { padding-right: 112px; box-sizing: border-box; }
           .nx-top-search { display: none !important; }
-          .nx-top-search-icon { display: inline-flex; }
+          .nx-top-search-icon { display: inline-flex; order: -1; } /* как в макете: поиск, колокольчик, молния */
           .ng-topbar { gap: 2px !important; }
           /* Подложка при прокрутке: меню слева нет — фон не сдвигаем на его ширину (со сдвигом справа
              оставалась пустая полоса 96 px, и прокрученное просвечивало под значками) */
@@ -1100,6 +1127,8 @@ export const APP_CSS = `
      на ней почти не видны — внутри карточки мятный тот же яркий, что в тёмной теме */
   :root[data-theme="light"] .nx-gate-card { --mint: #00FFDF; }
   .nx-gate-mtitle { display: none; }
+  /* Слово NEXA вверху экрана входа — только телефон (на компьютере знак и слово в карточке) */
+  .nx-gate-top { display: none; }
   .nx-gate-hello { display: flex; flex-direction: column; align-items: center; text-align: center; }
   .nx-gate-logo { display: flex; align-items: center; gap: clamp(20px, 3vw, 64px); }
   .nx-gate-logo svg:first-child { width: clamp(56px, 5vw, 96px); height: auto; }
@@ -1158,6 +1187,7 @@ export const APP_CSS = `
     /* Телефон: заголовок «Вход в NEXA» вместо знака (макет) */
     .nx-gate-mtitle { display: block; font-size: 32px; line-height: 1.1; }
     .nx-gate-hello .nx-gate-logo { display: none; }
+    .nx-gate-top { display: flex; justify-content: center; position: absolute; left: 0; right: 0; top: calc(var(--sat) + 30px); z-index: 1; pointer-events: none; }
     .nx-gate-actions { margin-top: 26px; }
     .nx-gate-title { font-size: 30px; }
   }
@@ -2204,12 +2234,15 @@ export const APP_CSS = `
           .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 13px !important; }
           .nx-sched-title { font-size: 15px !important; }
           .nx-sched-form input { font-size: 16px !important; } /* iPhone не приближает страницу */
-          /* «Медиа»: кнопка добавления — круглая, только «+» (заголовок крупный, места мало) */
-          .nx-media-add { width: 46px; height: 46px; padding: 0 !important; }
-          .nx-media-add-label { display: none; }
+          /* «Медиа» (макет 2026-10-28): справа от заголовка — значки верхней строки, «Добавить файл» и «Из буфера» —
+             рядом под хранилищем; категорий четыре (без «Другого» — оно в «Все файлы») */
+          .nx-media-add { display: none !important; }
+          .nx-media-acts { display: grid !important; grid-template-columns: 1fr 1fr; gap: 12px; margin: -10px 0 26px; }
+          .nx-media-acts > button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; border-radius: 999px; font-size: 15px; font-weight: 500; }
+          .ng-cat-grid > .is-other { display: none !important; }
           .nx-title-row { justify-content: space-between; }
           /* «Медиа и файлы» — в одну строку рядом с кнопкой «+» (раньше «файлы» переносились) */
-          .nx-title-row .nx-page-title { white-space: nowrap; font-size: min(36px, 8.6vw) !important; min-width: 0; }
+          .nx-title-row .nx-page-title { white-space: nowrap; font-size: min(32px, 8vw) !important; min-width: 0; }
           /* Дата и время — две равные колонки: поле времени в Android шире 124 px и вылезало за рамку формы */
           .nx-sched-form-row { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) !important; }
           .nx-sched-edit-wrap { margin-left: 0 !important; } /* правка дела — на всю ширину карточки, иначе дата не помещалась */

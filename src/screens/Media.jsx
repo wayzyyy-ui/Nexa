@@ -10,6 +10,9 @@ import { MEDIA_CATS, sortByRecent, fileMeta } from "../lib/fileStore.js";
 import { MediaLayout, MediaTitle } from "../ui/layout.jsx";
 import { FileThumb } from "../ui/files.jsx";
 import { TransferBtn } from "../ui/FileViewer.jsx";
+import { ClipFileDialog } from "./Files.jsx";
+import { clipboardRead, clipboardReadImage } from "../native.js";
+import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile.js";
 
 /* Хранилище по макету: одна лента из пяти стеклянных складок, которые
    наезжают друг на друга. Рисуем одной svg-картинкой (растягивается по
@@ -92,8 +95,29 @@ export function StorageFolds({ cats, selected, onSelect }) {
 // сколько реально лежит в этом браузере (IndexedDB), лимита у NEXA нет.
 // Демо-файлы без содержимого в объём не входят
 // onAddFiles(список) — быстрое добавление: файлы сами разложатся по папкам по типу
-export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer, onAddFiles }) {
+export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer, onAddFiles, onToast }) {
   const pickRef = useRef(null);
+  // «Из буфера» (макет 2026-10-28) — то же окно, что в «Файлах»: буфер читаем только по нажатию
+  const [clip, setClip] = useState(null);
+  const [clipBusy, setClipBusy] = useState(false);
+  const fromClipboard = async () => {
+    if (clipBusy) return;
+    setClipBusy(true);
+    try {
+      const r = await readClipForFile(clipboardRead, clipboardReadImage);
+      if (r.error) { onToast?.({ title: "Файл из буфера не создан", text: r.error, kind: "error" }); return; }
+      setClip({ ...r, name: clipDefaultName(r.kind) });
+    } finally { setClipBusy(false); }
+  };
+  const createClipFile = () => {
+    const name = clipFinalName(clip.name, clip.kind, clip.blob?.type);
+    if (!name) return;
+    const file = clip.kind === "image"
+      ? new File([clip.blob], name, { type: clip.blob.type || "image/png" })
+      : new File([clip.text], name, { type: "text/plain" });
+    setClip(null);
+    onAddFiles?.([file]);
+  };
   // Какой сегмент хранилища выбран (id категории или null)
   const [selected, setSelected] = useState(null);
   const real = files.filter((f) => f.uploaded);
@@ -171,11 +195,6 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600 }}>Хранилище</div>
         <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>{usedLabel}</div>
       </div>
-      {/* Телефон: полоска заполнения и пояснение — под заголовком */}
-      <div className="nx-only-mobile" style={{ flexDirection: "column", margin: "-4px 0 14px" }}>
-        {usedBar(true)}
-        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 6, lineHeight: 1.4 }}>{storeNote}</div>
-      </div>
 
       <div className="nx-storage-box nx-glass nx-glass-subtle" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 48, padding: "22px 30px 20px", marginBottom: 34 }}>
         <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
@@ -244,6 +263,20 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         )}
       </div>
 
+      {/* Телефон (макет 2026-10-28): под хранилищем — «Добавить файл» и «Из буфера» */}
+      {onAddFiles && (
+        <div className="nx-only-mobile nx-media-acts">
+          <button type="button" className="nx-primary" onClick={() => pickRef.current?.click()} style={{
+            ...btnReset, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, border: "1px solid transparent" }}>
+            {Icon.plus({ c: C.onFold, s: 18 })} Добавить файл
+          </button>
+          <button type="button" className="nx-ghost-btn" onClick={fromClipboard} disabled={clipBusy} style={{ ...btnReset, color: C.text, border: `1px solid ${C.lineBright}` }}>
+            {Icon.copy({ c: C.text, s: 16 })} Из буфера
+          </button>
+        </div>
+      )}
+      {clip && <ClipFileDialog clip={clip} setClip={setClip} onCreate={createClipFile} />}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
         <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600 }}>Категории</div>
         <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{
@@ -256,7 +289,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         {MEDIA_CATS.map((cat) => {
           const n = countOf(cat.id);
           return (
-            <button type="button" key={cat.id} className="nx-cat-card nx-glass nx-glass-subtle" onClick={() => onOpenCategory(cat.id)} style={{
+            <button type="button" key={cat.id} className={`nx-cat-card nx-glass nx-glass-subtle${cat.id === "other" ? " is-other" : ""}`} onClick={() => onOpenCategory(cat.id)} style={{
               ...btnReset, border: `1px solid ${C.lineBright}`, borderRadius: 64,
               background: `color-mix(in srgb, ${C.panel} 35%, transparent)`,
               padding: "14px 24px 16px 28px", height: 122, boxSizing: "border-box",

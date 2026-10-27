@@ -97,6 +97,17 @@ export function HomeTimeline({ schedule, onOpen }) {
   );
 }
 
+/* Размер названия дела в узкой карточке: по самому длинному слову (оно должно влезть в строку целиком)
+   и по общей длине (не больше трёх строк). "" — крупно, is-m / is-s / is-xs — мельче */
+export function fitClass(title = "") {
+  const longest = Math.max(0, ...String(title).split(/\s+/).map((w) => w.length));
+  const len = String(title).length;
+  if (longest > 11 || len > 40) return "is-xs";
+  if (longest > 8 || len > 26) return "is-s";
+  if (longest > 6 || len > 16) return "is-m";
+  return "";
+}
+
 // Телефон: карточка «Расписание» — ближайшее дело крупно (сегодня или позже)
 export function HomeNextCard({ schedule, onOpen, className = "" }) {
   const next = nextScheduleItem(schedule || []);
@@ -108,7 +119,7 @@ export function HomeNextCard({ schedule, onOpen, className = "" }) {
       {next ? (
         <span className="nx-hn-next">
           <span className="nx-hn-time">{next.date && next.date !== today ? `${scheduleDayLabel(next.date)}, ` : ""}{next.time}</span>
-          <span className="nx-hn-what">{next.title}</span>
+          <span className={`nx-hn-what ${fitClass(next.title)}`}>{next.title}</span>
         </span>
       ) : (
         <span className="nx-hn-next is-empty">
@@ -217,7 +228,7 @@ export function ExpBlobs({ schedule, onToday }) {
     <div className="nx-exp-blobs">
       <button type="button" className="nx-exp-blob is-event" onClick={onToday} style={{ ...btnReset, color: C.text }}
         aria-label={next ? `Ближайшее дело: ${next.title}, ${next.time}` : "Дел нет — открыть расписание"}>
-        {next ? <><span className="nx-exp-blob-time">{next.time}</span><span className="nx-exp-blob-big">{next.title}</span></>
+        {next ? <><span className="nx-exp-blob-time">{next.time}</span><span className={`nx-exp-blob-big ${fitClass(next.title)}`}>{next.title}</span></>
           : <><span className="nx-exp-blob-time">Сегодня</span><span className="nx-exp-blob-big is-small">Дел нет</span></>}
       </button>
       <button type="button" className="nx-exp-blob is-weather" onClick={onToday} style={{ ...btnReset, color: C.text }}

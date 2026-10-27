@@ -1511,9 +1511,27 @@ export default function NexaApp() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token || ""}` },
         body: JSON.stringify({ ...body, from_device: link.self?.device_id }),
       });
-      return (await r.json().catch(() => ({}))) || {};
+      const j = (await r.json().catch(() => ({}))) || {};
+      // Сервер отказал до отправки — называем причину, а не «не ответило»
+      if (r.status === 401) return { ...j, sent: false, reason: "auth" };
+      if (r.status === 429) return { ...j, sent: false, reason: "rate" };
+      if (!r.ok && !j.reason) return { ...j, sent: false, reason: "server", code: r.status };
+      return j;
     } catch { return { sent: false, reason: "network" }; }
   };
+  // Почему push не ушёл — понятными словами (общий текст для «Найти», «Где устройство?» и сообщения)
+  const pushFailText = (r) => ({
+    not_configured: "Push-уведомления NEXA ещё не настроены (нужен Firebase)",
+    no_token: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз (и разрешите уведомления)",
+    network: "Нет связи — попробуйте ещё раз",
+    auth: "Вход на этом устройстве устарел — обновите страницу или войдите заново",
+    rate: "Слишком часто — подождите минуту",
+    // Имена серверных переменных в интерфейс не пишем (проверка выпуска их не пропускает)
+    fcm: r.fcm === "SENDER_ID_MISMATCH" ? "Push не ушёл: приложение на телефоне собрано с другим проектом Firebase, чем сервер (SENDER_ID_MISMATCH)"
+      : r.fcm === "AUTH" || r.code === 401 || r.code === 403 ? `Сервер push не принял ключ Firebase (${r.fcm || r.code}) — проверьте ключ сервисного аккаунта на сервере`
+      : `Сервис push Google отказал (${[r.code, r.fcm].filter(Boolean).join(" · ") || "без кода"}) — попробуйте ещё раз`,
+    server: `Сервер ответил ошибкой (${r.code}) — попробуйте ещё раз`,
+  }[r.reason] || "Не отправилось — попробуйте ещё раз");
   const stillAsking = (key, id) => (m) => m[key]?.id === id && m[key].state === "asking";
   const pollLocate = (key, id) => {
     const until = Date.now() + LOCATE_PUSH_WAIT_MS;
@@ -1547,7 +1565,7 @@ export default function NexaApp() {
         if (r.sent) { setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { ...m[key], push: true } } : m)); pollLocate(key, id); return; }
         if (ok) return; // по каналу уже спросили
         clearTimeout(locateTimers.current[key]);
-        setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { state: r.reason === "not_configured" ? "nopush" : r.reason === "no_token" ? "notoken" : "timeout", id } } : m));
+        setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { state: r.reason === "not_configured" ? "nopush" : r.reason === "no_token" ? "notoken" : "pushfail", text: pushFailText(r), id } } : m));
       });
     } else if (!ok) { setLocateState((m) => ({ ...m, [key]: { state: "timeout", id } })); return; }
     clearTimeout(locateTimers.current[key]);
@@ -1558,11 +1576,7 @@ export default function NexaApp() {
   const messageDevice = async (d, text) => {
     const r = await pushApi({ action: "message", target_device_id: d.device_id, id: newId(), text });
     if (r.sent) { showToast({ title: `«${d.name}»: сообщение отправлено`, text: "Оно появится на экране блокировки, если телефон включён и в сети" }); logActivity("sent", `Сообщение на экран «${d.name}»`); return true; }
-    showToast({ kind: "error", title: "Сообщение не отправлено", text: {
-      not_configured: "Push-уведомления NEXA ещё не настроены (нужен Firebase)",
-      no_token: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
-      network: "Нет связи — попробуйте ещё раз",
-    }[r.reason] || r.error || "Не отправилось — попробуйте ещё раз" });
+    showToast({ kind: "error", title: "Сообщение не отправлено", text: pushFailText(r) });
     return false;
   };
   const [locateAllow, setLocateAllow] = useSharedState("nexa-locate" + scope, () => {
@@ -1659,11 +1673,7 @@ export default function NexaApp() {
         if (r.sent) { if (!d.online) showToast({ title: `«${d.name}»: отправили уведомление`, text: "Телефон зазвонит, даже если NEXA на нём закрыта, — если на нём разрешены уведомления NEXA и приложение не остановлено в настройках" }); return; }
         if (d.online) return; // в сети — сигнал и так пришёл по каналу
         setFindState((st) => ({ ...st, [d.device_id]: "timeout" })); clearFindLater(d.device_id);
-        showToast({ title: "Не получилось позвать устройство", text: {
-          not_configured: "Push-уведомления NEXA ещё не настроены (нужен Firebase) — найти можно, только когда NEXA открыта на том телефоне",
-          no_token: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
-          network: "Нет связи — попробуйте ещё раз",
-        }[r.reason] || "Не отправилось — попробуйте ещё раз" });
+        showToast({ title: "Не получилось позвать устройство", text: pushFailText(r) });
       });
       if (!d.online) {
         clearTimeout(findTimers.current[d.device_id]);
@@ -3034,6 +3044,7 @@ export default function NexaApp() {
         {t === "home" && (
           <ScreenHome
             schedule={schedule}
+            onNotes={() => openNotes()}
             files={files}
             onOpenCategory={openCategory}
             devices={devices}
@@ -3053,7 +3064,7 @@ export default function NexaApp() {
           />
         )}
         {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onUpdateItem={updateScheduleItem} onRemoveItem={removeScheduleItem} onNotes={() => openNotes()} notesCount={userNotes.filter((n) => !n.archived).length} />}
-        {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} onAddFiles={(list) => addFiles(list, null)} />}
+        {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} onAddFiles={(list) => addFiles(list, null)} onToast={showToast} />}
         {t === "files" && (
           <ScreenFiles
             key={`files-${searchFolder || "root"}`}

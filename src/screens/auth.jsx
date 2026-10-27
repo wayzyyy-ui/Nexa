@@ -399,6 +399,8 @@ export function AuthGate({ onAbout }) {
         <picture className="nx-gate-dark"><source media={PHONE_MQ} srcSet="/art/gate-dark-m.webp" /><img src="/art/gate-dark.webp" alt="" draggable={false} /></picture>
         <picture className="nx-gate-light"><source media={PHONE_MQ} srcSet="/art/gate-light-m.webp" /><img src="/art/gate-light.webp" alt="" draggable={false} /></picture>
       </div>
+      {/* Телефон: слово NEXA вверху экрана (2026-10-28) — на него «садится» логотип заставки запуска (bootLand) */}
+      <div className="nx-gate-top"><Logo bare h={34} color={C.gateText} /></div>
       <div className="nx-gate-card">
         {step ? (
           <div key="login" className="nx-pop nx-gate-login">

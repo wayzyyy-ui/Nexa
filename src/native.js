@@ -307,7 +307,8 @@ function mountBootLogo() {
 function bootLand(root) {
   const word = document.querySelector(".nx-boot-word");
   // Куда садится слово: шапка телефонной Главной или знак с NEXA вверху Главной компьютера (сайт)
-  const target = [...document.querySelectorAll(".nx-home-head svg[aria-label='NEXA'], .nx-home-brand-desk svg[aria-label='NEXA']")]
+  // Экран входа (телефон) — слово NEXA вверху экрана (.nx-gate-top), иначе логотип заставки просто исчезал
+  const target = [...document.querySelectorAll(".nx-auth-gate .nx-gate-top svg[aria-label='NEXA'], .nx-home-head svg[aria-label='NEXA'], .nx-home-brand-desk svg[aria-label='NEXA']")]
     .find((n) => n.getBoundingClientRect().width > 0);
   // Шапка и все её родители не всплывают (nx-rise): иначе логотип сдвинулся бы за время перелёта
   // и слово село бы мимо. Блоки ниже шапки всплывают как обычно

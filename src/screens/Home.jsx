@@ -313,7 +313,7 @@ const HOME_DESK_MAX = 2;
 
 // schedule — дела (погода и ближайшие дела на Главной, макет 2026-10-27), files — для «Хранилища»
 // экспериментального интерфейса, onOpenCategory — открыть категорию «Медиа»
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory }) {
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory, onNotes }) {
   const exp = useExpUi(); // экспериментальный интерфейс телефона (Настройки → «Внешний вид»)
   const toToday = () => onNavigate("today");
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
@@ -384,11 +384,18 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           <div className="nx-home-colB">
             <HomeWeatherCard className="nx-hw-desk" onOpen={toToday}>
               <HomeTimeline schedule={schedule} onOpen={toToday} />
+              {/* Макет 2026-10-28: «Заметки» — внизу карточки погоды */}
+              {onNotes && (
+                <button type="button" className="nx-ghost-btn nx-hw-notes" onClick={onNotes}>
+                  {Icon.doc({ c: C.text, s: 16 })} Заметки
+                </button>
+              )}
             </HomeWeatherCard>
-            {/* В приложении для ПК обновление — таблеткой «Приложение NEXA» (DesktopAppPill) */}
-            <div className="nx-home-pills2">
+            {/* Под погодой — только ассистент (макет 2026-10-28). «Приложение NEXA» — лишь когда в приложении
+                для ПК вышло обновление: предложение скачать приложение осталось в Настройках */}
+            <div className={`nx-home-pills2${isDesktop && update ? "" : " is-single"}`}>
               {aiPill("nx-ai-glow")}
-              <DesktopAppPill update={isDesktop ? update : null} />
+              {isDesktop && update && <DesktopAppPill update={update} />}
             </div>
           </div>
           <div className="nx-home-fold2" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
