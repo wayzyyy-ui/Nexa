@@ -1,11 +1,11 @@
 {
-  "version": "0.17.7",
-  "notes": "- Быстрое выделение файлов: зажмите файл и ведите пальцем по списку\n- Поиск, уведомления и молния на телефоне — крупнее и ровно\n- Исправлен сдвиг экрана ассистента после смахивания\n- Боковое меню на компьютере снова как фон; у истории чатов — одного цвета с ним\n- Всплывающие уведомления на телефоне стоят по центру",
-  "pub_date": "2026-10-27T22:53:28.640Z",
+  "version": "0.17.8",
+  "notes": "- «Активность» на Главной компьютера — стеклянная карточка без обводки\n- «Мои устройства» — жирнее и крупнее",
+  "pub_date": "2026-10-27T23:03:41.848Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTVVRjk2cDZNZnVoQnFmVDRxNVJDS2s1QnczRytKanNkYXFZUTZsSlNRLzYybjRKaFFKNlFhR05Nb1EzV3J1cG45ZWx2WkYrWEU5a0JvalBOUHhxamc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTQxNjA4CWZpbGU6TkVYQV8wLjE3LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuNwpEa2U3bi9vYnVva2FKTzhRQWFhZEsxWGxNRlptN0YzZjFJUGNPeW9YSDN4dmxSbHVHM1hOVys4aDAyQjc4M3RYZDdMeFFrZnA3NHcxSnNjRENFT0pBUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.7"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WS9LNjdpdkNHZCtjelBsenVrY3MwaGY4L205UXhtL3NtM2RYNFNjcTlDS2dXejIwSVVpUGt3VjgydmZUZ29FUVM0b1I0bGhLTUxVa3VuWEZxdkc0NkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTQyMjIxCWZpbGU6TkVYQV8wLjE3LjhfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuOApMSFh5SVhKRk53RmJLUjU4RUtvdkJ6NUFCQzAvaWlycE1wYmFqK1JSQnQybXF6WkdJdW55bFl6Qm4ybW54SEVyaGFHQWRLOTRHUXg1ejF6VEZoQllEQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.8"
     }
   }
 }
