@@ -1,11 +1,11 @@
 {
-  "version": "0.16.6",
-  "notes": "- Форма нового дела на телефоне: дата и время больше не вылезают за рамку\n- Карточка заметки при наведении не теряет верхнюю линию",
-  "pub_date": "2026-10-27T08:51:55.528Z",
+  "version": "0.16.7",
+  "notes": "- Передача файлов напрямую между своими устройствами по Wi-Fi — без облака\n- Плеер для видео в «Файлах»\n- Мгновенные подсказки в заметках от NEXA mini-1\n- Своё имя и фото в аккаунте\n- Дела в расписании можно изменять\n- Смахните экран вправо, чтобы вернуться назад",
+  "pub_date": "2026-10-27T09:57:50.762Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTN3R3YwSmU4anNlT21RSnduUFo1d2MxN2M1ZktteFdGcTFiSTgvenR3OGdtekJ2MDBiL0psbWlxYVhYZzZmUUxhWlpaVGdocG9OcDZ2ZGs5YXN0N1FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDkxMTE1CWZpbGU6TkVYQV8wLjE2LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuNgpHalpFMit4cG1uZ2dncXhKeTNSbEIyc21QVEY3T0dhTUxGTnhnMFd4QlIwNy93c3NzTnU3bDVMNTY5UW05dVVJaDdBY0tZNjdjQzVZZDlleHJ6THFBZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.6"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlJcVl6VFM3UXdpQzhKSmFQQi9pUUVWUW9oaE1EV05JNFptNlFJUDI2Q2hCT0RVYVNGTEltRk5GMmhJaThoeHFVN2RvZ3FrL1lTb1BBZnRJWDZQc0FFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDk1MDcwCWZpbGU6TkVYQV8wLjE2LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuNwo0eXVRT0M4dFNQSEUwVDN0V3FGWXdVR1RXekdETmh2TWV4b1d2V0RqbWoyU1g2S01ZamlRWWRnZHJuL0ZDdHN4WDFaNUp5UzhkTjc4ZEtYY0xUWXREUT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.7"
     }
   }
 }
