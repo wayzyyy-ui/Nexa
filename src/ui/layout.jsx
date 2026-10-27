@@ -31,10 +31,12 @@ function MediaFold() {
 // Заголовок экрана: крупный и лёгкий, как в макете.
 // На телефоне подзаголовок прячется, а заголовок встаёт в одну строку
 // с иконками поиска и профиля (см. .nx-page-title в мобильных стилях)
-export function MediaTitle({ title, subtitle }) {
+// action — кнопка справа от заголовка (на «Медиа» — «Добавить файлы»)
+export function MediaTitle({ title, subtitle, action }) {
+  const head = <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{title}</div>;
   return (
     <>
-      <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>{title}</div>
+      {action ? <div className="nx-title-row" style={{ display: "flex", alignItems: "center", gap: "max(16px, calc(28 * var(--mk)))" }}>{head}{action}</div> : head}
       {subtitle
         ? <div className="nx-page-sub" style={{ fontSize: 15, color: C.muted, margin: "10px 0 30px" }}>{subtitle}</div>
         : <div className="nx-page-gap" style={{ height: 40 }} />}

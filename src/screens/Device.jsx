@@ -20,6 +20,7 @@ export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
   const [msg, setMsg] = useState("");
   const [msgBusy, setMsgBusy] = useState(false);
   const fileRef = useRef(null);
+  const directRef = useRef(null); // «Файл напрямую» — без облака, по сети Wi-Fi
   if (d.isSelf) return null;
   // Почему действия недоступны (null — доступны)
   const why = !linkOnline ? "Нет связи с облаком — проверьте интернет" : !d.online ? "Устройство не в сети — действия появятся, когда на нём откроют NEXA" : null;
@@ -56,6 +57,15 @@ export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
           {Icon.send({ c: why ? C.mutedSoft : C.text, s: 14 })} Отправить файл
         </button>
         <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act.sendFile(d, f); }} />
+        {act.sendDirect && d.p2p && (
+          <>
+            <button type="button" className="nx-ghost-btn" disabled={!!why} onClick={() => directRef.current?.click()} style={off(pill)}
+              title="Без облака: устройства должны быть в одной сети Wi-Fi">
+              {Icon.handoff({ c: why ? C.mutedSoft : C.text, s: 14 })} Файл напрямую
+            </button>
+            <input ref={directRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act.sendDirect(d, f); }} />
+          </>
+        )}
         <button type="button" className="nx-ghost-btn" disabled={(!!why && !pushFindOk) || st.locate?.state === "asking"} onClick={() => act.locate(d)} style={pushFindOk ? pill : off(pill)}>
           {Icon.pin({ c: why && !pushFindOk ? C.mutedSoft : C.text, s: 14 })} Где устройство?
         </button>

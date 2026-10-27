@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { isNative, isDesktop, nativeFile, clipboardWriteImage } from "../native.js";
 import { desktopOpenFile, desktopSaveFile } from "../lib/desktop.js";
 import { formatBytes } from "../lib/deviceInfo.js";
-import { fileUrl, photoUrl, fileBlob, forgetUrl, safeFileName } from "../lib/files.js";
+import { fileUrl, photoUrl, fileBlob, forgetUrl, safeFileName, useFileUrl } from "../lib/files.js";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { fileBytes, formatWhen } from "../lib/format.js";
@@ -12,6 +12,7 @@ import { useMediaQuery } from "../lib/hooks.js";
 import { btnReset, Spinner, StateButton, Dot, StateNote } from "./base.jsx";
 import { FILE_SCOPE, FOLDERS, catOf, folderName, fileMeta } from "../lib/fileStore.js";
 import { FileThumb } from "./files.jsx";
+import { VideoPlayer } from "./VideoPlayer.jsx";
 
 /* ОКНО ПРОСМОТРА ФАЙЛА — открывается поверх любого экрана.
    Всё работает в демо-режиме: "отправка" и "ссылка" только показывают
@@ -334,10 +335,28 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
   );
 }
 
+/* Первый кадр видео для превью в окне файла: браузер берёт только начало файла (preload="metadata").
+   Не получилось — обычная плашка категории */
+function VideoPoster({ file }) {
+  const url = useFileUrl(file, FILE_SCOPE);
+  const [bad, setBad] = useState(false);
+  if (!url || bad) return <FileThumb file={file} w="100%" h={270} iconSize={56} radius={20} fit="contain" />;
+  return (
+    <div className="nx-video-poster" style={{ width: "100%", height: 270, background: C.photoBg, display: "flex" }}>
+      <video src={`${url}#t=0.1`} preload="metadata" muted playsInline onError={() => setBad(true)}
+        style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
+    </div>
+  );
+}
+
 export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [], siblings = [], onNavigate, pop = true, onClose, onDelete, onRename, onSent, onToast, onContinue }) {
   // Полноэкранный просмотр: только у загруженных фото (у демо-файлов нет содержимого)
   const [fullPhoto, setFullPhoto] = useState(false);
   const canFullPhoto = !!file.uploaded && file.cat === "photo";
+  // Плеер видео (2026-10-27): только у загруженных видео
+  const [playing, setPlaying] = useState(false);
+  const canPlay = !!file.uploaded && file.cat === "video";
+  useEffect(() => { setPlaying(false); }, [file.id]);
   // Переименование: editing — открыто ли поле, draft — что сейчас введено
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(file.name);
@@ -543,12 +562,26 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
                 {Icon.expand({ c: C.onFold, s: 15 })} На весь экран
               </span>
             </button>
+          ) : canPlay ? (
+            <button type="button" className="nx-viewer-preview nx-video-open" onClick={() => setPlaying(true)}
+              aria-label="Смотреть видео" title="Смотреть"
+              style={{ ...btnReset, display: "flex", width: "100%", position: "relative", borderRadius: 20, overflow: "hidden" }}>
+              <VideoPoster file={file} />
+              <span aria-hidden="true" style={{
+                position: "absolute", left: "50%", top: "50%", width: 64, height: 64, margin: "-32px 0 0 -32px", borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: `color-mix(in srgb, ${C.photoBg} 60%, transparent)`, border: `1px solid color-mix(in srgb, ${C.onFold} 30%, transparent)`,
+              }}>
+                {Icon.play({ c: C.onFold, s: 28 })}
+              </span>
+            </button>
           ) : (
             <div className="nx-viewer-preview" style={{ display: "flex", borderRadius: 20, overflow: "hidden" }}>
               <FileThumb file={file} w="100%" h={270} iconSize={56} radius={20} fit="contain" />
             </div>
           )}
         </div>
+        {playing && <VideoPlayer file={file} onClose={() => setPlaying(false)} />}
         {fullPhoto && (
           <PhotoFullscreen photos={photos.some((p) => p.id === file.id) ? photos : [file]} startId={file.id} onClose={() => setFullPhoto(false)} onToast={onToast} />
         )}
@@ -590,7 +623,7 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
         {/* Открыть этот же файл на другом своём устройстве (только файлы в облаке аккаунта) */}
         {onContinue && file.path && (
           <button type="button" className="nx-ghost-btn" onClick={() => onContinue(file)} style={{ ...ghostBtn, width: "100%", justifyContent: "center", marginTop: 10 }}>
-            {Icon.shareUp({ c: C.text, s: 16 })} Продолжить на устройстве
+            {Icon.handoff({ c: C.text, s: 16 })} Продолжить на устройстве
           </button>
         )}
 
@@ -686,7 +719,7 @@ export async function openFileContent(file, scope, download) {
 }
 
 // «Открыть» / «Скачать» / «Копировать» файла — общий ход для окна файла и фото на весь экран
-function useFileActions(file, onToast) {
+export function useFileActions(file, onToast) {
   const [state, setState] = useState(null); // null | "open" | "download" | "copy" — что сейчас готовим
   const go = async (download) => {
     setState(download ? "download" : "open");

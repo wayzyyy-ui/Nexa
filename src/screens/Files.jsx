@@ -480,7 +480,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             onOpen={() => onOpenFile({ id: menu.file.id, list: list.map((x) => x.id) })}
             onSelect={() => startSelect(menu.file.id)}
             onTransfer={onTransfer ? () => onTransfer(menu.file, menu.card, menu.card) : null}
-            onDelete={() => onDeleteFiles?.([menu.file])} />
+            onDelete={() => onDeleteFiles?.([menu.file])} onToast={onToast} />
         )}
         {/* Запас снизу: последние строки не прячутся под панелью выделения */}
         {selecting && <div aria-hidden="true" style={{ height: 76 }} />}

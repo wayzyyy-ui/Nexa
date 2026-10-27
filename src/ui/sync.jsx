@@ -17,33 +17,27 @@ import { Dot, Spinner, btnReset, StateButton } from "./base.jsx";
 export function SyncStatus({ online, uid, loading, pending, queued, text, nextAt, gaveUp, onRetry, onOpen }) {
   const left = useCountdown(nextAt);
   const total = pending + queued;
-  // «Сохранено» — на 2,5 с после того, как ожидающих стало 0 и облако подтвердило
-  const [saved, setSaved] = useState(false);
-  const prevTotal = useRef(total);
+  // Строка показывается редко (просьба автора 2026-10-27): нет сети, ошибка — сразу; «Синхронизируем» и
+  // «Отправляем» — только если затянулись дольше 10 с (обычно проходят незаметно); «Сохранено в облаке» — больше нет
+  const busy = online && !!uid && !text && (loading || total > 0);
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
-    if (loading) return; // ждём, пока сводка закончится по всем частям
-    if (prevTotal.current > 0 && total === 0 && online && !text) setSaved(true);
-    else if (total > 0 || !online || text) setSaved(false);
-    prevTotal.current = total;
-  }, [total, online, loading, text]);
-  useEffect(() => {
-    if (!saved) return;
-    const t = setTimeout(() => setSaved(false), 2500);
+    if (!busy) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 10000);
     return () => clearTimeout(t);
-  }, [saved]);
+  }, [busy]);
 
   let dot = null, label = null, retry = false;
   if (!online) {
     dot = <Dot color={C.red} />;
     label = uid ? (total ? `Нет сети · ${changesWord(total)} ${waitWord(total)} отправки` : "Нет сети · данные на этом устройстве") : "Нет сети · всё сохраняется на этом устройстве";
   } else if (!uid) return null;
-  else if (loading) { dot = <Spinner s={12} />; label = total ? `Синхронизируем · ждут: ${total}` : "Синхронизируем…"; }
+  else if (loading && slow) { dot = <Spinner s={12} />; label = total ? `Синхронизируем · ждут: ${total}` : "Синхронизируем…"; }
   else if (text) {
     dot = <Dot color={C.red} />;
     label = [text, total ? `не отправлено: ${total}` : null, left != null ? `повтор через ${left} с` : null].filter(Boolean).join(" · ");
     retry = gaveUp || left == null;
-  } else if (total) { dot = <Spinner s={12} />; label = `Отправляем ${changesWord(total)}…`; }
-  else if (saved) { dot = Icon.check({ c: C.green, s: 13 }); label = "Сохранено в облаке"; }
+  } else if (total && !loading && slow) { dot = <Spinner s={12} />; label = `Отправляем ${changesWord(total)}…`; }
   else return null;
 
   return (

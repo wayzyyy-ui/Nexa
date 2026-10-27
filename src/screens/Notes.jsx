@@ -14,6 +14,7 @@ import { newId } from "../lib/sync.js";
 import {
   sortNotes, searchNotes, filterNotes, allTags, noteTitle, notePreview, noteWhen, checklistStats,
 } from "../lib/userNotes.js";
+import { buildT9 } from "../lib/mini/t9.js";
 import { purgeNoteImages } from "../lib/noteImages.js";
 import { NoteEditor } from "./notes/NoteEditor.jsx";
 import { ghost, primary, chip, readOpen, writeOpen } from "./notes/shared.js";
@@ -94,6 +95,12 @@ export function ScreenNotes({ notes, api, uid, onBack, request, schedule = [], o
     return [...fresh, ...kept];
   }, [notes, frozen]);
   const tags = useMemo(() => allTags(notes), [notes]);
+  // mini-1 · подсказки при наборе: модель слов из остальных заметок (открытую она читает сама, на лету).
+  // Пересобирается, только когда меняются другие заметки, — не на каждое сохранение открытой
+  const openId = open?.id;
+  const t9Sig = notes.filter((n) => n.id !== openId).map((n) => `${n.id}:${n.updatedAt || 0}`).join(",");
+  const t9 = useMemo(() => buildT9(notes.filter((n) => n.id !== openId).map((n) => `${n.title || ""}
+${n.text || ""}`)), [t9Sig]); // eslint-disable-line react-hooks/exhaustive-deps
   const archivedCount = useMemo(() => notes.filter((n) => n.archived).length, [notes]);
   const found = useMemo(() => searchNotes(filterNotes(sorted, { view, tag }), query), [sorted, view, tag, query]);
   const pinned = view === "active" ? found.filter((n) => n.pinned) : [];
@@ -168,7 +175,7 @@ export function ScreenNotes({ notes, api, uid, onBack, request, schedule = [], o
 
   const editor = open && (
     <NoteEditor key={open.id} id={open.id} note={openNote} isNew={open.isNew && !openNote} phone={phone}
-      api={api} uid={uid} knownTags={tags} schedule={schedule} onAddSchedule={onAddSchedule}
+      api={api} uid={uid} knownTags={tags} t9={t9} schedule={schedule} onAddSchedule={onAddSchedule}
       onArchive={archive} onClose={() => setOpen(null)} onAskAi={onAskAi} toast={toast} />
   );
 

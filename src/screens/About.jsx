@@ -1,11 +1,11 @@
 // Экран «О системе»: что умеет NEXA, обновления по версиям, планы.
 // При выпуске новой версии добавлять её в ABOUT_UPDATES
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { C, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { VERSION } from "../version.js";
 import { Crumb } from "../ui/layout.jsx";
-import { MadeBy } from "../ui/base.jsx";
+import { MadeBy, btnReset } from "../ui/base.jsx";
 
 // Отдельный экран «Активность»: все события и «Очистить» с подтверждением
 /* ═══ ЭКРАН «О СИСТЕМЕ» ═══════════════════════════════════════
@@ -18,14 +18,17 @@ export const ABOUT_FEATURES = [
   { icon: Icon.phone, title: "Устройства вместе", text: "Телефон, компьютер, часы и наушники в одном списке: кто в сети, заряд, память и сеть — только настоящие данные. Подключение по коду или QR, Bluetooth-устройства — через приложение." },
   { icon: Icon.search, title: "Найти и защитить", text: "«Найти» звонит на потерянный телефон, даже если NEXA на нём закрыта. «Где устройство?» показывает место на карте — только если это разрешено на самом устройстве. Экран NEXA можно заблокировать удалённо." },
   { icon: Icon.shareUp, title: "NEXA Flow", text: "Общий буфер: текст и ссылки летят на другое ваше устройство за секунду. Пароли и ключи в историю не сохраняются." },
-  { icon: Icon.folder, title: "Файлы в облаке", text: "Свои файлы и папки, отправка на другое устройство, фото на весь экран. Без сети загрузки ждут и уходят сами." },
+  { icon: Icon.folder, title: "Файлы в облаке", text: "Свои файлы и папки, фото на весь экран и плеер видео. На другое устройство — через облако или напрямую по Wi-Fi, без облака, до 1 ГБ." },
   { icon: Icon.sparkle, title: "ИИ — Ассистент", text: "Отвечает на вопросы, читает файлы (PDF, документы, картинки), выполняет команды: тема, расписание, устройства." },
   { icon: Icon.calendar, title: "Сегодня", text: "Расписание с напоминаниями и погода от Gismeteo. Виджеты на рабочем столе Android." },
+  { icon: Icon.neuron, title: "NEXA mini-1", text: "Наша собственная нейросеть — работает прямо на устройстве, без интернета. Понимает простые просьбы ассистенту («открой файлы», «тёмная тема», «новая заметка») и дописывает слова в заметках, пока вы печатаете." },
+  { icon: Icon.list, title: "Заметки", text: "Заметки с тегами, архивом, чек-листами и фото. Закреплённая — на виджете рабочего стола. ИИ помогает сократить, переписать или продолжить текст." },
   { icon: Icon.refresh, title: "Синхронизация", text: "Аккаунт по почте без пароля: устройства, диалоги, файлы и расписание одинаковые на сайте и в приложении. Без интернета всё работает и досылается потом." },
 ];
 
 // История обновлений — новые сверху. Добавляя версию, впишите её сюда (и в release-notes.md)
 export const ABOUT_UPDATES = [
+  { v: "0.16.7", items: ["Передача файлов напрямую между своими устройствами в одной сети Wi-Fi — без облака, до 1 ГБ", "Плеер для видео в «Файлах»", "Подсказки в заметках — мгновенно: слова дописывает NEXA mini-1 прямо на устройстве", "Своё имя и фото в аккаунте", "Дела в расписании можно изменять", "Смахните экран вправо, чтобы вернуться назад", "«Скачать» и «Копировать» в меню файла, кнопка «Добавить файлы» на «Медиа»", "Обновлённые «О системе» и Настройки на телефоне"] },
   { v: "0.16.6", items: ["Форма нового дела на телефоне: дата и время больше не вылезают за рамку", "Карточка заметки на компьютере при наведении не теряет верхнюю линию"] },
   { v: "0.16.5", items: ["Фото на весь экран: можно скопировать и скачать, наверху понятная подпись", "Новые файлы сами раскладываются по папкам: фото, видео, документы, музыка", "Подсказка в заметках дописывает одно слово", "Сайт открывается с фирменной заставкой", "Исправлена кнопка уведомлений на айфоне и кнопки окна файла на телефоне"] },
   { v: "0.16.4", items: ["Новое окно файла: крупное превью со стрелками, кнопки «Копировать / Скачать / Поделиться» и сведения строками", "Настройки на телефоне: аватар и имя выше", "«Обновления» в «О системе» на телефоне — компактнее"] },
@@ -97,8 +100,9 @@ export const ABOUT_UPDATES = [
 ];
 
 // Что в планах — честно «планы», без обещаний сроков. Автор правит этот список
+const UPDATES_SHOWN = 3; // сколько последних версий видно сразу
+
 export const ABOUT_PLANS = [
-  "Передача больших файлов напрямую между устройствами, без облака",
   "Приложение для iPhone",
 ];
 
@@ -112,6 +116,9 @@ export function ScreenAbout({ onBack, installed }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onBack]);
+  // Обновления: видно последние UPDATES_SHOWN, остальные — по кнопке
+  const [allUpdates, setAllUpdates] = useState(false);
+  const updates = allUpdates ? ABOUT_UPDATES : ABOUT_UPDATES.slice(0, UPDATES_SHOWN);
   const card = { border: `1px solid ${C.lineBright}`, borderRadius: 28, padding: "22px 24px", background: C.panel, boxSizing: "border-box" };
   const h2 = { fontSize: T.fs.section, fontWeight: 600, margin: "34px 0 14px" };
   return (
@@ -153,7 +160,7 @@ export function ScreenAbout({ onBack, installed }) {
       {/* Обновления */}
       <div className="ng-display" style={h2}>Обновления</div>
       <div style={{ ...card, padding: "6px 24px" }}>
-        {ABOUT_UPDATES.map((u, i) => (
+        {updates.map((u, i) => (
           <div key={u.v} className="nx-upd-row" style={{ display: "flex", gap: 18, padding: "14px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
             <div className="nx-upd-v" style={{ width: 64, flexShrink: 0, fontSize: 14, fontWeight: 600, color: u.v === VERSION ? C.mint : C.text }}>{u.v}</div>
             <div className="nx-upd-items" style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
@@ -162,6 +169,14 @@ export function ScreenAbout({ onBack, installed }) {
             {u.v === VERSION && <span className="nx-upd-now" style={{ alignSelf: "flex-start", fontSize: 11, color: C.mint, border: `1px solid ${C.mint}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>сейчас</span>}
           </div>
         ))}
+        {ABOUT_UPDATES.length > UPDATES_SHOWN && (
+          <button type="button" className="nx-ghost-btn nx-upd-more" onClick={() => setAllUpdates((v) => !v)} aria-expanded={allUpdates}
+            style={{ ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", margin: "4px 0 14px",
+              padding: "10px 16px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, fontSize: 13, color: C.text }}>
+            {allUpdates ? "Свернуть" : `Все обновления · ещё ${ABOUT_UPDATES.length - UPDATES_SHOWN}`}
+            <span aria-hidden="true" style={{ display: "flex", transform: allUpdates ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform 200ms ease" }}>{Icon.chevron({ c: C.muted, s: 13 })}</span>
+          </button>
+        )}
       </div>
 
       {/* Планы */}

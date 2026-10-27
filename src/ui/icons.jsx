@@ -192,6 +192,13 @@ export const Icon = {
       <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" strokeLinecap="round" />
     </svg>
   ),
+  // Без звука: динамик и крестик (плеер видео)
+  muted: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4Z" strokeLinejoin="round" />
+      <path d="M15.5 9.5l5 5M20.5 9.5l-5 5" strokeLinecap="round" />
+    </svg>
+  ),
   // Остановить: квадрат
   stop: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill={p.c}>
@@ -346,6 +353,23 @@ export const Icon = {
     <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M9 9H5.5v11.5h13V12.5L15 9" strokeLinejoin="round" />
       <path d="M12 15V3.5M8.5 7 12 3.5 15.5 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // NEXA mini-1: маленькая сеть — вход, скрытый слой, выход
+  neuron: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M6 6.5 12 5M6 6.5 12 12M6 17.5 12 12M6 17.5 12 19M12 5l6 7M12 12h6M12 19l6-7" strokeLinecap="round" opacity="0.6" />
+      <circle cx="5" cy="6.5" r="2" /><circle cx="5" cy="17.5" r="2" /><circle cx="12" cy="5" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" /><circle cx="19" cy="12" r="2" />
+    </svg>
+  ),
+  // «Продолжить на устройстве»: ноутбук слева, телефон справа, дуга-стрелка с одного на другое
+  handoff: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 16} height={p.s || 16} fill="none" stroke={p.c} strokeWidth="1.6">
+      <path d="M3 11.5h9.5v6.5H3zM1.5 20.5h12.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16.5 11h5v9.5h-5z" strokeLinejoin="round" />
+      <path d="M6 8.5C7 5.5 10.5 4 14 4.5c2.5.4 4.2 1.9 5 4" strokeLinecap="round" />
+      <path d="M16.8 7.6 19 8.5l.9-2.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   // Скачать: стрелка вниз в «лоток»

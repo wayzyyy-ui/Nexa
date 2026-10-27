@@ -10,19 +10,21 @@ import { btnReset, EmptyState, StateButton, Spinner } from "../ui/base.jsx";
 import { condLook, WeatherCard, CityPicker, WeatherAttribution, ForecastList } from "./today/Weather.jsx";
 import { MediaLayout, MediaTitle } from "../ui/layout.jsx";
 
-/* Форма нового дела: дата, время, название и описание (необязательно).
-   day — выбранный день (по умолчанию дело ставится на него). Enter — добавить, Esc — отмена */
-export function ScheduleForm({ existing, day, initialTitle = "", onSave, onCancel }) {
-  const [date, setDate] = useState(day || dayKey());
-  const [time, setTime] = useState(nextHour);
-  const [title, setTitle] = useState(initialTitle.slice(0, 60)); // initialTitle — из заметки («В расписание»)
-  const [place, setPlace] = useState(""); // описание (в данных поле по-прежнему place)
+/* Форма дела: дата, время, название и описание (необязательно).
+   day — выбранный день (по умолчанию дело ставится на него). Enter — добавить, Esc — отмена.
+   item — правка уже существующего дела (2026-10-27): поля заполнены, кнопка «Сохранить» */
+export function ScheduleForm({ existing, day, initialTitle = "", item = null, onSave, onCancel }) {
+  const [date, setDate] = useState(item?.date || day || dayKey());
+  const [time, setTime] = useState(item?.time || nextHour);
+  const [title, setTitle] = useState((item?.title || initialTitle).slice(0, 60)); // initialTitle — из заметки («В расписание»)
+  const [place, setPlace] = useState(item?.place || ""); // описание (в данных поле по-прежнему place)
   const t = title.trim();
   const today = dayKey();
-  const dup = existing.some((x) => x.date === date && x.time === time && x.title.toLowerCase() === t.toLowerCase());
+  const isSelf = (x) => item && x.date === item.date && x.time === item.time && x.title === item.title;
+  const dup = existing.some((x) => !isSelf(x) && x.date === date && x.time === time && x.title.toLowerCase() === t.toLowerCase());
   const error = !t ? null
     : !/^\d{4}-\d{2}-\d{2}$/.test(date) ? "Укажите дату"
-    : date < today ? "Эта дата уже прошла"
+    : date < today && date !== item?.date ? "Эта дата уже прошла"
     : !/^\d{2}:\d{2}$/.test(time) ? "Укажите время"
     : dup ? "Такое дело уже есть" : null;
   const save = () => { if (t && !error) onSave({ date, time, title: t, place: place.trim() }); };
@@ -36,7 +38,7 @@ export function ScheduleForm({ existing, day, initialTitle = "", onSave, onCance
       onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
       style={{ border: `1px solid color-mix(in srgb, ${C.mint} 45%, transparent)`, borderRadius: 18, padding: 14, marginBottom: 20, display: "grid", gap: 10 }}>
       <div className="nx-sched-form-row" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 124px", gap: 10 }}>
-        <input type="date" required value={date} min={today} onChange={(e) => setDate(e.target.value)} className="nx-input" aria-label="Дата" style={field} />
+        <input type="date" required value={date} min={item && item.date < today ? item.date : today} onChange={(e) => setDate(e.target.value)} className="nx-input" aria-label="Дата" style={field} />
         <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="nx-input" aria-label="Время" style={field} />
       </div>
       <input autoFocus value={title} maxLength={60} onChange={(e) => setTitle(e.target.value)} className="nx-input"
@@ -52,7 +54,7 @@ export function ScheduleForm({ existing, day, initialTitle = "", onSave, onCance
           ...btnReset, fontSize: 13, padding: "7px 14px", borderRadius: 999, border: "1px solid transparent",
           color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
         }}>
-          Добавить
+          {item ? "Сохранить" : "Добавить"}
         </button>
       </div>
     </form>
@@ -148,7 +150,9 @@ export function MonthCalendar({ value, all, onPick, onClose, leaving }) {
 }
 
 // schedule — все дела (по датам, общие с ассистентом), onAddItem / onRemoveItem — добавить и удалить
-export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemoveItem, onNotes, notesCount = 0 }) {
+// onUpdateItem(старое, новое) — правка дела
+export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdateItem, onRemoveItem, onNotes, notesCount = 0 }) {
+  const [editing, setEditing] = useState(null); // дело, открытое для правки
   // Какой день смотрим (по умолчанию сегодня). Дела этого дня — schedule
   const [day, setDay] = useState(dayKey);
   const today = dayKey();
@@ -241,7 +245,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
             <span className="nx-sched-name">Расписание</span>
             {/* Своё дело: открывает форму над таймлайном (на телефоне эта кнопка — ниже, рядом с «Календарём») */}
             {!adding && (
-              <button type="button" className="nx-ghost-btn nx-sched-add-top nx-glass" onClick={() => setAdding(true)} style={{
+              <button type="button" className="nx-ghost-btn nx-sched-add-top nx-glass" onClick={() => { setEditing(null); setAdding(true); }} style={{
                 ...btnReset, marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontFamily: fontBody,
                 fontSize: 13, padding: "6px 12px", borderRadius: 999, border: `1px solid ${C.borderStrong}`,
               }}>
@@ -258,7 +262,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
               Календарь
             </button>
             {!adding && (
-              <button type="button" className="nx-ghost-btn nx-sched-add-row nx-glass" onClick={() => setAdding(true)}
+              <button type="button" className="nx-ghost-btn nx-sched-add-row nx-glass" onClick={() => { setEditing(null); setAdding(true); }}
                 style={{ ...btnReset, flex: 1, fontSize: 14, padding: "7px 14px", borderRadius: 999, border: `1px solid ${C.lineBright}`, justifyContent: "center", alignItems: "center", gap: 6 }}>
                 {Icon.plus({ c: C.mint, s: 14 })} Добавить
               </button>
@@ -282,7 +286,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
 
           {schedule.length === 0 && !adding && (
             <EmptyState compact title={isToday ? "Дел на сегодня нет" : "На этот день дел нет"} text="Добавьте дело — оно появится на таймлайне"
-              action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={() => setAdding(true)}>Добавить дело</StateButton>} />
+              action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
           )}
 
           {/* Вертикальная линия таймлайна — один div. --dot-x — где центр
@@ -295,6 +299,16 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
             {schedule.flatMap((it, i) => {
               const past = i < cursorAt;
               const isNext = i === nextIdx;
+              // Правка: на месте строки — та же форма, заполненная этим делом
+              if (editing === `${it.date}|${it.time}|${it.title}`) {
+                const form = (
+                  <div key={`edit-${it.time}-${it.title}`} className="nx-sched-edit-wrap" style={{ marginLeft: 44 }}>
+                    <ScheduleForm existing={all} item={it} onCancel={() => setEditing(null)}
+                      onSave={(next) => { onUpdateItem?.(it, next); setDay(next.date); setEditing(null); }} />
+                  </div>
+                );
+                return i === cursorAt ? [nowMarker, form] : [form];
+              }
               const row = (
               <div key={`${it.time}-${it.title}`} className="nx-sched-item" style={{
                 display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)",
@@ -321,6 +335,11 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onRemov
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {isNext && <span style={{ fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>скоро</span>}
+                    <button type="button" className="nx-icon-btn nx-sched-edit" onClick={() => { setAdding(false); setEditing(`${it.date}|${it.time}|${it.title}`); }} aria-label={`Изменить «${it.title}»`} title="Изменить" style={{
+                      ...btnReset, width: 30, height: 30, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {Icon.edit({ c: C.muted, s: 15 })}
+                    </button>
                     <button type="button" className="nx-icon-btn nx-sched-del" onClick={() => onRemoveItem?.(it)} aria-label={`Удалить «${it.title}»`} title="Удалить" style={{
                       ...btnReset, width: 30, height: 30, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>

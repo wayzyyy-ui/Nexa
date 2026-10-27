@@ -288,7 +288,7 @@ export function ChatHistory({ onContinue, chats, setChats, currentChatId, onOpen
           </button>
           {onContinue && (
             <button type="button" role="menuitem" onClick={() => { setMenu(null); onContinue(menuChat); }}>
-              {Icon.send({ c: C.text, s: 14 })} Продолжить на устройстве…
+              {Icon.handoff({ c: C.text, s: 14 })} Продолжить на устройстве…
             </button>
           )}
           <button type="button" role="menuitem" className="is-danger" onClick={() => setMenu({ ...menu, confirm: true })}>

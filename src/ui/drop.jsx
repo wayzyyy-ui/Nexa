@@ -31,7 +31,8 @@ function Ring({ value, done, error }) {
           | { kind: "in", fromName, fromType, name, mime, size, onOpen }
             (с st — приём «Рядом» с ходом: { state: receiving|done|error, progress, error })
    drop.actions — свои кнопки после конца [{ label, run, primary }]; drop.doneText — подпись после приёма;
-   drop.onCancel — крестик, пока идёт передача (отменить);
+   drop.onCancel — крестик, пока идёт передача (отменить); drop.waitText — заголовок, пока передача не началась
+   (прямая передача: «Ждём «Принять»», «Соединяемся…»);
    onClose — убрать плашку */
 export function DropBanner({ drop, st, onClose }) {
   const ref = useRef(null);
@@ -87,8 +88,8 @@ export function DropBanner({ drop, st, onClose }) {
 
   const pct = Math.round((st?.progress || 0) * 100);
   const title = send
-    ? (error ? "Не отправлено" : done ? "Доставлено" : pct >= 100 ? "Передаём…" : `Отправляем · ${pct}%`)
-    : recv ? (error ? "Не принято" : done ? "Получено" : `Принимаем · ${pct}%`)
+    ? (error ? "Не отправлено" : done ? "Доставлено" : drop.waitText ? drop.waitText : pct >= 100 ? "Передаём…" : `Отправляем · ${pct}%`)
+    : recv ? (error ? "Не принято" : done ? "Получено" : drop.waitText ? drop.waitText : `Принимаем · ${pct}%`)
     : "Файл для вас";
   const sub = error ? st?.error || "Попробуйте ещё раз"
     : send ? `«${drop.name}» → «${drop.devName}»`

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
+import { useFileActions } from "./FileViewer.jsx";
 import { btnReset } from "./base.jsx";
 import { plural } from "../lib/format.js";
 
@@ -33,7 +34,10 @@ export function useLongPress(onLong) {
 }
 
 /* Меню одного файла: у точки нажатия, не выходит за край окна. Esc, нажатие мимо и «Назад» закрывают */
-export function FileMenu({ at, file, onClose, onOpen, onSelect, onTransfer, onDelete }) {
+// «Скачать» и «Копировать» (фото) — тот же ход, что в окне файла (useFileActions); у файла без содержимого их нет
+export function FileMenu({ at, file, onClose, onOpen, onSelect, onTransfer, onDelete, onToast }) {
+  const acts = useFileActions(file, onToast);
+  const has = !!file.uploaded;
   const ref = useRef(null);
   const [confirm, setConfirm] = useState(false);
   const [pos, setPos] = useState({ left: at.x, top: at.y, ready: false });
@@ -75,6 +79,8 @@ export function FileMenu({ at, file, onClose, onOpen, onSelect, onTransfer, onDe
       ) : (
         <>
           {item("Открыть", Icon.expand, () => { onOpen(); onClose(); })}
+          {has && item("Скачать", Icon.download, () => { acts.go(true); onClose(); })}
+          {has && file.cat === "photo" && item("Копировать", Icon.copy, () => { acts.copy(); onClose(); })}
           {item("Выделить", Icon.check, () => { onSelect(); onClose(); })}
           {onTransfer && item("Передать на устройство", Icon.send, () => { onTransfer(); onClose(); })}
           {item("Удалить", Icon.trash, () => setConfirm(true), true)}

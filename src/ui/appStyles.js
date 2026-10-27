@@ -1445,9 +1445,12 @@ export const APP_CSS = `
           animation: nx-banner-fold 300ms cubic-bezier(0.4, 0, 1, 1) forwards;
         }
         /* Расписание: корзина видна при наведении на дело (на телефоне — всегда) */
-        .nx-sched-del { opacity: 0; transition: opacity 160ms ease, background-color 160ms ease; }
-        .nx-sched-item:hover .nx-sched-del, .nx-sched-del:focus-visible { opacity: 1; }
-        @media (hover: none) { .nx-sched-del { opacity: 1; } }
+        /* Форма правки дела стоит поверх линии таймлайна — линия не должна просвечивать */
+        .nx-sched-edit-wrap { position: relative; z-index: 1; }
+        .nx-sched-edit-wrap .nx-sched-form { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+        :is(.nx-sched-del, .nx-sched-edit) { opacity: 0; transition: opacity 160ms ease, background-color 160ms ease; }
+        .nx-sched-item:hover :is(.nx-sched-del, .nx-sched-edit), :is(.nx-sched-del, .nx-sched-edit):focus-visible { opacity: 1; }
+        @media (hover: none) { :is(.nx-sched-del, .nx-sched-edit) { opacity: 1; } }
         /* Значок часов у поля времени — под цвет темы */
         :root[data-theme="dark"] input[type="time"] { color-scheme: dark; }
         :root[data-theme="light"] input[type="time"] { color-scheme: light; }
@@ -1967,8 +1970,13 @@ export const APP_CSS = `
           .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 13px !important; }
           .nx-sched-title { font-size: 15px !important; }
           .nx-sched-form input { font-size: 16px !important; } /* iPhone не приближает страницу */
+          /* «Медиа»: кнопка добавления — круглая, только «+» (заголовок крупный, места мало) */
+          .nx-media-add { width: 46px; height: 46px; padding: 0 !important; }
+          .nx-media-add-label { display: none; }
+          .nx-title-row { justify-content: space-between; }
           /* Дата и время — две равные колонки: поле времени в Android шире 124 px и вылезало за рамку формы */
-          .nx-sched-form-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+          .nx-sched-form-row { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) !important; }
+          .nx-sched-edit-wrap { margin-left: 0 !important; } /* правка дела — на всю ширину карточки, иначе дата не помещалась */
           .nx-sched-form-row input { width: 100%; max-width: 100%; padding-left: 14px !important; padding-right: 10px !important; }
           .nx-sched-hint { visibility: hidden; } /* Enter/Esc на телефоне не нужны — место под кнопки остаётся */
           .nx-sched-until { margin-bottom: 16px !important; }

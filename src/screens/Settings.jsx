@@ -7,7 +7,7 @@ import { thisDeviceKind, NO_DATA, KIND_LABEL, batteryText, netText, diskText } f
 import { C, readTheme, switchTheme, T, PHONE_MQ } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { sysTime } from "../lib/format.js";
-import { readTilt, saveTilt, tiltNeedsPermission, useMediaQuery } from "../lib/hooks.js";
+import { readTilt, saveTilt, tiltNeedsPermission, useMediaQuery, useSwipeBack } from "../lib/hooks.js";
 import { readLitePref, liteActive, liteAutoReason, setLitePref, LITE_EVENT } from "../lib/lite.js";
 import { Crumb } from "../ui/layout.jsx";
 import { SectionTitle, SettingsGroup, SettingsRow, btnReset, Toggle } from "../ui/base.jsx";
@@ -17,6 +17,8 @@ import { VERSION } from "../version.js";
 import { InstallSettings } from "../ui/install.jsx";
 import { DesktopSettings } from "../ui/desktop.jsx";
 import { WebPushRow } from "../ui/webpush.jsx";
+import { Avatar, ProfileSettings } from "../ui/profile.jsx";
+import { profileName } from "../lib/profile.js";
 import { useEnterSends, touchLike } from "../lib/composer.js";
 
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
@@ -146,14 +148,8 @@ const ACCOUNT = { id: "account", title: "Аккаунт", icon: "user", notitle:
 const SEC_KEY = "nexa-settings-sec"; // какой раздел был открыт (компьютер, на эту вкладку)
 const readSec = () => { try { const v = sessionStorage.getItem(SEC_KEY); return [...SETTINGS_SECTIONS, ACCOUNT].some((s) => s.id === v) ? v : "appearance"; } catch { return "appearance"; } };
 
-// Имя для карточки аккаунта: из профиля, иначе часть почты до «@»
-const accountName = (user) => {
-  const m = user?.user_metadata || {};
-  const n = String(m.full_name || m.name || "").trim();
-  if (n) return n;
-  const local = String(user?.email || "").split("@")[0] || "";
-  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
-};
+// Имя для карточки аккаунта — своё (Настройки → Аккаунт → «Имя и фото»), иначе из почты
+const accountName = profileName;
 
 export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApproveLogin, sys, flowBlock, noteBlock, memoryBlock, miniBlock, updateBlock, widgetBlock, backupBlock, securityBlock, request }) {
   const phone = useMediaQuery(PHONE_MQ);
@@ -170,6 +166,9 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
     setLeaving(true);
     leaveTimer.current = setTimeout(() => { setOpen(null); setLeaving(false); window.scrollTo(0, 0); }, 220);
   };
+  // Раздел на телефоне смахивается вправо — к списку (экран уже уехал за пальцем — закрываем сразу)
+  const pageRef = useRef(null);
+  useSwipeBack(pageRef, () => { setOpen(null); window.scrollTo(0, 0); }, phone && !!open && !leaving, open);
   const setSec = (id) => { setSecState(id); try { sessionStorage.setItem(SEC_KEY, id); } catch { /* не страшно */ } };
   const choose = (id) => { setSec(id); if (phone) { setOpen(id); window.scrollTo(0, 0); } };
 
@@ -294,18 +293,14 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
       case "assistant": return <>{memoryBlock}{miniBlock}<AssistantInputSettings /></>;
       case "device": return <><ThisDeviceSettings sys={sys} />{flowBlock}{widgetBlock}</>;
       case "apps": return <>{updateBlock}<DesktopSettings /><InstallSettings /></>;
-      case "account": return <AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} />;
+      case "account": return <>{user && <ProfileSettings user={user} />}<AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} /></>;
       default: return null;
     }
   };
   const meta = (id) => [...SETTINGS_SECTIONS, ACCOUNT].find((s) => s.id === id) || SETTINGS_SECTIONS[0];
 
   const name = user ? accountName(user) : "Гость";
-  const avatar = (size) => (
-    <span className="nx-set-avatar" aria-hidden="true" style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: C.avatarBg }}>
-      {Icon.user({ c: C.avatarInk, s: Math.round(size * 0.48) })}
-    </span>
-  );
+  const avatar = (size) => <Avatar user={user} size={size} />;
   // Список разделов (компьютер — с выбранным, телефон — просто строки)
   const navList = (
     <nav className="nx-set-nav" aria-label="Разделы настроек">
@@ -337,7 +332,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
       const m = meta(open);
       return (
         // Уходящий раздел — без role="dialog": для «Назад» он уже закрыт
-        <div className={`ng-screen nx-settings nx-set-page${leaving ? " is-leaving" : ""}`} role={leaving ? undefined : "dialog"} aria-label={m.title} data-no-swipe>
+        <div ref={pageRef} className={`ng-screen nx-settings nx-set-page${leaving ? " is-leaving" : ""}`} role={leaving ? undefined : "dialog"} aria-label={m.title} data-no-swipe>
           <Crumb onClick={closeSection}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
           <div className="ng-display nx-page-title nx-set-page-title">{m.title}</div>
           <div className={`nx-set-body${m.notitle ? " nx-set-notitle" : ""}`}>{content(open)}</div>
@@ -359,7 +354,12 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
         </button>
         <div className="nx-set-sheet nx-glass nx-glass-subtle">
           {navList}
-          {aboutCard}
+          {/* «О системе» — такой же строкой, как разделы (макет 2026-10-27), без отдельной карточки */}
+          <button type="button" className="nx-set-nav-item nx-set-about-row" onClick={onAbout}>
+            <span className="nx-set-nav-icon">{Icon.info({ c: C.text, s: 20 })}</span>
+            <span>О системе</span>
+            <span className="nx-set-nav-chev" aria-hidden="true">{Icon.chevron({ c: C.mutedSoft })}</span>
+          </button>
         </div>
       </div>
     );

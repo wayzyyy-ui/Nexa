@@ -187,12 +187,13 @@ export function NearbySheet({ nb, tab: tab0 = "send", myName, onClose }) {
 }
 
 // Кто-то рядом хочет передать файл: принять или нет решает человек, сверив код
-export function NearbyAsk({ ask, onAccept, onReject }) {
+// direct — прямая передача по сети (src/lib/direct.js), а не «Рядом»: свои тексты
+export function NearbyAsk({ ask, onAccept, onReject, direct = false }) {
   return (
     <Layer label="Принять файл?" onClose={onReject} z={330}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
-        <div className="nx-near-radar is-on" aria-hidden="true">{Icon.phone({ c: C.mint, s: 20 })}</div>
-        <div className="ng-display" style={{ fontSize: 18, fontWeight: 600 }}>«{ask.name}» передаёт файл</div>
+        <div className="nx-near-radar is-on" aria-hidden="true">{(direct ? Icon.handoff : Icon.phone)({ c: C.mint, s: 20 })}</div>
+        <div className="ng-display" style={{ fontSize: 18, fontWeight: 600 }}>«{ask.name}» передаёт файл{direct ? " напрямую" : ""}</div>
         <div style={{ fontSize: 14, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ask.file}</div>
         <div style={{ fontSize: 12, color: C.mutedSoft }}>{ask.size ? formatBytes(ask.size) : ""}</div>
         {ask.digits && (
@@ -200,7 +201,9 @@ export function NearbyAsk({ ask, onAccept, onReject }) {
             Код <b style={{ fontSize: 18, letterSpacing: "0.12em", color: C.mint }}>{ask.digits}</b> — сверьте с тем телефоном
           </div>
         )}
-        <div style={{ fontSize: 12, color: C.mutedSoft, lineHeight: 1.5 }}>Принимайте только от тех, кого знаете. Без «Принять» ничего не придёт</div>
+        <div style={{ fontSize: 12, color: C.mutedSoft, lineHeight: 1.5 }}>{direct
+          ? "С вашего устройства, без облака — по сети Wi-Fi. Без «Принять» ничего не придёт"
+          : "Принимайте только от тех, кого знаете. Без «Принять» ничего не придёт"}</div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button type="button" className="nx-ghost-btn" onClick={onReject} style={ghost}>Отклонить</button>
           <button type="button" className="nx-primary" onClick={onAccept} style={primary}>Принять</button>

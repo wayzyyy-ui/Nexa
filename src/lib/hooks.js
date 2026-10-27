@@ -219,6 +219,64 @@ export function usePullState() {
   return useSyncExternalStore((f) => { pullSubs.add(f); return () => pullSubs.delete(f); }, () => pullState);
 }
 
+/* Телефон: смахнуть экран вправо — назад (2026-10-27; так же было только в «Заметках»).
+   Экран (ref) едет за пальцем; дальше трети ширины или быстрый флик — уезжает и зовёт onBack, иначе
+   возвращается. Жест — по всему экрану, кроме: полей ввода, рядов, что листаются вбок (data-no-swipe
+   внутри экрана), меню и окон поверх (кроме самого экрана, если он сам — окно), нижней панели и 24 px
+   у левого края (там системный «Назад»). key — пересобрать слушатели, когда экран сменился */
+export function useSwipeBack(ref, onBack, enabled, key) {
+  const backRef = useRef(onBack); backRef.current = onBack;
+  useEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el) return;
+    const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let g = null;
+    const reset = () => { el.style.transition = "transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 220ms ease"; el.style.transform = ""; el.style.opacity = ""; };
+    const blocked = (target) => {
+      if (target.closest?.("input, textarea, select, .nx-tabbar-pill, .nx-viewer")) return true;
+      const own = (sel) => { const n = target.closest?.(sel); return !!n && n !== el && !n.contains(el); };
+      return own("[data-no-swipe]") || own('[role="menu"]') || own('[role="dialog"]');
+    };
+    const down = (e) => {
+      g = null;
+      const t = e.touches[0];
+      if (e.touches.length !== 1 || t.clientX < 24 || !el.isConnected || blocked(e.target)) return;
+      // Открыто окно поверх экрана (файл, подтверждение…) — жест его, а не экрана
+      const top = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d !== el && !d.contains(el) && !el.contains(d));
+      if (top) return;
+      g = { x: t.clientX, y: t.clientY, at: performance.now(), dx: 0, axis: null };
+    };
+    const move = (e) => {
+      if (!g) return;
+      const t = e.touches[0], dx = t.clientX - g.x, dy = t.clientY - g.y;
+      if (!g.axis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) g.axis = dx > 0 && dx > Math.abs(dy) * 1.5 ? "x" : "y";
+      if (g.axis !== "x") return;
+      g.dx = Math.max(0, dx);
+      if (still()) return;
+      el.style.transition = "none";
+      el.style.transform = `translateX(${g.dx}px)`;
+      el.style.opacity = String(1 - Math.min(0.4, g.dx / el.offsetWidth / 1.5));
+    };
+    const up = () => {
+      const s0 = g; g = null;
+      if (!s0 || s0.axis !== "x") return;
+      const w = el.offsetWidth || innerWidth, fast = s0.dx > 50 && s0.dx / Math.max(1, performance.now() - s0.at) > 0.5;
+      if (s0.dx > w / 3 || fast) {
+        if (still()) { backRef.current(); return; }
+        el.style.transition = "transform 200ms cubic-bezier(0.4, 0, 1, 1), opacity 200ms ease";
+        el.style.transform = `translateX(${w}px)`; el.style.opacity = "0";
+        // Экран остаётся тем же элементом (раздел Настроек) — вернуть его на место после выхода
+        setTimeout(() => { backRef.current(); requestAnimationFrame(() => { el.style.transition = "none"; el.style.transform = ""; el.style.opacity = ""; }); }, 190);
+      } else reset();
+    };
+    document.addEventListener("touchstart", down, { passive: true });
+    document.addEventListener("touchmove", move, { passive: true });
+    document.addEventListener("touchend", up, { passive: true });
+    document.addEventListener("touchcancel", up, { passive: true });
+    return () => { document.removeEventListener("touchstart", down); document.removeEventListener("touchmove", move); document.removeEventListener("touchend", up); document.removeEventListener("touchcancel", up); };
+  }, [enabled, key]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 export function usePullToRefresh(enabled, onRefresh) {
   const setPull = (v) => setPullState({ pull: v });
   const setBusy = (v) => setPullState({ busy: v });

@@ -36,12 +36,14 @@ import { deviceType, uniqueDeviceName, DEVICES_KEY, loadDeviceStore, devicesToLi
 import { ACTIVITY_MAX, loadActivity } from "./lib/activity.js";
 import { PAIR_TTL_MS, PAIR_MAX_TRIES, PAIR_LOCK_MS, PAIR_ANSWER_MS, parseNexaQr, makePairCode, readPairLock, savePairLock } from "./lib/pairing.js";
 import { loadFlow, copyText } from "./lib/flow.js";
-import { useOnline, useModalLock, useSheetSwipe, useKeyboardViewport, keyboardBusy, scrollTopNow, useSmoothScroll, usePullToRefresh } from "./lib/hooks.js";
+import { useOnline, useModalLock, useSheetSwipe, useKeyboardViewport, keyboardBusy, scrollTopNow, useSmoothScroll, usePullToRefresh, useSwipeBack, useMediaQuery } from "./lib/hooks.js";
 import { IconBtn, Toggle, SectionTitle, SettingsRow, SettingsGroup, btnReset } from "./ui/base.jsx";
 import { BackdropFolds, BackdropGrid } from "./ui/backdrop.jsx";
 import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./ui/navigation.jsx";
 import { arrowNavTarget, isEditable } from "./lib/keynav.js";
 import { onDesktopOpen, desktopDeviceInfo, desktopSaveFile } from "./lib/desktop.js";
+import { useDirect } from "./lib/direct.js";
+import { directProblem } from "./lib/directPlan.js";
 import { buildBackup, readBackup, planRestore, backupSummary, ownerTag, backupFileName, SETTINGS_KEYS } from "./lib/backup.js";
 import { BackupSettings } from "./ui/backup.jsx";
 import { parseNexaLink } from "./lib/deeplink.js";
@@ -62,6 +64,8 @@ import { NOTES_KEY, NOTES_MAX, loadNotes, NOTE_CATS, NOTE_PREFS_KEY, loadNotePre
 import { FOLDERS, FILES_KEY, loadFileStore, catFromFile, autoFolder, withWhen, uploadDevice, folderName, sortByRecent, catOf, fileMeta, FILE_SCOPE, setFileScope } from "./lib/fileStore.js";
 import { VERSION } from "./version.js";
 import { NotificationBell, TimeDate } from "./ui/notifications.jsx";
+import { Avatar } from "./ui/profile.jsx";
+import { profileAvatar } from "./lib/profile.js";
 import { MemorySettings } from "./ui/memory.jsx";
 import { MiniHelpSettings, MiniAskDialog } from "./ui/miniHelp.jsx";
 import { useMiniCollect } from "./lib/mini/collectHook.js";
@@ -287,6 +291,9 @@ export default function NexaApp() {
   });
   const peerIds = new Set(link.peers.map((d) => d.device_id));
   const peerById = new Map(link.peers.map((p) => [p.device_id, p]));
+  /* Прямая передача файла без облака (src/lib/direct.js): только вошедшим, сигналы — по каналу аккаунта */
+  const direct = useDirect(link, !!uid);
+  const directRef = useRef(direct); directRef.current = direct;
   // Последние сведения от каждого устройства (обновляются с каждым Presence):
   // когда устройство пропадёт, сохраним именно их, а не снимок на момент подключения
   const lastPeerSys = useRef({});
@@ -350,7 +357,7 @@ export default function NexaApp() {
       if (!d.real) return d;
       const isSelf = d.device_id === link.self?.device_id, online = peerIds.has(d.device_id);
       const saved = cleanSys(d.sys);
-      return { ...d, online, isSelf, sys: (isSelf && thisSys) || (online && peerById.get(d.device_id)?.sys) || saved };
+      return { ...d, online, isSelf, p2p: online && !!peerById.get(d.device_id)?.p2p, sys: (isSelf && thisSys) || (online && peerById.get(d.device_id)?.sys) || saved };
     })
     .reduce(mergeSamePhone, []);
   // Названия реальных устройств по device_id — для блока «Связь устройств»
@@ -389,6 +396,12 @@ export default function NexaApp() {
   const addScheduleItem = (it) => {
     setSchedule((list) => sortSchedule([...list, { id: newId(), ...it }]));
     showToast({ title: "Дело добавлено", text: `${dayLabel(it.date)}${it.time} · ${it.title}`, kind: "schedule" });
+  };
+  // Правка дела: id (если есть) остаётся — в облаке это та же строка
+  const sameItem = (x, it) => (it.id ? x.id === it.id : x.date === it.date && x.time === it.time && x.title === it.title);
+  const updateScheduleItem = (old, next) => {
+    setSchedule((list) => sortSchedule(list.map((x) => (sameItem(x, old) ? { ...x, ...next } : x))));
+    showToast({ title: "Дело изменено", text: `${dayLabel(next.date)}${next.time} · ${next.title}`, kind: "schedule" });
   };
   const removeScheduleItem = (it) => {
     setSchedule((list) => list.filter((x) => !(x.date === it.date && x.time === it.time && x.title === it.title)));
@@ -705,6 +718,7 @@ export default function NexaApp() {
 
   /* ── События канала (кроме текста) ── */
   const handleLinkEvent = (event, p) => {
+    if (directRef.current?.handle(event, p)) return; // p2p.* — прямая передача файла
     if (clipRef.current?.handle(event, p)) return; // общий буфер обмена — clip.new / clip.del / clip.clear
     if (event === "pair.claim") return answerClaim(p);
     if (event === "pair.ok" || event === "pair.fail") return onPairAnswer(event, p);
@@ -1926,6 +1940,12 @@ export default function NexaApp() {
   // Свайп ведёт пальцем: соседний раздел собирается за краем (peek) и после жеста становится текущим
   const [peek, setPeek] = useState(null);   // { tab, dir } — сосед на время жеста
   const [quiet, setQuiet] = useState(null); // раздел, пришедший свайпом, — без своего «появления»
+  /* Экраны поверх раздела (устройство, «Все устройства», «Активность», «О системе», безопасность) на телефоне
+     смахиваются вправо — назад, как кнопка «Назад» (та же запись истории). У «Заметок» свой такой жест */
+  const overlayRef = useRef(null);
+  const phoneNow = useMediaQuery(PHONE_MQ);
+  const overlayKey = securityOpen ? "security" : devicesOpen && !openDeviceId ? "devices" : notesOpen ? "" : aboutOpen ? "about" : activityOpen ? "activity" : openDeviceId ? `dev-${openDeviceId}` : "";
+  useSwipeBack(overlayRef, () => window.history.back(), phoneNow && !!overlayKey, overlayKey);
   useTabSwipe(
     () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen || notesOpen }),
     { onPeek: (t, dir) => setPeek(t ? { tab: t, dir } : null),
@@ -2449,28 +2469,9 @@ export default function NexaApp() {
     if (t) openTargetRef.current?.(t);
   }), []);
 
-  /* ── Синхронизация: «не удалось» — когда повторы кончились или сессия закончилась;
-     «восстановлено» — только если до этого был сбой или без сети ждали изменения,
-     и облако подтвердило, что всё сохранено. Ключ — по 10-минутке: одно на все вкладки ── */
-  const syncAlarm = useRef({ failed: false, waited: false });
-  useEffect(() => {
-    if (!uid) { syncAlarm.current = { failed: false, waited: false }; return; }
-    const a = syncAlarm.current;
-    const authLost = Object.values(syncState).some((st) => st?.kind === "auth");
-    const bucket = Math.floor(Date.now() / 600000);
-    if (!online && syncPending > 0) a.waited = true;
-    if ((syncGaveUp || authLost) && !a.failed) {
-      a.failed = true;
-      notify({ cat: "sync", key: `sync-fail:${uid}:${bucket}`, source: "Облако NEXA", target: { sync: true },
-        title: authLost ? "Сессия закончилась" : "Не удалось сохранить в облако",
-        text: authLost ? "Изменения на устройстве — войдите заново" : `${syncError || "Облако не отвечает"}${syncPending ? ` · ждут: ${syncPending}` : ""}` });
-    }
-    if ((a.failed || a.waited) && online && !syncLoading && !syncError && syncPending === 0) {
-      a.failed = false; a.waited = false;
-      notify({ cat: "sync", key: `sync-ok:${uid}:${bucket}`, source: "Облако NEXA", target: { sync: true },
-        title: "Связь восстановлена", text: "Изменения сохранены в облаке" });
-    }
-  }, [uid, online, syncLoading, syncError, syncPending, syncGaveUp]);
+  /* Синхронизация больше не шлёт уведомлений «Не удалось сохранить в облако» / «Связь восстановлена»
+     (просьба автора 2026-10-27: на телефоне приходили системными и мешали). Состояние видно в строке
+     синхронизации и окне «Связь и синхронизация»; уведомления — только о новой версии NEXA */
 
   /* ── Новое устройство в аккаунте: появилось в списке, подтверждённом облаком.
      Какие устройства уже знаем — nexa-known-devices@<id>; первый раз запоминаем молча ── */
@@ -2658,6 +2659,72 @@ export default function NexaApp() {
     return null;
   })();
 
+  /* ── Прямая передача: отправить, сохранить принятое, плашка ── */
+  const sendDirectTo = (d, file) => {
+    const why = directProblem(file, d);
+    if (why) { showToast({ kind: "error", title: "Напрямую не получится", text: why, ...(d.online ? { action: { label: "Через облако", onClick: () => sendFileTo(d, file) } } : {}) }); return; }
+    direct.send(d, file);
+  };
+  const pickDirect = (d) => {
+    // Выбор файла — сразу по нажатию (браузер открывает окно выбора только так)
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.onchange = () => { const f = inp.files?.[0]; if (f) sendDirectTo(d, f); };
+    inp.click();
+  };
+  const saveDirect = async (x) => {
+    const name = safeFileName(x.name);
+    try {
+      let r;
+      if (isDesktop) r = await desktopSaveFile(x.blob, name);
+      else if (isNative) r = await nativeSaveLarge(x.blob, { name, mime: x.mime || "application/octet-stream" });
+      else {
+        const url = URL.createObjectURL(x.blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        r = "started";
+      }
+      if (r === "saved" || (isNative && r)) showToast({ title: "Файл сохранён", text: isNative ? `«${name}» — в «Загрузках»` : `«${name}»` });
+    } catch { showToast({ kind: "error", title: "Не получилось сохранить", text: "Попробуйте ещё раз" }); }
+  };
+  // Не соединились напрямую — подсказываем облако (как раньше)
+  const directOutPrev = useRef(null);
+  useEffect(() => {
+    const o = direct.out;
+    if (o && o.phase === "failed" && o.reason === "connect" && directOutPrev.current !== o.id) {
+      directOutPrev.current = o.id;
+      const d = devices.find((x) => x.device_id === o.to) || (devices.find((x) => x.members?.includes?.(o.to)));
+      if (d && o.file) showToast({ kind: "error", title: "Напрямую не соединились", text: "Устройства должны быть в одной сети Wi-Fi", action: { label: "Через облако", onClick: () => sendFileTo({ ...d, device_id: o.to }, o.file) }, duration: 9000 });
+    }
+  }, [direct.out]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Пришёл файл — в колокольчик и «Активность» (без содержимого)
+  const directDone = useRef(null);
+  useEffect(() => {
+    const x = direct.inc;
+    if (x?.phase === "done" && directDone.current !== x.id) {
+      directDone.current = x.id;
+      notify({ cat: "files", key: `direct:${x.id}`, source: `«${x.fromName || "Устройство"}»`, title: "Получен файл напрямую", text: "Сохраните его или добавьте в «Файлы»", toast: false });
+    }
+  }, [direct.inc]); // eslint-disable-line react-hooks/exhaustive-deps
+  const directBanner = (() => {
+    const x = direct.inc;
+    if (x) return { key: `dir-in-${x.id}`, onClose: direct.closeInc,
+      st: { state: x.phase === "done" ? "done" : x.phase === "failed" ? "error" : "receiving", progress: x.size ? x.bytes / x.size : 0, error: x.error },
+      drop: { kind: "in", fromName: x.fromName || "Устройство", fromType: realTypes[x.from] || "laptop", name: x.name, mime: x.mime, onCancel: direct.cancelInc,
+        doneText: "получен напрямую", waitText: x.phase === "connecting" ? "Соединяемся напрямую…" : null,
+        actions: x.blob ? [
+          { label: "Сохранить", primary: true, run: () => saveDirect(x) },
+          { label: "В «Файлы»", run: () => { addFiles([new File([x.blob], safeFileName(x.name), { type: x.mime || "" })], null); goTab("files"); } },
+        ] : null } };
+    const o = direct.out;
+    if (o) return { key: `dir-out-${o.id}`, onClose: direct.closeOut,
+      st: { state: o.phase === "done" ? "done" : o.phase === "failed" ? "error" : "uploading", progress: o.total ? o.bytes / o.total : 0, error: o.error },
+      drop: { kind: "send", devName: o.toName || "Устройство", devType: o.toType || "laptop", name: o.file?.name || "файл", mime: o.file?.type || "", onCancel: direct.cancelOut,
+        waitText: o.phase === "asking" ? "Ждём «Принять»…" : o.phase === "connecting" ? "Соединяемся напрямую…" : null } };
+    return null;
+  })();
+
   const quick = (() => {
     const online = link.status === "online";
     const live = devices.filter((d) => d.real && !d.isSelf && d.online);
@@ -2676,7 +2743,7 @@ export default function NexaApp() {
       { id: "chat", title: "Новый диалог с ассистентом", sub: "ИИ-ассистент NEXA", icon: Icon.sparkle,
         keywords: ["ассистент", "ии", "чат", "диалог", "вопрос", "спросить"], run: newChatQuick },
       // Продолжить диалог на другом своём устройстве: сначала какой (открытый сейчас — первым), потом окно выбора устройства
-      !!uid && online && contTargets.some((d) => d.real && !d.isSelf && !d.bt && d.online) && chats.length > 0 && { id: "continue", title: "Продолжить диалог на другом устройстве", sub: "Откроется там после «Открыть»", icon: Icon.chat,
+      !!uid && online && contTargets.some((d) => d.real && !d.isSelf && !d.bt && d.online) && chats.length > 0 && { id: "continue", title: "Продолжить диалог на другом устройстве", sub: "Откроется там после «Открыть»", icon: Icon.handoff,
         keywords: ["продолжить", "continuity", "диалог", "чат", "на телефоне", "на компьютере", "другом устройстве"],
         pick: { title: "Какой диалог?", placeholder: "Найти диалог…", empty: "Диалогов нет",
           items: [...chats].sort((p, q) => (q.id === currentChatRef.current) - (p.id === currentChatRef.current) || (q.updatedAt || 0) - (p.updatedAt || 0)).slice(0, 30)
@@ -2696,6 +2763,9 @@ export default function NexaApp() {
               thumb: <FileThumb file={f} w={34} h={34} iconSize={14} radius={0} />, run: () => sendStoredFile(d, f) })),
           ] },
         })) } },
+      !!uid && live.some((d) => d.p2p && !d.bt) && { id: "direct", title: "Передать файл напрямую", sub: "Без облака — устройства в одной сети Wi-Fi", icon: Icon.handoff,
+        keywords: ["напрямую", "без облака", "передать", "отправить", "файл", "wi-fi", "локально", "большой"],
+        pick: pickDevice("Куда передать напрямую?", (d) => pickDirect(d)) },
       nb.supported && { id: "nearby", title: "Отправить рядом", sub: "На соседний телефон с NEXA — без интернета", icon: Icon.signal,
         keywords: ["рядом", "airdrop", "аирдроп", "без интернета", "bluetooth", "передать", "отправить", "файл", "соседний"], run: () => setNearSheet("send") },
       nb.supported && { id: "nearby-recv", title: nb.recv.on ? "Не принимать файлы рядом" : "Принимать файлы рядом",
@@ -2926,8 +2996,8 @@ export default function NexaApp() {
             onFind={findDevice}
           />
         )}
-        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onRemoveItem={removeScheduleItem} onNotes={() => openNotes()} notesCount={userNotes.filter((n) => !n.archived).length} />}
-        {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} />}
+        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onUpdateItem={updateScheduleItem} onRemoveItem={removeScheduleItem} onNotes={() => openNotes()} notesCount={userNotes.filter((n) => !n.archived).length} />}
+        {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} onAddFiles={(list) => addFiles(list, null)} />}
         {t === "files" && (
           <ScreenFiles
             key={`files-${searchFolder || "root"}`}
@@ -3048,7 +3118,8 @@ export default function NexaApp() {
       {/* Главная (макет 2026-10): мягкое мятно-синее свечение фона — на весь экран, и под боковым меню */}
       {/* Фон из макета 2026-10 — на Главной, «Сегодня», «Медиа», «Файлах» и под меню у ассистента */}
       {/* Общий фон-градиент: разделы и экраны поверх них («Активность», «О системе», безопасность) */}
-      {!openDevice && (["home", "today", "media", "files", "assistant", "settings"].includes(tab) || aboutOpen || activityOpen || securityOpen) && <div className="nx-home-glow" aria-hidden="true" />}
+      {/* С 2026-10-27 и на экране устройства и «Все устройства» (просьба автора — там был старый тёмный фон с линиями) */}
+      {(openDevice || devicesOpen || ["home", "today", "media", "files", "assistant", "settings"].includes(tab) || aboutOpen || activityOpen || securityOpen) && <div className="nx-home-glow" aria-hidden="true" />}
       {/* Версия приложения запрещена — поверх всего экран «Обновите» */}
       {appUpdate?.required && <ForceUpdateScreen update={appUpdate} />}
       {/* Приложение: «потяните, чтобы обновить» */}
@@ -3097,7 +3168,8 @@ export default function NexaApp() {
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
             <QuickBtn />
             <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
-            <IconBtn icon={Icon.user} onClick={() => navTo("settings")} label="Настройки" className="nx-tb-user" />
+            {/* Своё фото в профиле — оно вместо значка человека */}
+            <IconBtn icon={profileAvatar(auth.user) ? (p) => <Avatar user={auth.user} size={p.s + 8} /> : Icon.user} onClick={() => navTo("settings")} label="Настройки" className="nx-tb-user" />
           </TopBar>
 
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
@@ -3107,11 +3179,11 @@ export default function NexaApp() {
         <div className="ng-main-content" style={{ flex: 1, width: "100%", maxWidth: 1440, margin: "0 auto", position: "relative" }}>
     {/* Открыт экран устройства — показываем его вместо текущего раздела */}
     {securityOpen ? (
-    <div key="security" className="ng-screen-anim">
+    <div key="security" ref={overlayRef} className="ng-screen-anim">
       <ScreenSecurity onBack={() => setSecurityOpen(false)} {...securityProps} />
     </div>
   ) : devicesOpen && !openDevice ? (
-    <div key="devices" className="ng-screen-anim">
+    <div key="devices" ref={overlayRef} className="ng-screen-anim">
       <ScreenDevices devices={devices} received={received} findState={findState} onOpenDevice={showDevice} onFind={findDevice}
         onAddDevice={onAddDevice} onBack={() => setDevicesOpen(false)} />
     </div>
@@ -3121,15 +3193,15 @@ export default function NexaApp() {
         request={notesReq} schedule={schedule} onAddSchedule={addScheduleItem} toast={showToast} onAskAi={askAiAboutNote} />
     </div>
   ) : aboutOpen ? (
-    <div key="about" className="ng-screen-anim">
+    <div key="about" ref={overlayRef} className="ng-screen-anim">
       <ScreenAbout onBack={() => setAboutOpen(false)} installed={installedVersion} />
     </div>
   ) : activityOpen ? (
-    <div key="activity" className="ng-screen-anim">
+    <div key="activity" ref={overlayRef} className="ng-screen-anim">
       <ScreenActivity items={activity} onBack={() => setActivityOpen(false)} onClear={() => setActivity([])} />
     </div>
   ) : openDevice ? (
-    <div key={`dev-${openDevice.id}`} className="ng-screen-anim">
+    <div key={`dev-${openDevice.id}`} ref={overlayRef} className="ng-screen-anim">
       <DeviceScreen
         key={openDevice.id}
         device={openDevice}
@@ -3161,7 +3233,7 @@ export default function NexaApp() {
               {openDevice.parts && <PhoneParts d={openDevice} pick={livePart(openDevice)} onPick={(pid) => setPartPick((m) => ({ ...m, [openDevice.id]: pid }))} />}
               <RealDeviceActions d={t} linkOnline={link.status === "online"}
                 st={{ find: findState[t.device_id], lock: lockState[t.device_id], send: sendState[t.device_id], locate: locateState[t.device_id] }}
-                act={{ find: findDevice, lock: lockDevice, sendFile: sendFileTo, cancelSend, openLink: openLinkOn, reconnect: openPair, locate: locateDevice, message: messageDevice }} />
+                act={{ find: findDevice, lock: lockDevice, sendFile: sendFileTo, sendDirect: sendDirectTo, cancelSend, openLink: openLinkOn, reconnect: openPair, locate: locateDevice, message: messageDevice }} />
             </>
           );
         })()}
@@ -3251,11 +3323,12 @@ export default function NexaApp() {
         }}
       />
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
-      {nbBanner
-        ? <DropBanner key={nbBanner.key} drop={nbBanner.drop} st={nbBanner.st} onClose={nbBanner.onClose} />
+      {nbBanner || directBanner
+        ? <DropBanner key={(nbBanner || directBanner).key} drop={(nbBanner || directBanner).drop} st={(nbBanner || directBanner).st} onClose={(nbBanner || directBanner).onClose} />
         : drop && <DropBanner key={drop.id} drop={drop} st={drop.st || sendState[drop.devKey]} onClose={() => setDrop((x) => (x?.id === drop.id ? null : x))} />}
       {nearSheet && <NearbySheet nb={nb} tab={nearSheet} myName={myNearName} onClose={() => setNearSheet(null)} />}
       {nb.ask && <NearbyAsk ask={nb.ask} onAccept={nb.acceptAsk} onReject={nb.rejectAsk} />}
+      {!nb.ask && direct.ask && <NearbyAsk direct ask={{ name: direct.ask.name, file: direct.ask.file, size: direct.ask.size }} onAccept={direct.accept} onReject={direct.reject} />}
      </div>
   );
 }

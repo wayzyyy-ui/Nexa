@@ -1,5 +1,5 @@
 // Экран «Медиа и файлы»: категории, объём хранилища
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatBytes } from "../lib/deviceInfo.js";
 import { cloudBytes, localBytes, CLOUD_QUOTA_BYTES } from "../lib/files.js";
 import { C, T } from "../ui/theme.js";
@@ -91,7 +91,9 @@ export function StorageFolds({ cats, selected, onSelect }) {
 // (считает база, nexa_storage_used) из лимита CLOUD_QUOTA_BYTES; у гостя —
 // сколько реально лежит в этом браузере (IndexedDB), лимита у NEXA нет.
 // Демо-файлы без содержимого в объём не входят
-export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer }) {
+// onAddFiles(список) — быстрое добавление: файлы сами разложатся по папкам по типу
+export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onTransfer, onAddFiles }) {
+  const pickRef = useRef(null);
   // Какой сегмент хранилища выбран (id категории или null)
   const [selected, setSelected] = useState(null);
   const real = files.filter((f) => f.uploaded);
@@ -150,7 +152,19 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
 
   return (
     <MediaLayout>
-      <MediaTitle title="Медиа и файлы" />
+      <MediaTitle title="Медиа и файлы" action={onAddFiles && (
+        <>
+          {/* Быстрая кнопка: выбрать файлы с устройства прямо отсюда, без перехода в «Файлы» */}
+          <button type="button" className="nx-primary nx-media-add" onClick={() => pickRef.current?.click()} aria-label="Добавить файлы" title="Добавить файлы" style={{
+            ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap", flexShrink: 0,
+            border: "1px solid transparent", borderRadius: 999, padding: "10px 18px", fontSize: 14, fontWeight: 500,
+            color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          }}>
+            {Icon.plus({ c: C.onFold, s: 16 })} <span className="nx-media-add-label">Добавить файлы</span>
+          </button>
+          <input ref={pickRef} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) onAddFiles(e.target.files); e.target.value = ""; }} />
+        </>
+      )} />
 
       {/* Только на телефоне: заголовок хранилища над карточкой, как в макете */}
       <div className="nx-only-mobile nx-storage-head" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>

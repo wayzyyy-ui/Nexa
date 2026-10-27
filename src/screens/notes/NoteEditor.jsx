@@ -25,6 +25,7 @@ import { ScheduleForm } from "../Today.jsx";
 import { ghost, round, linkBtn, useSuggestOn } from "./shared.js";
 import { NoteImages } from "./images.jsx";
 import { AiMenu, AiPanel, GhostLayer } from "./ai.jsx";
+import { localSuggest } from "../../lib/mini/t9.js";
 
 const SAVE_DELAY_MS = 600; // пауза в наборе — и записываем
 const EDGE_PX = 24;        // у самого края экрана жест «Назад» принадлежит системе
@@ -38,7 +39,7 @@ const upKey = (uid) => `nexa-note-img-up@${uid}`;
 const readUp = (uid) => { try { return new Set(JSON.parse(localStorage.getItem(upKey(uid))) || []); } catch { return new Set(); } };
 const writeUp = (uid, set) => { try { localStorage.setItem(upKey(uid), JSON.stringify([...set].slice(-500))); } catch { /* без памяти — отправим ещё раз, ничего страшного */ } };
 
-export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedule, onAddSchedule, onArchive, onClose, onAskAi, toast }) {
+export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = null, schedule, onAddSchedule, onArchive, onClose, onAskAi, toast }) {
   const scope = uid || "guest";
   const [title, setTitle] = useState(note?.title || "");
   const [text, setText] = useState(note?.text || "");
@@ -431,8 +432,23 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, schedu
       if (e?.status === 429) blockedUntil.current = Date.now() + 60000; // лимит — тихо отдыхаем минуту
     }
   };
+  /* mini-1 на устройстве — сразу, без сети и паузы: дописать слово или предложить следующее из того,
+     что человек сам пишет в заметках. Есть — сервер не спрашиваем; нет — обычный запрос (Gemini) */
+  const t9Ref = useRef(t9); t9Ref.current = t9;
+  const tryLocal = () => {
+    const ta = textRef.current;
+    if (!suggestOn || quiet.current || !ta || document.activeElement !== ta || conflictRef.current || layers.current.ai) return false;
+    const base = ta.value;
+    if (ta.selectionStart !== base.length || ta.selectionEnd !== base.length || base.length < 2) return false;
+    if (isSensitive(base.slice(-120))) return false;
+    const tail = localSuggest(base, t9Ref.current);
+    if (!tail) return false;
+    setGhostTip({ base, tail });
+    return true;
+  };
   const scheduleSuggest = () => {
     clearTimeout(sugTimer.current);
+    if (tryLocal()) return;
     if (!canSuggest()) return;
     const wait = Math.max(SUGGEST_PAUSE_MS, SUGGEST_GAP_MS - (Date.now() - lastReq.current));
     sugTimer.current = setTimeout(fire, wait);
