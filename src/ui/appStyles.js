@@ -244,7 +244,7 @@ export const APP_CSS = `
           padding: calc(40 * var(--mk)) calc(42 * var(--mk)) calc(20 * var(--mk));
           background: color-mix(in srgb, var(--panel) 35%, transparent);
         }
-        .nx-home-card-title { font-size: max(17px, calc(28 * var(--mk))); font-weight: 500; margin-bottom: calc(30 * var(--mk)); }
+        .nx-home-card-title { font-size: max(17px, calc(28 * var(--mk))); font-weight: 700; margin-bottom: calc(30 * var(--mk)); }
         .nx-home-devices { display: flex; flex-direction: column; min-height: calc(490 * var(--mk)); }
         /* Две плашки и «Добавить» помещаются в карточку высотой 490 из макета — карточка не растёт */
         .nx-home-devices > .nx-stagger { gap: calc(20 * var(--mk)) !important; margin-bottom: calc(20 * var(--mk)); }
@@ -309,8 +309,9 @@ export const APP_CSS = `
         }
 
         .nx-home-act { margin-top: calc(35 * var(--mk)); }
-        .nx-home-act > section { border-color: var(--line-bright) !important; border-radius: calc(48 * var(--mk)) !important;
-          padding: calc(28 * var(--mk)) calc(42 * var(--mk)) calc(18 * var(--mk)) !important; background: color-mix(in srgb, var(--panel) 35%, transparent) !important; }
+        /* Без своей обводки и заливки (2026-10-28): карточка — «стекло» (nx-glass на обёртке), как остальные */
+        .nx-home-act > section { border-color: transparent !important; border-radius: calc(48 * var(--mk)) !important;
+          padding: calc(28 * var(--mk)) calc(42 * var(--mk)) calc(18 * var(--mk)) !important; background: transparent !important; }
         .nx-home-act > section > div:first-child > span { font-size: max(14px, calc(20 * var(--mk))) !important; font-weight: 400 !important; }
         .nx-home-act .nx-act-title { font-size: max(13px, calc(19 * var(--mk))) !important; }
         .nx-home-act .nx-act-time { font-size: max(11px, calc(14 * var(--mk))) !important; }
