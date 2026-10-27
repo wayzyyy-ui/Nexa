@@ -60,7 +60,7 @@ const isId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 64 && /
 const LIMIT_PER_MINUTE = 10; // «Найти» не чаще 10 раз в минуту на аккаунт
 const LOCATE_PER_MINUTE = 6;  // «Где устройство?» и сообщение на экран через push
 const MESSAGE_MAX = 200;
-const LOCATE_STATUS = ['ok', 'off', 'denied', 'background', 'error'];
+const LOCATE_STATUS = ['ok', 'off', 'denied', 'background', 'error', 'nogps']; // nogps — геолокация на телефоне выключена (2026-10-27)
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
@@ -85,8 +85,29 @@ async function locateReply(req, res, sb) {
   const { data, error } = await sb.from('locate_requests')
     .update({ status: b.status, lat: ok ? lat : null, lon: ok ? lon : null, acc: ok ? (acc ?? 0) : null, at: ok ? Math.round(at || Date.now()) : null })
     .eq('id', b.id).eq('secret_hash', sha(b.key)).eq('status', 'waiting').gt('expires_at', new Date().toISOString())
-    .select('id');
+    .select('id, user_id, device_id');
   if (error) return res.status(200).json({ ok: false });
+  // Место пришло — это и есть «последнее известное» этого телефона (supabase/device-places.sql;
+  // нет таблицы — просто не сохраняем)
+  const row = data?.[0];
+  if (ok && row) {
+    await sb.from('device_places').upsert({ user_id: row.user_id, device_id: row.device_id, lat, lon, acc: acc ?? 0, at: Math.round(at || Date.now()), updated_at: new Date().toISOString() })
+      .then(() => {}, () => {});
+  }
+  return res.status(200).json({ ok: !!data?.length });
+}
+
+/* Телефон получил push «Где устройство?» и сразу отметился — ещё до поиска места (без входа, по ключу).
+   Спросивший видит «Телефон получил запрос…»: так понятно, дошёл ли push вообще */
+async function locateAck(req, res, sb) {
+  const b = req.body || {};
+  if (!isUuid(b.id) || typeof b.key !== 'string' || b.key.length < 20 || b.key.length > 100) return res.status(400).json({ error: 'Неверный запрос' });
+  const ip = sha(String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'none');
+  if (!(await allow([[`loc-reply:${ip}`, 30, 60]]))) return res.status(429).json({ error: 'Слишком часто' });
+  const { data, error } = await sb.from('locate_requests').update({ received_at: new Date().toISOString() })
+    .eq('id', b.id).eq('secret_hash', sha(b.key)).eq('status', 'waiting').is('received_at', null).gt('expires_at', new Date().toISOString())
+    .select('id');
+  if (error) return res.status(200).json({ ok: false }); // нет колонки received_at — без отметки, как раньше
   return res.status(200).json({ ok: !!data?.length });
 }
 
@@ -147,6 +168,10 @@ export default async function handler(req, res) {
     if (!sb) return res.status(200).json({ ok: false });
     return locateReply(req, res, sb);
   }
+  if (req.body?.action === 'locate-ack') {
+    if (!sb) return res.status(200).json({ ok: false });
+    return locateAck(req, res, sb);
+  }
   if (!sb || !sa) return res.status(200).json({ sent: false, reason: 'not_configured' });
 
   // Кто вошёл
@@ -161,11 +186,13 @@ export default async function handler(req, res) {
   if (action === 'locate-poll') {
     if (!isUuid(id)) return res.status(400).json({ error: 'Неверный запрос' });
     if (!(await allow([[`loc-poll:${uid}`, 60, 60]]))) return res.status(429).json({ error: 'Слишком часто' });
-    const { data: rows, error } = await sb.from('locate_requests').select('status, lat, lon, acc, at, expires_at').eq('user_id', uid).eq('id', id).limit(1);
+    let { data: rows, error } = await sb.from('locate_requests').select('status, lat, lon, acc, at, expires_at, received_at').eq('user_id', uid).eq('id', id).limit(1);
+    // Таблица без received_at (миграцию 2026-10-27 ещё не запускали) — как раньше
+    if (error && missing(error) && /received_at/.test(error.message || '')) ({ data: rows, error } = await sb.from('locate_requests').select('status, lat, lon, acc, at, expires_at').eq('user_id', uid).eq('id', id).limit(1));
     if (error) return res.status(200).json({ status: missing(error) ? 'not_configured' : 'error' });
     const r = rows?.[0];
     if (!r) return res.status(200).json({ status: 'gone' });
-    if (r.status === 'waiting') return res.status(200).json({ status: Date.parse(r.expires_at) < Date.now() ? 'gone' : 'waiting' });
+    if (r.status === 'waiting') return res.status(200).json({ status: Date.parse(r.expires_at) < Date.now() ? 'gone' : r.received_at ? 'received' : 'waiting' });
     await sb.from('locate_requests').delete().eq('user_id', uid).eq('id', id);
     return res.status(200).json(r.status === 'ok' ? { status: 'ok', lat: r.lat, lon: r.lon, acc: r.acc, at: Number(r.at) } : { status: r.status });
   }

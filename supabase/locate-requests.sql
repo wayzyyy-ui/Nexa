@@ -30,3 +30,12 @@ create index if not exists locate_requests_expires_idx on public.locate_requests
 alter table public.locate_requests enable row level security;
 -- Правил нет: ни authenticated, ни anon строки не видят. Работает только сервер (service_role)
 revoke all on public.locate_requests from anon, authenticated;
+
+-- ── 2026-10-27: «запрос дошёл» и «геолокация выключена» ──
+-- received_at — телефон получил push и сразу отметился (locate-ack), ещё до поиска места:
+-- спросивший видит «Телефон получил запрос…» вместо долгого молчания
+alter table public.locate_requests add column if not exists received_at timestamptz;
+-- nogps — на телефоне выключена геолокация целиком
+alter table public.locate_requests drop constraint if exists locate_requests_status_check;
+alter table public.locate_requests add constraint locate_requests_status_check
+  check (status in ('waiting', 'ok', 'off', 'denied', 'background', 'error', 'nogps'));

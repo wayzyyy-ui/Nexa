@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "re
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
-import { isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, nativeSaveLarge, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen, updateWatch, locateNativeSet, locateNativeStatus, locateOpenSettings, nearby, nearbyReadReceived } from "./native.js";
+import { haptic, isNative, isDesktop, checkForUpdate, startIntro, updateCleanup, canScanQr, scanQr, API_BASE, widgetsSetSchedule, widgetsSetCity, widgetsFlush, onWidgetTab, widgetsSetNote, onWidgetNote, nativeSaveLarge, clipboardWrite, onSharedText, onDesktopQuickPanel, systemNotifyPermission, systemNotify, scheduleReminders, onSystemNoteOpen, btAvailable, btBonded, onBtChange, pushToken, onPushOpen, updateWatch, locateNativeSet, locateNativeStatus, locateOpenSettings, backgroundOpenSettings, nearby, nearbyReadReceived } from "./native.js";
 import { useNearby } from "./lib/nearby.js";
 import { kickWebPush } from "./lib/webpush.js";
 import { NearbySheet, NearbyAsk } from "./ui/nearby.jsx";
@@ -43,6 +43,7 @@ import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./
 import { arrowNavTarget, isEditable } from "./lib/keynav.js";
 import { onDesktopOpen, desktopDeviceInfo, desktopSaveFile } from "./lib/desktop.js";
 import { useDirect } from "./lib/direct.js";
+import { savePlace, forgetPlace, loadPlace, markPlaceOn, PLACE_GAP_MS } from "./lib/places.js";
 import { directProblem } from "./lib/directPlan.js";
 import { buildBackup, readBackup, planRestore, backupSummary, ownerTag, backupFileName, SETTINGS_KEYS } from "./lib/backup.js";
 import { BackupSettings } from "./ui/backup.jsx";
@@ -309,12 +310,14 @@ export default function NexaApp() {
   // Всплывающее уведомление (только на экране). В колокольчик пишет notify — по категориям
   const showToast = (t) => {
     const id = ++toastIdRef.current;
-    setToasts((list) => [...list, { id, ...t }]);
+    // На экране — не больше трёх: при пачке событий старые уходят, экран не закрывается уведомлениями
+    setToasts((list) => [...list, { id, ...t }].slice(-3));
     setTimeout(
       () => setToasts((list) => list.filter((x) => x.id !== id)),
       t.duration || 3800
     );
   };
+  const addedBatch = useRef({ items: [], timer: 0 }); // «Файл добавлен» пачкой (startUpload)
   const dismissToast = (id) => setToasts((list) => list.filter((x) => x.id !== id));
 
   // Устройства: в сети ли и положение переключателей. Запоминаем в браузере,
@@ -862,6 +865,7 @@ export default function NexaApp() {
     addRealDevice(p);
     logSecurityRef.current?.("device-on", `Подключено «${p.name || "Устройство"}»`, "По коду с этого устройства");
     link.emit("pair.ok", { device_id: p.device_id, name: p.name || "Устройство" });
+    haptic(); // новое устройство — лёгкий отклик
     notifyRef.current({ cat: "devices", key: `newdev:${p.device_id}`, source: "Это устройство", title: "Подключено новое устройство", text: p.name || "Устройство", target: { tab: "home" } });
     closePair();
     // Когда новое устройство уйдёт в облако — пусть остальные перечитают список
@@ -1520,12 +1524,14 @@ export default function NexaApp() {
         setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { state: "ok", id, lat: r.lat, lon: r.lon, acc: r.acc || 0, at: r.at || Date.now() } } : m));
         return;
       }
-      if (["off", "denied", "background", "error"].includes(r.status)) {
+      if (["off", "denied", "background", "error", "nogps"].includes(r.status)) {
         clearTimeout(locateTimers.current[key]);
         setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { state: r.status, id } } : m));
         return;
       }
       if (r.status === "gone" || r.status === "not_configured") return; // ждём канал или срок
+      // Телефон получил push и отметился (APK 0.17.2+) — ищет место
+      if (r.status === "received") setLocateState((m) => (stillAsking(key, id)(m) && !m[key].received ? { ...m, [key]: { ...m[key], received: true } } : m));
       setTimeout(tick, LOCATE_POLL_MS);
     };
     setTimeout(tick, LOCATE_POLL_MS);
@@ -1544,7 +1550,7 @@ export default function NexaApp() {
       });
     } else if (!ok) { setLocateState((m) => ({ ...m, [key]: { state: "timeout", id } })); return; }
     clearTimeout(locateTimers.current[key]);
-    locateTimers.current[key] = setTimeout(() => setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { state: "timeout", id } } : m)), viaPush ? LOCATE_PUSH_WAIT_MS + 5000 : 25000);
+    locateTimers.current[key] = setTimeout(() => setLocateState((m) => (stillAsking(key, id)(m) ? { ...m, [key]: { state: "timeout", id, push: !!m[key].push, received: !!m[key].received } } : m)), viaPush ? LOCATE_PUSH_WAIT_MS + 5000 : 25000);
     logActivity("sent", `Спросили, где «${d.name}»`);
   };
   // Сообщение на экран блокировки своего телефона (push; видно, даже если NEXA закрыта)
@@ -1562,6 +1568,28 @@ export default function NexaApp() {
     try { return JSON.parse(localStorage.getItem("nexa-locate" + scope)) || { allow: false }; } catch { return { allow: false }; }
   });
   const locateAllowRef = useRef(locateAllow); locateAllowRef.current = locateAllow;
+  /* Последнее известное место (src/lib/places.js): «Где устройство?» не удалось — показываем, где
+     устройство было в последний раз (если на нём включён поиск). Своё место пишем сами */
+  const [lastPlaces, setLastPlaces] = useState({}); // device_id → { lat, lon, acc, at } | null
+  useEffect(() => {
+    if (!uid) return;
+    for (const [key, st] of Object.entries(locateState)) {
+      if (!st || st.state === "ok" || st.state === "asking" || key in lastPlaces) continue;
+      setLastPlaces((m) => ({ ...m, [key]: null }));
+      loadPlace(key).then((p) => setLastPlaces((m) => ({ ...m, [key]: p })));
+    }
+  }, [locateState, uid]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const me = link.self?.device_id;
+    if (!uid || !me) return;
+    if (!locateAllow.allow) { forgetPlace(uid, me); return; }
+    markPlaceOn(uid);
+    savePlace(uid, me, { force: true });
+    const t = setInterval(() => savePlace(uid, me), PLACE_GAP_MS + 5000);
+    const onVis = () => savePlace(uid, me, { force: document.visibilityState === "hidden" });
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVis); };
+  }, [uid, locateAllow.allow, link.self?.device_id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Переключатель — и в Android-часть: push «Где устройство?» обрабатывается без веб-части
   useEffect(() => { if (isNative) locateNativeSet(!!locateAllow.allow); }, [locateAllow.allow]);
   // Разрешено ли место в фоне («разрешать всегда») — перечитываем при возврате из настроек Android
@@ -1819,20 +1847,32 @@ export default function NexaApp() {
   // Центр безопасности открывается из Настроек поверх раздела (как «О системе»)
   // «Поиск этого устройства» — в центре безопасности (раньше был отдельной группой в Настройках)
   const bgRow = isNative && locateAllow.allow && locateBg;
+  // «Работа в фоне»: Xiaomi — «Автозапуск», у всех — экономия заряда «без ограничений» (APK 0.17.2+)
+  const bgWake = bgRow && (locateBg.autostart || locateBg.battery === false);
   const locateBlock = uid ? (
     <SettingsGroup>
       <SettingsRow last={!bgRow} icon={Icon.pin({ c: C.muted, s: 18 })} title="Показывать, где это устройство"
         subtitle={isNative
-          ? "Только вашим устройствам и только по кнопке «Где устройство?». Место определяется один раз на запрос и хранится, пока его не заберут (не дольше 5 минут)"
-          : "Только вашим устройствам и только по кнопке «Где устройство?». Место определяется один раз на запрос и нигде не хранится. Пока NEXA открыта или свёрнута"}
+          ? "Только вашим устройствам — по кнопке «Где устройство?». В аккаунте хранится одна последняя точка (без истории), чтобы найти телефон, даже если он выключен. Выключите — точка удалится"
+          : "Только вашим устройствам — по кнопке «Где устройство?», пока NEXA открыта или свёрнута. В аккаунте хранится одна последняя точка (без истории); выключите — она удалится"}
         right={<Toggle on={!!locateAllow.allow} onClick={toggleLocateAllow} label="Показывать, где это устройство" />} />
       {bgRow && (
-        <SettingsRow last icon={Icon.lock({ c: locateBg.background ? C.green : C.muted, s: 18 })} title="Когда NEXA закрыта"
+        <SettingsRow last={!bgWake} icon={Icon.lock({ c: locateBg.background ? C.green : C.muted, s: 18 })} title="Когда NEXA закрыта"
           subtitle={locateBg.background
             ? "Разрешено: телефон ответит, даже если NEXA закрыта и экран выключен — когда он включён и в сети. Вы увидите уведомление «Местоположение показано»"
             : "Нужно разрешение «Местоположение → Разрешать всегда». Android даёт его только в настройках: «Разрешения» → «Местоположение»"}
           right={locateBg.background ? null : (
             <button type="button" className="nx-ghost-btn" onClick={() => locateOpenSettings()} style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" }}>Открыть</button>
+          )} />
+      )}
+      {bgWake && (
+        <SettingsRow last wrap icon={Icon.power({ c: locateBg.battery && !locateBg.autostart ? C.green : C.muted, s: 18 })} title="Работа в фоне"
+          subtitle={locateBg.autostart
+            ? "На этом телефоне система не будит закрытые приложения: включите для NEXA «Автозапуск», а в «Батарее» — «Без ограничений». Иначе «Найти» и «Где устройство?» сработают, только когда NEXA открыта"
+            : "Экономия заряда может не дать NEXA ответить, когда она закрыта. Выберите для NEXA «Не экономить» / «Без ограничений»"}
+          right={(
+            <button type="button" className="nx-ghost-btn" onClick={() => backgroundOpenSettings().then((ok) => { if (!ok) showToast({ title: "Не открылось", text: "Обновите приложение NEXA или найдите NEXA в настройках телефона: «Приложения» → NEXA → «Батарея»" }); })}
+              style={{ ...btnReset, fontSize: 13, padding: "7px 14px", border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" }}>Настроить</button>
           )} />
       )}
     </SettingsGroup>
@@ -2278,7 +2318,15 @@ export default function NexaApp() {
       if (uploadUid.current !== uid) return; // пока грузилось, вошёл другой (или вышли) — не его файл
       // Уже есть (догрузила очередь в другой вкладке) — не дублируем
       setFileStore((s) => (s.added.some((f) => f.id === id) ? s : { ...s, added: [...s.added, { ...meta, ...extra, updatedAt: meta.addedAt }] }));
-      showToast({ title: "Файл добавлен", text: `${name} → ${folderName(folders, folder)}` });
+      // Несколько файлов подряд — одно уведомление «Добавлено файлов: N» (было по одному на файл)
+      const b = addedBatch.current;
+      b.items.push(`${name} → ${folderName(folders, folder)}`);
+      clearTimeout(b.timer);
+      b.timer = setTimeout(() => {
+        const items = b.items; b.items = [];
+        if (items.length === 1) showToast({ title: "Файл добавлен", text: items[0] });
+        else showToast({ title: `Добавлено файлов: ${items.length}`, text: items.length > 2 ? `${items[0]} и ещё ${items.length - 1}` : items.join(", ") });
+      }, 900);
     };
     setUploads((list) => [...list, { id: upId, fileId: id, name, folder, progress: 0, status: "uploading", file }]);
 
@@ -2485,6 +2533,7 @@ export default function NexaApp() {
     const save = (ids) => { try { localStorage.setItem(k, JSON.stringify(ids)); } catch {} };
     if (!Array.isArray(known)) { save(realIds); return; }
     const fresh = realIds.filter((id) => !known.includes(id) && id !== link.self?.device_id);
+    if (fresh.length) haptic();
     for (const id of fresh) {
       const row = realRowOf(id);
       notify({ cat: "devices", key: `newdev:${id}`, source: "Аккаунт NEXA", title: "Новое устройство в аккаунте", text: row?.name || "Устройство", target: { device: row?.id } });
@@ -2629,6 +2678,9 @@ export default function NexaApp() {
   });
   // Передача пошла — окно закрываем, ход виден на плашке сверху
   useEffect(() => { if (nb.send?.phase === "sending") setNearSheet(null); }, [nb.send?.phase]);
+  // «Рядом» и «напрямую»: файл передан / принят — лёгкий отклик
+  useEffect(() => { if (nb.send?.phase === "done" || nb.inc?.phase === "done" || direct.out?.phase === "done" || direct.inc?.phase === "done") haptic(); },
+    [nb.send?.phase, nb.inc?.phase, direct.out?.phase, direct.inc?.phase]);
   const nearToFiles = async (x) => {
     try {
       const f = await nearbyReadReceived(x.id, { mime: x.mime, name: x.file });
@@ -2980,6 +3032,9 @@ export default function NexaApp() {
     <>
         {t === "home" && (
           <ScreenHome
+            schedule={schedule}
+            files={files}
+            onOpenCategory={openCategory}
             devices={devices}
             received={received}
             update={isDesktop ? appUpdate : homeUpdate}
@@ -3232,7 +3287,7 @@ export default function NexaApp() {
             <>
               {openDevice.parts && <PhoneParts d={openDevice} pick={livePart(openDevice)} onPick={(pid) => setPartPick((m) => ({ ...m, [openDevice.id]: pid }))} />}
               <RealDeviceActions d={t} linkOnline={link.status === "online"}
-                st={{ find: findState[t.device_id], lock: lockState[t.device_id], send: sendState[t.device_id], locate: locateState[t.device_id] }}
+                st={{ find: findState[t.device_id], lock: lockState[t.device_id], send: sendState[t.device_id], locate: locateState[t.device_id], place: lastPlaces[t.device_id] }}
                 act={{ find: findDevice, lock: lockDevice, sendFile: sendFileTo, sendDirect: sendDirectTo, cancelSend, openLink: openLinkOn, reconnect: openPair, locate: locateDevice, message: messageDevice }} />
             </>
           );

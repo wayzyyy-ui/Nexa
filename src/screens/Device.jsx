@@ -70,7 +70,7 @@ export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
           {Icon.pin({ c: why && !pushFindOk ? C.mutedSoft : C.text, s: 14 })} Где устройство?
         </button>
       </div>
-      <LocateResult r={st.locate} />
+      <LocateResult r={st.locate} place={st.place} />
       {/* Отправка файла: настоящий процент, отмена; ошибка — честно */}
       {send.state && (
         <div role={send.state === "error" ? "alert" : "status"} style={{ marginTop: 10, fontSize: 13, color: send.state === "error" ? C.red : C.muted }}>

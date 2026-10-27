@@ -10,7 +10,7 @@ import { QuickPanel } from "../../ui/QuickPanel.jsx";
 import { AssistantSpectrum, AssistantAura, ReplyAura, REPLY_AURA_HOLD, REPLY_AURA_FADE } from "./visuals.jsx";
 import { ChatHistory, assistantSuggestions } from "./ChatHistory.jsx";
 import { flushSync } from "react-dom";
-import { API_CHAT_URL } from "../../native.js";
+import { API_CHAT_URL, haptic } from "../../native.js";
 import { newId } from "../../lib/sync.js";
 import { fileBlob, signedFileUrl } from "../../lib/files.js";
 import { fileBytes, plural } from "../../lib/format.js";
@@ -465,6 +465,7 @@ useEffect(() => {
     // Конец: ответ — в историю один раз, целиком. flushSync — чтобы пузырь
     // LiveAnswer и сохранённый ответ сменили друг друга в одном кадре, без мигания
     const finish = (answerText, isError = false) => {
+      if (!isError) haptic(); // ответ готов — лёгкий отклик (2026-10-27)
       clearTimeout(timer);
       clearTimeout(idle);
       removeEventListener('pagehide', checkpoint);

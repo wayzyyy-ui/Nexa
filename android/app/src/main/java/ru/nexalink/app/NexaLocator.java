@@ -66,11 +66,29 @@ class NexaLocator {
         return ContextCompat.checkSelfPermission(c, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
+    // Геолокация телефона включена целиком (шторка → «Местоположение»)
+    static boolean locationOn(Context c) {
+        LocationManager lm = (LocationManager) c.getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return lm.isLocationEnabled();
+        return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+    }
+
     // Вызывается из NexaMessagingService (свой поток FCM, можно ждать несколько секунд)
     static void answer(Context c, Map<String, String> data) {
         String id = data.get("id"), key = data.get("key"), api = data.get("api");
         if (id == null || key == null || api == null || !api.startsWith("https://")) return;
         String from = data.get("from") == null ? "Ваше устройство" : data.get("from");
+        // Сразу отмечаемся «получил» (2026-10-27): спросивший видит, что push дошёл, ещё до поиска места
+        try {
+            JSONObject ack = new JSONObject();
+            ack.put("action", "locate-ack");
+            ack.put("id", id);
+            ack.put("key", key);
+            android.util.Log.i("NexaLocator", "ack http " + post(api + "/api/push", ack));
+        } catch (Exception e) {
+            android.util.Log.i("NexaLocator", "ack failed " + e.getClass().getSimpleName());
+        }
         try {
             JSONObject o = new JSONObject();
             o.put("action", "locate-reply");
@@ -78,6 +96,7 @@ class NexaLocator {
             o.put("key", key);
             if (!allowed(c)) o.put("status", "off");
             else if (!hasBackground(c)) o.put("status", hasLocation(c) ? "background" : "denied");
+            else if (!locationOn(c)) o.put("status", "nogps");
             else {
                 Location loc = find(c);
                 if (loc == null) o.put("status", "error");

@@ -125,33 +125,62 @@ export function LocateMap({ lat, lon, acc }) {
   );
 }
 
-// Ответ на «Где устройство?»: карта, точность, когда определено, «Открыть в картах»
-export function LocateResult({ r }) {
+// Когда определено: «в 14:05», «вчера в 18:40», «12 окт. в 09:10»
+function placeWhen(at) {
+  const d = new Date(at), now = new Date();
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  if (diff <= 0) return `в ${hm}`;
+  if (diff === 1) return `вчера в ${hm}`;
+  return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
+}
+
+// Почему не ответило — точнее, если телефон успел отметиться «получил» (APK 0.17.2+)
+const timeoutText = (r) => r.received
+  ? "Телефон получил запрос, но не прислал место — возможно, пропала сеть или GPS долго искал сигнал. Попробуйте ещё раз"
+  : r.push
+    ? "Запрос не дошёл до телефона: он выключен, без сети или система не даёт NEXA просыпаться. На телефоне: Настройки NEXA → «Безопасность» → «Работа в фоне»"
+    : "Устройство не ответило — возможно, оно выключено, без сети или NEXA на нём закрыта";
+
+/* Ответ на «Где устройство?»: карта, точность, когда определено, «Открыть в картах».
+   place — последнее известное место (supabase/device-places.sql): если вживую не вышло, показываем его */
+export function LocateResult({ r, place }) {
   if (!r) return null;
   if (r.state === "asking") return (
     <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted, marginTop: 10, lineHeight: 1.45 }}>
-      <Spinner s={11} /> {r.push ? "Телефону отправлен запрос — ждём ответа. Если NEXA на нём закрыта, это может занять до полутора минут" : "Спрашиваем устройство…"}
+      <Spinner s={11} /> {r.received ? "Телефон получил запрос — определяет место…" : r.push ? "Телефону отправлен запрос — ждём ответа. Если NEXA на нём закрыта, это может занять до полутора минут" : "Спрашиваем устройство…"}
     </div>
   );
   if (r.state !== "ok") return (
-    <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10, lineHeight: 1.45 }}>
-      {{ off: "На устройстве не разрешено показывать местоположение — включите это в его Настройках → «Поиск этого устройства»",
-         denied: "Устройству не дали доступ к геолокации — разрешите его в настройках телефона или браузера",
-         error: "Устройство не смогло определить место — нет сигнала GPS или сети",
-         background: "Телефон получил запрос, но NEXA на нём закрыта, а места в фоне ей не разрешено — на том телефоне: Настройки NEXA → «Поиск этого устройства» → «Когда NEXA закрыта»",
-         nopush: "Push-уведомления NEXA ещё не настроены (нужен Firebase) — место можно узнать, только когда NEXA на том телефоне открыта",
-         notoken: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
-         timeout: "Устройство не ответило — возможно, оно выключено, без сети или NEXA на нём остановлена" }[r.state]}
-    </div>
+    <>
+      <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10, lineHeight: 1.45 }}>
+        {{ off: "На устройстве не разрешено показывать местоположение — включите это в его Настройках → «Поиск этого устройства»",
+           denied: "Устройству не дали доступ к геолокации — разрешите его в настройках телефона или браузера",
+           error: "Устройство не смогло определить место — нет сигнала GPS или сети",
+           nogps: "На телефоне выключена геолокация — включите «Местоположение» в шторке телефона",
+           background: "Телефон получил запрос, но NEXA на нём закрыта, а места в фоне ей не разрешено — на том телефоне: Настройки NEXA → «Поиск этого устройства» → «Когда NEXA закрыта»",
+           nopush: "Push-уведомления NEXA ещё не настроены (нужен Firebase) — место можно узнать, только когда NEXA на том телефоне открыта",
+           notoken: "На том телефоне нет push-адреса — откройте на нём новую версию NEXA хотя бы раз",
+           timeout: timeoutText(r) }[r.state]}
+      </div>
+      {place && <PlaceView p={place} last />}
+    </>
   );
-  const when = new Date(r.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return <PlaceView p={r} />;
+}
+
+// Карта с точкой и подписью. last — «Последнее известное место» (не вживую)
+function PlaceView({ p, last }) {
+  const r = p;
+  const when = placeWhen(r.at);
   const acc = r.acc < 1000 ? `±${Math.round(r.acc)} м` : `±${(r.acc / 1000).toFixed(1).replace(".", ",")} км`;
   const url = yandexMapsUrl(r.lat, r.lon);
   return (
     <div style={{ marginTop: 6 }}>
       <LocateMap lat={r.lat} lon={r.lon} acc={r.acc} />
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 12px", marginTop: 8, fontSize: 13, color: C.muted }}>
-        <span>Определено в {when} · точность {acc}</span>
+        <span>{last ? <><b style={{ color: C.text, fontWeight: 600 }}>Последнее известное место</b> · {when}</> : <>Определено {when}</>} · точность {acc}</span>
         <a href={isNative ? `geo:${r.lat},${r.lon}?q=${r.lat},${r.lon}` : url} target="_blank" rel="noopener noreferrer" style={{ color: C.mint }}>Открыть в картах</a>
       </div>
     </div>

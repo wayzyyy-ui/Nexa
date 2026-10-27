@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { useFileActions } from "./FileViewer.jsx";
-import { btnReset } from "./base.jsx";
+import { btnReset, Spinner } from "./base.jsx";
 import { plural } from "../lib/format.js";
 
 export const LONG_PRESS_MS = 480;
@@ -93,7 +93,8 @@ export function FileMenu({ at, file, onClose, onOpen, onSelect, onTransfer, onDe
 
 /* Панель выделения снизу: «Выбрано N», «Выбрать все», «Удалить» (с подтверждением), «Отмена».
    role="dialog" — «Назад» Android и Esc выходят из выделения */
-export function SelectBar({ count, total, onAll, onNone, onDelete, onExit }) {
+// onDownload — скачать выбранные (2026-10-27); busy — «Скачиваем 3 из 21…» (идёт скачивание)
+export function SelectBar({ count, total, onAll, onNone, onDelete, onExit, onDownload, busy }) {
   const [confirm, setConfirm] = useState(false);
   useEffect(() => { setConfirm(false); }, [count]);
   useEffect(() => {
@@ -120,13 +121,19 @@ export function SelectBar({ count, total, onAll, onNone, onDelete, onExit }) {
           <button type="button" className="nx-icon-btn" onClick={onExit} aria-label="Выйти из выделения" style={{ ...btnReset, width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             {Icon.close({ c: C.text, s: 16 })}
           </button>
-          <span className="nx-select-count">Выбрано {count}</span>
-          <button type="button" className="nx-ghost-btn" onClick={count < total ? onAll : onNone} style={{ ...pill, border: `1px solid ${C.borderStrong}`, color: C.text }}>
+          <span className="nx-select-count">{busy || `Выбрано ${count}`}</span>
+          <button type="button" className="nx-ghost-btn" onClick={count < total ? onAll : onNone} disabled={!!busy} style={{ ...pill, border: `1px solid ${C.borderStrong}`, color: C.text }}>
             {count < total ? "Все" : "Снять"}
           </button>
-          <button type="button" className="nx-ghost-btn" disabled={!count} onClick={() => setConfirm(true)}
-            style={{ ...pill, border: `1px solid ${count ? C.red : C.border}`, color: count ? C.red : C.mutedSoft, display: "inline-flex", alignItems: "center", gap: 6 }}>
-            {Icon.trash({ c: count ? C.red : C.mutedSoft, s: 15 })} Удалить
+          {onDownload && (
+            <button type="button" className="nx-icon-btn nx-select-dl" disabled={!count || !!busy} onClick={onDownload} aria-label="Скачать выбранные" title="Скачать"
+              style={{ ...btnReset, width: 38, height: 38, borderRadius: "50%", border: `1px solid ${C.borderStrong}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: count ? 1 : 0.5 }}>
+              {busy ? <Spinner s={14} /> : Icon.download({ c: C.text, s: 16 })}
+            </button>
+          )}
+          <button type="button" className="nx-ghost-btn nx-select-del" disabled={!count || !!busy} onClick={() => setConfirm(true)} aria-label="Удалить выбранные"
+            style={{ ...pill, border: `1px solid ${count ? C.red : C.border}`, color: count ? C.red : C.mutedSoft, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            {Icon.trash({ c: count ? C.red : C.mutedSoft, s: 15 })} <span className="nx-select-del-t">Удалить</span>
           </button>
         </>
       )}

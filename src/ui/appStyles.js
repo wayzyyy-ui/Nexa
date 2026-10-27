@@ -348,6 +348,128 @@ export const APP_CSS = `
         .nx-home-pills > * { flex: 1 1 200px; min-width: 0; }
         .nx-home-pills:has(.nx-app-pill) .nx-ai-glow > svg:last-child { display: none; } /* в половине ширины стрелка лишняя */
         .nx-home-pills:has(.nx-app-pill) .nx-ai-glow { padding: 0 calc(18 * var(--mk)) !important; gap: calc(14 * var(--mk)) !important; }
+
+        /* ═══ Главная, макет 2026-10-27 ═══
+           Компьютер: слева устройства и «Активность», в середине погода с ближайшими делами, ассистент
+           и «Приложение NEXA», справа складка. Размеры — в долях макета 1920 × 1080 (--mk) */
+        .nx-home-grid2 { display: grid; grid-template-columns: minmax(0, calc(718 * var(--mk))) minmax(260px, calc(389 * var(--mk))) minmax(0, 1fr); gap: calc(37 * var(--mk)); align-items: start; }
+        .nx-home-colA, .nx-home-colB { display: flex; flex-direction: column; gap: calc(37 * var(--mk)); min-width: 0; }
+        .nx-home-colA > .nx-home-act { margin-top: 0; }
+        .nx-home-pills2 { display: flex; flex-direction: column; gap: calc(36 * var(--mk)); }
+        .nx-home-pills2 > * { width: 100%; }
+        .nx-home-pills2 .nx-ai-glow > svg:last-child { display: none; }
+        .nx-home-fold2 { align-self: stretch; display: flex; align-items: center; justify-content: center; pointer-events: none; margin-right: calc(-120 * var(--mk)); }
+        .nx-home-fold2 .nx-home-fold-art { height: calc(560 * var(--mk)); }
+        .nx-ai-pill-icon { background: linear-gradient(135deg, var(--blue), color-mix(in srgb, var(--blue) 55%, var(--mint))) !important; }
+
+        /* Карточка погоды на Главной (HomeWeatherCard) */
+        .nx-hw { position: relative; display: flex; flex-direction: column; box-sizing: border-box; border: 1px solid var(--line-bright); text-align: left; }
+        .nx-hw-main { display: flex !important; flex-direction: column; }
+        .nx-hw-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .nx-hw-title { display: block; font-weight: 600; line-height: 1.1; }
+        .nx-hw-city { display: block; color: var(--muted); line-height: 1.2; margin-top: 2px; }
+        .nx-hw-date { color: var(--muted); white-space: nowrap; }
+        .nx-hw-temp { position: relative; align-self: flex-end; display: flex; line-height: 1; font-weight: 500; letter-spacing: -0.02em; }
+        .nx-hw-temp.is-veil .nx-hw-deg { filter: blur(6px); opacity: 0.6; }
+        .nx-hw-deg { position: relative; z-index: 1; }
+        .nx-hw-deg sup { font-size: 0.5em; vertical-align: top; position: relative; top: -0.05em; margin-left: 2px; font-weight: 400; color: var(--mint); }
+        .nx-hw-facet { position: absolute; z-index: 0; right: -6%; top: -18%; width: 70%; height: auto; overflow: visible; }
+        .nx-hw-cond { font-weight: 500; }
+        .nx-hw-feels { color: var(--muted); }
+        .nx-hw .nx-weather-attr { align-self: flex-end; }
+        /* Компьютер: карточка той же высоты, что «Мои устройства»; под погодой — ближайшие дела */
+        .nx-hw-desk { min-height: calc(490 * var(--mk)); border-radius: calc(48 * var(--mk)); padding: calc(34 * var(--mk)) calc(32 * var(--mk)) calc(26 * var(--mk)); }
+        .nx-hw-desk .nx-hw-title { font-size: max(18px, calc(32 * var(--mk))); }
+        .nx-hw-desk .nx-hw-city, .nx-hw-desk .nx-hw-date { font-size: max(14px, calc(24 * var(--mk))); }
+        .nx-hw-desk .nx-hw-temp { font-size: max(48px, calc(96 * var(--mk))); margin: calc(6 * var(--mk)) calc(20 * var(--mk)) calc(4 * var(--mk)) 0; }
+        .nx-hw-desk .nx-hw-cond { font-size: max(15px, calc(22 * var(--mk))); }
+        .nx-hw-desk .nx-hw-feels { font-size: max(13px, calc(18 * var(--mk))); margin-top: 2px; }
+        .nx-hw-tl { border-top: 1px solid var(--border); margin-top: calc(18 * var(--mk)); padding-top: calc(16 * var(--mk)); display: flex; flex-direction: column; gap: calc(10 * var(--mk)); position: relative; }
+        .nx-hw-tl-row { display: grid !important; grid-template-columns: 18px minmax(0, 1fr); grid-template-areas: "dot time" ". pill"; column-gap: 12px; align-items: center; position: relative; }
+        .nx-hw-tl-row::before { content: ""; position: absolute; left: 8.5px; top: 12px; bottom: calc(-12 * var(--mk) - 4px); width: 1px; background: var(--muted); opacity: 0.6; }
+        .nx-hw-tl-row:last-child::before { display: none; }
+        .nx-hw-tl-dot { grid-area: dot; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text); box-sizing: border-box; justify-self: center; background: var(--bg); }
+        .nx-hw-tl-time { grid-area: time; font-size: max(11px, calc(13 * var(--mk))); color: var(--muted); }
+        .nx-hw-tl-pill { grid-area: pill; display: block; border: 1px solid var(--line-bright); border-radius: 10px; padding: calc(7 * var(--mk)) 12px; font-size: max(12px, calc(14 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+        .nx-hw-tl-row.is-next .nx-hw-tl-pill { border-color: var(--mint); color: var(--mint); font-weight: 600; background: color-mix(in srgb, var(--mint) 7%, transparent); }
+        .nx-hw-tl-row.is-next .nx-hw-tl-time { color: var(--mint); }
+        .nx-hw-tl-row:hover .nx-hw-tl-pill { border-color: var(--mint); }
+        .nx-hw-tl-empty { font-size: max(12px, calc(15 * var(--mk))); text-align: left; padding: 6px 0; }
+        /* Невысокое окно (ноутбук): два ближайших дела и компактнее погода — ассистент и «Приложение NEXA» помещаются в экран */
+        @media (max-height: 900px) {
+          .nx-hw-tl-row:nth-child(n + 3) { display: none !important; }
+          .nx-hw-tl-row:nth-child(2)::before { display: none; }
+          .nx-hw-desk { min-height: 0; }
+          .nx-hw-desk .nx-hw-temp { font-size: max(44px, calc(80 * var(--mk))); }
+          .nx-home-pills2 { gap: calc(24 * var(--mk)); }
+          .nx-home-colB { gap: calc(26 * var(--mk)); }
+        }
+
+        /* Телефон: «Погода» и «Расписание» — две карточки рядом */
+        .nx-home-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+        .nx-hw-mob { border-radius: 28px; padding: 16px 16px 12px; min-height: 196px; }
+        .nx-hw-mob .nx-hw-title { font-size: 17px; }
+        .nx-hw-mob .nx-hw-city { font-size: 13px; }
+        .nx-hw-mob .nx-hw-date { font-size: 11px; }
+        .nx-hw-mob .nx-hw-temp { font-size: 46px; margin: 14px 8px 8px 0; align-self: flex-start; }
+        .nx-hw-mob .nx-hw-cond { font-size: 15px; }
+        .nx-hw-mob .nx-hw-feels { font-size: 12px; margin-top: 2px; }
+        .nx-hw-mob .nx-weather-attr { margin-top: 6px; font-size: 10px !important; align-self: flex-start; }
+        .nx-hn { display: flex !important; flex-direction: column; justify-content: space-between; border-radius: 28px !important; padding: 16px !important; min-height: 196px; box-sizing: border-box; width: 100%; min-width: 0;
+          border: 1px solid color-mix(in srgb, var(--mint) 55%, transparent) !important;
+          background-image: linear-gradient(170deg, color-mix(in srgb, var(--mint) 4%, transparent), color-mix(in srgb, var(--mint) 14%, transparent)) !important; }
+        .nx-hn-title { font-size: 17px; font-weight: 600; }
+        .nx-hn-next { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
+        .nx-hn-time { font-size: 13px; color: var(--muted); }
+        .nx-hn-what { font-size: 26px; font-weight: 700; line-height: 1.1; margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .nx-hn-add { display: inline-flex; align-items: center; gap: 4px; color: var(--mint); font-size: 14px; margin-top: 4px; }
+
+        /* Устройства страницами (DevicePager): по 4 клетки, вбок, точки */
+        .nx-dpager-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+        .nx-dpager-track::-webkit-scrollbar { display: none; }
+        .nx-dpager-page { flex: 0 0 100%; scroll-snap-align: start; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; box-sizing: border-box; }
+        .nx-dpager-cell { display: flex; min-width: 0; }
+        .nx-dpager-dots { display: flex; justify-content: center; gap: 7px; margin-top: 12px; }
+        .nx-dpager-dot { all: unset; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--text) 30%, transparent); cursor: pointer; transition: background-color 200ms ease, width 200ms ease; }
+        .nx-dpager-dot.is-on { background: var(--mint); width: 14px; border-radius: 999px; }
+        .nx-dpager-dot:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+
+        /* Экспериментальный интерфейс (Настройки → «Внешний вид»), только телефон */
+        .nx-home-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: stretch; }
+        .nx-exp-ai { display: flex !important; align-items: center; justify-content: center; padding: 0 22px !important; border-radius: 999px; font-size: 20px; font-weight: 700; color: var(--on-fold) !important;
+          background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 70%, white), var(--mint)) !important; box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--mint) 70%, transparent); }
+        .nx-dev-pill.is-3d { padding-left: 6px !important; }
+        .nx-dev-pill.is-3d .nx-dev-pill-icon { width: 54px; height: 44px; position: relative; overflow: visible; }
+        .nx-d3 { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -58%); height: 68px; width: auto; max-width: 72px; object-fit: contain; pointer-events: none; user-select: none;
+          filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35)); }
+        .nx-d3.is-laptop, .nx-d3.is-desktop { height: 54px; max-width: 70px; }
+        .nx-d3.is-watch { height: 56px; }
+        .nx-exp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+        .nx-exp-grid.is-one { grid-template-columns: 1fr; }
+        .nx-exp-box { border: 1px solid var(--line-bright); border-radius: 28px; padding: 14px 12px; min-height: 200px; box-sizing: border-box; display: flex; flex-direction: column; }
+        .nx-exp-box-title { font-size: 15px; font-weight: 600; text-align: center; margin-bottom: 12px; }
+        .nx-exp-act > section { border: 0 !important; background: transparent !important; padding: 0 !important; border-radius: 0 !important; }
+        .nx-exp-act > section > div:first-child { justify-content: center !important; margin-bottom: 8px !important; }
+        .nx-exp-act > section > div:first-child > span { font-size: 15px !important; font-weight: 600 !important; }
+        .nx-exp-act > section > div:first-child > button { display: none !important; }
+        .nx-exp-act > section > div:last-child > div:nth-child(n + 4) { display: none !important; }
+        .nx-exp-chip { display: flex !important; flex-direction: column; align-items: center; gap: 1px; border: 1px solid var(--line-bright) !important; border-radius: 999px; padding: 7px 10px !important;
+          background: color-mix(in srgb, var(--text) 4%, transparent) !important; }
+        .nx-exp-chip-t { font-size: 14px; font-weight: 600; }
+        .nx-exp-chip-n { font-size: 10px; color: var(--muted); }
+        .nx-exp-blobs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; align-items: center; }
+        .nx-exp-blob { aspect-ratio: 1; display: flex !important; flex-direction: column; justify-content: center; box-sizing: border-box; padding: 22px !important; min-width: 0; }
+        .nx-exp-blob.is-event { align-items: flex-start; border-radius: 52% 48% 46% 54% / 40% 52% 48% 60%; border: 1px solid color-mix(in srgb, var(--mint) 60%, transparent) !important;
+          background: radial-gradient(120% 90% at 85% 100%, color-mix(in srgb, var(--mint) 38%, transparent), transparent 70%), color-mix(in srgb, var(--panel) 40%, transparent) !important; }
+        .nx-exp-blob.is-weather { align-items: center; text-align: center; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--text) 75%, transparent) !important; }
+        .nx-exp-blob-time { font-size: 14px; color: var(--text); opacity: 0.85; }
+        .nx-exp-blob-big { font-size: 34px; font-weight: 700; line-height: 1.05; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .nx-exp-blob-big.is-small { font-size: 24px; }
+        .nx-exp-temp { position: relative; font-size: 46px; font-weight: 500; line-height: 1; }
+        .nx-exp-temp sup { font-size: 0.5em; vertical-align: top; color: var(--mint); }
+        .nx-exp-temp .nx-hw-facet { width: 70%; right: -22%; top: -32%; }
+        .nx-exp-blob-cond { font-size: 18px; margin-top: 8px; }
+        @media (max-width: 370px) { .nx-exp-blob-big { font-size: 26px; } .nx-exp-temp { font-size: 38px; } .nx-hn-what { font-size: 22px; } .nx-hw-mob .nx-hw-temp { font-size: 40px; } }
         .nx-app-pill { display: flex; align-items: center; gap: calc(12 * var(--mk)); box-sizing: border-box; min-height: max(60px, calc(96 * var(--mk)));
           padding: 0 calc(18 * var(--mk)) !important; border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
           background: color-mix(in srgb, var(--panel) 35%, transparent) !important; color: var(--text) !important; text-decoration: none; text-align: left; font: inherit; cursor: pointer; }
@@ -489,13 +611,26 @@ export const APP_CSS = `
           box-sizing: border-box; animation: nx-selbar-in 260ms cubic-bezier(0.16, 1, 0.3, 1); }
         /* «Стекло» ниже задаёт position: relative — здесь нужно закрепление */
         .nx-select-bar.nx-glass, .nx-file-menu.nx-glass { position: fixed; }
+        /* Окно файла: «Удалить файл?» одной строкой, выезжает справа */
+        .nx-fv-confirm { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 18px; margin-top: 20px; min-height: 52px; box-sizing: border-box;
+          background: color-mix(in srgb, var(--red) 7%, transparent); animation: nx-fv-confirm-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+        .nx-fv-confirm-t { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @keyframes nx-fv-confirm-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) { .nx-fv-confirm { animation: none; } }
+        /* Узкий телефон: «Удалить» в панели выделения — круглая кнопка со значком, «Выбрано N» помещается */
+        @media (max-width: 440px) { .nx-select-del { width: 38px; height: 38px; padding: 0 !important; flex-shrink: 0; } .nx-select-del-t { display: none; } }
         .nx-select-count { font-size: 14px; font-weight: 600; padding: 0 6px; white-space: nowrap; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         @media ${PHONE_MQ} { .nx-select-bar { bottom: calc(84px + var(--sab)); width: calc(100vw - 24px); justify-content: space-between; } }
         @keyframes nx-selbar-in { from { opacity: 0; transform: translate(-50%, 14px); } }
         @media (prefers-reduced-motion: reduce) { .nx-file-menu, .nx-select-bar { animation: none !important; } }
         /* ── Настройки (макет 2026-10-26) ── */
         .nx-set-avatar { box-shadow: inset 0 0 0 1px var(--border); }
-        .nx-set-name { display: block; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* line-height и запас снизу — иначе у «g», «у», «р» срезался хвост (overflow: hidden) */
+        .nx-set-name { display: block; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; padding-bottom: 2px; }
+        /* Значок «изменить» на аватаре (Настройки): профиль можно редактировать */
+        .nx-avatar-edit { position: relative; display: inline-flex; flex-shrink: 0; }
+        .nx-avatar-edit-badge { position: absolute; right: 0; bottom: 0; width: 28%; height: 28%; min-width: 24px; min-height: 24px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center; background: var(--mint); border: 2px solid var(--bg); box-sizing: border-box; }
         .nx-set-mail { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nx-set-nav { display: flex; flex-direction: column; gap: 4px; }
         .nx-set-nav-item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 18px;
@@ -541,11 +676,13 @@ export const APP_CSS = `
           .nx-set-qr { position: fixed !important; z-index: 51; left: 10px; top: calc(19px + var(--sat)); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
             border: none; background: transparent; cursor: pointer; }
           .nx-set-profile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 0 0 22px; cursor: pointer; }
-          .nx-set-profile .nx-set-avatar { margin-bottom: 12px; }
+          .nx-set-profile .nx-avatar-edit { margin-bottom: 12px; }
           .nx-set-profile .nx-set-name { font-size: 22px; max-width: 100%; }
           .nx-set-profile .nx-set-mail { max-width: 100%; }
           .nx-set-sheet { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: 32px; text-align: left; }
           .nx-set-sheet .nx-set-about { border-radius: 24px; padding: 14px 18px; }
+          /* «О системе» — строкой списка: тот же шаг, что между разделами (у списка 4 px, у панели 10) */
+          .nx-set-sheet > .nx-set-about-row { margin-top: -6px; }
           .ng-screen.nx-set-page { padding: 18px 16px calc(100px + var(--sab)) !important; text-align: left; }
           .nx-set-page-title { margin: 14px 0 18px !important; }
           /* Появление: аватар «раскрывается», имя и почта поднимаются, список разделов всплывает следом;
@@ -2006,6 +2143,8 @@ export const APP_CSS = `
           .nx-media-add { width: 46px; height: 46px; padding: 0 !important; }
           .nx-media-add-label { display: none; }
           .nx-title-row { justify-content: space-between; }
+          /* «Медиа и файлы» — в одну строку рядом с кнопкой «+» (раньше «файлы» переносились) */
+          .nx-title-row .nx-page-title { white-space: nowrap; font-size: min(36px, 8.6vw) !important; min-width: 0; }
           /* Дата и время — две равные колонки: поле времени в Android шире 124 px и вылезало за рамку формы */
           .nx-sched-form-row { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) !important; }
           .nx-sched-edit-wrap { margin-left: 0 !important; } /* правка дела — на всю ширину карточки, иначе дата не помещалась */

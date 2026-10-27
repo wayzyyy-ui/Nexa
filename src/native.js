@@ -135,6 +135,24 @@ export async function vibrate(ms = 400) {
   } catch {}
 }
 
+/* Лёгкий отклик вибрацией (2026-10-27): готов ответ ассистента, файл «Рядом» передан / принят,
+   подключено новое устройство. Короткий и слабый — не путать с «Найти» (vibrate 400 мс).
+   Приложение — системный «тап» (Haptics.impact Light), сайт — 15 мс, где браузер умеет */
+let lastHaptic = 0;
+export async function haptic() {
+  const now = Date.now();
+  if (now - lastHaptic < 600) return; // несколько событий подряд — один отклик
+  lastHaptic = now;
+  try {
+    if (isNative) {
+      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+      await Haptics.impact({ style: ImpactStyle.Light });
+    } else {
+      navigator.vibrate?.(15);
+    }
+  } catch {}
+}
+
 /* Сканер QR — только в приложении (Google Code Scanner: свой экран камеры,
    разрешение на камеру не нужно). Возвращает текст из QR, null — отменили,
    { error } — сканер недоступен. Первый раз Android может докачать модуль сканера */
@@ -825,4 +843,10 @@ export async function locateNativeStatus() {
 export async function locateOpenSettings() {
   if (!pushPlugin) return false;
   try { await pushPlugin.openLocateSettings(); return true; } catch { return false; }
+}
+/* «Работа в фоне» (APK 0.17.2+): экран «Автозапуск» на Xiaomi или «Оптимизация батареи».
+   false — старый APK или экран не открылся */
+export async function backgroundOpenSettings() {
+  if (!pushPlugin) return false;
+  try { await pushPlugin.openBackgroundSettings(); return true; } catch { return false; }
 }

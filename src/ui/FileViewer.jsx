@@ -587,18 +587,15 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
         )}
 
         {confirmDel ? (
-          // Подтверждение удаления заменяет ряд кнопок
-          <div className="nx-pop nx-fv-confirm" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 20, padding: 14 }}>
-            <div style={{ fontSize: 14, marginBottom: 4 }}>Удалить файл?</div>
-            <div style={{ fontSize: 12, color: C.mutedSoft, marginBottom: 12 }}>
-              «{file.name}» пропадёт из всех папок и списков.
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => { onDelete(file); onToast?.({ title: "Файл удалён", text: file.name }); }} style={{ ...ghostBtn, color: C.red, borderColor: C.red }}>
-                {Icon.trash({ c: C.red, s: 16 })} Удалить
-              </button>
-              <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={ghostBtn}>Отмена</button>
-            </div>
+          // Подтверждение удаления — одной строкой на месте ряда кнопок, выезжает справа (2026-10-27)
+          <div className="nx-fv-confirm" role="group" aria-label="Удалить файл?" style={{ border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, borderRadius: 999 }}>
+            {Icon.trash({ c: C.red, s: 16 })}
+            <span className="nx-fv-confirm-t" title={`«${file.name}» пропадёт из всех папок и списков`}>Удалить файл?</span>
+            <button type="button" className="nx-ghost-btn" onClick={() => setConfirmDel(false)} style={{ ...ghostBtn, padding: "8px 14px" }}>Отмена</button>
+            <button type="button" className="nx-primary" autoFocus onClick={() => { onDelete(file); onToast?.({ title: "Файл удалён", text: file.name }); }}
+              style={{ ...ghostBtn, padding: "8px 16px", background: C.red, color: C.onFold, border: "1px solid transparent", fontWeight: 600 }}>
+              Удалить
+            </button>
           </div>
         ) : (
           <FileContentActions file={file} onToast={onToast} onShare={share} onDelete={() => setConfirmDel(true)} />

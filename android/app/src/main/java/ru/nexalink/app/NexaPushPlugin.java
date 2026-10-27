@@ -63,7 +63,41 @@ public class NexaPushPlugin extends Plugin {
         r.put("location", NexaLocator.hasLocation(getContext()));
         r.put("background", NexaLocator.hasBackground(getContext()));
         r.put("needsBackground", android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q);
+        r.put("gps", NexaLocator.locationOn(getContext()));
+        // Экономия заряда: «без ограничений» — Android не мешает NEXA проснуться от push (2026-10-27)
+        android.os.PowerManager pm = (android.os.PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+        r.put("battery", pm == null || pm.isIgnoringBatteryOptimizations(getContext().getPackageName()));
+        // Xiaomi / Redmi / POCO: без «Автозапуска» закрытая NEXA вообще не получает push — проверить это
+        // приложение не может, только подсказать и открыть экран настройки
+        String brand = (android.os.Build.MANUFACTURER + " " + android.os.Build.BRAND).toLowerCase();
+        r.put("autostart", brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco"));
         call.resolve(r);
+    }
+
+    /* «Работа в фоне» (2026-10-27): экран, где разрешают NEXA просыпаться при закрытом приложении.
+       Xiaomi — «Автозапуск» (MIUI / HyperOS), иначе — список «Оптимизация батареи» (без особого
+       разрешения), в крайнем случае — страница NEXA в настройках. Новых разрешений нет */
+    @PluginMethod
+    public void openBackgroundSettings(PluginCall call) {
+        Context c = getContext();
+        Intent[] tries = {
+            new Intent().setComponent(new android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+            new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", c.getPackageName(), null)),
+        };
+        String brand = (android.os.Build.MANUFACTURER + " " + android.os.Build.BRAND).toLowerCase();
+        boolean xiaomi = brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco");
+        for (int k = xiaomi ? 0 : 1; k < tries.length; k++) {
+            try {
+                tries[k].addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(tries[k]);
+                JSObject r = new JSObject();
+                r.put("opened", k == 0 ? "autostart" : k == 1 ? "battery" : "app");
+                call.resolve(r);
+                return;
+            } catch (Exception ignored) { /* такого экрана нет — пробуем следующий */ }
+        }
+        call.reject("Не открылись настройки", "error");
     }
 
     /* Android не даёт спросить «разрешать всегда» окном внутри приложения — только на странице

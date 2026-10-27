@@ -18,6 +18,7 @@ import { InstallSettings } from "../ui/install.jsx";
 import { DesktopSettings } from "../ui/desktop.jsx";
 import { WebPushRow } from "../ui/webpush.jsx";
 import { Avatar, ProfileSettings } from "../ui/profile.jsx";
+import { useExpUi, setExpUi } from "./home/widgets.jsx";
 import { profileName } from "../lib/profile.js";
 import { useEnterSends, touchLike } from "../lib/composer.js";
 
@@ -217,6 +218,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
   const [tilt, setTiltState] = useState(readTilt);
   const toggleTilt = async () => setTiltState(await saveTilt(!tilt));
 
+  const expUi = useExpUi();
   // Облегчённый режим (src/lib/lite.js): Авто / Вкл / Выкл; «Авто» включается сам на слабом телефоне и при экономии
   const [lite, setLite] = useState(() => ({ pref: readLitePref(), on: liteActive(), why: liteAutoReason() }));
   useEffect(() => {
@@ -274,7 +276,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
             />
           )}
           <SettingsRow
-            last wrap
+            last={!phone} wrap
             icon={Icon.quick({ c: C.muted, s: 18 })}
             title="Облегчённый режим"
             subtitle={lite.pref === "auto"
@@ -286,6 +288,17 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
               </div>
             }
           />
+          {/* Экспериментальный интерфейс (макет 2026-10-27): другая Главная телефона — 3D-устройства,
+              «Хранилище», капли дела и погоды. Только на этом устройстве */}
+          {phone && (
+            <SettingsRow
+              last
+              icon={Icon.sparkle({ c: expUi ? C.mint : C.muted, s: 18 })}
+              title="Экспериментальный интерфейс"
+              subtitle="Новая Главная: объёмные устройства, хранилище, ближайшее дело и погода крупно. Можно выключить в любой момент"
+              right={<Toggle on={expUi} onClick={() => setExpUi(!expUi)} label="Экспериментальный интерфейс" />}
+            />
+          )}
         </SettingsGroup>
       );
       case "security": return <>{securityBlock}{backupBlock}</>;
@@ -300,7 +313,13 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
   const meta = (id) => [...SETTINGS_SECTIONS, ACCOUNT].find((s) => s.id === id) || SETTINGS_SECTIONS[0];
 
   const name = user ? accountName(user) : "Гость";
-  const avatar = (size) => <Avatar user={user} size={size} />;
+  // Вошедшему — мятный значок-карандаш на аватаре: имя и фото меняются в «Аккаунте»
+  const avatar = (size) => (
+    <span className="nx-avatar-edit">
+      <Avatar user={user} size={size} />
+      {user && <span className="nx-avatar-edit-badge" aria-hidden="true">{Icon.edit({ c: C.onAccent, s: Math.max(12, Math.round(size * 0.16)) })}</span>}
+    </span>
+  );
   // Список разделов (компьютер — с выбранным, телефон — просто строки).
   // Компьютер: мятная таблетка одна и переезжает к выбранному разделу (2026-10-27) — место и высота по самой строке
   const navRef = useRef(null);

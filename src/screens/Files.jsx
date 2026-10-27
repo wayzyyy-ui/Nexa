@@ -7,8 +7,9 @@ import { btnReset, Spinner, EmptyState } from "../ui/base.jsx";
 import { FOLDERS, MEDIA_CATS, sortByRecent, folderName, fileMeta } from "../lib/fileStore.js";
 import { MediaLayout, MediaTitle, Crumb } from "../ui/layout.jsx";
 import { FolderThumb, FileThumb } from "../ui/files.jsx";
-import { TransferBtn } from "../ui/FileViewer.jsx";
-import { clipboardRead, clipboardReadImage } from "../native.js";
+import { TransferBtn, openFileContent } from "../ui/FileViewer.jsx";
+import { FILE_SCOPE } from "../lib/fileStore.js";
+import { clipboardRead, clipboardReadImage, isNative } from "../native.js";
 import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile.js";
 import { useModalLock } from "../lib/hooks.js";
 import { useLongPress, FileMenu, SelectBar } from "../ui/fileSelect.jsx";
@@ -126,6 +127,27 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   useEffect(() => { exitSelect(); setMenu(null); }, [listKey]);
   const toggleSel = (id) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const startSelect = (id) => { setSelecting(true); setSel(new Set([id])); };
+  /* Скачать выбранные — по одному тем же ходом, что «Скачать» в окне файла: телефон — в «Загрузки»,
+     сайт — загрузки браузера (он может один раз спросить разрешение на несколько файлов), ПК — «Сохранить как».
+     Без содержимого (добавлены до хранилища) — пропускаем */
+  const [dlBusy, setDlBusy] = useState(null);
+  const downloadSelected = async () => {
+    const pick = list.filter((f) => sel.has(f.id) && f.uploaded);
+    if (!pick.length) { onToast?.({ title: "Нечего скачать", text: "У выбранных файлов нет содержимого" }); return; }
+    let ok = 0;
+    for (let i = 0; i < pick.length; i++) {
+      setDlBusy(`Скачиваем ${i + 1} из ${pick.length}…`);
+      try {
+        const r = await openFileContent(pick[i], FILE_SCOPE, true);
+        if (r === "cancelled") break; // закрыли «Сохранить как» на ПК — остальное не спрашиваем
+        if (r) ok++;
+      } catch { /* следующий файл */ }
+      if (!isNative) await new Promise((res) => setTimeout(res, 350)); // браузер не любит загрузки «очередью»
+    }
+    setDlBusy(null);
+    onToast?.(ok ? { title: `Скачано: ${ok} ${plural(ok, ["файл", "файла", "файлов"])}`, text: isNative ? "В папке «Загрузки»" : ok < pick.length ? `Не скачалось: ${pick.length - ok}` : "Готово" }
+      : { title: "Не получилось скачать", text: navigator.onLine === false ? "Нет связи" : "Попробуйте ещё раз" });
+  };
   const deleteSelected = () => {
     const doomed = list.filter((f) => sel.has(f.id));
     if (!doomed.length) return;
@@ -486,7 +508,8 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         {selecting && <div aria-hidden="true" style={{ height: 76 }} />}
         {selecting && (
           <SelectBar count={sel.size} total={list.length} onExit={exitSelect}
-            onAll={() => setSel(new Set(list.map((f) => f.id)))} onNone={() => setSel(new Set())} onDelete={deleteSelected} />
+            onAll={() => setSel(new Set(list.map((f) => f.id)))} onNone={() => setSel(new Set())} onDelete={deleteSelected}
+            onDownload={downloadSelected} busy={dlBusy} />
         )}
         {/* Метка конца порции: дошли до неё прокруткой — дорисовываем следующую */}
         {hasMore && <div ref={moreRef} aria-hidden="true" style={{ height: 1 }} />}

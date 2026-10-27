@@ -10,6 +10,7 @@ import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner, DesktopAppPill } from "../ui/install.jsx";
 import { isDesktop } from "../native.js";
+import { HomeWeatherCard, HomeTimeline, HomeNextCard, DevicePager, device3d, ExpStorage, ExpBlobs, useExpUi } from "./home/widgets.jsx";
 
 /* ---------- 5. ЭКРАНЫ ---------- */
 // Карточка одного устройства — для мобильной 2×2 сетки.
@@ -308,13 +309,16 @@ function HomeFoldArt({ count = 0 }) {
 
 // Сколько устройств видно на Главной; остальные — «Все устройства».
 // Компьютер — две, как в макете: карточка не растёт и вся Главная помещается в экран
-const HOME_DESK_MAX = 2, HOME_MOB_MAX = 6;
+const HOME_DESK_MAX = 2;
 
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell }) {
+// schedule — дела (погода и ближайшие дела на Главной, макет 2026-10-27), files — для «Хранилища»
+// экспериментального интерфейса, onOpenCategory — открыть категорию «Медиа»
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory }) {
+  const exp = useExpUi(); // экспериментальный интерфейс телефона (Настройки → «Внешний вид»)
+  const toToday = () => onNavigate("today");
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online || d.isSelf).length;
   const deskList = devices.slice(0, HOME_DESK_MAX);
-  const mobList = devices.slice(0, HOME_MOB_MAX);
 
   // Пустой список. Пока грузим из облака — вместо «Устройств пока нет» заготовка строк
   const empty = devices.length === 0 && (loading ? <DevicesSkeleton /> : (
@@ -332,7 +336,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
   const aiPill = (cls) => (
     <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill nx-glass nx-glass-prominent ${cls || ""}`} onClick={() => onNavigate("assistant")}
       style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
-      <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.mint, s: 22 })}</span>
+      <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.onFold, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="ng-display nx-ai-pill-title">ИИ — Ассистент</span>
         <span className="nx-ai-pill-sub" style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
@@ -357,34 +361,39 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
         {/* В приложении для ПК обновление — таблеткой рядом с ассистентом (DesktopAppPill) */}
         {update && !isDesktop && <div style={{ marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
 
-        <div className="nx-home-grid">
-          {/* Мои устройства */}
-          {/* data-nosnippet — поисковики не берут отсюда текст для описания сайта (тут личные устройства) */}
-          <section className="nx-home-card nx-home-devices nx-glass nx-glass-subtle" aria-label="Мои устройства" data-nosnippet>
-            <div className="nx-home-card-title">Мои устройства</div>
-            <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              {empty}
-              {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} onOpen={onOpenDevice} />)}
-              {devices.length > 0 && <AddDeviceRow onClick={onAddDevice} />}
-            </div>
-            {devices.length > 0 && (
-              <button type="button" className="nx-ghost-btn nx-home-all" onClick={onAllDevices}>
-                {devices.length > HOME_DESK_MAX ? `Все устройства · ${devices.length}` : "Все устройства"}
-              </button>
-            )}
-          </section>
-          {/* Справа: складка и ассистент */}
-          <div className="nx-home-side">
-            <div className="nx-home-fold" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
-            {/* Ассистент и «Приложение NEXA» (нечего предложить — ассистент на всю ширину) */}
-            <div className="nx-home-pills">
+        {/* Макет 2026-10-27: слева устройства и «Активность», в середине погода с ближайшими делами,
+            ассистент и «Приложение NEXA», справа складка */}
+        <div className="nx-home-grid2">
+          <div className="nx-home-colA">
+            {/* data-nosnippet — поисковики не берут отсюда текст для описания сайта (тут личные устройства) */}
+            <section className="nx-home-card nx-home-devices nx-glass nx-glass-subtle" aria-label="Мои устройства" data-nosnippet>
+              <div className="nx-home-card-title">Мои устройства</div>
+              <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                {empty}
+                {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} onOpen={onOpenDevice} />)}
+                {devices.length > 0 && <AddDeviceRow onClick={onAddDevice} />}
+              </div>
+              {devices.length > 0 && (
+                <button type="button" className="nx-ghost-btn nx-home-all" onClick={onAllDevices}>
+                  {devices.length > HOME_DESK_MAX ? `Все устройства · ${devices.length}` : "Все устройства"}
+                </button>
+              )}
+            </section>
+            {activityBlock && <div className="nx-home-act nx-glass nx-glass-subtle" data-nosnippet>{activityBlock}</div>}
+          </div>
+          <div className="nx-home-colB">
+            <HomeWeatherCard className="nx-hw-desk" onOpen={toToday}>
+              <HomeTimeline schedule={schedule} onOpen={toToday} />
+            </HomeWeatherCard>
+            {/* В приложении для ПК обновление — таблеткой «Приложение NEXA» (DesktopAppPill) */}
+            <div className="nx-home-pills2">
               {aiPill("nx-ai-glow")}
               <DesktopAppPill update={isDesktop ? update : null} />
             </div>
           </div>
+          <div className="nx-home-fold2" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
         </div>
 
-        {activityBlock && <div className="nx-home-act nx-glass nx-glass-subtle" data-nosnippet>{activityBlock}</div>}
         {onAbout && (
           <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
             {/* Подпись студии — слева, «Подробнее о системе» — справа */}
@@ -411,9 +420,13 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             </span>
           </div>
           {/* Поиск — широкая таблетка */}
-          <button type="button" className="nx-row-btn nx-home-search nx-glass" onClick={() => onSearch?.()}>
-            {Icon.search({ c: C.text, s: 15 })} Поиск
-          </button>
+          {/* Поиск — широкая таблетка; в эксперименте рядом — «AI» (ассистент) */}
+          <div className={exp ? "nx-home-search-row" : undefined}>
+            <button type="button" className="nx-row-btn nx-home-search nx-glass" onClick={() => onSearch?.()}>
+              {Icon.search({ c: C.text, s: 15 })} Поиск
+            </button>
+            {exp && <button type="button" className="nx-exp-ai" onClick={() => onNavigate("assistant")} aria-label="ИИ — Ассистент" style={{ ...btnReset }}>AI</button>}
+          </div>
         </div>
 
         {update && <div style={{ marginTop: 18 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
@@ -422,7 +435,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           setTimeout(() => document.getElementById("nx-install")?.scrollIntoView({ behavior: "smooth", block: "center" }), 450);
         }} />
 
-        {/* Мои устройства: таблетки по две в ряд (data-nosnippet — не в описание сайта в поиске) */}
+        {/* Мои устройства (макет 2026-10-27): по 4 клетки на страницу, листаются вбок, точки внизу.
+            Экспериментальный интерфейс — с 3D-рисунками устройств (data-nosnippet — не в описание сайта) */}
         <div style={{ marginTop: 22 }} data-nosnippet>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="ng-display" style={{ fontSize: 22, fontWeight: 500 }}>Мои устройства</div>
@@ -433,43 +447,56 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             </button>
           </div>
           {empty && <div className="nx-pill-card" style={{ borderRadius: 32 }}>{empty}</div>}
-          <div className="nx-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, position: "relative" }}>
-            {mobList.map((d) => (
-              <div key={d.id} style={{ position: "relative", minWidth: 0, display: "flex" }}>
-                <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-pill" data-online={d.online || d.isSelf ? "1" : "0"}
-                  onClick={() => onOpenDevice(d.id)} style={{ ...btnReset, flex: 1, minWidth: 0, textAlign: "left", color: C.text }}>
-                  <span className="nx-dev-pill-icon" aria-hidden="true">{deviceArt(d, 28)}</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    {/* Имя — до двух строк: в половине ширины «Сайт на компьютере» обрезалось до «Сайт на ко…» */}
-                    <span className="nx-dev-pill-name" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", fontSize: 14, lineHeight: 1.2, overflow: "hidden", overflowWrap: "anywhere" }}>{d.name}</span>
-                    {received[d.id]
-                      ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
-                      : <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", fontSize: 12, lineHeight: 1.25, color: C.muted, marginTop: 3, overflow: "hidden" }}>{d.isSelf ? "Это устройство" : deviceStatus(d)}</span>}
-                  </span>
-                  <span className="nx-status-dot" style={{ color: d.online || d.isSelf ? C.green : C.red, background: d.online || d.isSelf ? C.green : C.red }} />
+          {devices.length > 0 && (
+            <DevicePager devices={devices}
+              cell={(d) => {
+                const on = d.online || d.isSelf;
+                const art = exp && device3d(d);
+                return (
+                  <button type="button" data-link-id={d.id} className={`nx-row-btn nx-dev-pill${art ? " is-3d" : ""}`} data-online={on ? "1" : "0"}
+                    onClick={() => onOpenDevice(d.id)} style={{ ...btnReset, width: "100%", minWidth: 0, textAlign: "left", color: C.text }}>
+                    <span className="nx-dev-pill-icon" aria-hidden="true">{art || deviceArt(d, 28)}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      {/* Имя — до двух строк; статус — коротко, как в макете */}
+                      <span className="nx-dev-pill-name" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", fontSize: 14, fontWeight: 600, lineHeight: 1.2, overflow: "hidden", overflowWrap: "anywhere" }}>{d.name}</span>
+                      {received[d.id]
+                        ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
+                        : <span style={{ display: "block", fontSize: 11, lineHeight: 1.25, color: C.muted, marginTop: 3 }}>{d.isSelf ? "Это устройство" : on ? "В сети" : "Не в сети"}</span>}
+                    </span>
+                    <span className="nx-status-dot" style={{ color: on ? C.green : C.red, background: on ? C.green : C.red }} />
+                  </button>
+                );
+              }}
+              addCell={(
+                <button type="button" className="nx-row-btn nx-dev-pill is-add is-half" onClick={onAddDevice} aria-label="Добавить устройство"
+                  style={{ ...btnReset, width: "100%", minWidth: 0, color: C.text, justifyContent: "center", gap: 8 }}>
+                  {Icon.plus({ c: C.mint, s: 18 })}
+                  <span style={{ fontSize: 14, lineHeight: 1.2 }}>Добавить устройство</span>
                 </button>
-              </div>
-            ))}
-            {devices.length > 0 && (() => {
-              /* Чётное число таблеток — «Добавить» во всю ширину, в одну строку (макет 2026-10);
-                 нечётное — встаёт в пустую клетку рядом с последней таблеткой, без дыры справа */
-              const odd = mobList.length % 2 === 1;
-              return (
-                <button type="button" className={`nx-row-btn nx-dev-pill is-add${odd ? " is-half" : ""}`} onClick={onAddDevice} aria-label="Добавить устройство"
-                  style={{ ...btnReset, gridColumn: odd ? "auto" : "1 / -1", minWidth: 0, color: C.text, justifyContent: "center", gap: odd ? 6 : 8 }}>
-                  {Icon.plus({ c: C.mint, s: odd ? 18 : 20 })}
-                  <span style={{ fontSize: odd ? 14 : 15, lineHeight: 1.2, ...(odd ? { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } : {}) }}>{odd ? "Добавить" : "Добавить устройство"}</span>
-                </button>
-              );
-            })()}
-          </div>
-          {devices.length > HOME_MOB_MAX && (
-            <button type="button" className="nx-row-btn nx-pill-card nx-home-more nx-glass nx-glass-subtle" onClick={onAllDevices}>Все устройства · {devices.length}</button>
+              )} />
           )}
         </div>
 
-        <div style={{ marginTop: 24 }}>{aiPill()}</div>
-        {activityBlock && <div className="nx-act-pill nx-glass nx-glass-subtle" style={{ marginTop: 18 }} data-nosnippet>{activityBlock}</div>}
+        {exp ? (
+          <>
+            {/* Эксперимент: «Активность» и «Хранилище» рядом, ниже — капли дела и погоды */}
+            <div className={`nx-exp-grid${activityBlock ? "" : " is-one"}`}>
+              {activityBlock && <div className="nx-exp-box nx-exp-act nx-glass nx-glass-subtle" data-nosnippet>{activityBlock}</div>}
+              <ExpStorage files={files} onOpen={(cat) => onOpenCategory?.(cat)} />
+            </div>
+            <ExpBlobs schedule={schedule} onToday={toToday} />
+          </>
+        ) : (
+          <>
+            <div style={{ marginTop: 22 }}>{aiPill()}</div>
+            {activityBlock && <div className="nx-act-pill nx-glass nx-glass-subtle" style={{ marginTop: 18 }} data-nosnippet>{activityBlock}</div>}
+            {/* Погода и ближайшее дело — две карточки рядом (макет 2026-10-27) */}
+            <div className="nx-home-duo">
+              <HomeWeatherCard className="nx-hw-mob" onOpen={toToday} />
+              <HomeNextCard schedule={schedule} onOpen={toToday} />
+            </div>
+          </>
+        )}
         {onAbout && (
           <button type="button" className="nx-row-btn nx-pill-card nx-home-more nx-glass nx-glass-subtle" onClick={onAbout}>О системе</button>
         )}

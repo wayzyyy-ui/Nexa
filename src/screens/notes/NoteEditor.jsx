@@ -672,6 +672,8 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       <textarea ref={textRef} value={text} maxLength={NOTE_TEXT_MAX} placeholder={phone ? "Текст заметки. Для списка дел — кнопка ☑ внизу" : "Текст"} aria-label="Текст заметки"
         onChange={onTextChange} onKeyDown={onTextKey} onClick={onTextClick} onPaste={onPaste}
         onSelect={onSelectionMove} onBlur={drop}
+        // Проверка орфографии — явно и по-русски: без lang телефонный браузер мог брать словарь системы (английский)
+        spellCheck lang="ru" autoCorrect="on" autoCapitalize="sentences"
         className="nx-scroll nx-notepad-in nx-notepad-etext nx-note-text"
         style={{ flex: 1, minHeight: 0, resize: "none", background: "transparent", border: "none", outline: "none", color: C.text, position: "relative", zIndex: 1,
           fontFamily: "inherit", fontSize: 16, lineHeight: 1.65, padding: 0, width: "100%", overscrollBehavior: "contain" }} />
