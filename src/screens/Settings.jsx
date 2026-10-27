@@ -1,6 +1,6 @@
 // Экран «Настройки» (макет 2026-10-26): слева аккаунт и разделы, справа выбранный раздел; на телефоне — список разделов,
 // раздел открывается на весь экран. Группы внутри разделов — прежние компоненты (этот файл и App.jsx)
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { isNative, isDesktop, systemNotifyKind } from "../native.js";
 import { thisDeviceKind, NO_DATA, KIND_LABEL, batteryText, netText, diskText } from "../lib/deviceInfo.js";
@@ -301,9 +301,27 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
 
   const name = user ? accountName(user) : "Гость";
   const avatar = (size) => <Avatar user={user} size={size} />;
-  // Список разделов (компьютер — с выбранным, телефон — просто строки)
+  // Список разделов (компьютер — с выбранным, телефон — просто строки).
+  // Компьютер: мятная таблетка одна и переезжает к выбранному разделу (2026-10-27) — место и высота по самой строке
+  const navRef = useRef(null);
+  const [thumb, setThumb] = useState(null); // { y, h } или null
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const measure = () => {
+      const el = nav?.querySelector(".nx-set-nav-item.is-active");
+      const next = !phone && el ? { y: el.offsetTop, h: el.offsetHeight } : null;
+      setThumb((t) => (t && next && t.y === next.y && t.h === next.h ? t : next));
+    };
+    measure();
+    // Шрифт догрузился, окно поменяло размер (размеры в --mk) — строки сдвинулись, таблетку — следом
+    const ro = nav && typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    ro?.observe(nav);
+    document.fonts?.ready?.then(measure).catch(() => {});
+    return () => ro?.disconnect();
+  }, [phone, sec]);
   const navList = (
-    <nav className="nx-set-nav" aria-label="Разделы настроек">
+    <nav ref={navRef} className={`nx-set-nav${thumb ? " has-thumb" : ""}`} aria-label="Разделы настроек">
+      {thumb && <span aria-hidden="true" className="nx-set-thumb" style={{ height: thumb.h, transform: `translateY(${thumb.y}px)` }} />}
       {SETTINGS_SECTIONS.map((s) => {
         const active = !phone && sec === s.id;
         return (

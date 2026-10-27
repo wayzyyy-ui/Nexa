@@ -154,14 +154,26 @@ export const NavIcon = ({ id, c, s = 48 }) => (
 // квадратах с лёгкой подложкой, активный — мятная плитка с тёмным значком,
 // напротив него на разделительной линии — мятная отметка.
 // active — id текущего раздела, onChange — переключить раздел
+// Шаг кнопок меню: 48 px кнопка + 14 px промежуток, сверху отступ 28 px (см. стиль nav ниже)
+const SIDE_TOP = 28, SIDE_STEP = 62;
 export function Sidebar({ active, onChange }) {
+  // Мятная плитка и отметка на линии — одни на всё меню и переезжают к выбранному разделу (2026-10-27),
+  // а не появляются на новом месте. Раздела нет в меню (экран поверх) — плитки нет
+  const idx = NAV.findIndex((n) => n.id === active);
+  const y = SIDE_TOP + Math.max(0, idx) * SIDE_STEP;
   return (
     <nav
       aria-label="Разделы"
       className="ng-sidebar" style={{
       width: NAV_W, minWidth: NAV_W, boxSizing: "border-box", background: C.bg, borderRight: `1px solid ${C.border}`,
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "28px 0",
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: `${SIDE_TOP}px 0`, position: "relative",
     }}>
+      {idx >= 0 && (
+        <>
+          <span aria-hidden="true" className="nx-side-thumb" style={{ transform: `translateY(${y}px)` }} />
+          <span aria-hidden="true" className="nx-side-mark" style={{ transform: `translateY(${y}px)` }} />
+        </>
+      )}
       {NAV.map((item) => {
         const isActive = item.id === active;
         return (
@@ -175,15 +187,14 @@ export function Sidebar({ active, onChange }) {
               onClick={() => onChange(item.id)}
               style={{
                 width: 48, height: 48, borderRadius: 14, cursor: "pointer", border: "none", padding: 0,
-                background: isActive ? C.mint : `color-mix(in srgb, ${C.text} 7%, transparent)`,
-                display: "flex", alignItems: "center", justifyContent: "center",
+                // У выбранной кнопки фон даёт общая плитка (nx-side-thumb) под ней
+                background: isActive ? "transparent" : `color-mix(in srgb, ${C.text} 7%, transparent)`,
+                display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1,
                 transition: "background 160ms ease",
               }}
             >
               <NavIcon id={item.id} c={isActive ? C.onAccent : C.text} s={48} />
             </button>
-            {/* Отметка активного раздела на разделительной линии */}
-            {isActive && <span aria-hidden="true" style={{ position: "absolute", right: -1, top: 0, bottom: 0, width: 2, background: C.mint }} />}
           </div>
         );
       })}

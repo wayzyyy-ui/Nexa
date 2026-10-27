@@ -139,7 +139,7 @@ export const APP_CSS = `
           --home-bg-a: #E9E9E9; --home-bg-b: #C6E7FF; /* макет 2026-10-26: светлая Главная — от серого слева сверху к голубому справа снизу */
           /* «Жидкое стекло» в светлой теме: тело — светлое и плотнее (иначе грязно-серое), блики — ярче,
              нижний край очерчен холодной тенью, а не светом */
-          --glass-rgb: 248 251 253; --glass-k: 2.6; --glass-hi-rgb: 255 255 255; --glass-low-rgb: 40 60 90;
+          --glass-rgb: 248 251 253; --glass-k: 2.6; --glass-hi-rgb: 255 255 255; --glass-low-rgb: 160 182 210; /* нижняя кромка стекла: была тёмно-синей (40 60 90) — читалась чёрной полосой */
           --glass-shade-rgb: 30 50 80; --glass-hi-k: 2.4; --glass-depth-k: 0.3; --glass-blend: normal;
           /* Экран входа (макет 2026-10): серое «стекло» поверх светлого рендера, текст белый */
           /* Логотип в светлой теме — чёрный (макет); «Активность» — светлая карточка */
@@ -503,6 +503,14 @@ export const APP_CSS = `
         .nx-set-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
         .nx-set-nav-item:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
         .nx-set-nav-item.is-active { background: var(--mint); color: var(--on-accent); font-weight: 600; }
+        /* Компьютер: подложка выбранного раздела — общая таблетка nx-set-thumb, переезжает между строками */
+        .nx-set-nav.has-thumb { position: relative; }
+        .nx-set-nav.has-thumb .nx-set-nav-item { position: relative; z-index: 1; transition: background-color 160ms ease, color 220ms ease; }
+        .nx-set-nav.has-thumb .nx-set-nav-item.is-active { background: transparent; }
+        .nx-set-nav.has-thumb .nx-set-nav-item svg * { transition: stroke 220ms ease, fill 220ms ease; }
+        .nx-set-thumb { position: absolute; left: 0; right: 0; top: 0; border-radius: 999px; background: var(--mint); pointer-events: none;
+          transition: transform 320ms cubic-bezier(0.2, 0.9, 0.3, 1), height 320ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+        @media (prefers-reduced-motion: reduce) { .nx-set-thumb { transition: none; } }
         .nx-set-nav-icon { display: flex; flex-shrink: 0; }
         .nx-set-nav-chev { margin-left: auto; display: flex; }
         .nx-set-about { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; border-radius: 28px;
@@ -1013,6 +1021,10 @@ export const APP_CSS = `
            Анимируются только transform и opacity — их рисует видеокарта, без рывков */
         html[data-nav-dir] .ng-main-content { view-transition-name: nx-screen; }
         html[data-nav-dir] .ng-sidebar { view-transition-name: nx-sidebar; }
+        /* Меню во время смены раздела — живое (снимок «после» обновляется), без растворения:
+           видно, как мятная плитка переезжает к новому разделу */
+        html[data-nav-dir]::view-transition-old(nx-sidebar) { display: none; }
+        html[data-nav-dir]::view-transition-new(nx-sidebar) { animation: none; }
         /* Ассистент закреплён на всё окно и в общий снимок экрана не попадал — браузер растягивал
            старый экран в новый. Свой снимок с тем же въездом / уходом, что у остальных разделов */
         /* Как у остальных разделов: въезжает и уезжает только содержимое (nx-ai-body),
@@ -1689,6 +1701,13 @@ export const APP_CSS = `
         /* Боковое меню: подсветка при наведении и заметный фокус с клавиатуры */
         .nx-nav-btn:not([aria-current]):hover { background: color-mix(in srgb, var(--text) 12%, transparent) !important; }
         .nx-nav-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+        /* Боковое меню: плитка выбранного раздела и отметка на линии переезжают (Sidebar) */
+        .nx-side-thumb { position: absolute; left: 50%; top: 0; width: 48px; height: 48px; margin-left: -24px; border-radius: 14px; background: var(--mint);
+          transition: transform 340ms cubic-bezier(0.2, 0.9, 0.3, 1); will-change: transform; pointer-events: none; }
+        .nx-side-mark { position: absolute; right: -1px; top: 0; width: 2px; height: 48px; background: var(--mint);
+          transition: transform 340ms cubic-bezier(0.2, 0.9, 0.3, 1); pointer-events: none; z-index: 1; }
+        .nx-nav-btn svg * { transition: stroke 200ms ease, fill 200ms ease; }
+        @media (prefers-reduced-motion: reduce) { .nx-side-thumb, .nx-side-mark { transition: none; } }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }
