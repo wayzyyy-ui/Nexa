@@ -1,11 +1,11 @@
 {
-  "version": "0.17.3",
-  "notes": "- Приложение для ПК: своя верхняя панель окна в стиле NEXA\n- Главная выровнена, погода и расписание телефона — как в макете\n- Имена устройств больше не рвутся посреди слова",
-  "pub_date": "2026-10-27T15:19:13.221Z",
+  "version": "0.17.5",
+  "notes": "- Новый вид «Медиа и файлы»\n- Поиск и уведомления снова на «Сегодня» и в «Заметках»\n- Подсказки в заметках учатся на ваших ответах\n- Понятная причина, если телефон не удалось найти\n- Логотип на экране входа, длинные дела без разрывов слов",
+  "pub_date": "2026-10-27T21:56:03.526Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlId3psclFTanJpNjhNRFR2M3RDWHVVZGg1YVFIcXhXS1pGZW52RlA3Z1h0bWlRR0RRNXlaa2hpREN4andrZVFlNXpPc004NUVKQkczZlBCQ2JHZ1FRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTE0MzUzCWZpbGU6TkVYQV8wLjE3LjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuMwp5N1N6QXMvMFg3dnZDTmQ3S1J3cVVuQzN3T3d4UTVEZm15aXlvZGp5TTVBSmVmOURlSW5YamFNS3JaUlEzMmREaUJrQlhYZ3BDOTRIL0luODVCQ1lBUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.3"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlONEpwWmxFcW9jQkw2Yk9LK3N1dUdxWUhRejJ0ZHNCN1hrdkFhdm11ZWtCcUJDZ2hlektyY1Eza3lBNWdLc2hMRUo1M01CUjdxNk9oMGE3UjcwbXc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTM4MTYzCWZpbGU6TkVYQV8wLjE3LjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuNQp5cVQ0eStzZUhnQnRkTVZvMjhnY3NCNklZZi9UdTR6MkJFT3I5ZU1GQlhDc2VVR0x3MGNXaG1XVnd4NWQvemtmbytuVzB0MVJETXJOT096cURLQVBBdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.5"
     }
   }
 }
