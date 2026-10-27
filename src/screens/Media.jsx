@@ -271,7 +271,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", width: "100%" }}>
                 <div>
                   <div style={{ fontSize: 14 }}>{cat.label}</div>
-                  <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>{n} {plural(n, ["файл", "файла", "файлов"])}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{n} {plural(n, ["файл", "файла", "файлов"])}</div>
                 </div>
               </div>
             </button>
@@ -306,7 +306,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
                 <FileThumb file={f} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                  <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
                 </div>
               </button>
               {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}

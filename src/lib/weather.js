@@ -25,7 +25,9 @@ export function weatherErrorText(err, timedOut) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return "нет интернета";
   if (timedOut) return "сервер погоды не ответил";
   if (err instanceof TypeError) return "нет связи с сервером погоды";
-  return err.message || "неизвестная ошибка";
+  // Свои тексты (с сервера, по-русски) показываем как есть; технические («Unexpected token…», коды) — нет
+  const m = String(err?.message || "");
+  return /[а-яё]/i.test(m) ? m : "сервер погоды сейчас недоступен";
 }
 
 /* Состояние погоды (cond из api/weather): sun | partly | cloud | overcast | rain | snow | sleet | storm | fog.

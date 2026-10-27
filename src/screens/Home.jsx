@@ -440,10 +440,11 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                   onClick={() => onOpenDevice(d.id)} style={{ ...btnReset, flex: 1, minWidth: 0, textAlign: "left", color: C.text }}>
                   <span className="nx-dev-pill-icon" aria-hidden="true">{deviceArt(d, 28)}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 15, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+                    {/* Имя — до двух строк: в половине ширины «Сайт на компьютере» обрезалось до «Сайт на ко…» */}
+                    <span className="nx-dev-pill-name" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", fontSize: 14, lineHeight: 1.2, overflow: "hidden", overflowWrap: "anywhere" }}>{d.name}</span>
                     {received[d.id]
                       ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
-                      : <span style={{ display: "block", fontSize: 11, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[deviceStatus(d), d.isSelf && "это устройство"].filter(Boolean).join(" · ")}</span>}
+                      : <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", fontSize: 12, lineHeight: 1.25, color: C.muted, marginTop: 3, overflow: "hidden" }}>{d.isSelf ? "Это устройство" : deviceStatus(d)}</span>}
                   </span>
                   <span className="nx-status-dot" style={{ color: d.online || d.isSelf ? C.green : C.red, background: d.online || d.isSelf ? C.green : C.red }} />
                 </button>

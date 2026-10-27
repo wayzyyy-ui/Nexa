@@ -190,6 +190,8 @@ export const APP_CSS = `
         /* «Добавить» в пустой клетке рядом с последним устройством — по центру, без левого отступа */
         .nx-dev-pill.is-add.is-half { padding-left: 12px !important; padding-right: 12px !important; }
         .nx-dev-pill-icon { width: 30px; display: flex; justify-content: center; flex-shrink: 0; }
+        /* Узкий телефон (до 380 px): без значка — иначе имя «Сайт на компьютере» не помещалось и в две строки; тип и так виден по имени, статус — по точке */
+        @media (max-width: 380px) { .nx-dev-pill-icon { display: none; } .nx-dev-pill { padding-left: 16px !important; } }
         /* Точка статуса со свечением (разрешено новым макетом) */
         .nx-status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 8px 1px currentColor; }
         /* Крупные карточки-таблетки: ассистент, пустой список */
@@ -294,6 +296,13 @@ export const APP_CSS = `
         }
         /* Складка справа на «Сегодня», «Медиа», «Файлах»: крупно, обрезана правым краем окна */
         .nx-media-fold { width: 600px; max-width: none; height: auto; display: block; margin-right: -130px; user-select: none; pointer-events: none; overflow: visible; }
+        /* Ноутбук (до 1500 px): складка уже и прижата к краю — рабочая колонка («Файлы», «Медиа», «Сегодня»)
+           получает ~130 px ширины, которые раньше занимала декорация */
+        @media (min-width: 769px) and (max-width: 1500px) {
+          .nx-media-grid, .nx-media-grid:has(.nx-today-grid) { grid-template-columns: minmax(0, calc(1183px * var(--desk-zoom, 1))) 190px !important; gap: 32px !important; }
+          .nx-media-grid:not(:has(.nx-today-grid)) { grid-template-columns: minmax(0, calc(1120px * var(--desk-zoom, 1))) 190px !important; }
+          .nx-media-fold { width: 400px; margin-right: -170px; }
+        }
 
         .nx-home-act { margin-top: calc(35 * var(--mk)); }
         .nx-home-act > section { border-color: var(--line-bright) !important; border-radius: calc(48 * var(--mk)) !important;
@@ -470,6 +479,10 @@ export const APP_CSS = `
         .nx-file-menu-title { font-size: 12px; color: var(--muted); padding: 8px 12px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nx-file-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 14px;
           font-size: 14px; font-family: inherit; text-align: left; cursor: pointer; }
+        /* Списки в ответах ассистента (renderBlocks): маркер мятный, отступ небольшой, переносы внутри пункта — как в тексте */
+        .nx-msg-list { margin: 4px 0 6px; padding-left: 1.3em; white-space: normal; }
+        .nx-msg-list li { margin: 3px 0; padding-left: 2px; white-space: pre-wrap; }
+        .nx-msg-list li::marker { color: var(--mint); }
         .nx-file-menu-item:hover, .nx-file-menu-item:focus-visible { background: color-mix(in srgb, var(--text) 7%, transparent); }
         .nx-select-bar { position: fixed; z-index: 120; left: 50%; transform: translateX(-50%); bottom: 24px;
           display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 8px; border-radius: 999px; max-width: calc(100vw - 24px);
@@ -837,7 +850,7 @@ export const APP_CSS = `
     .nx-notepad-desk .nx-notepad-search:focus-within { border-color: var(--mint) !important; justify-content: flex-start; }
     .nx-notepad-desk .nx-notepad-search:focus-within .nx-notepad-search-input { flex: 1 1 auto !important; }
     .nx-notepad-tools { display: flex; gap: calc(27 * var(--mk)); height: max(44px, calc(53 * var(--mk))); }
-    .nx-notepad-add { flex-shrink: 0; width: max(124px, calc(152 * var(--mk))); padding: 0 14px; border-radius: 999px; border: 1px solid transparent; cursor: pointer;
+    .nx-notepad-add { flex-shrink: 0; width: auto; min-width: max(124px, calc(152 * var(--mk))); white-space: nowrap; padding: 0 max(16px, calc(22 * var(--mk))); border-radius: 999px; border: 1px solid transparent; cursor: pointer;
       background: linear-gradient(90deg, var(--fold-cyan), var(--fold-blue)); color: var(--on-fold); font: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; white-space: normal; }
     .nx-notepad-desk .nx-notepad-filters { margin: 16px 0 0 !important; }
     .nx-notepad-subtitle { font-size: max(18px, calc(24 * var(--mk))); margin: calc(42 * var(--mk)) 4px calc(20 * var(--mk)); }
@@ -1995,7 +2008,7 @@ export const APP_CSS = `
           .nx-transfer-label { display: none; }
           .nx-transfer-btn { padding: 9px !important; }
           /* Экран устройства: сцена ниже, статус и настройки одной колонкой */
-          .nx-device-stage { height: 360px !important; border-radius: 32px !important; }
+          .nx-device-stage { height: 260px !important; border-radius: 32px !important; } /* было 360 — сведения и действия ниже были далеко */
           .nx-device-photo { left: 8% !important; height: 104% !important; }
           .nx-dev-card { border-radius: 28px !important; padding: 18px !important; }
           /* На телефоне складка шире — за устройством, по центру сцены */

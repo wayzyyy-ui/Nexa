@@ -401,7 +401,8 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
           Во время поиска от устройства расходятся волны сигнала */}
       <div>
           <div ref={stageRef} className="nx-device-stage" style={{
-            position: "relative", height: 500, borderRadius: 56, overflow: "hidden",
+            // Высота — от окна (было 500 px): на ноутбуке картинка занимала первый экран, а действия уходили вниз
+            position: "relative", height: "clamp(300px, 44vh, 460px)", borderRadius: 56, overflow: "hidden",
             border: `1px solid ${C.lineBright}`,
             background: C.panel,
             display: "flex", alignItems: "center", justifyContent: "center",

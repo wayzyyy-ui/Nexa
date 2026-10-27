@@ -46,7 +46,7 @@ function FileRowItem({ f, rowStyle, meta, selecting, selected, onOpen, onToggle,
         <FileThumb file={f} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-          <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</div>
         </div>
       </button>
       {!selecting && onTransfer && <TransferBtn onClick={(e) => onTransfer(f, card.current, e.currentTarget)} />}
@@ -457,7 +457,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
               <FolderThumb />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14 }}>{sf.name}</div>
-                <div style={{ fontSize: 11, color: C.mutedSoft, marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                   Папка · {n} {plural(n, ["объект", "объекта", "объектов"])}
                 </div>
               </div>

@@ -109,9 +109,55 @@ export function renderRich(text) {
   return parts;
 }
 
-// Обёртка — просто вызывает парсер и вставляет результат.
+/* Ответ по строкам: списки («- », «* », «• », «1. ») — настоящими списками с отступом (раньше дефисы
+   оставались сырым текстом), заголовки «## …» — жирной строкой; остальное — как было, с переносами.
+   Внутри строк — те же выделения (renderRich) */
+const BULLET = /^\s*[-*•]\s+(.*)$/, NUMBER = /^\s*(\d{1,3})[.)]\s+(.*)$/, HEADING = /^\s*#{1,4}\s+(.*)$/;
+export function renderBlocks(text) {
+  if (typeof text !== "string" || !/^\s*([-*•]|\d{1,3}[.)]|#{1,4})\s/m.test(text)) return renderRich(text);
+  const out = [];
+  let para = [], list = null, key = 0;
+  const flushPara = () => {
+    if (!para.length) return;
+    const t = para.join("\n").replace(/^\n+|\n+$/g, "");
+    if (t) out.push(<span key={key++} style={{ display: "block" }}>{renderRich(t)}</span>);
+    para = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    const Tag = list.ordered ? "ol" : "ul";
+    out.push(
+      <Tag key={key++} className="nx-msg-list" start={list.ordered ? list.start : undefined}>
+        {list.items.map((it, i) => <li key={i}>{renderRich(it)}</li>)}
+      </Tag>
+    );
+    list = null;
+  };
+  for (const line of text.split("\n")) {
+    const b = line.match(BULLET), n = !b && line.match(NUMBER), h = !b && !n && line.match(HEADING);
+    if (b || n) {
+      flushPara();
+      const ordered = !!n;
+      if (list && list.ordered !== ordered) flushList();
+      if (!list) list = { ordered, start: n ? Number(n[1]) : undefined, items: [] };
+      list.items.push(b ? b[1] : n[2]);
+    } else if (h) {
+      flushPara(); flushList();
+      out.push(<strong key={key++} style={{ display: "block", fontWeight: 700, color: C.textStrong, margin: "6px 0 2px" }}>{renderRich(h[1])}</strong>);
+    } else if (!line.trim() && list) {
+      flushList(); // пустая строка заканчивает список
+    } else {
+      flushList();
+      para.push(line);
+    }
+  }
+  flushPara(); flushList();
+  return out;
+}
+
+// Обёртка — текст ответа с выделениями и списками
 export function RichText({ children }) {
-  return <>{renderRich(children)}</>;
+  return <>{renderBlocks(children)}</>;
 }
 
 // Маленькая кнопка под сообщением (копировать, повторить, править)
