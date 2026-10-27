@@ -1,11 +1,11 @@
 {
-  "version": "0.17.6",
-  "notes": "- Новый вид «Медиа и файлы»\n- Поиск и уведомления снова на «Сегодня» и в «Заметках»\n- Подсказки в заметках учатся на ваших ответах\n- Понятная причина, если телефон не удалось найти\n- Логотип на экране входа, длинные дела без разрывов слов",
-  "pub_date": "2026-10-27T22:38:07.267Z",
+  "version": "0.17.7",
+  "notes": "- Быстрое выделение файлов: зажмите файл и ведите пальцем по списку\n- Поиск, уведомления и молния на телефоне — крупнее и ровно\n- Исправлен сдвиг экрана ассистента после смахивания\n- Боковое меню на компьютере снова как фон; у истории чатов — одного цвета с ним\n- Всплывающие уведомления на телефоне стоят по центру",
+  "pub_date": "2026-10-27T22:53:28.640Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTNCYmo3Y3BWSHVGUWJZdUw1UHBkL1VISVZ3aENNd2F1dkJqNVdhYnNlblhwY2pNYXhEejdmR2NsVWhLNHpJeTJ4alJKaDlaa05tdGVpc2FvZkhMdkFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTQwNjg2CWZpbGU6TkVYQV8wLjE3LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuNgo2cEZSZFdOV1Z5c21HMjY0NUJtZGxQV0hoRVA0R1hTWW8wTEhmaHJMVEtqYzFUeHhCRFdvUzZVZFpHYnpQaXY3c2ErREwvQWNCRmF1dHJoa1EySGxDZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.6"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTVVRjk2cDZNZnVoQnFmVDRxNVJDS2s1QnczRytKanNkYXFZUTZsSlNRLzYybjRKaFFKNlFhR05Nb1EzV3J1cG45ZWx2WkYrWEU5a0JvalBOUHhxamc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTQxNjA4CWZpbGU6TkVYQV8wLjE3LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuNwpEa2U3bi9vYnVva2FKTzhRQWFhZEsxWGxNRlptN0YzZjFJUGNPeW9YSDN4dmxSbHVHM1hOVys4aDAyQjc4M3RYZDdMeFFrZnA3NHcxSnNjRENFT0pBUT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.7"
     }
   }
 }
