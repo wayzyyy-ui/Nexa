@@ -824,7 +824,7 @@ export const APP_CSS = `
     .nx-notepad-side > * { flex-shrink: 0; }
     .nx-notepad-desk .nx-notepad-ctags { padding-left: max(26px, calc(40 * var(--mk))) !important; margin-top: -10px; }
     .nx-notepad-desk .nx-notepad-group { margin-bottom: calc(-18 * var(--mk)) !important; }
-    .nx-notepad-desk .nx-notepad-list { flex: 1 1 auto !important; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: calc(16 * var(--mk)); margin-right: calc(-16 * var(--mk)); gap: calc(33 * var(--mk)) !important; }
+    .nx-notepad-desk .nx-notepad-list { flex: 1 1 auto !important; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: calc(16 * var(--mk)); margin-right: calc(-16 * var(--mk)); /* запас сверху: карточка при наведении поднимается на 2 px, и прокрутка срезала её верхнюю рамку */ padding-top: 4px; margin-top: -4px; gap: calc(33 * var(--mk)) !important; }
     .nx-notepad-desk .nx-notepad-list::-webkit-scrollbar { width: 4px; }
     /* Складка у правого края окна (макет 2026-10): видна справа от панели, край заходит под «стекло» и просвечивает светом */
     .nx-notepad-fold { position: absolute; left: calc(100% - 320 * var(--mk)); top: calc(-70 * var(--mk)); width: calc(640 * var(--mk)); pointer-events: none; z-index: 0; }
@@ -1967,6 +1967,9 @@ export const APP_CSS = `
           .nx-sched-time { align-self: center; margin-bottom: 0 !important; font-size: 13px !important; }
           .nx-sched-title { font-size: 15px !important; }
           .nx-sched-form input { font-size: 16px !important; } /* iPhone не приближает страницу */
+          /* Дата и время — две равные колонки: поле времени в Android шире 124 px и вылезало за рамку формы */
+          .nx-sched-form-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+          .nx-sched-form-row input { width: 100%; max-width: 100%; padding-left: 14px !important; padding-right: 10px !important; }
           .nx-sched-hint { visibility: hidden; } /* Enter/Esc на телефоне не нужны — место под кнопки остаётся */
           .nx-sched-until { margin-bottom: 16px !important; }
           /* Файлы: поиск под путём на всю ширину, список без своей прокрутки */
