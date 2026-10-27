@@ -1,11 +1,11 @@
 {
-  "version": "0.16.5",
-  "notes": "- Фото на весь экран: можно скопировать и скачать\n- Новые файлы сами раскладываются по папкам\n- Подсказка в заметках дописывает одно слово\n- Сайт открывается с фирменной заставкой\n- Исправлена кнопка уведомлений на айфоне",
-  "pub_date": "2026-10-26T19:15:25.978Z",
+  "version": "0.16.6",
+  "notes": "- Форма нового дела на телефоне: дата и время больше не вылезают за рамку\n- Карточка заметки при наведении не теряет верхнюю линию",
+  "pub_date": "2026-10-27T08:51:55.528Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXp3ajB1SWorMmhOaUZGUHV5dFh0ZDhXOHByUlRBOHFnZStMNnNOSXM1M2pVWTI2NEJLa1c0Q2pGVmdXS0hPVkJZaTNkNzc1WVNDK1Bjdk01dERISVE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDQyMTI1CWZpbGU6TkVYQV8wLjE2LjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuNQo3SlQ5MDRheFd3QU92TEVuV09aMlR5M2ZUbXJBRk9lS1R5VWRwTDVUZjV2M09aOHF5SGhGOVdDMjJQSENKV3JNaGllMXRzTnE2QjV0UGdHSVVRTzFBUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.5"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTN3R3YwSmU4anNlT21RSnduUFo1d2MxN2M1ZktteFdGcTFiSTgvenR3OGdtekJ2MDBiL0psbWlxYVhYZzZmUUxhWlpaVGdocG9OcDZ2ZGs5YXN0N1FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDkxMTE1CWZpbGU6TkVYQV8wLjE2LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTYuNgpHalpFMit4cG1uZ2dncXhKeTNSbEIyc21QVEY3T0dhTUxGTnhnMFd4QlIwNy93c3NzTnU3bDVMNTY5UW05dVVJaDdBY0tZNjdjQzVZZDlleHJ6THFBZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.16.6"
     }
   }
 }
