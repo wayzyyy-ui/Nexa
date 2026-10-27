@@ -1,11 +1,11 @@
 {
-  "version": "0.17.1",
-  "notes": "- Плавное переключение разделов в меню и в Настройках на компьютере\n- В светлой теме под карточками больше нет тёмных полос",
-  "pub_date": "2026-10-27T10:27:47.529Z",
+  "version": "0.17.2",
+  "notes": "- Новая Главная: погода и ближайшие дела, устройства страницами\n- «Где устройство?»: последнее известное место, даже если телефон выключен\n- Экспериментальный интерфейс телефона — в «Внешнем виде»\n- Подсказки mini-1 понимают контекст, лёгкая вибрация\n- Выбранные файлы можно скачать разом",
+  "pub_date": "2026-10-27T14:12:43.707Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTc1WDNCUUxSL01ENUdNTFd4NWdVNzN3UGhoZ05hWGF5dndBNXhpWjhobzllbzVBQkpKS3dlMUtjZGhPcmo1TklEbThQTUpFa1RKQXo3d25aMzNzZWd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMDk2ODY3CWZpbGU6TkVYQV8wLjE3LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuMQp1RW1yM2tRZjhvUW16dmVaS0FrYzNaN040d04rSVlVTVM3Uk56L1Y2ZlE4N2lSR0hVUWFpOEZ4ekYxYnplVHZiL3h3Yzd6bGpYSFNGUHpxaVJlUHdEQT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.1"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTJXNmRFSlVURjY4alRHc2QzaHFKcFp0QVc0VFVtaEt3ejBpd2E5NkxycHhVMjFPRktPbEN5QXM4SXBsZEZXZ0IvVzhoQ2dJMFRudmdmeVh3WXBMakE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTEwMzYzCWZpbGU6TkVYQV8wLjE3LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuMgpaUlVaTlF1NVVwTHFJMzZhQ0tTaEQvVHdCaW5ia2FrQi9zRy9MMnRNOFVmUGo2ZTNGRkxxZmNzQXVIRkJKakhqNFAwYmJxZkZMWkpWZjJiRll2NHhBZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.2"
     }
   }
 }
