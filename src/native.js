@@ -369,14 +369,16 @@ export async function startIntro() {
 }
 
 /* Заставка запуска: в приложении — всегда; на сайте (2026-10-26, просьба автора) — при первом открытии
-   во вкладке (sessionStorage): перезагрузка той же вкладки и переходы её не повторяют. Приложение для ПК — без неё */
-const bootIntro = isNative || (!isDesktop && (() => {
+   во вкладке (sessionStorage): перезагрузка той же вкладки и переходы её не повторяют.
+   Приложение для ПК (2026-10-28, просьба автора) — так же, как сайт: один раз за запуск NEXA
+   (sessionStorage окна живёт, пока NEXA запущена, в том числе в трее) */
+const bootIntro = isNative || (() => {
   try {
     if (sessionStorage.getItem("nexa-boot-intro")) return false;
     sessionStorage.setItem("nexa-boot-intro", "1");
     return true;
   } catch { return false; }
-})());
+})();
 if (bootIntro && !isNative) {
   document.documentElement.classList.add("nx-intro-wait");
   mountBootLogo();

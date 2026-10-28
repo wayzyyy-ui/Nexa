@@ -96,4 +96,10 @@ export const TITLEBAR_CSS = `
   html.nx-titlebar .nx-toast-host { top: calc(var(--tb-h) + 16px) !important; }
   html.nx-titlebar .nx-air.nx-glass { top: calc(var(--tb-h) + 12px) !important; }
   html.nx-titlebar .nx-photo-full, html.nx-titlebar .nx-video-full { top: var(--tb-h) !important; }
+  /* Заставка запуска ложится под панель окна: кнопки окна видны всё время */
+  html.nx-titlebar #nx-boot { top: var(--tb-h); }
+  /* Окна поверх экрана (файл, подключение, вход, поиск…) начинаются под панелью окна и не выше своей высоты:
+     раньше их верх прятался под панелью (2026-10-28) */
+  html.nx-titlebar .nx-viewer, html.nx-titlebar .nx-quick-overlay, html.nx-titlebar .nx-search-overlay { top: var(--tb-h) !important; }
+  html.nx-titlebar .nx-viewer > [role="dialog"] { max-height: calc(100vh - var(--tb-h) - 40px) !important; }
 `;

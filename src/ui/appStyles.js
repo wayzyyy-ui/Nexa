@@ -826,6 +826,9 @@ export const APP_CSS = `
           body:has(.nx-home-glow) .ng-topbar::before { background-position: 0 0; }
           /* Все значки шапки одного размера; профиль на телефоне — в нижней панели */
           .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) svg, .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 19px !important; height: 19px !important; }
+          /* Шапка Главной — те же кнопки 40 × 40 со значками 26 px, что в верхней строке остальных экранов (2026-10-28) */
+          .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) { width: 40px !important; height: 40px !important; min-width: 40px; padding: 0 !important; margin: 0 !important; display: inline-flex !important; align-items: center; justify-content: center; box-sizing: border-box; }
+          .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 26px !important; height: 26px !important; }
           /* 2026-10-28: значки крупнее (26 px) и кнопки 40 × 40 — удобнее попадать; одинаковые квадраты — ровный шаг,
              центр — на линии заголовка раздела */
           .ng-topbar :is(.nx-tb-quick, .nx-tb-bell, .nx-top-search-icon) { width: 40px !important; height: 40px !important; min-width: 40px; padding: 0 !important;
