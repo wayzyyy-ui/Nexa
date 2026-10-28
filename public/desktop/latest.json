@@ -1,11 +1,11 @@
 {
-  "version": "0.17.8",
-  "notes": "- «Активность» на Главной компьютера — стеклянная карточка без обводки\n- «Мои устройства» — жирнее и крупнее",
-  "pub_date": "2026-10-27T23:03:41.848Z",
+  "version": "0.17.9",
+  "notes": "- Заставка при запуске теперь и в приложении для компьютера\n- Колокольчик и молния на Главной телефона — того же размера, что на других экранах\n- Окна на компьютере больше не прячут верх под панелью окна",
+  "pub_date": "2026-10-28T11:33:39.881Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WS9LNjdpdkNHZCtjelBsenVrY3MwaGY4L205UXhtL3NtM2RYNFNjcTlDS2dXejIwSVVpUGt3VjgydmZUZ29FUVM0b1I0bGhLTUxVa3VuWEZxdkc0NkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTQyMjIxCWZpbGU6TkVYQV8wLjE3LjhfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuOApMSFh5SVhKRk53RmJLUjU4RUtvdkJ6NUFCQzAvaWlycE1wYmFqK1JSQnQybXF6WkdJdW55bFl6Qm4ybW54SEVyaGFHQWRLOTRHUXg1ejF6VEZoQllEQT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.8"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTllL0JRMnRqUE5FVkU4WTYrdUVVc0xLd0kvMUs0TCtFNTRsQ1F5TXp1RXd3ZG9tVnFUbkVtQngwZkZudUJBaWl2NERtOVFrall0YkltQm1rN3ZGWXd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMTg3MjE5CWZpbGU6TkVYQV8wLjE3LjlfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTcuOQpsZUptbWtvbXNWU25ESE1TY2tTdk9KRlhJck5Nbk94VUNkWnh3ZndOQmt3QUdXV3BlNXRBMk5HaWEyamRnNFlNdDhGMWdtZlFLeXo5MkR5MzhkNThDQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.17.9"
     }
   }
 }
