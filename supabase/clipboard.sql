@@ -9,8 +9,8 @@
 -- каналу Realtime nexa:<uid> (supabase/realtime-policies.sql) — таблица нужна устройствам,
 -- которые были не в сети, и серверу push (api/push.js читает текст по номеру, а не из запроса).
 --
--- enc — место под шифрование на устройствах: 0 — текст как есть (сейчас), 1 — зашифрован
--- общим ключом устройств аккаунта (будет позже; сервер текст тогда прочитать не сможет).
+-- enc — 0: текст как есть; 1: зашифрован паролем аккаунта на устройствах (src/lib/e2e.js) —
+-- сервер текст прочитать не может (и push с текстом такому не шлёт).
 
 create table if not exists public.clipboard (
   id          uuid primary key default gen_random_uuid(),
@@ -24,6 +24,14 @@ create table if not exists public.clipboard (
   expires_at  timestamptz not null check (expires_at > created_at and expires_at <= created_at + interval '61 minutes')
 );
 create index if not exists clipboard_user_idx on public.clipboard (user_id, created_at desc);
+
+-- Шифрование на устройствах (2026-10-28): зашифрованный текст (enc = 1, «e1:…») длиннее исходного —
+-- до 30 000 знаков; открытый — как раньше, до 10 000. Повторный запуск файла заменяет старую проверку
+alter table public.clipboard drop constraint if exists clipboard_text_check;
+alter table public.clipboard add constraint clipboard_text_check check (
+  char_length(text) between 1 and 10000
+  or (enc = 1 and left(text, 3) = 'e1:' and char_length(text) <= 30000)
+);
 
 alter table public.clipboard enable row level security;
 revoke all on public.clipboard from anon;

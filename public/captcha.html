@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>NEXA · Проверка</title>
+  <!-- Проверка «не робот» (hCaptcha) для входа по почте. Открывается окном поверх NEXA
+       (src/ui/humanCheck.jsx) — и на сайте, и в приложениях: у Android и ПК адрес страницы
+       localhost, его hCaptcha не принимает, поэтому проверка всегда идёт с этого адреса.
+       Результат (одноразовый пропуск) уходит только тому окну NEXA, что открыло проверку. -->
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; font: 13px/1.45 system-ui, sans-serif; }
+    body { display: flex; align-items: flex-end; justify-content: center; color: #EAF2F7; }
+    body[data-theme="light"] { color: #0B1A24; }
+    .note { margin: 0 16px calc(env(safe-area-inset-bottom, 0px) + 24px); max-width: 360px; text-align: center;
+      padding: 12px 16px; border-radius: 16px; background: rgba(14, 16, 22, 0.94); border: 1px solid rgba(255, 255, 255, 0.14); }
+    body[data-theme="light"] .note { background: rgba(248, 250, 252, 0.96); border-color: rgba(11, 26, 36, 0.14); }
+    .note b { display: block; font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .note small { opacity: 0.7; }
+    .note a { color: inherit; }
+  </style>
+</head>
+<body>
+  <div id="box"></div>
+  <p class="note" id="note"><b>Проверяем, что вы не робот…</b>
+    <small>Если появится задание с картинками, выполните его. Защита hCaptcha:
+    <a href="https://www.hcaptcha.com/privacy" target="_blank" rel="noopener noreferrer">приватность</a> и
+    <a href="https://www.hcaptcha.com/terms" target="_blank" rel="noopener noreferrer">условия</a>.</small></p>
+  <script src="/captcha.js"></script>
+</body>
+</html>

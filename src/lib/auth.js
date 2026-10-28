@@ -7,6 +7,7 @@ import { DOMAIN_NOT_ALLOWED_MESSAGE } from "./allowedEmailDomains.js";
 import { newId } from "./sync.js";
 import { cacheClearScope } from "./files.js";
 import { flushSharedState } from "./shared.js";
+import { forgetE2eKey } from "./e2eKey.js";
 
 /* ═══ АККАУНТЫ (Supabase) ═══════════════════════════════════
    Вход по коду из письма, без паролей. Клиент — src/lib/supabase.js,
@@ -100,6 +101,7 @@ export function clearLocalAccountData(uid) {
     mine.forEach((k) => localStorage.removeItem(k));
   } catch {}
   cacheClearScope(uid); // копии содержимого файлов (IndexedDB)
+  forgetE2eKey(uid);    // ключ шифрования аккаунта на этом устройстве
 }
 
 /* Понятный текст ошибки Supabase.
@@ -123,6 +125,10 @@ export function authErrorText(error, step, sentAt) {
   }
   if (error?.status === 429 || code.startsWith("over_") || msg.includes("rate limit") || msg.includes("security purposes")) {
     return "Слишком много попыток. Подождите пару минут и попробуйте снова.";
+  }
+  // Supabase не принял пропуск проверки «не робот» (hCaptcha): нет, просрочен или уже использован
+  if (code.startsWith("captcha") || msg.includes("captcha")) {
+    return "Проверка «не робот» не прошла. Нажмите «Получить код» ещё раз.";
   }
   if (step === "verify" && (code === "otp_expired" || msg.includes("expired") || msg.includes("invalid"))) {
     return sentAt && Date.now() - sentAt > OTP_LIFETIME_MS

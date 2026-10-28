@@ -784,6 +784,19 @@ export const APP_CSS = `
           .nx-set-sheet .nx-set-about { border-radius: 24px; padding: 14px 18px; }
           /* «О системе» — строкой списка: тот же шаг, что между разделами (у списка 4 px, у панели 10) */
           .nx-set-sheet > .nx-set-about-row { margin-top: -6px; }
+          /* Экран «Профиль» помещается без прокрутки (просьба автора 2026-10-28): на невысоком экране
+             аватар, отступы и строки разделов ужимаются по высоте (svh — видимая высота без панелей браузера) */
+          /* Снизу место под нижнюю панель уже оставляет .ng-main-content — своё не добавляем (было 100 px сверху него) */
+          .ng-screen.nx-set-phone { padding-top: clamp(18px, 5.2svh, 44px) !important; padding-bottom: 8px !important; }
+          .nx-set-profile { padding-bottom: clamp(12px, 2.6svh, 22px); }
+          .nx-set-profile .nx-avatar-edit { margin-bottom: clamp(6px, 1.4svh, 12px); }
+          .nx-set-profile .nx-set-avatar { width: clamp(58px, 10svh, 84px) !important; height: clamp(58px, 10svh, 84px) !important; }
+          .nx-set-profile .nx-set-avatar > svg { width: 48%; height: 48%; }
+          .nx-set-profile .nx-set-name { font-size: clamp(19px, 2.6svh, 22px); }
+          .nx-set-sheet { padding: clamp(6px, 1.2svh, 10px); gap: clamp(4px, 1.2svh, 10px); }
+          .nx-set-sheet .nx-set-nav { gap: clamp(2px, 0.5svh, 4px); }
+          .nx-set-sheet .nx-set-nav-item { min-height: clamp(40px, 6.5svh, 52px); }
+          .nx-set-sheet > .nx-set-about-row { margin-top: calc(clamp(2px, 0.5svh, 4px) - clamp(4px, 1.2svh, 10px)); }
           .ng-screen.nx-set-page { padding: 18px 16px calc(100px + var(--sab)) !important; text-align: left; }
           .nx-set-page-title { margin: 14px 0 18px !important; }
           /* Появление: аватар «раскрывается», имя и почта поднимаются, список разделов всплывает следом;
@@ -1124,6 +1137,18 @@ export const APP_CSS = `
     .nx-notepad-editor .nx-notepad-in { padding-left: calc(36 * var(--mk)) !important; padding-right: calc(36 * var(--mk)) !important; box-sizing: border-box; }
     .nx-notepad-editor .nx-notepad-etitle { font-size: max(24px, calc(36 * var(--mk))) !important; }
     .nx-notepad-editor .nx-notepad-etext { font-size: max(16px, calc(22 * var(--mk))) !important; min-height: 0 !important; }
+    /* Заметка на весь экран (2026-10-28): панель поверх всего окна (и меню, и верхней строки), остальное приглушено
+       тенью во весь экран; текст — колонкой до 980 px по центру, чтобы длинные строки читались */
+    .nx-notepad-editor.nx-notepad-panel.is-full {
+      position: fixed !important; top: calc(var(--tb-h, 0px) + 18px) !important; left: 18px; right: 18px; bottom: 18px; height: auto; z-index: 300;
+      border-radius: max(28px, calc(48 * var(--mk))) !important; background: color-mix(in srgb, var(--bg) 90%, transparent);
+      box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--bg) 72%, transparent);
+      padding-left: max(28px, calc((100% - 980px) / 2)); padding-right: max(28px, calc((100% - 980px) / 2));
+      animation: nx-note-full 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    .nx-notepad-editor.is-full .nx-notepad-in { padding-left: 0 !important; padding-right: 0 !important; }
+    @keyframes nx-note-full { from { opacity: 0; transform: scale(0.985); } }
+    @media (prefers-reduced-motion: reduce) { .nx-notepad-editor.is-full { animation: none; } }
   }
   body.kb-open .nx-notepad-fab { display: none !important; }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
@@ -1193,6 +1218,23 @@ export const APP_CSS = `
   .nx-gate-card .nx-auth-or { font-size: clamp(13px, 0.95vw, 18px) !important; }
   .nx-gate-card #nx-auth-hint, .nx-gate-card #nx-auth-code-hint, .nx-gate-card .nx-auth-note { font-size: clamp(13px, 1vw, 19px) !important; }
   .nx-gate-card .nx-auth-step .nx-ghost-btn svg { width: 1.1em; height: 1.1em; }
+  /* Вход через Яндекс ID / Telegram — под кнопкой QR, тот же вид (таблетка с рамкой) */
+  .nx-ext-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .nx-ext-btn {
+    flex: 1 1 160px; min-width: 0; padding: 11px 16px; font: inherit; font-size: 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border-strong); color: var(--text); background: transparent;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .nx-ext-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nx-ext-btn:disabled { opacity: 0.6; cursor: default; }
+  .nx-ext-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; font-size: 13px; line-height: 1.45; margin-top: 10px; color: var(--muted); }
+  .nx-ext-state[data-kind="error"] { color: var(--red); }
+  .nx-gate-card .nx-ext-btn { font-size: clamp(15px, 1.4vw, 26px); min-height: clamp(48px, 5.2vw, 100px); }
+  .nx-gate-card .nx-ext-btn svg { width: 1.1em; height: 1.1em; }
+  .nx-gate-card .nx-ext-state { font-size: clamp(13px, 1vw, 19px); }
+  /* Проверка «не робот» (src/ui/humanCheck.jsx): прозрачная страница проверки на весь экран поверх всего */
+  .nx-human { position: fixed; inset: 0; z-index: 2000; background: color-mix(in srgb, var(--bg) 72%, transparent); }
+  .nx-human-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; color-scheme: normal; }
   .nx-sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* Телефон: сверху рендер (сцена с устройствами), снизу — шторка с карточкой */
   @media ${PHONE_MQ} {
@@ -2069,6 +2111,10 @@ export const APP_CSS = `
         /* Компьютер: полосы прокрутки у самой страницы нет (колесо, тачпад и клавиши работают) — появилась
            прокрутка (открыли календарь) — верхняя строка и складка не сдвигаются; у блоков внутри — как раньше */
         @media ${DESKTOP_MQ} { html { scrollbar-width: none; } html::-webkit-scrollbar { display: none; } }
+        /* Окно файла — без видимой полосы прокрутки (2026-10-28, просьба автора: мятная полоса у края окна);
+           колесо, тачпад и палец прокручивают как раньше */
+        .nx-fv { scrollbar-width: none; }
+        .nx-fv::-webkit-scrollbar { display: none; }
         /* Размер ползунка: видимая часть — 6 px (компьютер) / 10 px (палец), а зона нажатия вокруг неё шире —
            прозрачная кайма входит в полосу (background-clip: padding-box). Короче 48 px ползунок не бывает — за него легко ухватиться */
         ::-webkit-scrollbar { width: 14px; height: 14px; }

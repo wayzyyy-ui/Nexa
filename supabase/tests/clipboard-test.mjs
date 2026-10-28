@@ -69,6 +69,12 @@ check("A не меняет даже свою запись", !!upd.error || upd.r
 // Ограничения
 check("больше 10 000 знаков — отказ", !!(await ins(A, A, "я".repeat(10001))).error);
 check("пустой текст — отказ", !!(await ins(A, A, "")).error);
+// Зашифрованное на устройствах (2026-10-28): «e1:…» с enc = 1 — до 30 000 знаков; открытое длинное — нет
+const insEnc = (text, enc) => as(A, `insert into public.clipboard (user_id, from_device, text, enc, expires_at) values ($1, 'dev', $2, $3, now() + interval '10 minutes') returning id`, [A, text, enc]);
+check("зашифрованное 25 000 знаков — можно", !(await insEnc("e1:" + "A".repeat(25000), 1)).error);
+check("зашифрованное больше 30 000 — отказ", !!(await insEnc("e1:" + "A".repeat(30001), 1)).error);
+check("длинное без метки e1: — отказ", !!(await insEnc("A".repeat(15000), 1)).error);
+check("длинное открытое (enc 0) — отказ", !!(await insEnc("e1:" + "A".repeat(15000), 0)).error);
 check("срок больше часа — отказ", !!(await ins(A, A, "т", "2 hours")).error);
 // Просроченное: не видно и убирается при следующей записи
 await db.query("insert into public.clipboard (user_id, from_device, text, created_at, expires_at) values ($1, 'dev', 'старое', now() - interval '20 minutes', now() - interval '10 minutes')", [A]);
@@ -103,7 +109,8 @@ try { await db.query(DO); check("кусок security-test.sql (16б) выпол�
 // Строка B цела
 check("запись B на месте", (await db.query("select text from public.clipboard where id = $1", [bId])).rows[0]?.text === "секрет B");
 
-await db.end(); await server.stop();
+await db.end();
+try { await server.stop(); } catch { /* Windows иногда держит временную папку — итог от этого не зависит */ }
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${fails ? "✘" : "✔"} clipboard.sql: ${passes} проверок прошло, ${fails} не прошло`);
 process.exit(fails ? 1 : 0);

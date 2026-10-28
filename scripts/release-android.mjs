@@ -27,6 +27,10 @@ const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", cwd: path(".")
 const release = existsSync(path("android/keystore.properties"));
 console.log(`\n▶ Выпуск NEXA: ${release ? "подписанный release (android/keystore.properties)" : "debug-сборка (keystore.properties нет) — только для тестирования, не для раздачи людям"}\n`);
 
+// 0) Проверки перед выпуском (scripts/release-check.mjs): SQL, тесты, линтер, уязвимые пакеты, база. Не прошли — выпуск стоп
+const checkFlags = ["--skip-audit", "--skip-db"].filter((f) => process.argv.includes(f)).join(" ");
+try { run(`node scripts/release-check.mjs ${checkFlags}`); } catch { process.exit(1); }
+
 // 1) Сайт для приложения → android/
 run("npm run build:android");
 

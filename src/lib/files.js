@@ -12,9 +12,12 @@
    Открыть и скачать облачный файл — по временной подписанной ссылке (1 час). */
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase.js";
+import { tusUpload, TUS_CHUNK } from "./tus.js";
 
 export const BUCKET = "nexa-files";
-export const FILE_MAX_MB = 50;                 // такой же лимит стоит у корзины
+/* Самый большой файл. 50 МБ — потолок бесплатного тарифа Supabase на один файл (и лимит корзины в files-storage.sql).
+   На платном тарифе можно больше: поднять лимит тарифа, корзины и VITE_FILE_MAX_MB — одинаково */
+export const FILE_MAX_MB = Math.min(5000, Math.max(1, Number(import.meta.env?.VITE_FILE_MAX_MB) || 50));
 const CACHE_MAX_BYTES = 25 * 1024 * 1024;      // в IndexedDB кладём файлы до 25 МБ
 const SIGNED_TTL_S = 3600;                     // подписанная ссылка живёт час
 
@@ -121,6 +124,8 @@ export async function localBytes(scope, ids) {
 // Через XMLHttpRequest: только он сообщает, сколько уже отправлено.
 // Возвращает { promise, abort }. promise → { path } или ошибка { kind, text }
 export function uploadToCloud({ uid, id, file, onProgress }) {
+  // Больше одного куска (6 МБ) — загрузка с дозагрузкой (src/lib/tus.js): обрыв связи не начинает файл заново
+  if (file.size > TUS_CHUNK) return resumableUpload({ uid, id, file, onProgress });
   const xhr = new XMLHttpRequest();
   const path = `${uid}/${id}`;
   const promise = (async () => {
@@ -153,6 +158,88 @@ export function uploadToCloud({ uid, id, file, onProgress }) {
     return { path };
   })();
   return { promise, abort: () => { try { xhr.abort(); } catch {} } };
+}
+/* Загрузка с дозагрузкой (TUS) — кусками по 6 МБ. Адрес начатой загрузки — nexa-tus@<id аккаунта>
+   (id файла → { url, size, at }): очередь загрузок и перезапуск NEXA продолжают с места обрыва.
+   Тот же ответ, что у обычной загрузки: { promise, abort }; ошибки — те же { kind, text } */
+const tusKey = (uid) => `nexa-tus@${uid}`;
+const tusStore = (uid) => {
+  const read = () => { try { const v = JSON.parse(localStorage.getItem(tusKey(uid))); return v && typeof v === "object" ? v : {}; } catch { return {}; } };
+  const write = (v) => { try { Object.keys(v).length ? localStorage.setItem(tusKey(uid), JSON.stringify(v)) : localStorage.removeItem(tusKey(uid)); } catch {} };
+  return {
+    get: (k) => read()[k] || null,
+    set: (k, val) => { const v = read(); v[k] = val; write(v); },
+    del: (k) => { const v = read(); if (k in v) { delete v[k]; write(v); } },
+  };
+};
+// Один запрос через XMLHttpRequest (только он сообщает, сколько уже отправлено)
+function xhrRequest({ method, url, headers, body, onProgress, signal }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    for (const [k, v] of Object.entries(headers || {})) xhr.setRequestHeader(k, v);
+    if (onProgress) xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.onload = () => resolve({ status: xhr.status, header: (n) => xhr.getResponseHeader(n), text: xhr.responseText });
+    xhr.onerror = xhr.ontimeout = () => reject({ network: true });
+    xhr.onabort = () => reject({ abort: true });
+    signal?.addEventListener("abort", () => { try { xhr.abort(); } catch {} }, { once: true });
+    xhr.send(body ?? null);
+  });
+}
+// Пауза перед повтором: и время, и сеть (без сети ждём событие online), отмена — сразу
+const waitOnline = (ms, signal) => new Promise((resolve) => {
+  const t = setTimeout(go, ms);
+  function go() {
+    if (navigator.onLine !== false || signal?.aborted) return resolve();
+    window.addEventListener("online", resolve, { once: true });
+  }
+  signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+});
+function resumableUpload({ uid, id, file, onProgress }) {
+  const ctrl = new AbortController();
+  const path = `${uid}/${id}`;
+  const store = tusStore(uid);
+  const base = import.meta.env.VITE_SUPABASE_URL.replace(/\/+$/, "");
+  const endpoint = `${base}/storage/v1/upload/resumable`;
+  const auth = async () => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error("no session");
+    return { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY };
+  };
+  const promise = (async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data?.session?.access_token) throw { kind: "auth", text: "Войдите заново — сессия закончилась" };
+    try {
+      await tusUpload({
+        endpoint, auth, file, key: id, store, request: xhrRequest, signal: ctrl.signal,
+        wait: (ms) => waitOnline(ms, ctrl.signal),
+        onProgress: (p) => onProgress?.(p),
+        meta: { bucketName: BUCKET, objectName: path, contentType: file.type || "application/octet-stream", cacheControl: "3600" },
+      });
+    } catch (e) {
+      if (e?.kind === "abort") throw { kind: "abort", text: "Загрузка отменена" };
+      if (e?.kind === "network") throw { kind: "network", text: "Нет связи — загрузка продолжится с места обрыва" };
+      let msg = "";
+      try { msg = JSON.parse(e?.text || "")?.message || ""; } catch { msg = e?.text || ""; }
+      const err = uploadError(e?.status || 0, msg);
+      if (err.kind !== "denied" && err.kind !== "server") throw err;
+      const used = await cloudBytes();
+      throw used != null && used + file.size > CLOUD_QUOTA_BYTES
+        ? { kind: "quota", text: "Место в облаке закончилось — заняты все 2 ГБ. Удалите ненужные файлы" } : err;
+    }
+    return { path };
+  })();
+  return {
+    promise,
+    // Отмена человеком: загрузку на сервере тоже бросаем (иначе висела бы сутки)
+    abort: () => {
+      ctrl.abort();
+      const saved = store.get(id);
+      store.del(id);
+      if (saved?.url) auth().then((h) => fetch(saved.url, { method: "DELETE", headers: { ...h, "Tus-Resumable": "1.0.0" } })).catch(() => {});
+    },
+  };
 }
 function uploadError(status, msg) {
   const m = String(msg).toLowerCase();

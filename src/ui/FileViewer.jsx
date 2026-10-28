@@ -33,7 +33,7 @@ export const PHOTO_ZOOM = 2.5;   // во сколько раз приближа�
 
 export const PHOTO_MAX = 5;      // больше не приближаем
 
-// onToast — есть только у фото из «Файлов»: тогда наверху «Копировать» и «Скачать» (у картинок заметок их нет)
+// onToast — у фото из «Файлов» и картинок заметок: тогда наверху «Копировать» и «Скачать»
 export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
   const [idx, setIdx] = useState(() => Math.max(0, photos.findIndex((p) => p.id === startId)));
   const photo = photos[Math.min(idx, photos.length - 1)];
@@ -286,9 +286,9 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.name}</div>
           {/* Подпись, как в окне файла: «Фото · Сегодня 11:56 · 519 КБ · 3 из 6» — иначе имя из одних цифр непонятно */}
-          {(canSave || many) && (
+          {((canSave && photo.cat) || many) && (
             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {[canSave && fileMeta(photo), many && `${idx + 1} из ${photos.length}`].filter(Boolean).join(" · ")}
+              {[canSave && photo.cat && fileMeta(photo), many && `${idx + 1} из ${photos.length}`].filter(Boolean).join(" · ")}
             </div>
           )}
         </div>
@@ -672,17 +672,20 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
    Приложение: встроенный браузер этого не умеет — через модуль NexaFiles
    (сохранить в «Загрузки» или открыть другим приложением).
    Ответ — true / false (не получилось — показать уведомление) */
+// Имя без расширения («image» у картинки заметки) — дописываем по типу содержимого, иначе файл не откроется двойным щелчком
+const EXT_OF = { "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/heic": "heic" };
+const withExt = (name, type) => (/.[a-z0-9]{2,5}$/i.test(name) || !EXT_OF[type] ? name : `${name}.${EXT_OF[type]}`);
 export async function openFileContent(file, scope, download) {
   const cloud = scope !== "guest" && !!file.path;
   if (isNative) {
     if (cloud) {
       const url = await fileUrl({ ...file, id: `cloud-${file.id}` }, scope);
-      return !!url && nativeFile(download ? "save" : "open", { url, name: safeFileName(file.name), mime: file.mime });
+      return !!url && nativeFile(download ? "save" : "open", { url, name: withExt(safeFileName(file.name), file.mime), mime: file.mime });
     }
     const local = await fileUrl(file, scope);
     if (!local) return false;
     const blob = await (await fetch(local)).blob();
-    return nativeFile(download ? "save" : "open", { blob, name: safeFileName(file.name), mime: file.mime || blob.type });
+    return nativeFile(download ? "save" : "open", { blob, name: withExt(safeFileName(file.name), blob.type || file.mime), mime: file.mime || blob.type });
   }
   if (isDesktop) {
     // Приложение для ПК: окно Tauri не скачивает и не открывает вкладки — берём байты
@@ -693,14 +696,14 @@ export async function openFileContent(file, scope, download) {
     const res = await fetch(url);
     if (!res.ok) return false;
     const blob = await res.blob();
-    const name = safeFileName(file.name);
+    const name = withExt(safeFileName(file.name), blob.type || file.mime);
     return download ? desktopSaveFile(blob, name) : desktopOpenFile(blob, name);
   }
   if (download) {
     const url = cloud ? await fileUrl(file, scope, { download: true }) : await fileUrl(file, scope);
     if (!url) return false;
     const a = document.createElement("a");
-    a.href = url; a.rel = "noopener noreferrer"; a.download = safeFileName(file.name);
+    a.href = url; a.rel = "noopener noreferrer"; a.download = withExt(safeFileName(file.name), file.mime);
     document.body.appendChild(a); a.click(); a.remove();
     return true;
   }

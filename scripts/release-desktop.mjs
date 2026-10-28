@@ -30,6 +30,13 @@ const mode = args.includes("--hard") ? "hard" : args.includes("--soft") ? "soft"
 const dry = args.includes("--dry-run");
 const stop = (msg) => { console.error(`\n✖ ${msg}\n  public/nexa-setup.exe, public/desktop/latest.json и public/version.json не изменены.\n`); process.exit(1); };
 
+// Проверки перед выпуском (scripts/release-check.mjs) + пакеты Rust (cargo audit, если установлен)
+{
+  const flags = ["--skip-audit", "--skip-db"].filter((f) => args.includes(f)).join(" ");
+  const r = spawnSync(`node scripts/release-check.mjs --desktop ${flags}`, { stdio: "inherit", shell: true, cwd: path(".") });
+  if (r.status !== 0) stop("Проверки перед выпуском не прошли.");
+}
+
 const CONF = path("desktop/src-tauri/tauri.conf.json");
 const RELEASE_CONF = path("desktop/src-tauri/tauri.release.conf.json");
 const version = JSON.parse(readFileSync(path("package.json"), "utf8")).version;

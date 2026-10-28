@@ -133,8 +133,10 @@ const SCHEMAS = {
   "link.open": (p) => base(p) && isId(p.id) && isId(p.to_device) && typeof p.url === "string" && p.url.length <= 2048 && !!safeUrl(p.url),
   // Общий буфер обмена (src/lib/clipsync.js): скопировано (всем устройствам аккаунта), удалено, очищено.
   // Текст до 10 000 знаков, срок жизни — не больше часа с небольшим запасом; enc 0 — без шифрования (пока)
-  "clip.new": (p) => base(p) && isId(p.id) && typeof p.text === "string" && p.text.trim().length > 0 && p.text.length <= 10000
-    && isTs(p.exp) && p.exp > Date.now() && p.exp <= Date.now() + 62 * 60000 && (p.enc == null || p.enc === 0),
+  // enc 1 — зашифровано паролем аккаунта (e2e.js): «e1:…», длиннее исходного (base64), до 30 000 знаков
+  "clip.new": (p) => base(p) && isId(p.id) && typeof p.text === "string" && p.text.trim().length > 0
+    && (p.enc === 1 ? p.text.startsWith("e1:") && p.text.length <= 30000 : (p.enc == null || p.enc === 0) && p.text.length <= 10000)
+    && isTs(p.exp) && p.exp > Date.now() && p.exp <= Date.now() + 62 * 60000,
   "clip.del": (p) => base(p) && isId(p.id),
   "clip.clear": (p) => base(p),
   // Прямая передача файла (src/lib/direct.js, только одна сеть): предложение с описанием соединения (SDP),

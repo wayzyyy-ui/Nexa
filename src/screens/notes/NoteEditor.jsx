@@ -169,6 +169,11 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
 
   // Закрыть: сначала записать; не записалось — остаёмся, чтобы текст не пропал
   const close = () => { if (commitRef.current()) onClose(); };
+  /* Компьютер: заметка на весь экран (2026-10-28, просьба автора) — панель поверх всего окна, текст по центру.
+     Помнится во вкладке (nexa-notes-full): следующая открытая заметка — тоже на весь экран. Esc сначала сворачивает */
+  const [full, setFullState] = useState(() => { try { return !phone && sessionStorage.getItem("nexa-notes-full") === "1"; } catch { return false; } });
+  const setFull = (v) => { setFullState(v); try { v ? sessionStorage.setItem("nexa-notes-full", "1") : sessionStorage.removeItem("nexa-notes-full"); } catch {} };
+  const fullRef = useRef(full); fullRef.current = full;
   const closeRef = useRef(close); closeRef.current = close;
   useEffect(() => {
     const onKey = (e) => {
@@ -180,6 +185,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       if (L.ai) { cancelAi(); return; }
       if (confirmDelRef.current) { setConfirmDel(false); return; }
       if (schedRef.current) { setSched(false); return; }
+      if (fullRef.current) { setFull(false); return; }
       closeRef.current();
     };
     window.addEventListener("keydown", onKey, true);
@@ -539,7 +545,10 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   // ── Вид ──
   const hasSel = (() => { const ta = textRef.current; return !!ta && ta.selectionEnd > ta.selectionStart; })();
   const canDiscuss = !!(text.trim() || title.trim());
-  const photos = images.map((i) => ({ id: i.id, name: i.name, path: uid ? `${uid}/${i.id}` : null }));
+  // Картинки заметки на весь экран — с «Копировать» и «Скачать», как фото из «Файлов» (uploaded: содержимое есть —
+  // копия на устройстве или в облаке аккаунта; тип — по имени, картинки заметок сохраняются как WEBP / JPEG)
+  const photos = images.map((i) => ({ id: i.id, name: i.name, path: uid ? `${uid}/${i.id}` : null, uploaded: true,
+    mime: /.png$/i.test(i.name || "") ? "image/png" : /.jpe?g$/i.test(i.name || "") ? "image/jpeg" : "image/webp" }));
   const pop = (k) => () => setMenu((m) => (m === k ? null : k));
   const keep = { onPointerDown: (e) => e.preventDefault() }; // кнопки инструментов не забирают фокус у текста (иначе пропадает выделение и прячется клавиатура)
 
@@ -705,7 +714,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   const fileInput = (
     <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addImages(e.target.files); e.target.value = ""; }} />
   );
-  const viewer = viewImg && <PhotoFullscreen photos={photos} startId={viewImg} onClose={() => setViewImg(null)} />;
+  const viewer = viewImg && <PhotoFullscreen photos={photos} startId={viewImg} onClose={() => setViewImg(null)} onToast={toast} />;
 
   if (phone) {
     return (
@@ -740,10 +749,14 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
 
   return (
     <div ref={rootRef} role="dialog" aria-label={exists ? `Заметка «${title.trim() || "Без названия"}»` : "Новая заметка"}
-      className="nx-notepad-editor nx-notepad-panel nx-glass nx-glass-subtle" data-no-swipe
+      className={`nx-notepad-editor nx-notepad-panel nx-glass nx-glass-subtle${full ? " is-full" : ""}`} data-no-swipe
       style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, display: "flex", flexDirection: "column", boxSizing: "border-box", position: "sticky", top: 100 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <button type="button" className="nx-icon-btn" onClick={close} aria-label="Закрыть заметку" style={round}>{Icon.close({ c: C.text, s: 15 })}</button>
+        <button type="button" className="nx-icon-btn" onClick={() => setFull(!full)} aria-pressed={full}
+          aria-label={full ? "Свернуть заметку" : "Заметка на весь экран"} title={full ? "Свернуть (Esc)" : "На весь экран"} style={round}>
+          {(full ? Icon.shrink : Icon.expand)({ c: C.text, s: 15 })}
+        </button>
         <div style={{ flex: 1 }} />
         {checkBtn}
         {attachBtn}

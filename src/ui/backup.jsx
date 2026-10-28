@@ -8,6 +8,10 @@ import { btnReset, SectionTitle, SettingsGroup, SettingsRow } from "./base.jsx";
 import { formatBytes } from "../lib/deviceInfo.js";
 import { plural } from "../lib/format.js";
 import { BACKUP_PARTS, BACKUP_EXCLUDED, BACKUP_EXT } from "../lib/backup.js";
+import { sealBlob, openBlob, isSealedBlob, E2E_PASS_MIN } from "../lib/e2e.js";
+
+// Поле пароля копии (шифрование — src/lib/e2e.js: пароль никуда не уходит, восстановить его нельзя)
+const passField = { background: "transparent", color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", fontSize: 14, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" };
 
 const when = (ms) => new Date(ms).toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 18px", fontSize: 14, borderRadius: 999, whiteSpace: "nowrap" };
@@ -111,6 +115,10 @@ function CreateBackup({ api, onClose }) {
   const c = api.counts;
   const [sel, setSel] = useState(() => new Set(BACKUP_PARTS.map((p) => p.id)));
   const [withContent, setWithContent] = useState(true);
+  // Защитить паролем (2026-10-28): файл копии шифруется целиком, без пароля его не открыть
+  const [lock, setLock] = useState(false);
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
   const [phase, setPhase] = useState("setup"); // setup | build | save | done | error
   const [prog, setProg] = useState({ done: 0, total: 1, text: "" });
   const [note, setNote] = useState(null);
@@ -120,12 +128,19 @@ function CreateBackup({ api, onClose }) {
   const busy = phase === "build" || phase === "save";
   const content = sel.has("files") && withContent && c.files > 0;
 
+  const passErr = !lock ? null : p1.length < E2E_PASS_MIN ? `Пароль — не короче ${E2E_PASS_MIN} знаков` : p1 !== p2 ? "Пароли не совпадают" : null;
   const run = async () => {
+    if (passErr) { setNote(passErr); setPhase("error"); return; }
     setNote(null); setPhase("build"); setProg({ done: 0, total: 1, text: "Собираем записи" });
     ctl.current = new AbortController();
     const signal = ctl.current.signal;
     try {
       const r = await api.create({ parts: sel, withContent: content, signal, onProgress: setProg });
+      if (lock) {
+        setProg({ done: 0, total: r.blob.size, text: "Шифруем копию паролем" });
+        r.blob = await sealBlob(r.blob, p1, { signal, onProgress: (d, t) => setProg({ done: d, total: t, text: "Шифруем копию паролем" }) });
+        r.sealed = true;
+      }
       setPhase("save"); setProg({ done: 0, total: r.blob.size, text: "Сохраняем файл копии" });
       const s = await api.save(r.blob, r.name, { signal, manifest: r.manifest, onProgress: (d, t) => setProg({ done: d, total: t, text: "Сохраняем файл копии" }) });
       if (s === "cancelled") { setPhase("setup"); setNote("Сохранение отменено — файл копии не записан."); return; }
@@ -156,7 +171,8 @@ function CreateBackup({ api, onClose }) {
             {m.missing.length > 8 && <li>и ещё {m.missing.length - 8}</li>}
           </ul>
         )}
-        <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>Копия не зашифрована — храните её так же бережно, как личные документы.</div>
+        <div style={{ fontSize: 12, color: result.sealed ? C.green : C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
+          {result.sealed ? "Копия зашифрована паролем — без него её не открыть ни вам, ни кому-то ещё. Пароль не восстанавливается." : "Копия не зашифрована — храните её так же бережно, как личные документы."}</div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
           <button type="button" className="nx-primary" style={primary} onClick={onClose}>Готово</button>
         </div>
@@ -185,8 +201,15 @@ function CreateBackup({ api, onClose }) {
             <summary style={{ cursor: "pointer" }}>Что не попадает в копию</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.5 }}>{BACKUP_EXCLUDED.map((x) => <li key={x}>{x}</li>)}</ul>
           </details>
-          <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 10, lineHeight: 1.45 }}>
-            Копия не зашифрована: заметки, диалоги и файлы в ней лежат как есть. Не отправляйте её посторонним.
+          <div style={{ marginTop: 6, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+            <Check on={lock} onClick={() => { setLock((v) => !v); setNote(null); }} title="Защитить паролем"
+              sub={lock ? "Файл зашифруется целиком. Пароль не восстановить: забудете — копию не открыть" : "Без пароля заметки, диалоги и файлы лежат в копии как есть — не отправляйте её посторонним"} />
+            {lock && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "4px 0 0 32px" }}>
+                <input type="password" autoComplete="new-password" placeholder="Пароль копии" aria-label="Пароль копии" value={p1} onChange={(e) => { setP1(e.target.value); setNote(null); }} style={passField} />
+                <input type="password" autoComplete="new-password" placeholder="Повторите пароль" aria-label="Повторите пароль" value={p2} onChange={(e) => { setP2(e.target.value); setNote(null); }} style={passField} />
+              </div>
+            )}
           </div>
           {note && <div role="alert" style={{ fontSize: 13, color: phase === "error" ? C.red : C.muted, marginTop: 10 }}>{note}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
@@ -212,7 +235,9 @@ function CreateBackup({ api, onClose }) {
 
 /* ── Восстановить ── */
 function RestoreBackup({ api, onClose }) {
-  const [phase, setPhase] = useState("pick"); // pick | reading | preview | confirm | run | done
+  const [phase, setPhase] = useState("pick"); // pick | reading | password | preview | confirm | run | done
+  const [sealed, setSealed] = useState(null); // зашифрованный файл, ждёт пароля
+  const [pass, setPass] = useState("");
   const [err, setErr] = useState(null);
   const [b, setB] = useState(null);
   const [parts, setParts] = useState(new Set());
@@ -222,9 +247,22 @@ function RestoreBackup({ api, onClose }) {
   const input = useRef(null);
   const ctl = useRef(null);
 
-  const pick = async (file) => {
+  // Зашифрованная копия: расшифровать паролем (в памяти устройства) и дальше — как обычный файл
+  const unlock = async () => {
+    if (!sealed || !pass) return;
+    setErr(null); setPhase("reading");
+    let plain;
+    try { plain = await openBlob(sealed, pass); } catch (e) {
+      setErr(e?.code === "wrong_password" ? "Пароль не подходит" : "Файл копии повреждён или обрезан — открыть не получится");
+      setPhase("password"); return;
+    }
+    setSealed(null); setPass("");
+    pick(plain, true);
+  };
+  const pick = async (file, opened = false) => {
     if (!file) return;
     setErr(null); setPhase("reading");
+    if (!opened && (await isSealedBlob(file).catch(() => false))) { setSealed(file); setPass(""); setPhase("password"); return; }
     try {
       const r = await api.read(file);
       setB(r);
@@ -346,6 +384,21 @@ function RestoreBackup({ api, onClose }) {
           <button type="button" className="nx-ghost-btn" style={ghost} onClick={() => { setB(null); setPhase("pick"); }}>Другой файл</button>
           <button type="button" className="nx-primary" style={{ ...primary, opacity: parts.size ? 1 : 0.5 }} disabled={!parts.size}
             onClick={() => (mode === "replace" ? setPhase("confirm") : run())}>Восстановить</button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (phase === "password" && sealed) {
+    return (
+      <Shell title="Копия защищена паролем" onClose={onClose} onEsc={() => { setSealed(null); setPhase("pick"); }}>
+        <div style={{ fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>Введите пароль, который задали при создании копии. Расшифровка идёт на этом устройстве, пароль никуда не отправляется.</div>
+        <input type="password" autoFocus autoComplete="current-password" placeholder="Пароль копии" aria-label="Пароль копии" value={pass}
+          onChange={(e) => { setPass(e.target.value); setErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") unlock(); }} style={{ ...passField, marginTop: 12 }} />
+        {err && <div role="alert" style={{ fontSize: 13, color: C.red, marginTop: 10 }}>{err}</div>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+          <button type="button" className="nx-ghost-btn" style={ghost} onClick={() => { setSealed(null); setPhase("pick"); }}>Другой файл</button>
+          <button type="button" className="nx-primary" style={{ ...primary, opacity: pass ? 1 : 0.5 }} disabled={!pass} onClick={unlock}>Открыть</button>
         </div>
       </Shell>
     );

@@ -5,9 +5,11 @@ import { useState, useEffect, useRef } from "react";
 import { C, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { Crumb } from "../ui/layout.jsx";
-import { SectionTitle, SettingsGroup, SettingsRow, Dot, btnReset } from "../ui/base.jsx";
+import { SectionTitle, SettingsGroup, SettingsRow, Dot, Toggle, btnReset } from "../ui/base.jsx";
+import { useCrashReportsOn, setCrashReports } from "../lib/crashes.js";
 import { listSessions, clientLabel, SECURITY_ERROR_TEXT } from "../lib/security.js";
 import { lastSeenText, peerLabel } from "../lib/devices.js";
+import { LoginMethods } from "../ui/loginMethods.jsx";
 
 const dateTime = (ms) => (ms ? new Date(ms).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 const pill = { ...btnReset, flexShrink: 0, borderRadius: 999, padding: "7px 14px", fontSize: 13, whiteSpace: "nowrap" };
@@ -55,6 +57,16 @@ function RenameField({ name, onSave, onCancel }) {
       <button type="submit" className="nx-primary" style={{ ...pill, border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Сохранить</button>
       <button type="button" className="nx-ghost-btn" onClick={onCancel} style={ghost}>Отмена</button>
     </form>
+  );
+}
+
+/* «Отчёты о сбоях» (src/lib/crashes.js): на этом устройстве, по умолчанию включены — в них нет личных данных */
+function CrashRow({ last }) {
+  const on = useCrashReportsOn();
+  return (
+    <SettingsRow last={last} icon={Icon.alert({ c: C.muted, s: 18 })} title="Отчёты о сбоях"
+      subtitle={on ? "Если NEXA упадёт, разработчик узнает, где и в какой версии. Без аккаунта, устройства, адресов и текста, который вы вводили" : "Выключены, о сбоях на этом устройстве разработчик не узнает"}
+      right={<Toggle on={on} onClick={() => setCrashReports(!on)} label="Отчёты о сбоях" />} />
   );
 }
 
@@ -127,9 +139,10 @@ export function ScreenSecurity({
             subtitle="Тема, расписание, файлы и диалоги с ассистентом — всё хранится только в этом браузере и никуда не отправляется" />
           <SettingsRow icon={Icon.lock({ c: C.muted, s: 18 })} title="Только с аккаунтом"
             subtitle="Подключение устройств, синхронизация через облако, Flow, «Найти» и «Где устройство?», вход по QR. Здесь же появятся устройства и сеансы входа" />
-          <SettingsRow last icon={Icon.alert({ c: C.muted, s: 18 })} title="Если браузер общий"
+          <SettingsRow icon={Icon.alert({ c: C.muted, s: 18 })} title="Если браузер общий"
             subtitle="Данные гостя видит любой, кто откроет NEXA в этом браузере. Удалить их можно, очистив данные сайта в настройках браузера"
             right={onLogin && <button type="button" className="nx-primary" onClick={onLogin} style={{ ...pill, border: "1px solid transparent", color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Войти</button>} />
+          <CrashRow last />
         </SettingsGroup>
       </>)
     );
@@ -190,6 +203,9 @@ export function ScreenSecurity({
 
   return (
     shell(<>
+      {/* Способы входа: почта, Яндекс ID (привязать / отвязать) */}
+      <LoginMethods user={user} online={online} />
+
       {/* Подключённые устройства */}
       <SectionTitle>Подключённые устройства</SectionTitle>
       <SettingsGroup>
@@ -279,9 +295,10 @@ export function ScreenSecurity({
             subtitle={miniOn ? "Включено: непонятые короткие просьбы уходят без аккаунта и устройства, хранятся до 90 дней" : "Выключено — ничего не собирается и не отправляется"}
             right={<button type="button" className="nx-ghost-btn" onClick={onOpenMini} style={ghost}>Настроить</button>} />
         )}
-        <SettingsRow last icon={Icon.send({ c: C.muted, s: 18 })} title="Flow — текст и ссылки"
+        <SettingsRow icon={Icon.send({ c: C.muted, s: 18 })} title="Flow — текст и ссылки"
           subtitle={flowOn ? "Принимает текст и ссылки с ваших устройств. Пароли и ключи в историю не пишутся" : "Выключен — с других устройств ничего не принимается"}
           right={<button type="button" className="nx-ghost-btn" onClick={onOpenFlow} style={ghost}>Настроить</button>} />
+        <CrashRow last />
       </SettingsGroup>
       <div style={{ fontSize: 12, color: C.mutedSoft, margin: "-4px 4px 10px", lineHeight: 1.5 }}>
         Файлы, отправленные на устройство, лежат в вашем облаке и открываются только устройствами этого аккаунта

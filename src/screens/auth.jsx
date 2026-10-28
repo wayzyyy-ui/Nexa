@@ -9,6 +9,10 @@ import { deviceIdentity, PAIR_CODE_RE } from "../lib/realtime.js";
 import { C, fontDisplay, PHONE_MQ } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { mmss } from "../lib/format.js";
+import { useExtAuth, startExtAuth, cancelExtAuth } from "../lib/extAuth.js";
+import { EXT_NAME } from "../lib/extAuthPlan.js";
+import { captchaOn, CAPTCHA_TEXT } from "../lib/captcha.js";
+import { HumanCheck } from "../ui/humanCheck.jsx";
 import { qrApi, QR_LOGIN_TTL_MS, QR_POLL_MS, loginUrl, APPROVE_LOCK_KEY, RESEND_SECONDS, authErrorText, CODE_MIN, CODE_MAX, signOut, clearLocalAccountData } from "../lib/auth.js";
 import { StateNote, QrCode, Spinner, CodeCells, btnReset, authLink, authField, StateButton, SectionTitle, SettingsGroup, SettingsRow, Dot, Logo, LogoMark } from "../ui/base.jsx";
 
@@ -232,6 +236,42 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
   );
 }
 
+/* Вход через внешние сервисы (Яндекс ID): кнопки под входом по почте и QR.
+   Сайт уходит на страницу Яндекса в этой же вкладке, приложения — во внешний браузер
+   и ждут итог (src/lib/extAuth.js). Ниже кнопок — что сейчас происходит или почему не вышло */
+const EXT_LOGIN = [{ id: "yandex", label: "Войти через Яндекс", icon: Icon.yandex }];
+function ExtLogin() {
+  const ext = useExtAuth();
+  const st = ext.purpose === "link" ? { phase: "idle" } : ext;
+  const busy = st.phase === "starting" || st.phase === "waiting" || st.phase === "signing";
+  return (
+    <div className="nx-ext-login">
+      <div className="nx-ext-row">
+        {EXT_LOGIN.map((p) => {
+          const mine = busy && st.provider === p.id;
+          return (
+            <button key={p.id} type="button" className="nx-ghost-btn nx-ext-btn" disabled={busy}
+              onClick={() => startExtAuth(p.id, "login")} aria-busy={mine}>
+              {mine ? <Spinner s={14} /> : p.icon({ c: C.text, s: 18 })}<span>{p.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {st.phase !== "idle" && st.phase !== "done" && (
+        <div className="nx-ext-state" role={st.phase === "error" ? "alert" : "status"} data-kind={st.phase === "error" ? "error" : "info"}>
+          <span>
+            {st.phase === "error" ? st.text
+              : st.phase === "starting" ? "Готовим вход…"
+              : st.phase === "signing" ? "Входим…"
+              : `${EXT_NAME[st.provider] || "Сервис"}: завершите вход в браузере. NEXA ждёт ответа.`}
+          </span>
+          {st.phase === "waiting" && <button type="button" style={authLink} onClick={cancelExtAuth}>Отменить</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Панель входа: шаг 1 — почта и «Получить код», шаг 2 — код и «Войти».
    onEscape — что делать по Esc на шаге почты (на шаге кода Esc возвращает к почте).
    Сама панель ничего не закрывает: после входа Supabase сообщит о сессии,
@@ -273,14 +313,26 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
   const cleanEmail = email.trim().toLowerCase();
 
   // Шаг 1: проверяем почту у себя и просим Supabase прислать код
+  // Проверка «не робот» (hCaptcha): включена, если задан ключ сайта — сначала окно проверки, потом письмо
+  const [human, setHuman] = useState(false);
   const sendCode = async () => {
-    if (busy) return;
+    if (busy || human) return;
     if (!looksLikeEmail(cleanEmail)) { setError("Похоже, в адресе опечатка. Проверьте почту."); return; }
     if (!isAllowedEmail(cleanEmail)) { setError(DOMAIN_NOT_ALLOWED_MESSAGE); return; }
     if (navigator.onLine === false) { setError(authErrorText(null)); return; }
+    setError(null);
+    if (captchaOn()) { setHuman(true); return; }
+    sendWith(null);
+  };
+  const onHuman = (r) => {
+    setHuman(false);
+    if (r.type === "token") sendWith(r.token);
+    else setError(CAPTCHA_TEXT[r.type === "error" ? (r.code === "load" ? "load" : "failed") : r.type] || CAPTCHA_TEXT.failed);
+  };
+  const sendWith = async (captchaToken) => {
     setBusy(true); setError(null);
     try {
-      const { error: err } = await supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: true } });
+      const { error: err } = await supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: true, ...(captchaToken ? { captchaToken } : {}) } });
       if (err) { setError(authErrorText(err, "send")); return; }
       setSentAt(Date.now()); setNow(Date.now());
       setCode(""); setStep("code");
@@ -314,7 +366,7 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
 
   if (step === "qr") return <QrLoginView onBack={() => (gate && initialStep === "qr" ? onEscape?.() : setStep("email"))} />;
 
-  return step === "email" ? (
+  return <>{human && <HumanCheck onDone={onHuman} />}{step === "email" ? (
     // form — чтобы кнопка срабатывала и по Enter
     <form className="nx-auth-step" data-step="email" onSubmit={(e) => { e.preventDefault(); sendCode(); }} noValidate>
       <label htmlFor="nx-auth-email" className={gate ? "nx-sr-only" : undefined} style={{ fontSize: 13, color: C.muted }}>Почта</label>
@@ -329,7 +381,7 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
       <div id="nx-auth-hint" role={error ? "alert" : undefined} style={{ fontSize: 13, marginTop: 8, lineHeight: 1.45, color: error ? C.red : C.mutedSoft }}>
         {error || "Пришлём код — пароль не нужен"}
       </div>
-      <StateButton variant="primary" state={busy ? "loading" : "idle"} labels={{ loading: "Отправляем…" }}
+      <StateButton variant="primary" state={busy || human ? "loading" : "idle"} labels={{ loading: human ? "Проверка «не робот»…" : "Отправляем…" }}
         disabled={!cleanEmail} onClick={sendCode}
         style={{ width: "100%", marginTop: 18, padding: "12px 16px", fontSize: 14 }}>
         Получить код
@@ -344,6 +396,7 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
       }}>
         {gate ? <>Войти по QR {Icon.qr({ c: C.text, s: 22 })}</> : <>{Icon.phone({ c: C.text, s: 15 })} Войти по QR с телефона</>}
       </button>
+      <ExtLogin />
       <div className="nx-auth-note" style={{ fontSize: 12, color: C.mutedSoft, marginTop: 12, lineHeight: 1.45 }}>
         Проект учебный. Данные хранятся для демонстрации и удаляются по запросу.
       </div>
@@ -378,7 +431,7 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
           : <button type="button" onClick={sendCode} disabled={busy} style={authLink}>Отправить ещё раз</button>}
       </div>
     </form>
-  );
+  )}</>;
 }
 
 /* Экран первого запуска (макет 2026-10). Фон — рендер устройств (public/art/gate-dark|light.webp
@@ -391,6 +444,9 @@ export function AuthPanel({ onEscape, variant, initialStep = "email" }) {
 // onAbout — «О системе»: что такое NEXA, до входа (экран открывает NexaApp поверх экрана входа)
 export function AuthGate({ onAbout }) {
   const [step, setStep] = useState(null); // null — приветствие; "email" | "qr" — вход
+  // Идёт вход через Яндекс / Telegram (вернулись со страницы входа) — сразу показываем шаг входа с его состоянием
+  const ext = useExtAuth();
+  useEffect(() => { if (ext.phase !== "idle" && ext.purpose !== "link") setStep((s) => s || "email"); }, [ext.phase]);
   return (
     <div className="nx-auth-gate nx-scroll" role="dialog" aria-modal="true" aria-labelledby="nx-auth-title">
       {/* Фон: две картинки, видна та, что под текущую тему (см. .nx-gate-scene в стилях) */}

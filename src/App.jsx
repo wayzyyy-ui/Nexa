@@ -18,9 +18,11 @@ import { useThisDeviceSys, sameSys, thisDeviceKind } from "./lib/deviceInfo.js";
 import { useDeviceLink, safeUrl, PAIR_CODE_RE, cleanSys, isHw } from "./lib/realtime.js";
 import { useReturnToApp } from "./lib/lifecycle.js";
 import { useOta, otaStart, otaCheck, otaApplyNow } from "./lib/ota.js";
+import { useExtAuth, resumeExtAuth } from "./lib/extAuth.js";
+import { EXT_NAME } from "./lib/extAuthPlan.js";
 import { bootRoute, navigate, onRoute, titleOf, canGoBack, goBack, layerCount, pressEscape } from "./lib/router.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
-import { fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cachePut, fileBlob, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
+import { FILE_MAX_MB, fileProblem, safeFileName, uploadToCloud, removeFromCloud, flushTrash, forgetUrl, rememberLocal, cacheDel, cacheKey, cachePut, fileBlob, cacheClearScope, FILE_ROWS, FOLDER_ROWS, enqueueUpload, readUploadQueue, patchUploadQueue, dequeueUpload, queuedBlob, trashCount } from "./lib/files.js";
 // Свои модули: lib — логика без интерфейса, ui — общие элементы, screens — экраны
 import { useSharedState, TAB_ID, flushSharedState } from "./lib/shared.js";
 import { C, fontBody, PHONE_MQ, switchTheme } from "./ui/theme.js";
@@ -49,6 +51,7 @@ import { buildBackup, readBackup, planRestore, backupSummary, ownerTag, backupFi
 import { BackupSettings } from "./ui/backup.jsx";
 import { parseNexaLink } from "./lib/deeplink.js";
 import { useClipSync } from "./lib/clipboardSync.js";
+import { useE2e } from "./lib/e2eKey.js";
 import { desktopNotifyClip } from "./lib/desktop.js";
 import { ClipboardSettings } from "./ui/clipboard.jsx";
 import { userNotesKey, loadUserNotes, writeUserNotes, applyEdit, NOTE_ROWS, USER_NOTES_MAX, widgetNote } from "./lib/userNotes.js";
@@ -329,13 +332,21 @@ export default function NexaApp() {
      Push — приложениям на телефонах, где буфер включён (state.clip в их записи), а NEXA закрыта.
      Пришедшее — уведомление; на ПК вне фокуса — системное с кнопкой «Скопировать» */
   const clipOnline = useOnline();
+  // Шифрование на устройствах (e2e.js): пароль аккаунта, ключ — только на этом устройстве
+  const e2e = useE2e(uid);
   const clip = useClipSync({
-    uid, link, online: clipOnline,
+    uid, link, online: clipOnline, e2e,
     pushTargets: () => Object.values(deviceStore.state)
       .filter((st) => st?.real && st.clip && st.kind === "app" && st.device_id && st.device_id !== link.self?.device_id && !peerIdsRef.current.has(st.device_id))
       .map((st) => st.device_id),
     onIncoming: (item) => {
       const from = item.from_name || "Устройство";
+      // Пришло зашифрованное, а пароль на этом устройстве не введён — только подсказка, без текста
+      if (item.locked) {
+        notifyRef.current({ cat: "flow", key: `clip:${item.id}`, at: item.at, source: `«${from}»`, target: { clip: true },
+          title: `Скопировано на «${from}»`, text: "Текст зашифрован — введите пароль шифрования в Настройках → «Общий буфер обмена»", system: false });
+        return;
+      }
       const preview = item.text.replace(/\s+/g, " ").trim().slice(0, 140);
       // В колокольчике — без самого текста (как у Flow); текст — только во всплывающем на экране
       notifyRef.current({ cat: "flow", key: `clip:${item.id}`, at: item.at, source: `«${from}»`, target: { clip: true },
@@ -2069,6 +2080,15 @@ export default function NexaApp() {
   // Сначала обновление веб-части (src/lib/ota.js): «запустились» и, если скачанная ждёт, —
   // перезагрузка под логотипом. Иначе — обычное появление интерфейса
   useEffect(() => { otaStart().then((r) => { if (!r) startIntro(); }, () => startIntro()); }, []);
+  /* Вход / привязка через Яндекс ID (src/lib/extAuth.js): сайт вернулся со страницы входа — забираем итог.
+     Итог привязки — всплывающим (после возврата на сайт Настройки могут быть закрыты) */
+  useEffect(() => { resumeExtAuth(); }, []);
+  const ext = useExtAuth();
+  useEffect(() => {
+    if (ext.purpose !== "link") return;
+    if (ext.phase === "done") showToast({ title: `${EXT_NAME[ext.provider]} привязан`, text: "Теперь можно входить и через него" });
+    else if (ext.phase === "error") showToast({ title: "Не получилось привязать", text: ext.text, duration: 7000 });
+  }, [ext.phase]);
   // Редкие экраны подгружаем заранее, когда заставка уже прошла и телефон свободен
   useEffect(() => { const t = setTimeout(preloadRareScreens, 2500); return () => clearTimeout(t); }, []);
   const ota = useOta();
@@ -2361,7 +2381,11 @@ export default function NexaApp() {
     // (через ACTIVE_STALE_MS; тот же id — без дублей). Не сохранилась копия — загружаем всё равно
     const backup = enqueueUpload(uid, { ...meta, attempts: 0, status: "active", owner: TAB_ID, nextAt: Date.now() + ACTIVE_STALE_MS }, file).catch(() => false);
     const dropBackup = () => backup.then(() => dequeueUpload(uid, id)).catch(() => {});
-    const ctl = uploadToCloud({ uid, id, file, onProgress: (pr) => patch({ progress: pr }) });
+    // Долгая загрузка (большой файл, медленная сеть): раз в 30 с продлеваем «идёт здесь» у копии в очереди —
+    // иначе через ACTIVE_STALE_MS её подхватила бы другая вкладка и грузила тот же файл параллельно
+    let aliveAt = Date.now();
+    const keepAlive = () => { if (Date.now() - aliveAt < 30000) return; aliveAt = Date.now(); backup.then((ok) => ok && patchUploadQueue(uid, id, { nextAt: Date.now() + ACTIVE_STALE_MS })); };
+    const ctl = uploadToCloud({ uid, id, file, onProgress: (pr) => { patch({ progress: pr }); keepAlive(); } });
     uploadCtl.current[upId] = ctl;
     ctl.promise
       .then(({ path }) => { rememberLocal(uid, id, file); done({ path }); dropBackup(); })
@@ -2820,7 +2844,7 @@ export default function NexaApp() {
         pick: { ...pickDevice("Куда отправить?", null), items: live.map((d) => ({
           id: d.id, title: d.name, sub: deviceStatus(d), icon: d.icon,
           pick: { title: "Какой файл?", placeholder: "Найти файл…", empty: "", items: [
-            { id: "__local", title: "Выбрать на этом устройстве…", sub: "До 50 МБ, загрузится в облако аккаунта", icon: Icon.plus,
+            { id: "__local", title: "Выбрать на этом устройстве…", sub: `До ${FILE_MAX_MB} МБ, загрузится в облако аккаунта`, icon: Icon.plus,
               run: () => { quickFileTo.current = d; quickFileRef.current?.click(); } },
             ...cloudFiles.map((f) => ({ id: f.id, title: f.name, sub: fileMeta(f), keywords: [catOf(f)?.label],
               thumb: <FileThumb file={f} w={34} h={34} iconSize={14} radius={0} />, run: () => sendStoredFile(d, f) })),
@@ -3135,7 +3159,7 @@ export default function NexaApp() {
           memoryBlock={<MemorySettings items={memory} on={memoryOn} setOn={setMemoryOn} api={memoryApi} account={!!uid} localOnly={!!syncState.memory?.localOnly} />}
           miniBlock={<MiniHelpSettings on={miniCollect.consent} setOn={miniCollect.setConsent} />} onLogin={() => setAuthOpen(true)} onDeleteData={deleteMyData} onApproveLogin={() => openApprove(null)} sys={thisSys}
           flowBlock={<>{uid && <FlowSettings flow={flow} setFlow={setFlow} count={link.inbox.length + link.sent.length}
-            onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />}<ClipboardSettings clip={clip} account={!!uid} onLogin={() => setAuthOpen(true)} /></>} />}
+            onSend={() => setFlowSend({ text: "" })} onClear={() => { link.clearFlow(); showToast({ title: "История передач очищена", text: "На этом устройстве" }); }} />}<ClipboardSettings clip={clip} e2e={e2e} account={!!uid} onLogin={() => setAuthOpen(true)} /></>} />}
     </>
   ));
   /* Блоки разделов: текущий и (во время свайпа) соседний за краем экрана — его двигает useTabSwipe.

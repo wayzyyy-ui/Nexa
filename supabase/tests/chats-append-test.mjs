@@ -94,7 +94,8 @@ try {
   r = await call(A, "2026-10-22T10:00:00.123Z", [{ role: "user", text: "мс" }]);
   check("время облака с микросекундами совпадает по миллисекундам", !r.error && r.rows[0].at !== null);
 } finally {
-  await db.end(); await server.stop(); fs.rmSync(dir, { recursive: true, force: true });
+  await db.end();
+  try { await server.stop(); fs.rmSync(dir, { recursive: true, force: true }); } catch { /* Windows иногда держит временную папку */ }
 }
 console.log(`\n${passes} из ${passes + fails}${fails ? " — ЕСТЬ ОШИБКИ" : ""}`);
 process.exit(fails ? 1 : 0);

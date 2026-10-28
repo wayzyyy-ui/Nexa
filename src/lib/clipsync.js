@@ -4,7 +4,7 @@
    Запись: { id, text, from_device, from_name, at (мс), exp (мс, когда исчезнет), mine (своё) }.
    Включается на каждом устройстве отдельно (по умолчанию выключено): nexa-clip@<uid> { on, ttl }.
    Срок жизни выбирает отправитель: 1, 10 или 60 минут — потом запись пропадает везде.
-   Текст хранится как есть (enc: 0); шифрование на устройствах — позже (место в таблице оставлено). */
+   Текст — как есть (enc: 0) или зашифрованный паролем аккаунта (enc: 1, e2e.js). */
 import { isSensitive } from "./textcheck.js";
 
 export const CLIP_MAX = 10000;          // знаков — длиннее не отправляем
@@ -53,10 +53,11 @@ export const clipPurge = (list, now = Date.now()) => (list || []).filter((it) =>
 
 // Строка таблицы clipboard → запись (неверное — null)
 export function clipFromRow(row, selfId) {
-  if (!row || typeof row.id !== "string" || typeof row.text !== "string" || row.enc) return null;
+  if (!row || typeof row.id !== "string" || typeof row.text !== "string" || (row.enc !== 0 && row.enc !== 1 && row.enc != null)) return null;
   const at = Date.parse(row.created_at), exp = Date.parse(row.expires_at);
   if (!Number.isFinite(at) || !Number.isFinite(exp)) return null;
-  return { id: row.id, text: row.text, from_device: row.from_device, from_name: row.from_name || "Устройство", at, exp, mine: row.from_device === selfId };
+  // enc: 1 — зашифровано на устройствах (e2e.js); расшифровывает clipboardSync.js
+  return { id: row.id, text: row.text, enc: row.enc === 1 ? 1 : 0, from_device: row.from_device, from_name: row.from_name || "Устройство", at, exp, mine: row.from_device === selfId };
 }
 
 // «Осталось 9 мин» / «меньше минуты»

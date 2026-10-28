@@ -56,9 +56,11 @@ test("список: без повторов и просроченных, нов�
   assert.deepEqual(clipPurge([a, old], now).map((x) => x.id), ["a"]);
 });
 
-test("строка таблицы → запись; зашифрованное и битое — пропускаем", () => {
+test("строка таблицы → запись; зашифрованное помечено enc: 1, битое — пропускаем", () => {
   const row = { id: "x", text: "т", from_device: "me", from_name: "ПК", created_at: new Date(now).toISOString(), expires_at: new Date(now + 60000).toISOString(), enc: 0 };
   assert.equal(clipFromRow(row, "me").mine, true);
-  assert.equal(clipFromRow({ ...row, enc: 1 }, "me"), null);
+  assert.equal(clipFromRow({ ...row, enc: 1 }, "me").enc, 1);
+  assert.equal(clipFromRow(row, "me").enc, 0);
+  assert.equal(clipFromRow({ ...row, enc: 7 }, "me"), null);
   assert.equal(clipFromRow({ ...row, expires_at: "нет" }, "me"), null);
 });

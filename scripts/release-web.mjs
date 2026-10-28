@@ -27,6 +27,10 @@ const stop = (msg) => {
   process.exit(1);
 };
 const run = (cmd) => execSync(cmd, { stdio: "inherit", cwd: path(".") });
+
+// 0) Проверки перед выпуском (scripts/release-check.mjs) — до того, как трогаем версию
+const checkFlags = ["--skip-audit", "--skip-db"].filter((f) => process.argv.includes(f)).join(" ");
+try { run(`node scripts/release-check.mjs ${checkFlags}`); } catch { process.exit(1); }
 const shaOf = (f) => (existsSync(f) ? createHash("sha256").update(readFileSync(f)).digest("hex") : "");
 
 // Что сейчас опубликовано про APK — после выпуска должно остаться тем же

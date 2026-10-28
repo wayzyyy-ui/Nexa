@@ -108,6 +108,7 @@ try { await db.query(DO); check("кусок security-test.sql (16в) выпол�
 }
 check("заметка B на месте", (await db.query("select text from public.notes where id = $1", [bId])).rows[0]?.text === "секрет B");
 
-await db.end(); await server.stop();
+await db.end();
+try { await server.stop(); } catch { /* Windows иногда держит временную папку — итог от этого не зависит */ }
 console.log(`\n${fails ? "✘" : "✔"} notes.sql: ${passes} проверок прошло, ${fails} не прошло`);
 process.exit(fails ? 1 : 0);

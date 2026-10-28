@@ -36,7 +36,7 @@
         "media-src": "'self' blob: data: https://*.supabase.co",
         "connect-src": "'self' blob: data: ipc: http://ipc.localhost https://nexa-link.ru https://*.supabase.co wss://*.supabase.co https://*.yandex.ru https://*.yandex.net https://ipapi.co https://ipwho.is https://get.geojs.io https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://geocoding-api.open-meteo.com",
         "worker-src": "'self' blob:",
-        "frame-src": "'self' blob: https://*.supabase.co",
+        "frame-src": "'self' blob: https://*.supabase.co https://nexa-link.ru",
         "object-src": "'none'",
         "base-uri": "'self'"
       }

@@ -1,6 +1,9 @@
 package ru.nexalink.app;
 
+import android.os.Build;
 import android.os.Bundle;
+import android.view.Display;
+import android.view.WindowManager;
 import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
@@ -44,5 +47,32 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
+
+        // Плавность (2026-10-28, просьба автора): соседние с экраном части страницы рисуются заранее —
+        // при прокрутке и свайпах не видно «дорисовки» (чуть больше памяти, на скорость запуска не влияет)
+        if (Build.VERSION.SDK_INT >= 23) webView.getSettings().setOffscreenPreRaster(true);
+        preferHighRefreshRate();
+    }
+
+    /* Самая высокая частота экрана для NEXA (90 / 120 Гц, где есть). Многие телефоны по умолчанию
+       держат приложения на 60 Гц — прокрутка и анимации тогда вдвое реже обновляются.
+       Это только просьба: режим экономии заряда и сама система могут оставить 60 Гц */
+    private void preferHighRefreshRate() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        try {
+            Display d = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();
+            if (d == null) return;
+            Display.Mode cur = d.getMode(), best = cur;
+            for (Display.Mode m : d.getSupportedModes()) {
+                // То же разрешение экрана — меняем только частоту
+                if (m.getPhysicalWidth() == cur.getPhysicalWidth() && m.getPhysicalHeight() == cur.getPhysicalHeight()
+                        && m.getRefreshRate() > best.getRefreshRate()) best = m;
+            }
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.preferredDisplayModeId = best.getModeId();
+            getWindow().setAttributes(lp);
+        } catch (Exception ignored) {
+            // Не вышло — остаётся частота по умолчанию, всё работает как раньше
+        }
     }
 }

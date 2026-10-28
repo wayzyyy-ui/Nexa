@@ -222,6 +222,13 @@ export const Icon = {
       <path d="M15 6v12" strokeLinecap="round" />
     </svg>
   ),
+  // Вход через Яндекс ID: свой знак — круг и буква-«вилка» (не логотип сервиса)
+  yandex: (p) => (
+    <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9 7.5 12 12.5l3-5M12 12.5v4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   mail: (p) => (
     <svg viewBox="0 0 24 24" width={p.s || 18} height={p.s || 18} fill="none" stroke={p.c} strokeWidth="1.6">
       <path d="M3.5 6.5h17v11h-17z" strokeLinejoin="round" />

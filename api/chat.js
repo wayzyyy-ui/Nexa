@@ -49,6 +49,16 @@ const GENERATION = { temperature: 0.4, maxOutputTokens: 400 };
 // когда Google перевёл псевдоним на новую модель. Пробуем по очереди: minimal → budget 0 → без настройки
 const THINKING_TRIES = [{ thinkingConfig: { thinkingLevel: 'minimal' } }, { thinkingConfig: { thinkingBudget: 0 } }, {}];
 
+/* Ускорение (2026-10-28): память «тёплого» экземпляра функции между вопросами.
+   - какая настройка обдумывания подошла модели — следующий вопрос начинает сразу с неё
+     (раньше каждый вопрос заново получал 400 на неподходящую — лишний заход к Google);
+   - модель перегружена / нет её / молчит дольше FIRST_WORDS_MS — несколько минут сразу идём к следующей
+     (раньше каждый вопрос ждал до 12 с, пока основная модель «молчит»). Последняя модель не пропускается никогда */
+const goodThinking = new Map();   // модель → номер в THINKING_TRIES
+const restUntil = new Map();      // модель → до какого времени её пропускаем
+const REST_MS = { slow: 3 * 60000, 429: 2 * 60000, 503: 2 * 60000, 500: 60000, 404: 30 * 60000 };
+export const __resetChatMemory = () => { goodThinking.clear(); restUntil.clear(); };
+
 // Команды выполняются в самом приложении (до обращения к серверу), но модель
 // должна о них знать, чтобы правильно отвечать на «что ты умеешь» в любой форме
 // Память: сколько записей и знаков принимаем (приложение само шлёт не больше 5 подходящих)
@@ -116,7 +126,7 @@ function applyCors(req, res) {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Max-Age', '86400'); // проверку можно запомнить на сутки
   }
@@ -127,6 +137,12 @@ export default async function handler(req, res) {
 
   // Предварительная проверка браузера перед POST из приложения
   if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  // «Разбудить» функцию заранее (приложение зовёт при открытии ассистента): первый вопрос не ждёт холодного старта
+  if (req.method === 'GET' && String(req.query?.warm || '') === '1') {
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(204).end();
   }
 
@@ -201,7 +217,10 @@ export default async function handler(req, res) {
     // и ждём первых слов не дольше limitMs. Возвращает { it, first } — поток и первый кусок текста
     const startModel = async (model, limitMs) => {
       const deadline = Date.now() + limitMs; // limitMs считается от отправки запроса, а не от ответа
-      for (let i = 0; i < THINKING_TRIES.length; i++) {
+      const first = goodThinking.get(model) || 0;
+      const order = [first, ...THINKING_TRIES.map((_, k) => k).filter((k) => k !== first)];
+      for (let n = 0; n < order.length; n++) {
+        const i = order[n];
         const ctrl = new AbortController();
         liveCtrl = ctrl;
         if (clientGone) throw Object.assign(new Error('gone'), { name: 'AbortError' });
@@ -217,12 +236,12 @@ export default async function handler(req, res) {
           // Первые слова (пустые служебные куски пропускаем)
           for (;;) {
             const step = await within(it.next());
-            if (step.done || step.value?.text) { clearTimeout(timer); return { it, first: step.done ? '' : step.value.text }; }
+            if (step.done || step.value?.text) { clearTimeout(timer); goodThinking.set(model, i); return { it, first: step.done ? '' : step.value.text }; }
           }
         } catch (e) {
           clearTimeout(timer);
           ctrl.abort();
-          if (e?.status === 400 && i < THINKING_TRIES.length - 1) continue;
+          if (e?.status === 400 && n < order.length - 1) continue;
           throw e;
         }
       }
@@ -232,11 +251,14 @@ export default async function handler(req, res) {
     let started;
     for (let m = 0; m < MODELS.length; m++) {
       const last = m === MODELS.length - 1;
+      if (!last && (restUntil.get(MODELS[m]) || 0) > Date.now()) continue; // недавно отказала — сразу к следующей
       try {
         started = await startModel(MODELS[m], last ? 0 : FIRST_WORDS_MS);
+        restUntil.delete(MODELS[m]);
         break;
       } catch (e) {
         if (last || !(e?.status === 'slow' || NEXT_MODEL_STATUS.includes(e?.status))) throw e;
+        restUntil.set(MODELS[m], Date.now() + (REST_MS[e?.status] || 60000));
         console.error('Gemini model fallback:', m, e?.status); // в журнал — только номер модели и код
       }
     }

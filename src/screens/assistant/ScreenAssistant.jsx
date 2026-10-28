@@ -69,6 +69,16 @@ const MessageRow = memo(function MessageRow({ m, i, isLastAi, disabled, undoable
   );
 });
 
+/* Ускорение (2026-10-28): при открытии ассистента «будим» серверную функцию (GET ?warm=1, без ответа) —
+   первый вопрос не ждёт её холодного старта. Не чаще раза в 4 минуты (тёплая функция живёт несколько минут) */
+const CHAT_HISTORY_MAX = 30; // столько последних сообщений берёт сервер (HISTORY_MAX в api/chat.js)
+let chatWarmAt = 0;
+function warmChatServer() {
+  if (Date.now() - chatWarmAt < 4 * 60000 || navigator.onLine === false) return;
+  chatWarmAt = Date.now();
+  fetch(`${API_CHAT_URL}?warm=1`, { method: "GET", mode: "no-cors", cache: "no-store" }).catch(() => {});
+}
+
 export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onOpenNotes, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles, miniCollect = null }) {
   const greetings = [
   "Что сегодня в повестке дня?",
@@ -141,7 +151,7 @@ useEffect(() => {
   // Сменили диалог — вложение к нему больше не относится
   useEffect(() => { if (att?.chatId && att.chatId !== currentChatId) clearAtt(); }, [currentChatId]);
   useEffect(() => () => attCtl.current?.abort(), []);
-  useEffect(() => { warmMini(); }, []); // веса NEXA mini-1 подгружаются заранее, отдельным куском кода
+  useEffect(() => { warmMini(); warmChatServer(); }, []); // веса NEXA mini-1 подгружаются заранее, отдельным куском кода; сервер — «будим»
   // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
   const liveChatId = useLiveChatId();
   const [cmdBusy, setCmdBusy] = useState(false);
@@ -488,6 +498,7 @@ useEffect(() => {
       // История для модели: сообщения с ошибками в неё не берём
       const history = previousMessages
         .filter(m => !m.error && !m.action) // команды и ошибки модели не нужны
+        .slice(-CHAT_HISTORY_MAX) // сервер всё равно берёт только последние — лишнее не гоним по сети (быстрее на телефоне)
         .map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
           // Был файл — модель узнаёт только об этом, не о содержимом (его здесь уже нет)

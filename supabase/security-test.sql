@@ -262,6 +262,64 @@ begin
     set local role authenticated;
   end if;
 
+  -- 16г. Вход через Яндекс ID / Telegram (supabase/auth-providers.sql): таблицы только для сервера
+  if to_regclass('public.auth_logins') is null then
+    r := r || format(ok_line, '16г', 'auth_logins: таблица', 'есть', 'таблицы нет', 'не применён auth-providers.sql');
+  else
+    reset role;
+    execute 'insert into public.auth_logins (provider, secret_hash, state_hash, expires_at) values ($1, $2, $3, now() + interval ''5 minutes'')'
+      using 'yandex', 'тест-секрет', 'тест-state';
+    execute 'insert into public.auth_identities (provider, subject, user_id) values ($1, $2, $3) on conflict do nothing' using 'yandex', 'тест-' || B, B;
+    perform set_config('request.jwt.claims', json_build_object('sub', A, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.sub', A::text, true);
+    set local role authenticated;
+    begin
+      execute 'select count(*) from public.auth_logins' into n;
+      r := r || format(ok_line, '16г', 'auth_logins: прочитать токены входа', 'нет доступа', n || ' строк', case when n = 0 then 'OK (пусто)' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '16г', 'auth_logins: прочитать токены входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'insert into public.auth_logins (provider, secret_hash, expires_at) values ($1, $2, now() + interval ''5 minutes'')' using 'telegram', 'подлог';
+      r := r || format(ok_line, '16г', 'auth_logins: записать свой токен входа', 'нет доступа', 'добавилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '16г', 'auth_logins: записать свой токен входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'update public.auth_logins set status = ''ready'', token_hash = ''подлог''';
+      get diagnostics n = row_count;
+      r := r || format(ok_line, '16г', 'auth_logins: подменить итог входа', '0 строк', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '16г', 'auth_logins: подменить итог входа', '0 строк', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'select count(*) from public.auth_identities' into n;
+      r := r || format(ok_line, '16г', 'auth_identities: чьи Яндекс / Telegram', 'нет доступа', n || ' строк', case when n = 0 then 'OK (пусто)' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '16г', 'auth_identities: чьи Яндекс / Telegram', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'insert into public.auth_identities (provider, subject, user_id) values ($1, $2, $3)' using 'telegram', 'подлог-' || A, A;
+      r := r || format(ok_line, '16г', 'auth_identities: привязать Telegram себе', 'нет доступа', 'добавилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '16г', 'auth_identities: привязать Telegram себе', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'select public.nexa_auth_user_by_email($1)' using 'x@mail.ru';
+      r := r || format(ok_line, '16г', 'nexa_auth_user_by_email: искать чужие почты', 'нет доступа', 'выполнилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '16г', 'nexa_auth_user_by_email: искать чужие почты', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+    -- app_metadata (метка провайдера, Telegram id) меняет только сервер
+    begin
+      update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"nexa_provider":"telegram","nexa_telegram":"1"}' where id = A;
+      get diagnostics n = row_count;
+      r := r || format(ok_line, '16г', 'auth.users: поменять себе app_metadata', 'нет доступа', n || ' строк', case when n = 0 then 'OK' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '16г', 'auth.users: поменять себе app_metadata', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+  end if;
+
   -- 17. Storage, корзина nexa-files: чужая папка <B>/…
   -- Наличие и публичность бакета смотрим от имени администратора: строка bucket в
   -- storage.buckets у закрытого бакета обычному пользователю не видна (нет на неё правила) —
@@ -383,8 +441,43 @@ begin
     end;
   end if;
 
+  if to_regclass('public.auth_logins') is not null then
+    begin
+      execute 'select count(*) from public.auth_logins' into n;
+      r := r || format(ok_line, '22г', 'anon: прочитать токены входа', 'нет доступа', n || ' строк', case when n = 0 then 'OK (пусто)' else '‼ ПРОБЛЕМА' end);
+    exception when others then
+      r := r || format(ok_line, '22г', 'anon: прочитать токены входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+    begin
+      execute 'insert into public.auth_logins (provider, secret_hash, expires_at) values ($1, $2, now() + interval ''5 minutes'')' using 'telegram', 'подлог';
+      r := r || format(ok_line, '22г', 'anon: записать токен входа', 'нет доступа', 'добавилось', '‼ ПРОБЛЕМА');
+    exception when others then
+      r := r || format(ok_line, '22г', 'anon: записать токен входа', 'нет доступа', 'ошибка ' || sqlstate, 'OK');
+    end;
+  end if;
+
   -- 23. Итог: строки B не изменились (смотрим глазами администратора)
   reset role;
+  -- 25. Регистрация с почтой чужого домена — отказ (триггер restrict-email-domains.sql).
+  -- Регистрацию делает сам Supabase Auth — запись в auth.users та же, что и здесь
+  begin
+    insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data)
+      values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'nexa-test@gmail.com', '{"provider":"email"}', '{}');
+    r := r || format(ok_line, '25', 'регистрация: почта чужого домена', 'отказ', 'создан', '‼ ПРОБЛЕМА');
+  exception when others then
+    r := r || format(ok_line, '25', 'регистрация: почта чужого домена', 'отказ', 'ошибка ' || sqlstate, case when sqlstate = '23514' then 'OK' else 'проверьте код' end);
+  end;
+  -- Метка провайдера в user_metadata (её задаёт сам человек при регистрации) — не исключение
+  begin
+    insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data)
+      values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'nexa-test@gmail.com', '{"provider":"email"}', '{"nexa_provider":"telegram"}');
+    r := r || format(ok_line, '25', 'регистрация: чужой домен + метка в user_metadata', 'отказ', 'создан', '‼ ПРОБЛЕМА');
+  exception when others then
+    r := r || format(ok_line, '25', 'регистрация: чужой домен + метка в user_metadata', 'отказ', 'ошибка ' || sqlstate, case when sqlstate = '23514' then 'OK' else 'проверьте код' end);
+  end;
+  -- Без почты (вход по телефону): в Supabase провайдер Phone должен быть выключен — тогда такой записи не будет вовсе
+  select count(*) into n from auth.users where coalesce(email, '') = '' and coalesce(raw_app_meta_data->>'nexa_provider', '') = '';
+  r := r || format(ok_line, '25', 'аккаунты без почты и без метки сервера', '0', n::text, case when n = 0 then 'OK' else '‼ выключите вход по телефону' end);
   select count(*) into n from public.devices where id = dB and name = 'ТЕСТ B' and user_id = B;
   r := r || format(ok_line, '23', 'итог: устройство B осталось как было', '1 строка', n || ' строк', case when n = 1 then 'OK' else '‼ ПРОБЛЕМА' end);
   select count(*) into n from public.chats where id = cB and title = 'ТЕСТ B' and user_id = B;
