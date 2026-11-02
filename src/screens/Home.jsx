@@ -412,7 +412,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
       </div>
 
       {/* ══════════ ТЕЛЕФОН ══════════ */}
-      <div className="ng-home-mobile">
+      <div className={`ng-home-mobile${exp ? "" : " nx-home-redesign"}`}>
         {/* Шапка (макет): NEXA по центру, уведомления и быстрые действия справа.
             Профиль — во вкладке нижней панели, слева пусто */}
         {/* Шапка и поиск закреплены вместе: при прокрутке поиск не уезжает под логотип */}
@@ -431,7 +431,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             <button type="button" className="nx-row-btn nx-home-search nx-glass" onClick={() => onSearch?.()}>
               {Icon.search({ c: C.text, s: 15 })} Поиск
             </button>
-            {exp && <button type="button" className="nx-exp-ai" onClick={() => onNavigate("assistant")} aria-label="ИИ — Ассистент" style={{ ...btnReset }}>AI</button>}
+            {exp && <button type="button" className="nx-exp-ai" onClick={() => onNavigate("assistant")} aria-label="AI — Ассистент" style={{ ...btnReset }}>AI</button>}
           </div>
         </div>
 
@@ -443,8 +443,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
         {/* Мои устройства (макет 2026-10-27): по 4 клетки на страницу, листаются вбок, точки внизу.
             Экспериментальный интерфейс — с 3D-рисунками устройств (data-nosnippet — не в описание сайта) */}
-        <div style={{ marginTop: 22 }} data-nosnippet>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div className="nx-home-device-section" style={{ marginTop: 22 }} data-nosnippet>
+          <div className="nx-home-device-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="ng-display" style={{ fontSize: 22, fontWeight: 500 }}>Мои устройства</div>
             <button type="button" className="nx-row-btn" title="В сети · все устройства" onClick={onAllDevices}
               style={{ ...btnReset, display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 18, fontWeight: 600 }}>
@@ -467,7 +467,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                       <FitName className="nx-dev-pill-name">{d.name}</FitName>
                       {received[d.id]
                         ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
-                        : <span style={{ display: "block", fontSize: 11, lineHeight: 1.25, color: C.muted, marginTop: 3 }}>{d.isSelf ? "Это устройство" : on ? "В сети" : "Не в сети"}</span>}
+                        : <span className="nx-dev-pill-status" style={{ display: "block", fontSize: 11, lineHeight: 1.25, color: C.muted, marginTop: 3 }}>{d.isSelf ? "Это устройство" : on ? "В сети" : "Не в сети"}</span>}
                     </span>
                     <span className="nx-status-dot" style={{ color: on ? C.green : C.red, background: on ? C.green : C.red }} />
                   </button>
@@ -494,13 +494,13 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
           </>
         ) : (
           <>
-            <div style={{ marginTop: 22 }}>{aiPill()}</div>
-            {activityBlock && <div className="nx-act-pill nx-glass nx-glass-subtle" style={{ marginTop: 18 }} data-nosnippet>{activityBlock}</div>}
-            {/* Погода и ближайшее дело — две карточки рядом (макет 2026-10-27) */}
+            <div className="nx-home-assistant">{aiPill()}</div>
+            {/* Новый мобильный макет: овальные карточки, под ними — активность. */}
             <div className="nx-home-duo">
               <HomeWeatherCard className="nx-hw-mob" onOpen={toToday} />
               <HomeNextCard schedule={schedule} onOpen={toToday} className="nx-hn-mob" />
             </div>
+            {activityBlock && <div className="nx-act-pill" data-nosnippet>{activityBlock}</div>}
           </>
         )}
         {onAbout && (

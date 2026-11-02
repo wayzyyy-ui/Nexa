@@ -3,6 +3,7 @@
 import { C, NAV_W, PHONE_MQ, DESKTOP_MQ } from "./theme.js";
 import { LEAVE_MS } from "../lib/hooks.js";
 import { REPLY_AURA_FADE } from "../screens/assistant/visuals.jsx";
+import { MOBILE_HOME_CSS } from "./mobileHomeStyles.js";
 
 export const APP_CSS = `
         /* Отступы под вырез камеры и системную полосу (safe area).
@@ -2542,4 +2543,5 @@ export const APP_CSS = `
             transition: transform 220ms ease, opacity 220ms ease;
 }
         
+${MOBILE_HOME_CSS}
 `;

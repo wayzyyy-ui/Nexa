@@ -2827,7 +2827,7 @@ export default function NexaApp() {
       : syncLoading ? "Синхронизация: загружаем данные…" : syncError ? `Синхронизация: ${syncError}`
       : syncPending ? `Отправляем: ${syncPending}` : "Сохранено в облаке";
     const list = [
-      { id: "chat", title: "Новый диалог с ассистентом", sub: "ИИ-ассистент NEXA", icon: Icon.sparkle,
+      { id: "chat", title: "Новый диалог с ассистентом", sub: "AI-ассистент NEXA", icon: Icon.sparkle,
         keywords: ["ассистент", "ии", "чат", "диалог", "вопрос", "спросить"], run: newChatQuick },
       // Продолжить диалог на другом своём устройстве: сначала какой (открытый сейчас — первым), потом окно выбора устройства
       !!uid && online && contTargets.some((d) => d.real && !d.isSelf && !d.bt && d.online) && chats.length > 0 && { id: "continue", title: "Продолжить диалог на другом устройстве", sub: "Откроется там после «Открыть»", icon: Icon.handoff,
