@@ -4,6 +4,7 @@ import { C, NAV_W, PHONE_MQ, DESKTOP_MQ } from "./theme.js";
 import { LEAVE_MS } from "../lib/hooks.js";
 import { REPLY_AURA_FADE } from "../screens/assistant/visuals.jsx";
 import { MOBILE_HOME_CSS } from "./mobileHomeStyles.js";
+import { DESKTOP_HOME_CSS } from "./desktopHomeStyles.js";
 
 export const APP_CSS = `
         /* Отступы под вырез камеры и системную полосу (safe area).
@@ -183,7 +184,7 @@ export const APP_CSS = `
            красная у тех, что не в сети (слева гуще, к правому краю тает). */
         .nx-dev-pill {
           display: flex; align-items: center; gap: 8px; min-height: 72px; box-sizing: border-box;
-          padding: 10px 14px 10px 12px !important; border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
+          padding: 10px 14px 10px 12px !important; border-radius: 999px !important; border: 0.5px solid var(--line-bright) !important;
           background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 16%, transparent), color-mix(in srgb, var(--green) 3%, transparent) 75%) !important;
         }
         .nx-dev-pill[data-online="0"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--red) 22%, transparent), color-mix(in srgb, var(--red) 4%, transparent) 75%) !important; }
@@ -330,7 +331,7 @@ export const APP_CSS = `
         .nx-dev-row {
           display: flex; align-items: center; gap: calc(26 * var(--mk)); min-height: max(46px, calc(82 * var(--mk))); box-sizing: border-box;
           padding: 0 calc(34 * var(--mk)) 0 calc(30 * var(--mk)) !important;
-          border-radius: 999px !important; border: 1px solid var(--line-bright) !important;
+          border-radius: 999px !important; border: 0.5px solid var(--line-bright) !important;
           background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 14%, transparent), color-mix(in srgb, var(--green) 3%, transparent) 80%) !important;
           transition: border-color 160ms ease;
         }
@@ -339,8 +340,8 @@ export const APP_CSS = `
         .nx-dev-row.is-add { border-style: dashed !important; background-image: none !important; }
         .nx-dev-row-icon { width: calc(40 * var(--mk)); display: flex; justify-content: center; flex-shrink: 0; }
         .nx-dev-row-icon svg { height: max(24px, calc(40 * var(--mk))) !important; width: auto !important; }
-        .nx-dev-row-name { display: block; font-size: max(14px, calc(20 * var(--mk))); line-height: 1.2; margin-top: max(3px, calc(7 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .nx-dev-row-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: max(4px, calc(7 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-name { display: block; font-size: max(14px, calc(20 * var(--mk))); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nx-dev-row-sub { display: block; font-size: max(11px, calc(12 * var(--mk))); color: var(--muted); margin-top: max(2px, calc(3 * var(--mk))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nx-dev-row .nx-status-dot { width: max(9px, calc(15 * var(--mk))); height: max(9px, calc(15 * var(--mk))); }
         /* Ассистент: значок и заголовок; на компьютере — сине-мятное свечение вокруг (макет) */
         .nx-ai-pill-icon { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; background: var(--mint-dark); display: flex; align-items: center; justify-content: center; }
@@ -1961,7 +1962,9 @@ export const APP_CSS = `
         /* «Сегодня» (макет 2026-10): дни — скруглённые квадраты с яркой обводкой, карточки погоды — радиус 40 */
         .nx-day-chip { border-radius: 14px !important; }
         .nx-day-chip[aria-selected="false"] { border-color: var(--line-bright) !important; }
-        .nx-weather { border-radius: 40px !important; border-color: var(--line-bright) !important; }
+        .nx-weather { border-radius: 40px !important; border-color: var(--line-bright) !important; border-width: 0.5px !important; }
+        .nx-weather.nx-glass::before, .nx-hw.nx-glass::before { padding: 0.5px; }
+        .nx-hw { border-width: 0.5px; }
         .nx-sched-add-row { display: none !important; }
         @keyframes nx-tb-flash { 0% { transform: scale(1); filter: none; } 35% { transform: scale(1.18); filter: drop-shadow(0 0 5px var(--mint)); color: var(--mint); } 100% { transform: scale(1); filter: none; } }
         @keyframes nx-tb-ring { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(14deg); } 40% { transform: rotate(-11deg); } 60% { transform: rotate(7deg); } 80% { transform: rotate(-4deg); } }
@@ -2544,4 +2547,5 @@ export const APP_CSS = `
 }
         
 ${MOBILE_HOME_CSS}
+${DESKTOP_HOME_CSS}
 `;

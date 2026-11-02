@@ -156,7 +156,7 @@ export const NavIcon = ({ id, c, s = 48 }) => (
 // напротив него на разделительной линии — мятная отметка.
 // active — id текущего раздела, onChange — переключить раздел
 // Шаг кнопок меню: 48 px кнопка + 14 px промежуток, сверху отступ 28 px (см. стиль nav ниже)
-const SIDE_TOP = 28, SIDE_STEP = 62;
+const SIDE_TOP = 55, SIDE_STEP = 91;
 export function Sidebar({ active, onChange }) {
   // Мятная плитка и отметка на линии — одни на всё меню и переезжают к выбранному разделу (2026-10-27),
   // а не появляются на новом месте. Раздела нет в меню (экран поверх) — плитки нет
@@ -173,8 +173,8 @@ export function Sidebar({ active, onChange }) {
     }}>
       {idx >= 0 && (
         <>
-          <span aria-hidden="true" className="nx-side-thumb" style={{ transform: `translateY(${y}px)` }} />
-          <span aria-hidden="true" className="nx-side-mark" style={{ transform: `translateY(${y}px)` }} />
+          <span aria-hidden="true" className="nx-side-thumb" style={{ "--side-y": y }} />
+          <span aria-hidden="true" className="nx-side-mark" style={{ "--side-y": y }} />
         </>
       )}
       {NAV.map((item) => {

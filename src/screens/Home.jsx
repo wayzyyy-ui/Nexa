@@ -336,6 +336,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
   const aiPill = (cls) => (
     <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill nx-ai-flow nx-glass nx-glass-prominent ${cls || ""}`} onClick={() => onNavigate("assistant")}
       style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
+      <span className="nx-ai-flow-art" aria-hidden="true" />
       <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.onFold, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="ng-display nx-ai-pill-title">ИИ — Ассистент</span>
@@ -369,7 +370,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             <section className="nx-home-card nx-home-devices nx-glass nx-glass-subtle" aria-label="Мои устройства" data-nosnippet>
               <div className="nx-home-card-title">Мои устройства</div>
               <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                {empty}
+                {empty && <div className="nx-home-devices-empty">{empty}</div>}
                 {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} onOpen={onOpenDevice} />)}
                 {devices.length > 0 && <AddDeviceRow onClick={onAddDevice} />}
               </div>

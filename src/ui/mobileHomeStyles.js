@@ -45,7 +45,7 @@ export const MOBILE_HOME_CSS = `
   .nx-home-redesign .nx-dev-pill-icon { display: flex; width: calc(37 * var(--hm)); }
   .nx-home-redesign .nx-dev-pill-icon svg { height: calc(40 * var(--hm)); width: auto; max-width: 100%; }
   .nx-home-redesign .nx-dev-pill-name { font-size: calc(16 * var(--hm)); font-weight: 650; }
-  .nx-home-redesign .nx-dev-pill-status { font-size: calc(10 * var(--hm)) !important; margin-top: 2px !important; }
+  .nx-home-redesign .nx-dev-pill-status { font-size: calc(10 * var(--hm)) !important; margin-top: 1px !important; }
   .nx-home-redesign .nx-dev-pill .nx-status-dot { width: calc(9 * var(--hm)); height: calc(9 * var(--hm)); }
   .nx-home-redesign .nx-dev-pill.is-add {
     background: color-mix(in srgb, var(--text) 3%, var(--bg)) !important;
