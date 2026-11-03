@@ -111,6 +111,6 @@ check("запись B на месте", (await db.query("select text from public
 
 await db.end();
 try { await server.stop(); } catch { /* Windows иногда держит временную папку — итог от этого не зависит */ }
-fs.rmSync(dir, { recursive: true, force: true });
+try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* Windows ещё держит файлы базы — папка во временных, удалится позже; итог от этого не зависит */ }
 console.log(`\n${fails ? "✘" : "✔"} clipboard.sql: ${passes} проверок прошло, ${fails} не прошло`);
 process.exit(fails ? 1 : 0);
