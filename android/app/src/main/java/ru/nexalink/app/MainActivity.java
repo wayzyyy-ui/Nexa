@@ -51,6 +51,9 @@ public class MainActivity extends BridgeActivity {
         // Плавность (2026-10-28, просьба автора): соседние с экраном части страницы рисуются заранее —
         // при прокрутке и свайпах не видно «дорисовки» (чуть больше памяти, на скорость запуска не влияет)
         if (Build.VERSION.SDK_INT >= 23) webView.getSettings().setOffscreenPreRaster(true);
+        // Шрифт — ровно по макету (2026-11-03, решение автора): системный «Размер шрифта» Android
+        // больше не увеличивает текст NEXA (раньше на 115–130 % карточки Главной вытягивались)
+        webView.getSettings().setTextZoom(100);
         preferHighRefreshRate();
     }
 
