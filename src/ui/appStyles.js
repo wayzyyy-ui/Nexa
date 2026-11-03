@@ -504,9 +504,10 @@ export const APP_CSS = `
         @keyframes nx-ai-flow { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
         @media (prefers-reduced-motion: reduce) { .nx-ai-flow { animation: none; } }
         .nx-lite .nx-ai-flow { animation: none; }
-        /* Имя устройства в таблетке: переносы только между словами, длинное слово уменьшается (FitName) */
+        /* Имя устройства в таблетке: переносы только между словами, слово длиннее строки — с многоточием (FitName) */
         .nx-fit-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: normal; word-break: normal; hyphens: none;
           font-size: 14px; font-weight: 600; line-height: 1.2; }
+        .nx-fit-word { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
         /* Градус — мятное колечко, как в макете */
         .nx-deg-ring { display: inline-block; width: 0.17em; height: 0.17em; border: max(2px, 0.035em) solid var(--mint); border-radius: 50%; vertical-align: top; margin: 0.06em 0 0 0.04em; box-sizing: border-box; }
         .nx-hw-deg { white-space: nowrap; }

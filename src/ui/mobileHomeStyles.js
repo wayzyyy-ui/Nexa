@@ -34,15 +34,15 @@ export const MOBILE_HOME_CSS = `
   .nx-home-redesign .nx-home-device-heading > button { min-height: 32px; font-size: calc(16 * var(--hm)) !important; gap: 6px !important; }
   .nx-home-redesign .nx-dpager-page { gap: calc(15 * var(--hm)) calc(21 * var(--hm)); }
   .nx-home-redesign .nx-dev-pill {
-    min-height: calc(69 * var(--hm)); gap: calc(9 * var(--hm));
-    padding: calc(11 * var(--hm)) calc(14 * var(--hm)) !important;
+    min-height: calc(69 * var(--hm)); gap: calc(7 * var(--hm));
+    padding: calc(11 * var(--hm)) calc(12 * var(--hm)) !important;
     border-color: color-mix(in srgb, var(--text) 20%, transparent) !important;
     background-image: linear-gradient(155deg, color-mix(in srgb, var(--mint) 20%, var(--bg)), color-mix(in srgb, var(--mint) 3%, var(--bg))) !important;
   }
   .nx-home-redesign .nx-dev-pill[data-online="0"] {
     background-image: linear-gradient(150deg, color-mix(in srgb, var(--red) 28%, var(--bg)), color-mix(in srgb, var(--red) 8%, var(--bg))) !important;
   }
-  .nx-home-redesign .nx-dev-pill-icon { display: flex; width: calc(37 * var(--hm)); }
+  .nx-home-redesign .nx-dev-pill-icon { display: flex; justify-content: center; width: calc(34 * var(--hm)); }
   .nx-home-redesign .nx-dev-pill-icon svg { height: calc(40 * var(--hm)); width: auto; max-width: 100%; }
   .nx-home-redesign .nx-dev-pill-name { font-size: calc(15.5 * var(--hm)); font-weight: 700; }
   .nx-home-redesign .nx-dev-pill-status { font-size: calc(10 * var(--hm)) !important; margin-top: 1px !important; }

@@ -1,6 +1,6 @@
 // Главная (макет 2026-10-27): погода и расписание прямо на Главной, устройства страницами,
 // экспериментальный интерфейс телефона (3D-устройства, «капли» дела и погоды, хранилище)
-import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
+import { Fragment, useEffect, useRef, useState, useId } from "react";
 import { C } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { btnReset } from "../../ui/base.jsx";
@@ -169,25 +169,16 @@ export function DevicePager({ devices, cell, addCell }) {
   );
 }
 
-/* Имя устройства без переноса посреди слова: «Приложение» не рвётся на «Приложени / е».
-   Не влезает даже одно слово (крупный системный шрифт телефона) — шрифт уменьшается шагами до 11 px */
+/* Имя устройства: до двух строк, переносы только между словами. Слово, которое не влезает в строку целиком
+   («компьютере», «Приложение» в узкой плашке), обрезается многоточием — «компью…» (просьба автора 2026-11-03;
+   раньше шрифт уменьшался, а самое длинное слово всё равно обрезалось без многоточия) */
 export function FitName({ children, className = "", style }) {
-  const ref = useRef(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const fit = () => {
-      el.style.fontSize = "";
-      let size = parseFloat(getComputedStyle(el).fontSize) || 14;
-      for (let i = 0; i < 6 && el.scrollWidth > el.clientWidth + 1 && size > 11; i++) { size -= 1; el.style.fontSize = `${size}px`; }
-    };
-    fit();
-    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(fit) : null;
-    ro?.observe(el);
-    document.fonts?.ready?.then(fit).catch(() => {});
-    return () => ro?.disconnect();
-  }, [children]);
-  return <span ref={ref} className={`nx-fit-name ${className}`} style={style}>{children}</span>;
+  const words = String(children ?? "").split(/\s+/).filter(Boolean);
+  return (
+    <span className={`nx-fit-name ${className}`} style={style} title={words.join(" ")}>
+      {words.map((w, i) => <Fragment key={i}>{i > 0 && " "}<span className="nx-fit-word">{w}</span></Fragment>)}
+    </span>
+  );
 }
 
 /* ── Экспериментальный интерфейс (Настройки → «Внешний вид») ── */
