@@ -1,6 +1,6 @@
 // Общие стили NEXA: темы (цвета обеих тем), шкала размеров, мобильная раскладка, анимации.
 // Вставляются один раз блоком <style> в NexaApp. Внутри — только постоянные значения
-import { C, NAV_W, PHONE_MQ, DESKTOP_MQ } from "./theme.js";
+import { C, PHONE_MQ, DESKTOP_MQ } from "./theme.js";
 import { LEAVE_MS } from "../lib/hooks.js";
 import { REPLY_AURA_FADE } from "../screens/assistant/visuals.jsx";
 import { MOBILE_HOME_CSS } from "./mobileHomeStyles.js";
@@ -234,7 +234,7 @@ export const APP_CSS = `
           /* Главная занимает всю ширину окна (у других разделов колонка до 1440 px) */
           .ng-main-content:has(.ng-home), .ng-main-content:has(.nx-set-desk) { max-width: none !important; }
           /* Слева — отступ по макету: содержимое начинается на 270 px макета (меню 96 + 174) */
-          .ng-home { padding: calc(58 * var(--mk)) calc(158 * var(--mk)) calc(40 * var(--mk)) calc(174 * var(--mk)) !important; }
+          .ng-home { padding: calc(38 * var(--mk)) calc(158 * var(--mk)) calc(40 * var(--mk)) var(--page-x) !important; }
         }
         .nx-home-brand-desk { margin: 0 0 calc(52 * var(--mk)); }
         .nx-home-brand-desk > span { gap: calc(40 * var(--mk)) !important; }
@@ -290,14 +290,14 @@ export const APP_CSS = `
           /* Отступ слева — как на Главной: содержимое с 270 px макета 1920 × 1080 */
           /* «Сегодня» по макету шире остальных (1183 вместо 1120: расписание 648 + погода 488) */
           .nx-media-grid:has(.nx-today-grid) { grid-template-columns: minmax(0, calc(1183px * var(--desk-zoom, 1))) minmax(300px, 1fr) !important; }
-          .nx-media-screen { padding-left: max(40px, calc(174 * var(--mk))) !important; padding-top: calc(38 * var(--mk)) !important; }
+          .nx-media-screen { padding-left: var(--page-x) !important; padding-top: calc(38 * var(--mk)) !important; }
           /* Заголовок — по макету: крупнее и на одной линии с верхней строкой (поиск, часы); карточки — ниже.
              Внутри .nx-media-main действует zoom, поэтому размеры делим на --desk-zoom */
           .nx-media-screen .nx-page-title { font-size: max(32px, calc(50 * var(--mk) / var(--desk-zoom, 1))) !important; line-height: 1.1 !important; }
           .nx-media-screen .nx-page-gap { height: calc(75 * var(--mk) / var(--desk-zoom, 1)) !important; }
           /* Ассистент на компьютере — фон (спектр) и под боковым меню: без тёмной полосы слева.
              Меню — над ним (прозрачное), содержимое ассистента — правее меню */
-          .ng-assistant-wrapper { left: 0 !important; padding-left: ${NAV_W + 1}px; box-sizing: border-box; }
+          .ng-assistant-wrapper { left: 0 !important; padding-left: calc(var(--nav-w) + 1px); box-sizing: border-box; }
           /* Меню слева стоит на месте при прокрутке страницы */
           .ng-sidebar { position: sticky; top: 0; height: 100vh; align-self: flex-start; z-index: 6; }
         }
@@ -582,7 +582,7 @@ export const APP_CSS = `
           color: var(--text) !important; font-size: max(14px, calc(20 * var(--mk))) !important; font-family: inherit; cursor: pointer; }
         /* Верхняя строка закреплена во всю ширину (кроме меню): сама полоса нажатия не ловит,
            кнопки — ловят. Прокрутили — под ней мягкий фон экрана, внизу тает в прозрачный */
-        .ng-topbar { left: ${NAV_W}px; pointer-events: none; }
+        .ng-topbar { left: var(--nav-w); pointer-events: none; }
         .ng-topbar > * { pointer-events: auto; }
         .ng-topbar::before { content: ""; position: absolute; inset: calc(-1 * var(--sat)) 0 -18px 0; z-index: -1; pointer-events: none;
           background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 62%, transparent); opacity: 0; transition: opacity 180ms ease; }
@@ -600,7 +600,7 @@ export const APP_CSS = `
           background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
                       radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
                       linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
-          background-size: 100vw 100vh; background-position: -${NAV_W}px 0; background-repeat: no-repeat;
+          background-size: 100vw 100vh; background-position: calc(-1 * var(--nav-w)) 0; background-repeat: no-repeat;
           -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
           mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
         .nx-top-search svg { display: block; flex-shrink: 0; width: max(14px, calc(19 * var(--mk))); height: max(14px, calc(19 * var(--mk)));
@@ -760,7 +760,7 @@ export const APP_CSS = `
         .nx-set-notitle > .nx-section-title:first-child, .nx-set-notitle > :first-child > .nx-section-title:first-child { display: none !important; }
         .nx-set-body > :first-child .nx-section-title:first-child, .nx-set-body > .nx-section-title:first-child { margin-top: 0 !important; }
         @media ${DESKTOP_MQ} {
-          .nx-set-desk { padding: calc(38 * var(--mk)) calc(140 * var(--mk)) 40px max(40px, calc(174 * var(--mk))) !important; text-align: left; box-sizing: border-box; }
+          .nx-set-desk { padding: calc(38 * var(--mk)) calc(140 * var(--mk)) 40px var(--page-x) !important; text-align: left; box-sizing: border-box; }
           .nx-settings-title { font-size: max(32px, calc(50 * var(--mk))) !important; line-height: 1.1 !important; margin-bottom: calc(60 * var(--mk)); }
           .nx-set-layout { display: grid; grid-template-columns: minmax(300px, calc(480 * var(--mk))) minmax(0, 1fr); gap: calc(48 * var(--mk)); align-items: start; }
           .nx-set-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: calc(140 * var(--mk)); }
@@ -1104,7 +1104,7 @@ export const APP_CSS = `
      список; справа — открытая заметка от строки поиска почти до низа окна */
   @media ${DESKTOP_MQ} {
     .ng-main-content:has(.nx-notepad) { max-width: none !important; }
-    .nx-notepad { padding: calc(38 * var(--mk)) calc(222 * var(--mk)) 40px calc(174 * var(--mk)) !important; } /* справа место под складку (макет) */
+    .nx-notepad { padding: calc(38 * var(--mk)) calc(222 * var(--mk)) 40px var(--page-x) !important; } /* справа место под складку (макет) */
     .nx-notepad-top { display: flex; align-items: center; gap: calc(44 * var(--mk)); min-height: max(40px, calc(50 * var(--mk))); }
     .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
     /* Две колонки на всю оставшуюся высоту окна: список прокручивается сам (тонкая полоса), заметка — справа */
@@ -2018,17 +2018,42 @@ export const APP_CSS = `
         /* Колонки не раздвигаются длинным текстом — он переносится или обрезается */
         .nx-link-grid > * { min-width: 0; }
         /* Строка синхронизации аккаунта: на компьютере — внизу слева, у боковой панели */
-        .nx-sync-status { left: ${NAV_W + 20}px; bottom: 20px; }
-        /* Боковое меню: подсветка при наведении и заметный фокус с клавиатуры */
-        .nx-nav-btn:not([aria-current]):hover { background: color-mix(in srgb, var(--text) 12%, transparent) !important; }
-        .nx-nav-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
-        /* Боковое меню: плитка выбранного раздела и отметка на линии переезжают (Sidebar) */
-        .nx-side-thumb { position: absolute; left: 50%; top: 0; width: 48px; height: 48px; margin-left: -24px; border-radius: 14px; background: var(--mint);
-          transition: transform 340ms cubic-bezier(0.2, 0.9, 0.3, 1); will-change: transform; pointer-events: none; }
-        .nx-side-mark { position: absolute; right: -1px; top: 0; width: 2px; height: 48px; background: var(--mint);
-          transition: transform 340ms cubic-bezier(0.2, 0.9, 0.3, 1); pointer-events: none; z-index: 1; }
-        .nx-nav-btn svg * { transition: stroke 200ms ease, fill 200ms ease; }
-        @media (prefers-reduced-motion: reduce) { .nx-side-thumb, .nx-side-mark { transition: none; } }
+        .nx-sync-status { left: calc(var(--nav-w) + 20px); bottom: 20px; }
+        /* Боковое меню (2026-11-03, по образцу ChatGPT): знак и NEXA, группа «Разделы» — строки «значок + подпись»,
+           внизу «Настройки». Ширина — --nav-w (232 px, свёрнутое — 72 px); к ней привязаны фон, ассистент,
+           верхняя строка. Подложка выбранного раздела одна и переезжает (Sidebar в navigation.jsx) */
+        :root { --nav-w: 232px; --page-x: max(32px, calc(40 * var(--mk, 1px))); }
+        html.nx-side-min { --nav-w: 72px; }
+        @media ${PHONE_MQ} { :root, html.nx-side-min { --nav-w: 0px; } }
+        .nx-side { width: var(--nav-w); min-width: var(--nav-w); box-sizing: border-box; border-right: 1px solid var(--border);
+          display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 18px 12px 16px; text-align: left; transition: width 220ms cubic-bezier(0.2, 0.9, 0.3, 1), min-width 220ms cubic-bezier(0.2, 0.9, 0.3, 1); overflow: hidden; }
+        .nx-side-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px; padding: 0 2px 0 10px; margin-bottom: 18px; }
+        .nx-side-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .nx-side-toggle { width: 34px !important; height: 34px !important; min-width: 34px; flex-shrink: 0; padding: 0 !important; border: none !important; border-radius: 8px !important; background: transparent !important; box-shadow: none !important; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .nx-side-toggle:hover { background: color-mix(in srgb, var(--text) 8%, transparent) !important; }
+        .nx-side-toggle::before, .nx-side-toggle::after { display: none !important; }
+        .nx-side-sec { font-size: 12px; color: var(--muted); padding: 0 10px; margin: 0 0 6px; white-space: nowrap; }
+        .nx-side-item { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; padding: 0 10px 0 6px;
+          border: none; border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer;
+          white-space: nowrap; transition: background 160ms ease; }
+        .nx-side-item svg { flex-shrink: 0; }
+        .nx-side-item svg * { transition: stroke 200ms ease; }
+        .nx-side-item:not([aria-current]):hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+        .nx-side-item[aria-current] { font-weight: 600; }
+        .nx-side-item:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+        .nx-side-label { overflow: hidden; text-overflow: ellipsis; }
+        .nx-side-thumb { position: absolute; left: 12px; right: 12px; top: 0; border-radius: 10px; pointer-events: none;
+          background: color-mix(in srgb, var(--mint) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mint) 22%, transparent);
+          transition: transform 300ms cubic-bezier(0.2, 0.9, 0.3, 1), height 300ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+        .nx-side-fill { flex: 1; }
+        .nx-side-line { height: 1px; background: var(--border); margin: 8px 6px; }
+        /* Свёрнутое меню: только значки по центру, без подписей и слова NEXA */
+        .nx-side.is-min { padding-left: 14px; padding-right: 14px; }
+        .nx-side.is-min .nx-side-top { flex-direction: column; height: auto; gap: 14px; padding: 0; margin-bottom: 14px; }
+        .nx-side.is-min .nx-side-brand svg[aria-label="NEXA"], .nx-side.is-min .nx-side-sec, .nx-side.is-min .nx-side-label { display: none !important; }
+        .nx-side.is-min .nx-side-item { justify-content: center; padding: 0; height: 44px; }
+        .nx-side.is-min .nx-side-thumb { left: 14px; right: 14px; }
+        @media (prefers-reduced-motion: reduce) { .nx-side, .nx-side-thumb { transition: none; } }
         .nx-input:focus:not([aria-invalid="true"]) { border-color: var(--mint) !important; }
         /* У сегментов и чипсов края срезаны, рамку не видно — подчёркиваем подпись */
         .nx-seg-btn:focus-visible, .nx-crumb:focus-visible { outline: none; text-decoration: underline; }

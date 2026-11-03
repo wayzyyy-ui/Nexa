@@ -129,7 +129,7 @@ export const PHONE_MQ = "(max-width: 768px), (pointer: coarse) and (max-height: 
 
 export const DESKTOP_MQ = "(min-width: 769px) and (min-height: 501px), (min-width: 769px) and (pointer: fine)";
 
-export const NAV_W = 96; // ширина боковой панели (к ней привязаны фон и экран ассистента)
+// Ширина бокового меню — CSS-переменная --nav-w (appStyles.js: 232 px, свёрнутое 72 px, на телефоне 0)
 
 /* Масштаб «Сегодня», «Медиа», «Файлов» на компьютере (--desk-zoom, см. .nx-media-main в appStyles):
    по макету 1920 × 1080 содержимое в масштабе 1:1 (макет 2026-10, второй вариант: раньше на 1920 было ×1,3 —

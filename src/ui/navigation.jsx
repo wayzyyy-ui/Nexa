@@ -1,7 +1,8 @@
 // Навигация: разделы (NAV), боковое меню, нижняя панель телефона, верхняя строка и свайпы между разделами
-import { useState, useRef, useEffect } from "react";
-import { C, NAV_W, PHONE_MQ } from "./theme.js";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { C, PHONE_MQ } from "./theme.js";
 import { Icon } from "./icons.jsx";
+import { Logo, LogoMark } from "./base.jsx";
 
 // Список разделов бокового меню: id (внутреннее имя), label (подпись для title),
 // icon (функция-иконка из объекта Icon выше).
@@ -145,65 +146,79 @@ export const NAV_ICON_PATHS = {
   settings: ["M26.48 14.95a1.67 1.67 0 0 1 2.46 0l2.84 3.47c.49.6 1.18.99 1.94 1.12l4.42.73a1.67 1.67 0 0 1 1.23 2.13l-1.58 4.19a3.18 3.18 0 0 0 0 2.24l1.58 4.2a1.67 1.67 0 0 1-1.23 2.13l-4.42.73a3.18 3.18 0 0 0-1.94 1.12l-2.84 3.46a1.67 1.67 0 0 1-2.46 0l-2.85-3.46a3.18 3.18 0 0 0-1.94-1.12l-4.42-.73a1.67 1.67 0 0 1-1.23-2.13l1.58-4.2a3.18 3.18 0 0 0 0-2.24l-1.58-4.19a1.67 1.67 0 0 1 1.23-2.13l4.42-.73a3.18 3.18 0 0 0 1.94-1.12l2.85-3.47Z", "M31.5 27.71a3.79 3.79 0 1 1-7.58 0 3.79 3.79 0 0 1 7.58 0Z"],
 };
 
-export const NavIcon = ({ id, c, s = 48 }) => (
-  <svg viewBox="0 0 56 56" width={s} height={s} fill="none" stroke={c} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+// w — толщина линии в единицах рамки 56: на мелком значке её нужно больше, иначе линия «тает»
+export const NavIcon = ({ id, c, s = 48, w = 1.4 }) => (
+  <svg viewBox="0 0 56 56" width={s} height={s} fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {(NAV_ICON_PATHS[id] || []).map((d) => <path key={d} d={d} />)}
   </svg>
 );
 
-// Боковая навигация слева (компьютер), как в макете: значки в скруглённых
-// квадратах с лёгкой подложкой, активный — мятная плитка с тёмным значком,
-// напротив него на разделительной линии — мятная отметка.
-// active — id текущего раздела, onChange — переключить раздел
-// Шаг кнопок меню: 48 px кнопка + 14 px промежуток, сверху отступ 28 px (см. стиль nav ниже)
-const SIDE_TOP = 55, SIDE_STEP = 91;
+/* Боковое меню (компьютер), 2026-11-03 — по образцу ChatGPT (просьба автора: компактнее и структурнее):
+   сверху знак и NEXA, ниже группа «Разделы» — строки «значок + подпись», внизу «Настройки».
+   Выбранный раздел — мятная подложка (одна на всё меню, переезжает к новому разделу).
+   Меню сворачивается до одних значков (кнопка вверху, помнится на устройстве — nexa-side-min);
+   ширина меню — CSS-переменная --nav-w (к ней привязаны фон, ассистент, верхняя строка).
+   active — id текущего раздела, onChange — переключить раздел */
+const SIDE_MIN_KEY = "nexa-side-min";
+// Свёрнуто ли — до первого кадра (иначе меню на миг рисовалось бы широким)
+try { if (typeof document !== "undefined" && localStorage.getItem(SIDE_MIN_KEY) === "1") document.documentElement.classList.add("nx-side-min"); } catch { /* хранилище недоступно — меню широкое */ }
+const SIDE_MAIN = ["home", "today", "media", "files", "assistant"];
 export function Sidebar({ active, onChange }) {
-  // Мятная плитка и отметка на линии — одни на всё меню и переезжают к выбранному разделу (2026-10-27),
-  // а не появляются на новом месте. Раздела нет в меню (экран поверх) — плитки нет
-  const idx = NAV.findIndex((n) => n.id === active);
-  const y = SIDE_TOP + Math.max(0, idx) * SIDE_STEP;
+  const [min, setMin] = useState(() => typeof document !== "undefined" && document.documentElement.classList.contains("nx-side-min"));
+  const toggleMin = () => {
+    const next = !min;
+    setMin(next);
+    document.documentElement.classList.toggle("nx-side-min", next);
+    try { if (next) localStorage.setItem(SIDE_MIN_KEY, "1"); else localStorage.removeItem(SIDE_MIN_KEY); } catch { /* не запомнится — не страшно */ }
+  };
+  // Подложка выбранного раздела: место — по самой строке (строки разной высоты в широком и узком меню)
+  const navRef = useRef(null);
+  const [thumb, setThumb] = useState(null);
+  useLayoutEffect(() => {
+    const el = navRef.current?.querySelector(".nx-side-item[aria-current]");
+    setThumb(el ? { y: el.offsetTop, h: el.offsetHeight } : null);
+  }, [active, min]);
+  const item = (id) => {
+    const n = NAV.find((x) => x.id === id);
+    if (!n) return null;
+    const on = id === active;
+    return (
+      <button key={id} type="button" className="nx-side-item" title={min ? n.label : undefined} aria-label={n.label}
+        aria-current={on ? "page" : undefined} onClick={() => onChange(id)}>
+        <NavIcon id={id} c={on ? C.mint : C.text} s={26} w={2.4} />
+        <span className="nx-side-label">{n.label}</span>
+      </button>
+    );
+  };
   return (
-    <nav
-      aria-label="Разделы"
-      className="ng-sidebar" style={{
-      width: NAV_W, minWidth: NAV_W, boxSizing: "border-box", background: C.bg, borderRight: `1px solid ${C.border}`,
-      // position не задаём: на компьютере меню sticky (appStyles), это и точка отсчёта для плитки.
-      // Было relative — оно перебивало sticky, и меню уезжало при прокрутке
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: `${SIDE_TOP}px 0`,
-    }}>
-      {idx >= 0 && (
-        <>
-          <span aria-hidden="true" className="nx-side-thumb" style={{ "--side-y": y }} />
-          <span aria-hidden="true" className="nx-side-mark" style={{ "--side-y": y }} />
-        </>
-      )}
-      {NAV.map((item) => {
-        const isActive = item.id === active;
-        return (
-          <div key={item.id} style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
-            <button
-              type="button"
-              className="nx-nav-btn"
-              title={item.label}
-              aria-label={item.label}
-              aria-current={isActive ? "page" : undefined}
-              onClick={() => onChange(item.id)}
-              style={{
-                width: 48, height: 48, borderRadius: 14, cursor: "pointer", border: "none", padding: 0,
-                // У выбранной кнопки фон даёт общая плитка (nx-side-thumb) под ней
-                background: isActive ? "transparent" : `color-mix(in srgb, ${C.text} 7%, transparent)`,
-                display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1,
-                transition: "background 160ms ease",
-              }}
-            >
-              <NavIcon id={item.id} c={isActive ? C.onAccent : C.text} s={48} />
-            </button>
-          </div>
-        );
-      })}
+    <nav ref={navRef} aria-label="Разделы" className={`ng-sidebar nx-side${min ? " is-min" : ""}`}>
+      {thumb && <span aria-hidden="true" className="nx-side-thumb" style={{ transform: `translateY(${thumb.y}px)`, height: thumb.h }} />}
+      <div className="nx-side-top">
+        <span className="nx-side-brand" role="img" aria-label="NEXA">
+          <LogoMark s={22} />
+          <Logo bare h={13} />
+        </span>
+        <button type="button" className="nx-icon-btn nx-side-toggle" onClick={toggleMin}
+          aria-label={min ? "Развернуть меню" : "Свернуть меню"} title={min ? "Развернуть меню" : "Свернуть меню"} aria-expanded={!min}>
+          <SidebarGlyph c={C.muted} />
+        </button>
+      </div>
+      <div className="nx-side-sec">Разделы</div>
+      {SIDE_MAIN.map(item)}
+      <div className="nx-side-fill" />
+      <div className="nx-side-line" />
+      {item("settings")}
     </nav>
   );
 }
+
+// Значок «панель сбоку» для кнопки свернуть / развернуть меню
+const SidebarGlyph = ({ c }) => (
+  <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke={c} strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+    <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+    <path d="M9.5 4.5v15" />
+  </svg>
+);
 
 // Верхняя строка справа (время/дата, поиск, профиль). children — то, что
 // передаём внутрь при вызове компонента (см. использование в App).

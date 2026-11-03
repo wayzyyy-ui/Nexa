@@ -110,6 +110,9 @@ export const MOBILE_HOME_CSS = `
   .nx-tabbar-pill > div { height: 54px !important; }
   .nx-tabbar-pill button > svg { width: 32px; height: 32px; }
   .nx-tabbar-pill button[aria-label="Главная"] > svg { width: 36px; height: 36px; }
+  /* Значки крупнее (макет), а линии — той же толщины на экране, что при 26 px: иначе они «жирнели» вместе с размером */
+  .nx-tabbar-pill button > svg, .nx-tabbar-pill button > svg * { stroke-width: 1.3; }
+  .nx-tabbar-pill button[aria-label="Главная"] > svg, .nx-tabbar-pill button[aria-label="Главная"] > svg * { stroke-width: 1.35; }
   .nx-tab-move > div { width: 52px !important; height: 40px !important; border-color: var(--border-strong) !important; }
 }
 `;

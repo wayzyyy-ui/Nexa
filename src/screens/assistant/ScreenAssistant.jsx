@@ -2,7 +2,7 @@
 import { useLayoutEffect, useState, useEffect, useRef, useMemo, memo } from "react";
 import { formatBytes } from "../../lib/deviceInfo.js";
 import { formatLabel, prepareAttachment, SUPPORTED_HINT, attachUnsupported, extOf } from "../../lib/attach.js";
-import { C, NAV_W, PHONE_MQ, readTheme, switchTheme, T } from "../../ui/theme.js";
+import { C, PHONE_MQ, readTheme, switchTheme, T } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { liveAbort, useLiveChatId, isPartial, live, setLiveAbort, liveSet, STREAM_FLUSH_MS } from "../../lib/live.js";
 import { btnReset } from "../../ui/base.jsx";
@@ -1038,7 +1038,7 @@ useEffect(() => {
     // Высота и сдвиг — по видимой области экрана (см. эффект с visualViewport),
     // чтобы при открытой клавиатуре экран не уезжал вверх
     position: "fixed",
-    top: "var(--vvt, 0px)", left: NAV_W + 1, right: 0, height: "var(--vvh, 100%)",
+    top: "var(--vvt, 0px)", left: "calc(var(--nav-w) + 1px)", right: 0, height: "var(--vvh, 100%)",
     background: C.bg, zIndex: 5, overflow: "hidden",
     display: "flex", flexDirection: "column",
   };

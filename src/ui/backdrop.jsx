@@ -1,7 +1,7 @@
 // Фон экранов: грани складки в углах, сетка-чертёж (Настройки), складка Главной (HomeFold)
 import { useRef, useId, useState, useEffect } from "react";
 import foldSvg from "../assets/fold.svg";
-import { NAV_W, C } from "./theme.js";
+import { C } from "./theme.js";
 import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
 
 /* ---------- 3. СКЛАДКА — фирменный визуал (FoldHero) ----------
@@ -159,7 +159,7 @@ export function HomeFold({ size, count = 0 }) {
 }
 
 export const backdropLayer = {
-  position: "fixed", top: 0, right: 0, bottom: 0, left: NAV_W,
+  position: "fixed", top: 0, right: 0, bottom: 0, left: "var(--nav-w)",
   zIndex: 0, pointerEvents: "none", overflow: "hidden",
 };
 

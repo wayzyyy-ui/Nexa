@@ -1,5 +1,5 @@
 // Главная и боковое меню по светлому и тёмному макетам автора, ноябрь 2026.
-import { DESKTOP_MQ, NAV_W } from "./theme.js";
+import { DESKTOP_MQ } from "./theme.js";
 
 export const DESKTOP_HOME_CSS = `
 /* Переливание двигается отдельным слоем: текст и значок остаются неподвижными. */
@@ -31,22 +31,10 @@ export const DESKTOP_HOME_CSS = `
 .nx-lite .nx-ai-flow-art { animation: none; }
 @media (prefers-reduced-motion: reduce) { .nx-ai-pill .nx-ai-flow-art { animation: none; } }
 @media ${DESKTOP_MQ} {
-  .ng-sidebar {
-    --side-scale: clamp(0.65, min(100vw / 1920px, 100vh / 1080px), 1.25);
-    padding-top: calc(55px * var(--side-scale)) !important;
-    gap: calc(35px * var(--side-scale)) !important;
-    border-right-color: var(--border-strong) !important;
-  }
-  .ng-sidebar .nx-nav-btn { width: calc(56px * var(--side-scale)) !important; height: calc(56px * var(--side-scale)) !important; min-height: 36px; border-radius: calc(16px * var(--side-scale)) !important; border: 0.5px solid var(--border-strong) !important; }
-  .ng-sidebar .nx-nav-btn svg { width: 100%; height: 100%; }
-  .ng-sidebar .nx-nav-btn[aria-current] { border-color: transparent !important; }
-  .ng-sidebar .nx-side-thumb, .ng-sidebar .nx-side-mark { transform: translateY(calc(var(--side-y) * 1px * var(--side-scale))); }
-  .ng-sidebar .nx-side-thumb { width: calc(56px * var(--side-scale)); height: calc(56px * var(--side-scale)); margin-left: calc(-28px * var(--side-scale)); border-radius: calc(16px * var(--side-scale)); }
-  .ng-sidebar .nx-side-mark { height: calc(56px * var(--side-scale)); }
   :root[data-theme="light"] body:has(.nx-home-glow) .ng-sidebar { background: transparent !important; }
-  .ng-home { padding-left: max(28px, calc(270 * var(--mk) - ${NAV_W}px)) !important; padding-right: calc(40 * var(--mk)) !important; }
+  .ng-home { padding-left: var(--page-x) !important; padding-right: calc(40 * var(--mk)) !important; }
   /* Отступы по высоте ужаты (2026-11-03): Главная помещается в окно без прокрутки, и под панелью окна ПК тоже */
-  .nx-home-brand-desk { margin-bottom: calc(30 * var(--mk)); }
+  .nx-home-title { font-size: max(32px, calc(50 * var(--mk))) !important; font-weight: 500; line-height: 1.1; margin: 0 0 calc(40 * var(--mk)); }
   .nx-home-card-title { margin-bottom: calc(24 * var(--mk)) !important; }
   .nx-home-devices > .nx-stagger { gap: calc(18 * var(--mk)) !important; }
   .nx-home-about-row { padding-top: calc(10 * var(--mk)) !important; }

@@ -3,7 +3,7 @@ import { useRef, useState, useLayoutEffect, useEffect } from "react";
 import { C } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
 import { deviceStatus } from "../lib/devices.js";
-import { EmptyState, StateButton, btnReset, Logo, LogoMark } from "../ui/base.jsx";
+import { EmptyState, StateButton, btnReset, Logo } from "../ui/base.jsx";
 import { QuickBtn } from "../ui/QuickPanel.jsx";
 import { FoldArt, FOLD_INTRO_KEY } from "../ui/backdrop.jsx";
 import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
@@ -351,14 +351,8 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
       {/* ══════════ КОМПЬЮТЕР ══════════ */}
       <div className="ng-home-desktop">
-        {/* Знак и NEXA, под ними «Ваша экосистема». Справа сверху — общая верхняя строка */}
-        <div className="nx-home-brand-desk">
-          <span style={{ display: "flex", alignItems: "center", gap: 36 }} role="img" aria-label="NEXA">
-            <LogoMark s={58} />
-            <Logo bare h={40} />
-          </span>
-          <div className="nx-home-eco">Ваша экосистема</div>
-        </div>
+        {/* Заголовок раздела, как у «Сегодня» и «Медиа» (2026-11-03: знак и NEXA переехали в боковое меню) */}
+        <div className="ng-display nx-page-title nx-home-title">Главная</div>
         {/* В приложении для ПК обновление — таблеткой рядом с ассистентом (DesktopAppPill) */}
         {update && !isDesktop && <div style={{ marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
 
