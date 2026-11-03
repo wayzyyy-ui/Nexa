@@ -1,6 +1,7 @@
 // Команды ассистента: распознаются в браузере до запроса в /api/chat (список продублирован в api/chat.js)
 import { getTodayWeather, TODAY } from "./weather.js";
 import { signed, plural } from "./format.js";
+import { ruFmt } from "./ruFmt.js";
 
 // ЭКРАН "АССИСТЕНТ" — поле ввода по центру + правая панель (новый диалог/поиск/...)
 /* ═══ КОМАНДЫ АССИСТЕНТА ══════════════════════════════════════
@@ -138,7 +139,7 @@ export async function buildTodaySummary() {
     const [h, m] = it.time.split(":").map(Number);
     return h * 60 + m >= minutes;
   });
-  const date = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  const date = ruFmt({ weekday: "long", day: "numeric", month: "long" }).format(now);
   const lines = [`**${date.charAt(0).toUpperCase() + date.slice(1)}.**`];
   lines.push(w
     ? `${TODAY.city}: ${signed(w.now.temp)}°, ${String(w.now.text || "").toLowerCase()}, ощущается как ${signed(w.now.feels)}°. ${w.attribution?.text || ""}${w.stale ? " (последние сохранённые данные)" : ""}.`

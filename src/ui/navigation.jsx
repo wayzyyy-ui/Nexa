@@ -228,9 +228,17 @@ export function TopBar({ children, tab }) {
     return () => { window.removeEventListener("scroll", onScroll); document.querySelectorAll(SCROLL_BARS).forEach((el) => el.classList.remove("nx-scrolled")); };
   }, []);
   // Разделы меняются без прокрутки (шапка Главной появилась заново) — отметку ставим и ей
+  // Читаем прокрутку уже после первого кадра нового раздела: сразу после смены window.scrollY заставлял браузер
+  // разложить весь новый экран прямо посреди задачи (замер 2026-11-03: ~170 мс на свайпах при процессоре ×4)
   useEffect(() => {
-    const s = window.scrollY > 4;
-    document.querySelectorAll(SCROLL_BARS).forEach((el) => el.classList.toggle("nx-scrolled", s));
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => {
+        const s = window.scrollY > 4;
+        document.querySelectorAll(SCROLL_BARS).forEach((el) => el.classList.toggle("nx-scrolled", s));
+      });
+    });
+    return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
   }, [tab]);
   return (
     <div className="ng-topbar nx-tb-row" data-tab={tab} style={{
@@ -332,7 +340,9 @@ export function useTabSwipe(getCtx, handlers) {
       if (s.cur) { s.cur.style.transition = tr; s.cur.style.transform = `translate3d(${dx}px, 0, 0)`; s.cur.style.opacity = String(1 - SWIPE_FADE * p); }
       if (s.peekMover) {
         const base = s.dir === "next" ? s.w : -s.w;
-        const y = s.peekPanel === s.peekMover ? window.scrollY : 0;
+        // Прокрутку запомнили в начале жеста: читать её здесь, сразу после смены стилей, — пересчёт
+        // раскладки посреди кадра (замер 2026-11-03: ~260 мс за 6 свайпов при процессоре ×4)
+        const y = s.peekPanel === s.peekMover ? s.sy : 0;
         prepare(s.peekMover);
         s.peekMover.style.transition = tr;
         s.peekMover.style.transform = `translate3d(${base + dx}px, ${y}px, 0)`;
@@ -396,7 +406,7 @@ export function useTabSwipe(getCtx, handlers) {
       const c = ctx.current();
       if (c.sub || !SWIPE_ORDER.includes(c.tab)) return; // экран устройства, «Активность», «О системе»…
       const now = performance.now();
-      start = { x: t.clientX, y: t.clientY, at: now, tab: c.tab, locked: null, w: window.innerWidth,
+      start = { x: t.clientX, y: t.clientY, at: now, tab: c.tab, locked: null, w: window.innerWidth, sy: window.scrollY,
         lastX: t.clientX, lastAt: now, vx: 0, dir: null, target: null,
         curPanel: null, cur: null, peekPanel: null, peekMover: null };
       /* Конец касания — ещё и на самом элементе под пальцем: если его убрали из страницы посреди жеста

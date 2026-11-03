@@ -19,7 +19,7 @@ export const BACKUP_MIME = "application/zip";
 // Части копии — в этом порядке и показываются
 export const BACKUP_PARTS = [
   { id: "notes", label: "Заметки" },
-  { id: "chats", label: "Диалоги с ИИ — Ассистентом" },
+  { id: "chats", label: "Диалоги с AI-Ассистентом" },
   { id: "schedule", label: "Расписание" },
   { id: "memory", label: "Память ассистента" },
   { id: "files", label: "Файлы и папки" },

@@ -1,5 +1,5 @@
 // Колокольчик уведомлений и часы в верхней строке
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import { createPortal } from "react-dom";
 import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
@@ -150,7 +150,13 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
   );
 }
 
-export function TimeDate() {
+/* Форматировщики создаются один раз: new Intl.DateTimeFormat с часовым поясом — дорогая операция,
+   раньше она шла дважды на каждую перерисовку приложения (замер 2026-11-03: заметная часть рывка при свайпе) */
+const TIME_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", hour12: false });
+const DATE_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", weekday: "short", day: "numeric", month: "short" });
+
+// memo: у часов нет пропсов — перерисовываются только от своего таймера, а не вместе со всем приложением
+export const TimeDate = memo(function TimeDate() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -161,19 +167,8 @@ export function TimeDate() {
     return () => clearInterval(timer);
   }, []);
 
-  const time = new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(now);
-
-  const date = new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(now).replace(/^./, (c) => c.toUpperCase()); // «Пт, 12 сент.» (макет 2026-10)
+  const time = TIME_FMT.format(now);
+  const date = DATE_FMT.format(now).replace(/^./, (c) => c.toUpperCase()); // «Пт, 12 сент.» (макет 2026-10)
 
  return (
   <div className="ng-timedate" style={{ textAlign: "right" }}>
@@ -197,4 +192,4 @@ export function TimeDate() {
     </div>
   </div>
   );
-}
+});

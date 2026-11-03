@@ -1,5 +1,5 @@
 // Карточка погоды, выбор города, прогноз на 2 недели, подпись источника
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { C, fontDisplay } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { weatherKind, searchCities, forecastDayLabel } from "../../lib/weather.js";
@@ -18,10 +18,12 @@ export const weatherMark = (s = 24) => (
 // Крупная температура, за градусом острая складка.
 // tone — цвет складки: мятный для ясной погоды, серый для пасмурной.
 // rain — идёт дождь: вдоль складки падают мятные капли
-export function TempFold({ temp, tone, rain }) {
+// snow — снег или дождь со снегом: медленно падают снежинки
+export function TempFold({ temp, tone, rain, snow }) {
   return (
     <div className="nx-temp" style={{ position: "relative", display: "inline-flex", alignItems: "flex-start", paddingRight: 22, flexShrink: 0 }}>
       {rain && <RainDrops />}
+      {snow && <SnowFlakes />}
       {/* Складка: светлая у верхней вершины и тающая книзу */}
       <div aria-hidden="true" style={{
         position: "absolute", top: -8, bottom: 0, left: "36%", right: 0,
@@ -61,6 +63,28 @@ export function RainDrops() {
   );
 }
 
+/* Снежинки: маленькие ромбы-складки (как в значке снега), падают медленнее капель
+   и чуть покачиваются. Так же трижды пролетают и остаются на месте.
+   x, y — где (в % от складки), s — размер, d — задержка, o — яркость */
+export const SNOW_FLAKES = [
+  [12, 14, 5, 200, 0.7], [30, 4, 4, 900, 0.55], [38, 40, 6, 0, 0.9], [52, 22, 4, 600, 0.6],
+  [61, 58, 5, 1300, 0.75], [73, 10, 6, 400, 0.85], [82, 44, 4, 1000, 0.5], [92, 20, 5, 1600, 0.65],
+  [20, 66, 4, 1200, 0.45],
+];
+
+export function SnowFlakes() {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", left: "24%", right: -14, top: -26, bottom: -18, pointerEvents: "none" }}>
+      {SNOW_FLAKES.map(([x, y, s, d, o], i) => (
+        <span key={i} className="nx-flake" style={{
+          position: "absolute", left: `${x}%`, top: `${y}%`, width: s, height: s,
+          opacity: o, animationDelay: `${d}ms`, background: C.text,
+        }} />
+      ))}
+    </div>
+  );
+}
+
 // Карточка погоды (на экране "Сегодня" их две: на сегодня и на завтра).
 // city и details необязательные: у карточки "на завтра" их нет.
 // art — показать складку внутри карточки (только на телефоне, как в макете).
@@ -71,8 +95,8 @@ export function RainDrops() {
 // footer — строка внизу карточки (например «Обновлено в 14:32»),
 // grow — карточка растягивается на всю свободную высоту, значения встают по центру
 // onCity — нажатие на город (открыть выбор), cityPicker — сам выбор, если открыт
-// rain — идёт дождь (капли на складке температуры)
-export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, rain, details, art, veil, footer, grow, onCity, cityPicker }) {
+// rain — идёт дождь (капли на складке температуры), snow — снег / дождь со снегом (снежинки)
+export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, note, tone, rain, snow, details, art, veil, footer, grow, onCity, cityPicker }) {
   return (
     <div className="nx-weather nx-glass nx-glass-subtle" style={{
       position: "relative", overflow: "hidden",
@@ -128,7 +152,7 @@ export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, no
           filter: "blur(8px)", opacity: 0.45, pointerEvents: "none", userSelect: "none",
         } : { transition: "filter 300ms ease, opacity 300ms ease" }}>
           <div className="nx-weather-main" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 22 }}>
-            <TempFold temp={temp} tone={tone} rain={rain} />
+            <TempFold temp={temp} tone={tone} rain={rain} snow={snow} />
             <div>
               <div style={{ fontSize: 20 }}>{cond}</div>
               <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
@@ -185,32 +209,76 @@ export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, no
   );
 }
 
-export function WeatherGlyph({ cond, s = 20 }) {
-  const kind = weatherKind(cond);
-  const mint = { stroke: C.mint }, gray = { stroke: C.muted };
-  const cloud = (pts, o = 1) => <polygon points={pts} strokeWidth="1.3" strokeLinejoin="round" style={{ stroke: C.muted, fill: `color-mix(in srgb, ${C.muted} ${Math.round(o * 35)}%, transparent)` }} />;
-  const rays = (cx, cy, r1, r2, n) => Array.from({ length: n }, (_, i) => {
-    const a = (i * 2 * Math.PI) / n;
-    return <line key={i} x1={cx + r1 * Math.cos(a)} y1={cy + r1 * Math.sin(a)} x2={cx + r2 * Math.cos(a)} y2={cy + r2 * Math.sin(a)} strokeWidth="1.4" strokeLinecap="round" style={mint} />;
-  });
+/* Значки прогноза по рисункам автора (ноябрь 2026): облако — грань-параллелограмм
+   с заливкой и внутренней обводкой, осадки и солнце — мятные линии.
+   Снег трёх видов — по тексту Gismeteo: «небольшой» — одна снежинка, «сильный» — три.
+   Координаты — из SVG автора как есть */
+const WX_CLOUD = "M28.5027 0H138.036L109.533 64.3946H0L28.5027 0Z";
+const WX_DROP = (x) => `M${x + 71.886} 100.353L${x + 82.829} 71.9065`; // x — сдвиг от левой капли
+const WX_FLAKE = (dx) => [
+  `M${20.979 + dx} 72.894L${11.132 + dx} 96.429`, `M${27.828 + dx} 89.583L${4.293 + dx} 79.736`,
+  `M${20.902 + dx} 96.464L${11.223 + dx} 72.859`, `M${27.86 + dx} 79.82L${4.255 + dx} 89.499`,
+];
+const WX_SUN_RAYS = [
+  "M61.1443 27.7598V2.18286", "M61.7407 92.9218L61.7407 118.499", "M95.1252 60.3408L120.702 60.3408",
+  "M27.7598 60.3408L2.18286 60.3408", "M85.4501 33.6279L102.176 14.2778", "M35.0277 33.6279L18.3018 14.2778",
+  "M37.4349 87.0538L20.709 106.404", "M85.45 84.6466L104.8 101.373",
+];
+
+// Сколько снежинок: по словам в описании дня
+function snowLevel(text = "") {
+  const t = String(text).toLowerCase();
+  if (/сильн|метел|снегопад/.test(t)) return 3;
+  if (/небольш|слаб/.test(t)) return 1;
+  return 2;
+}
+
+export function WeatherGlyph({ cond, text, s = 22 }) {
+  const id = "wx" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const kind = cond === "sleet" ? "sleet" : cond === "overcast" ? "overcast" : weatherKind(cond);
+  const mint = { stroke: C.mint, strokeLinecap: "round" };
+  // Облако: заливка + обводка внутрь (маской по самой фигуре), dx/dy — сдвиг
+  const cloud = (key, dx = 0, dy = 0) => (
+    <g key={key} transform={`translate(${dx} ${dy})`}>
+      <mask id={`${id}${key}`} fill="white"><path d={WX_CLOUD} /></mask>
+      <path d={WX_CLOUD} style={{ fill: C.wxCloud }} />
+      <path d={WX_CLOUD} strokeWidth="20" mask={`url(#${id}${key})`} style={{ stroke: C.muted }} />
+    </g>
+  );
+  const flakes = (shifts) => shifts.flatMap((dx) => WX_FLAKE(dx).map((d) => <path key={d} d={d} strokeWidth="4" style={mint} />));
+  const drops = (shifts) => shifts.map((x) => <path key={x} d={WX_DROP(x)} strokeWidth="6" style={mint} />);
+  const sun = (k = 1, dx = 0, dy = 0) => (
+    <g transform={`translate(${dx} ${dy}) scale(${k})`}>
+      <circle cx="61.7406" cy="60.3409" r="26.713" style={{ fill: C.mint }} />
+      {WX_SUN_RAYS.map((d) => <path key={d} d={d} strokeWidth="4.36568" style={mint} />)}
+    </g>
+  );
+  const box = {
+    sun: "0 0 123 121", partly: "0 0 160 121", cloud: "-2 -2 143 70", overcast: "0 0 204 92",
+    rain: "0 0 139 104", sleet: "0 0 139 104", snow: "0 0 139 99", storm: "0 0 139 104", fog: "0 0 139 70",
+  }[kind] || "0 0 139 104";
   return (
-    <svg viewBox="0 0 24 24" width={s} height={s} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
-      {kind === "sun" && <><circle cx="12" cy="12" r="4" strokeWidth="1.5" style={{ ...mint, fill: `color-mix(in srgb, ${C.mint} 25%, transparent)` }} />{rays(12, 12, 6.6, 9, 8)}</>}
-      {kind === "partly" && <><circle cx="9" cy="9" r="3.2" strokeWidth="1.4" style={mint} />{rays(9, 9, 5.2, 7, 6)}{cloud("5,20 9,13 21,13 17,20")}</>}
-      {kind === "cloud" && <>{cloud("8,15 12,7 22,7 18,15", 0.5)}{cloud("2,20 6,12 17,12 13,20")}</>}
-      {kind === "fog" && [8, 12, 16].map((y, i) => <line key={y} x1={3 + i * 2} y1={y} x2={21 - (2 - i) * 2} y2={y} strokeWidth="1.5" strokeLinecap="round" style={gray} />)}
-      {kind === "rain" && <>{cloud("3,13 7,5 21,5 17,13")}{[7, 12, 17].map((x) => <line key={x} x1={x} y1="16" x2={x - 2} y2="21" strokeWidth="1.5" strokeLinecap="round" style={mint} />)}</>}
-      {kind === "snow" && <>{cloud("3,13 7,5 21,5 17,13")}{[[7, 17], [12, 20], [17, 17]].map(([x, y]) => <rect key={x} x={x - 1.3} y={y - 1.3} width="2.6" height="2.6" transform={`rotate(45 ${x} ${y})`} style={{ fill: C.mint }} />)}</>}
-      {kind === "storm" && <>{cloud("3,12 7,4 21,4 17,12")}<path d="M13 13 9.5 18h4L11 22.5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={mint} /></>}
+    <svg viewBox={box} width={Math.round(s * 1.5)} height={s} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      {kind === "sun" && sun()}
+      {kind === "partly" && <>{sun(0.62, 48, 0)}{cloud("c", 0, 44)}</>}
+      {kind === "cloud" && cloud("c")}
+      {kind === "overcast" && <>{cloud("a", 0, 27.5)}{cloud("b", 65.13, 0)}</>}
+      {kind === "rain" && <>{cloud("c")}{drops([-61.257, -25.314, 10.629])}</>}
+      {kind === "sleet" && <>{cloud("c")}{drops([-25.314, 10.629])}{flakes([2.169])}</>}
+      {kind === "snow" && <>{cloud("c")}{flakes([0, 35.446, 70.893].slice(0, snowLevel(text)))}</>}
+      {kind === "storm" && <>{cloud("c")}<path d="M76 70 58 88h20L62 102" strokeWidth="6" strokeLinejoin="round" style={mint} /></>}
+      {kind === "fog" && [10, 34, 58].map((y, i) => <path key={y} d={`M${8 + i * 10} ${y}H${131 - (2 - i) * 10}`} strokeWidth="8" strokeLinecap="round" style={{ stroke: C.muted }} />)}
     </svg>
   );
 }
 
-// Цвет складки температуры и капли: мятный — ясно и малооблачно, серый — остальное
+// Цвет складки температуры, капли и снежинки: мятный — ясно и малооблачно, серый — остальное.
+// Дождь со снегом — и капли, и снежинки
 export function condLook(cond) {
   return {
     tone: cond === "sun" || cond === "partly" ? C.mint : C.muted,
     rain: cond === "rain" || cond === "sleet" || cond === "storm",
+    snow: cond === "snow" || cond === "sleet",
   };
 }
 
@@ -337,7 +405,7 @@ export function ForecastList({ id, days, loading, error, onRetry, variant = "inl
             }}>
               <div style={{ width: 86, flexShrink: 0, color: i < 2 ? C.text : C.muted }}>{forecastDayLabel(day.date, i)}</div>
               {/* Значок погоды: солнце, облака, дождь, снег, туман или гроза */}
-              <WeatherGlyph cond={day.cond} />
+              <WeatherGlyph cond={day.cond} text={day.text} />
               <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{day.text}</div>
               {/* Днём и ночью */}
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>

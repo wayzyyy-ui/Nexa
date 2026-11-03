@@ -10,8 +10,9 @@ import { useCrashReportsOn, setCrashReports } from "../lib/crashes.js";
 import { listSessions, clientLabel, SECURITY_ERROR_TEXT } from "../lib/security.js";
 import { lastSeenText, peerLabel } from "../lib/devices.js";
 import { LoginMethods } from "../ui/loginMethods.jsx";
+import { ruFmt } from "../lib/ruFmt.js";
 
-const dateTime = (ms) => (ms ? new Date(ms).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
+const dateTime = (ms) => (ms ? ruFmt({ day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(ms)) : "");
 const pill = { ...btnReset, flexShrink: 0, borderRadius: 999, padding: "7px 14px", fontSize: 13, whiteSpace: "nowrap" };
 const ghost = { ...pill, border: `1px solid ${C.borderStrong}`, color: C.text };
 const danger = { ...pill, border: `1px solid color-mix(in srgb, ${C.red} 55%, transparent)`, color: C.red };

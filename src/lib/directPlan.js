@@ -16,13 +16,59 @@ export const ICE_MS = 2500;                    // сбор своих адрес
 // Без внешних серверов: только адреса в своей сети
 export const RTC_CONFIG = { iceServers: [] };
 
+export const DIRECT_FILES_MAX = 50;
+// Передаём только имя, никогда путь; файлы не открываются автоматически.
+export function directName(name) {
+  const leaf = String(name || "файл").split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f<>:"|?*\u202a-\u202e\u2066-\u2069]/g, "_").replace(/[. ]+$/g, "").trim();
+  const clean = (!leaf || /^\.+$/.test(leaf) ? "файл" : leaf).slice(0, 180);
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(clean) ? `_${clean}` : clean;
+}
+export function directManifest(files) {
+  return Array.from(files || []).map((f) => ({ name: directName(f.name), size: f.size, mime: String(f.type || f.mime || "").slice(0, 255) }));
+}
+export function validManifest(files, total) {
+  return Array.isArray(files) && files.length > 0 && files.length <= DIRECT_FILES_MAX
+    && files.every((f) => f && typeof f.name === "string" && f.name.length > 0 && f.name.length <= 255
+      && Number.isSafeInteger(f.size) && f.size >= 0 && typeof f.mime === "string" && f.mime.length <= 255)
+    && files.reduce((n, f) => n + f.size, 0) === total && total <= DIRECT_MAX;
+}
+export function directBatch(input) {
+  const files = Array.isArray(input) ? input : [input];
+  const manifest = directManifest(files);
+  const size = manifest.reduce((n, f) => n + f.size, 0);
+  if (!validManifest(manifest, size)) throw new Error("Выберите от 1 до 50 файлов общим размером до 1 ГБ");
+  const file = files.length === 1 ? files[0] : new File(files, `Файлы NEXA · ${files.length}`, { type: "application/octet-stream" });
+  return { file, manifest };
+}
+export function splitDirectFiles(blob, manifest) {
+  if (!validManifest(manifest, blob.size)) throw new Error("Файлы пришли не целиком");
+  let offset = 0;
+  const names = new Set();
+  return manifest.map((f) => {
+    const base = directName(f.name);
+    let name = base, n = 1;
+    // Совпавшие имена в одной передаче не заменяют друг друга.
+    while (names.has(name.toLocaleLowerCase())) {
+      const dot = base.lastIndexOf(".");
+      name = dot > 0 ? `${base.slice(0, dot)} (${n++})${base.slice(dot)}` : `${base} (${n++})`;
+    }
+    names.add(name.toLocaleLowerCase());
+    const part = blob.slice(offset, offset + f.size, f.mime); offset += f.size;
+    return { ...f, name, blob: part };
+  });
+}
+
 // Можно ли передать напрямую: файл, размер, устройство в сети и умеет (p2p в Presence)
 export function directProblem(file, device) {
   if (typeof RTCPeerConnection !== "function") return "Этот браузер не умеет передавать напрямую";
   if (!file) return "Нет файла";
-  if (file.size > DIRECT_MAX) return "Напрямую — до 1 ГБ. Больше — через облако";
+  const files = Array.isArray(file) ? file : [file];
+  if (!files.length || files.length > DIRECT_FILES_MAX) return "Выберите от 1 до 50 файлов";
+  if (files.some((f) => !f || !Number.isSafeInteger(f.size) || f.size < 0)) return "Не получилось прочитать размер файла";
+  if (files.reduce((n, f) => n + f.size, 0) > DIRECT_MAX) return "Напрямую — до 1 ГБ. Больше — через облако";
   if (!device?.online) return "Устройство не в сети";
   if (!device.p2p) return "На том устройстве старая версия NEXA — обновите её";
+  if (files.length > 1 && !device.p2pBatch) return "Для нескольких файлов обновите NEXA на принимающем устройстве";
   return null;
 }
 
@@ -44,7 +90,7 @@ export function parseCtl(data) {
   if (typeof data !== "string" || data.length > 2000) return null;
   try {
     const m = JSON.parse(data);
-    return m && typeof m === "object" && ["meta", "end", "ok"].includes(m.t) ? m : null;
+    return m && typeof m === "object" && ["meta", "end", "ok", "progress"].includes(m.t) ? m : null;
   } catch { return null; }
 }
 

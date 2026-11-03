@@ -73,7 +73,7 @@ public class NexaFilesPlugin extends Plugin {
                     File dir = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
                     if (dir == null) throw new Exception("no_dir");
                     dir.mkdirs();
-                    try (OutputStream out = new FileOutputStream(new File(dir, name))) { copy(in, out); }
+                    try (OutputStream out = new FileOutputStream(uniqueDownload(dir, name))) { copy(in, out); }
                     where = "app";
                 }
                 JSObject res = new JSObject();
@@ -164,7 +164,7 @@ public class NexaFilesPlugin extends Plugin {
                     File dir = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
                     if (dir == null) throw new Exception("no_dir");
                     dir.mkdirs();
-                    try (OutputStream out = new FileOutputStream(new File(dir, meta[0]))) { copyAll(in, out); }
+                    try (OutputStream out = new FileOutputStream(uniqueDownload(dir, meta[0]))) { copyAll(in, out); }
                     where = "app";
                 }
                 JSObject res = new JSObject();
@@ -330,6 +330,18 @@ public class NexaFilesPlugin extends Plugin {
 
     // Имя без папок и служебных символов — файл не выйдет за пределы своей папки
     // Общие с NexaNearbyPlugin: имя файла без папок и служебных знаков, тип по расширению
+    // Новая загрузка никогда не перезаписывает существующую, даже при одновременном сохранении.
+    static File uniqueDownload(File dir, String name) throws java.io.IOException {
+        int dot = name.lastIndexOf('.');
+        String stem = dot > 0 ? name.substring(0, dot) : name;
+        String ext = dot > 0 ? name.substring(dot) : "";
+        for (int i = 0; i < 10000; i++) {
+            File file = new File(dir, i == 0 ? name : stem + " (" + i + ")" + ext);
+            if (file.createNewFile()) return file;
+        }
+        throw new java.io.IOException("too_many_names");
+    }
+
     static String safeName(String name) {
         String s = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
         if (s.isEmpty() || s.equals(".") || s.equals("..")) s = "file";

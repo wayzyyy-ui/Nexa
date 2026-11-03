@@ -8,6 +8,7 @@ import { useClock } from "../lib/hooks.js";
 import { btnReset } from "./base.jsx";
 import { sortByRecent, fileMeta } from "../lib/fileStore.js";
 import { FileThumb } from "./files.jsx";
+import { ruFmt } from "../lib/ruFmt.js";
 
 /* ═══ ПРЕВЬЮ ИНТЕРФЕЙСА NEXA НА УСТРОЙСТВЕ ═══════════════════
    Корпус рисуем схематично: тонкая линия, без бликов. Экран внутри —
@@ -164,7 +165,7 @@ export function WatchFace({ online, now, battery }) {
         {online ? "На связи" : "Нет связи"}
       </div>
       <div style={{ fontFamily: fontDisplay, fontSize: 42, lineHeight: 1, fontWeight: 500, letterSpacing: "-0.02em" }}>{hhmm(now)}</div>
-      <div style={{ fontSize: 8.5, color: C.muted }}>{now.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}</div>
+      <div style={{ fontSize: 8.5, color: C.muted }}>{ruFmt({ weekday: "short", day: "numeric", month: "short" }).format(now)}</div>
       {/* Тонкая черта-грань, как сгиб складки */}
       <div style={{ width: 74, height: 1, background: `linear-gradient(90deg, transparent, ${C.mint}, transparent)`, margin: "3px 0" }} />
       <div style={{ fontSize: 8.5, maxWidth: 118, lineHeight: 1.3 }}>

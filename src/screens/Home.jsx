@@ -339,7 +339,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
       <span className="nx-ai-flow-art" aria-hidden="true" />
       <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.onFold, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span className="ng-display nx-ai-pill-title">ИИ — Ассистент</span>
+        <span className="ng-display nx-ai-pill-title">AI-Ассистент</span>
         <span className="nx-ai-pill-sub" style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 3 }}>Чем могу помочь?</span>
       </span>
       {Icon.chevron({ c: C.text, s: 20 })}

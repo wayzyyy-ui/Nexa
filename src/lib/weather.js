@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { API_BASE, widgetsSetCity } from "../native.js";
 import { YMAPS_KEY, loadYmaps } from "./ymaps.js";
+import { ruFmt } from "./ruFmt.js";
 
 /* ---------- ПОГОДА: только через наш сервер /api/weather ----------
    Источник — Gismeteo (токен только на сервере), резерв — Open-Meteo; что пришло —
@@ -45,7 +46,7 @@ export function weatherKind(cond) {
 
 // Дата для карточки: «7 октября 2026»
 export function formatWeatherDate(date) {
-  const dayMonth = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  const dayMonth = ruFmt({ day: "numeric", month: "long" }).format(date);
   // Год берём отдельной частью: иначе некоторые браузеры допишут «г.»
   const year = new Intl.DateTimeFormat("ru-RU", { year: "numeric" })
     .formatToParts(date).find((p) => p.type === "year").value;
@@ -76,7 +77,7 @@ export function parseApiWeather(j) {
 export function forecastDayLabel(date, index) {
   if (index === 0) return "Сегодня";
   if (index === 1) return "Завтра";
-  const s = date.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  const s = ruFmt({ weekday: "short", day: "numeric", month: "short" }).format(date);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 

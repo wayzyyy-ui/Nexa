@@ -1,5 +1,6 @@
 // Мелкие помощники форматирования: склонения, размеры, время
 import { formatBytes } from "./deviceInfo.js";
+import { ruFmt } from "./ruFmt.js";
 
 export const mmss = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 
@@ -28,10 +29,10 @@ export function formatWhen(f) {
   if (f.days === 0) return `Сегодня ${f.time}`;
   if (f.days === 1) return `Вчера ${f.time}`;
   const d = new Date(Date.now() - f.days * 86400000);
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return ruFmt({ day: "numeric", month: "short" }).format(d);
 }
 
-export const hhmm = (d) => d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+export const hhmm = (d) => ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
 
 export const mbText = (b) => `${String((b / 1048576).toFixed(1)).replace(".", ",")} МБ`;
 
@@ -44,11 +45,11 @@ export const waitWord = (n) => plural(n, ["ждёт", "ждут", "ждут"]);
 // Когда получены сведения: «в 14:05», «вчера в 14:05», «3 окт. в 14:05»
 export function sysTime(ms, now = Date.now()) {
   const d = new Date(ms), t = new Date(now);
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const hm = ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
   if (d.toDateString() === t.toDateString()) return `в ${hm}`;
   const y = new Date(now); y.setDate(y.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return `вчера в ${hm}`;
-  return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
+  return `${ruFmt({ day: "numeric", month: "short" }).format(d)} в ${hm}`;
 }
 
 // Знак перед температурой: "+18", "-3", "0"

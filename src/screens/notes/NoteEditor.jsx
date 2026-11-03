@@ -26,6 +26,7 @@ import { ghost, round, linkBtn, useSuggestOn } from "./shared.js";
 import { NoteImages } from "./images.jsx";
 import { AiMenu, AiPanel, GhostLayer } from "./ai.jsx";
 import { localSuggest, loadFeedback, saveFeedback, learnFeedback } from "../../lib/mini/t9.js";
+import { ruFmt } from "../../lib/ruFmt.js";
 
 const SAVE_DELAY_MS = 600; // пауза в наборе — и записываем
 const EDGE_PX = 24;        // у самого края экрана жест «Назад» принадлежит системе
@@ -174,6 +175,39 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   const [full, setFullState] = useState(() => { try { return !phone && sessionStorage.getItem("nexa-notes-full") === "1"; } catch { return false; } });
   const setFull = (v) => { setFullState(v); try { v ? sessionStorage.setItem("nexa-notes-full", "1") : sessionStorage.removeItem("nexa-notes-full"); } catch {} };
   const fullRef = useRef(full); fullRef.current = full;
+  /* Вход и выход из полного экрана (2026-11-03): панель раскрывается из своего места на всё окно и обратно —
+     анимируем «окошко» видимой части (clip-path), текст не растягивается. Тень вокруг — отдельный слой (scrim).
+     Обычное место панели меряем, на миг сняв класс is-full (без отрисовки). «Уменьшение движения» — сразу */
+  const [fullLeaving, setFullLeaving] = useState(false);
+  const fullFrom = useRef(null);
+  const insetOf = (small, big, r) => `inset(${small.top - big.top}px ${big.right - small.right}px ${big.bottom - small.bottom}px ${small.left - big.left}px round ${r})`;
+  const fullAnimOk = () => !!rootRef.current?.animate && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const fullBack = useRef(false);
+  const toggleFull = (next) => {
+    const el = rootRef.current;
+    if (next) {
+      if (el && fullAnimOk()) fullFrom.current = { rect: el.getBoundingClientRect(), r: getComputedStyle(el).borderRadius };
+      setFull(true);
+      return;
+    }
+    // Выход: панель сразу встаёт на своё место и мягко «оседает», тень вокруг тает
+    if (fullAnimOk()) { fullBack.current = true; setFullLeaving(true); setTimeout(() => setFullLeaving(false), 320); }
+    setFull(false);
+  };
+  useLayoutEffect(() => {
+    const from = fullFrom.current, back = fullBack.current, el = rootRef.current;
+    fullFrom.current = null; fullBack.current = false;
+    if (!el) return;
+    if (full && from) {
+      const big = el.getBoundingClientRect(), bigR = getComputedStyle(el).borderRadius;
+      el.animate([{ clipPath: insetOf(from.rect, big, from.r) }, { clipPath: `inset(0px 0px 0px 0px round ${bigR})` }],
+        { duration: 380, easing: "cubic-bezier(0.2, 0.9, 0.3, 1)" });
+    } else if (!full && back) {
+      el.animate([{ opacity: 0.2, transform: "scale(1.035)" }, { opacity: 1, transform: "none" }],
+        { duration: 300, easing: "cubic-bezier(0.2, 0.9, 0.3, 1)" });
+    }
+  }, [full]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleFullRef = useRef(toggleFull); toggleFullRef.current = toggleFull;
   const closeRef = useRef(close); closeRef.current = close;
   useEffect(() => {
     const onKey = (e) => {
@@ -185,7 +219,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       if (L.ai) { cancelAi(); return; }
       if (confirmDelRef.current) { setConfirmDel(false); return; }
       if (schedRef.current) { setSched(false); return; }
-      if (fullRef.current) { setFull(false); return; }
+      if (fullRef.current) { toggleFullRef.current(false); return; }
       closeRef.current();
     };
     window.addEventListener("keydown", onKey, true);
@@ -337,7 +371,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   const addToSchedule = (it) => {
     onAddSchedule?.(it);
     setSched(false);
-    const day = it.date === dayKey() ? "сегодня" : new Date(`${it.date}T00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+    const day = it.date === dayKey() ? "сегодня" : ruFmt({ day: "numeric", month: "short" }).format(new Date(`${it.date}T00:00`));
     setSchedDone(`Добавлено в расписание: ${day}, ${it.time}`);
   };
 
@@ -748,12 +782,15 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   }
 
   return (
+    <>
+    {/* Тень вокруг заметки на весь экран — отдельным слоем: панель во время входа и выхода обрезается (clip-path) */}
+    {(full || fullLeaving) && <div className={`nx-note-scrim${fullLeaving && !full ? " is-leaving" : ""}`} aria-hidden="true" />}
     <div ref={rootRef} role="dialog" aria-label={exists ? `Заметка «${title.trim() || "Без названия"}»` : "Новая заметка"}
-      className={`nx-notepad-editor nx-notepad-panel nx-glass nx-glass-subtle${full ? " is-full" : ""}`} data-no-swipe
+      className={`nx-notepad-editor nx-notepad-panel nx-glass nx-glass-subtle${full ? " is-full" : fullLeaving ? " is-settling" : ""}`} data-no-swipe
       style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, display: "flex", flexDirection: "column", boxSizing: "border-box", position: "sticky", top: 100 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+      <div className="nx-notepad-bar" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <button type="button" className="nx-icon-btn" onClick={close} aria-label="Закрыть заметку" style={round}>{Icon.close({ c: C.text, s: 15 })}</button>
-        <button type="button" className="nx-icon-btn" onClick={() => setFull(!full)} aria-pressed={full}
+        <button type="button" className="nx-icon-btn" onClick={() => toggleFull(!full)} aria-pressed={full}
           aria-label={full ? "Свернуть заметку" : "Заметка на весь экран"} title={full ? "Свернуть (Esc)" : "На весь экран"} style={round}>
           {(full ? Icon.shrink : Icon.expand)({ c: C.text, s: 15 })}
         </button>
@@ -772,6 +809,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       {fileInput}
       {viewer}
     </div>
+    </>
   );
 }
 

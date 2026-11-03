@@ -811,7 +811,7 @@ useEffect(() => {
     <div style={{ textAlign: "left", minWidth: 0 }}>
       {/* На телефоне — одна строка без переноса: название и маленькая версия рядом */}
       <div className="ng-display nx-assistant-title" style={{ fontSize: T.fs.page, fontWeight: 500, textAlign: "left", lineHeight: 1.2 }}>
-        ИИ — Ассистент<span className="nx-assistant-ver"> v{VERSION}</span>
+        AI-Ассистент<span className="nx-assistant-ver"> v{VERSION}</span>
       </div>
       {/* Описание — только на компьютере */}
        <div className="nx-assistant-subtitle" style={{ fontSize: 13, color: C.muted, marginTop: 6, textAlign: "left" }}>

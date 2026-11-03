@@ -9,11 +9,12 @@ import { formatBytes } from "../lib/deviceInfo.js";
 import { plural } from "../lib/format.js";
 import { BACKUP_PARTS, BACKUP_EXCLUDED, BACKUP_EXT } from "../lib/backup.js";
 import { sealBlob, openBlob, isSealedBlob, E2E_PASS_MIN } from "../lib/e2e.js";
+import { ruFmt } from "../lib/ruFmt.js";
 
 // Поле пароля копии (шифрование — src/lib/e2e.js: пароль никуда не уходит, восстановить его нельзя)
 const passField = { background: "transparent", color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: "9px 12px", fontSize: 14, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" };
 
-const when = (ms) => new Date(ms).toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (ms) => ruFmt({ day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
 const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 18px", fontSize: 14, borderRadius: 999, whiteSpace: "nowrap" };
 const primary = { ...pill, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, border: "1px solid transparent", fontWeight: 500 };
 const ghost = { ...pill, border: `1px solid ${C.borderStrong}`, color: C.text };

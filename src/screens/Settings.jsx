@@ -104,7 +104,7 @@ function AssistantInputSettings() {
   const [on, setOn] = useEnterSends();
   return (
     <>
-      <SectionTitle>ИИ — Ассистент</SectionTitle>
+      <SectionTitle>AI-Ассистент</SectionTitle>
       <SettingsGroup>
         <SettingsRow last icon={Icon.send({ c: on ? C.mint : C.muted, s: 18 })} title="Enter отправляет сообщение"
           subtitle={touchLike()

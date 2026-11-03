@@ -9,7 +9,7 @@
    пока человек не нажал «Сохранить» или «В «Файлы»» (или не закрыл плашку) */
 import { useState, useRef, useCallback, useEffect } from "react";
 import { newId } from "./sync.js";
-import { RTC_CONFIG, CHUNK, READ_BLOCK, HIGH_WATER, LOW_WATER, ASK_MS, CONNECT_MS, STALL_MS, ICE_MS, DIRECT_MAX, DIRECT_FAIL, metaMsg, parseCtl, lanOnlySdp } from "./directPlan.js";
+import { RTC_CONFIG, CHUNK, READ_BLOCK, HIGH_WATER, LOW_WATER, ASK_MS, CONNECT_MS, STALL_MS, ICE_MS, DIRECT_MAX, DIRECT_FAIL, metaMsg, parseCtl, lanOnlySdp, directBatch, directManifest, directName, splitDirectFiles, validManifest } from "./directPlan.js";
 
 // Свои адреса в сети собраны (или вышло время) — описание соединения готово к отправке
 function gathered(pc) {
@@ -31,7 +31,21 @@ export function useDirect(link, enabled) {
   const linkRef = useRef(link); linkRef.current = link;
   const timers = useRef({});
   const clearT = (k) => { clearTimeout(timers.current[k]); delete timers.current[k]; };
-  useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
+  useEffect(() => {
+    if (enabled) return;
+    Object.keys(timers.current).forEach(clearT);
+    for (const ref of [outRef, incRef]) {
+      if (ref.current) { ref.current.done = true; ref.current.abort?.abort(); close(ref.current.pc); ref.current = null; }
+    }
+    askRef.current = null; setAsk(null); setOut(null); setInc(null);
+  }, [enabled]);
+  useEffect(() => () => {
+    Object.values(timers.current).forEach(clearTimeout);
+    for (const r of [outRef, incRef]) {
+      if (r.current) { r.current.done = true; r.current.abort?.abort(); close(r.current.pc); r.current = null; }
+    }
+    askRef.current = null;
+  }, []);
 
   // Ход передачи в интерфейс — не чаще 5 раз в секунду (иначе перерисовка на каждый кусок)
   const lastPaint = useRef(0);
@@ -47,8 +61,8 @@ export function useDirect(link, enabled) {
     const o = outRef.current;
     if (!o) return;
     Object.keys(timers.current).filter((k) => k.startsWith("o")).forEach(clearT);
-    if (tellPeer) linkRef.current.emit("p2p.cancel", { id: o.id, to_device: o.to });
-    close(o.pc); outRef.current = { ...o, pc: null, dc: null, done: true };
+    if (tellPeer) linkRef.current.emit("p2p.cancel", { id: o.id, to_device: o.to, reason: reason === "cancel" ? "cancel" : "stall" });
+    o.done = true; o.abort.abort(); close(o.pc); outRef.current = { ...o, pc: null, dc: null, done: true };
     setOut((x) => (x && x.id === o.id ? { ...x, phase: "failed", error: DIRECT_FAIL[reason] || DIRECT_FAIL.failed, reason } : x));
   }, []);
 
@@ -63,48 +77,65 @@ export function useDirect(link, enabled) {
     while (sent < file.size) {
       if (outRef.current?.id !== o.id || outRef.current.done || dc.readyState !== "open") return;
       if (dc.bufferedAmount > HIGH_WATER) {
-        await new Promise((r) => { const on = () => { dc.removeEventListener("bufferedamountlow", on); r(); }; dc.addEventListener("bufferedamountlow", on); });
+        await new Promise((resolve) => {
+          const done = () => { dc.removeEventListener("bufferedamountlow", done); o.abort.signal.removeEventListener("abort", done); resolve(); };
+          dc.addEventListener("bufferedamountlow", done); o.abort.signal.addEventListener("abort", done, { once: true });
+          if (o.abort.signal.aborted || dc.bufferedAmount <= LOW_WATER) done();
+        });
         continue;
       }
       // С диска — блоком по 1 МБ (чтение по 64 КБ тормозило всё), в канал — кусками по 64 КБ
       const block = new Uint8Array(await file.slice(sent, sent + READ_BLOCK).arrayBuffer());
+      if (o.done || outRef.current?.id !== o.id) return;
       for (let off = 0; off < block.length; off += CHUNK) {
-        if (dc.readyState !== "open") return;
+        if (o.done || dc.readyState !== "open") return;
         dc.send(block.subarray(off, Math.min(off + CHUNK, block.length)));
       }
       sent += block.length;
       stall();
-      paint(setOut, { bytes: sent });
+      paint(setOut, { queued: sent });
     }
+    o.finishedSending = true;
     dc.send(JSON.stringify({ t: "end" }));
-    paint(setOut, { bytes: sent }, true);
+    paint(setOut, { queued: sent }, true);
   };
 
-  const send = useCallback(async (device, file) => {
+  const send = useCallback(async (device, input) => {
     if (!enabled || outRef.current && !outRef.current.done) return false;
+    let file, manifest;
+    try { ({ file, manifest } = directBatch(input)); } catch { return false; }
     const id = newId(), to = device.device_id;
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    const dc = pc.createDataChannel("nexa-file", { ordered: true });
+    let pc, dc;
+    try { pc = new RTCPeerConnection(RTC_CONFIG); dc = pc.createDataChannel("nexa-file", { ordered: true }); }
+    catch { close(pc); setOut({ id, to, toName: device.name, file, files: manifest, total: file.size, bytes: 0, phase: "failed", reason: "connect", error: DIRECT_FAIL.connect }); return false; }
     dc.binaryType = "arraybuffer";
-    const o = { id, to, pc, dc, file };
+    const o = { id, to, pc, dc, file, abort: new AbortController() };
     outRef.current = o;
-    setOut({ id, to, toName: device.name, toType: device.type, file, phase: "asking", bytes: 0, total: file.size });
+    setOut({ id, to, toName: device.name, toType: device.type, file, files: manifest, phase: "asking", bytes: 0, total: file.size });
     dc.onopen = () => { clearT("oconn"); pump(o).catch(() => failOut("stall", true)); };
     dc.onmessage = (e) => {
       const m = parseCtl(e.data);
-      if (m?.t === "ok") {
+      if (outRef.current?.id !== id || outRef.current.done) return;
+      if (m?.t === "progress" && Number.isSafeInteger(m.bytes) && m.bytes >= (o.acked || 0) && m.bytes <= file.size) {
+        o.acked = m.bytes; paint(setOut, { bytes: m.bytes });
+        clearT("ostall"); timers.current.ostall = setTimeout(() => failOut("stall", true), STALL_MS);
+      }
+      if (m?.t === "ok" && o.finishedSending) {
         Object.keys(timers.current).filter((k) => k.startsWith("o")).forEach(clearT);
+        o.done = true;
         outRef.current = { ...o, done: true };
         setOut((x) => (x && x.id === id ? { ...x, phase: "done", bytes: file.size } : x));
         setTimeout(() => close(pc), 500);
       }
     };
     dc.onclose = () => { if (outRef.current?.id === id && !outRef.current.done) failOut("stall"); };
+    pc.onconnectionstatechange = () => { if (["failed", "disconnected"].includes(pc.connectionState) && outRef.current?.id === id && !outRef.current.done) failOut("stall", true); };
     try {
       await pc.setLocalDescription(await pc.createOffer());
       await gathered(pc);
-      if (outRef.current?.id !== id) return false;
-      const ok = await linkRef.current.emit("p2p.offer", { id, to_device: to, name: String(file.name || "файл").slice(0, 255), size: file.size, mime: file.type || "", sdp: lanOnlySdp(pc.localDescription.sdp) });
+      if (outRef.current?.id !== id || outRef.current.done) return false;
+      const ok = await linkRef.current.emit("p2p.offer", { id, to_device: to, name: directName(file.name), size: file.size, mime: file.type || "", files: manifest, sdp: lanOnlySdp(pc.localDescription.sdp) });
+      if (outRef.current?.id !== id || outRef.current.done) { linkRef.current.emit("p2p.cancel", { id, to_device: to }); return false; }
       if (!ok) { failOut("failed"); return false; }
       timers.current.oask = setTimeout(() => failOut("noanswer", true), ASK_MS);
       return true;
@@ -126,20 +157,26 @@ export function useDirect(link, enabled) {
     const i = incRef.current;
     if (!i) return;
     Object.keys(timers.current).filter((k) => k.startsWith("i")).forEach(clearT);
-    if (tellPeer) linkRef.current.emit("p2p.cancel", { id: i.id, to_device: i.from });
-    close(i.pc); incRef.current = { ...i, pc: null, chunks: null, done: true };
-    setInc((x) => (x && x.id === i.id ? { ...x, phase: "failed", error: DIRECT_FAIL[reason] || DIRECT_FAIL.failed } : x));
+    if (tellPeer) linkRef.current.emit("p2p.cancel", { id: i.id, to_device: i.from, reason: reason === "cancel" ? "cancel" : "stall" });
+    i.done = true; i.chunks = null; close(i.pc); incRef.current = { ...i, pc: null, chunks: null, done: true };
+    setInc((x) => (x && x.id === i.id ? { ...x, phase: "failed", reason, error: DIRECT_FAIL[reason] || DIRECT_FAIL.failed } : x));
   }, []);
 
   const accept = useCallback(async () => {
     const a = askRef.current;
     if (!a) return;
     askRef.current = null; setAsk(null); clearT("iask");
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    let pc;
+    try { pc = new RTCPeerConnection(RTC_CONFIG); }
+    catch {
+      linkRef.current.emit("p2p.reject", { id: a.id, to_device: a.from, reason: "failed" });
+      setInc({ id: a.id, fromName: a.name, size: a.size, files: a.files, bytes: 0, phase: "failed", reason: "connect", error: DIRECT_FAIL.connect }); return;
+    }
     const i = { id: a.id, from: a.from, pc, chunks: [], bytes: 0, size: a.size };
     incRef.current = i;
-    setInc({ id: a.id, from: a.from, fromName: a.name, fromType: a.fromType, name: a.file, size: a.size, mime: a.mime, phase: "connecting", bytes: 0 });
+    setInc({ id: a.id, from: a.from, fromName: a.name, fromType: a.fromType, name: a.file, size: a.size, mime: a.mime, files: a.files, phase: "connecting", bytes: 0 });
     timers.current.iconn = setTimeout(() => failInc("connect", true), CONNECT_MS);
+    pc.onconnectionstatechange = () => { if (["failed", "disconnected"].includes(pc.connectionState) && incRef.current?.id === i.id && !incRef.current.done) failInc("stall", true); };
     pc.ondatachannel = (ev) => {
       const dc = ev.channel;
       dc.binaryType = "arraybuffer";
@@ -149,8 +186,14 @@ export function useDirect(link, enabled) {
         const cur = incRef.current;
         if (!cur || cur.id !== i.id || cur.done) return;
         if (typeof e.data !== "string") {
-          cur.chunks.push(e.data); cur.bytes += e.data.byteLength;
+          if (!(e.data instanceof ArrayBuffer)) { failInc("size", true); return; }
+          cur.bytes += e.data.byteLength;
           if (cur.bytes > DIRECT_MAX || cur.bytes > i.size) { failInc("size", true); return; }
+          cur.chunks.push(e.data);
+          if (!cur.ackAt || Date.now() - cur.ackAt >= 200 || cur.bytes === i.size) {
+            cur.ackAt = Date.now();
+            try { dc.send(JSON.stringify({ t: "progress", bytes: cur.bytes })); } catch { failInc("stall", true); return; }
+          }
           stall(); paint(setInc, { bytes: cur.bytes });
           return;
         }
@@ -159,9 +202,11 @@ export function useDirect(link, enabled) {
           clearT("istall");
           if (cur.bytes !== i.size) { failInc("size", true); return; }
           const blob = new Blob(cur.chunks, { type: a.mime || "" });
+          const files = splitDirectFiles(blob, a.files);
+          cur.chunks = null; cur.done = true;
           incRef.current = { ...cur, chunks: null, done: true };
           try { dc.send(JSON.stringify({ t: "ok" })); } catch { /* отправитель уже ушёл — файл всё равно целый */ }
-          setInc((x) => (x && x.id === i.id ? { ...x, phase: "done", bytes: i.size, blob } : x));
+          setInc((x) => (x && x.id === i.id ? { ...x, phase: "done", bytes: i.size, blob, files } : x));
           setTimeout(() => close(pc), 800);
         }
       };
@@ -171,8 +216,9 @@ export function useDirect(link, enabled) {
       await pc.setRemoteDescription({ type: "offer", sdp: a.sdp });
       await pc.setLocalDescription(await pc.createAnswer());
       await gathered(pc);
-      if (incRef.current?.id !== i.id) return;
-      await linkRef.current.emit("p2p.answer", { id: a.id, to_device: a.from, sdp: lanOnlySdp(pc.localDescription.sdp) });
+      if (incRef.current?.id !== i.id || incRef.current.done) return;
+      const ok = await linkRef.current.emit("p2p.answer", { id: a.id, to_device: a.from, sdp: lanOnlySdp(pc.localDescription.sdp) });
+      if (!ok && incRef.current?.id === i.id && !incRef.current.done) failInc("failed", true);
     } catch {
       failInc("failed", true);
     }
@@ -195,13 +241,16 @@ export function useDirect(link, enabled) {
   const handle = useCallback((event, p) => {
     if (!event.startsWith("p2p.")) return false;
     if (!enabled) return true;
+    if (p.to_device !== linkRef.current.self?.device_id) return true;
     if (event === "p2p.offer") {
+      const files = p.files || directManifest([{ name: p.name, size: p.size, type: p.mime }]);
+      if (!validManifest(files, p.size)) return true;
       // Уже принимаем или спрашиваем — «занято»
-      if (askRef.current || (incRef.current && !incRef.current.done)) {
+      if (askRef.current || incRef.current) {
         linkRef.current.emit("p2p.reject", { id: p.id, to_device: p.from_device, reason: "busy" });
         return true;
       }
-      const a = { id: p.id, from: p.from_device, name: p.from_name, file: p.name, size: p.size, mime: p.mime || "", sdp: p.sdp };
+      const a = { id: p.id, from: p.from_device, name: p.from_name, file: directName(p.name), size: p.size, mime: p.mime || "", files: files.map((f) => ({ ...f, name: directName(f.name) })), sdp: p.sdp };
       askRef.current = a; setAsk(a);
       // Не ответили за время ожидания отправителя — молча убираем вопрос
       timers.current.iask = setTimeout(() => { if (askRef.current?.id === a.id) { askRef.current = null; setAsk(null); } }, ASK_MS);
@@ -215,11 +264,18 @@ export function useDirect(link, enabled) {
       o.pc.setRemoteDescription({ type: "answer", sdp: p.sdp }).catch(() => failOut("failed", true));
       return true;
     }
-    if (event === "p2p.reject" && o && o.id === p.id && p.from_device === o.to) { failOut(p.reason === "busy" ? "busy" : "declined"); return true; }
+    if (event === "p2p.reject" && o && o.id === p.id && p.from_device === o.to && !o.done) { failOut(p.reason === "busy" ? "busy" : p.reason === "failed" ? "failed" : "declined"); return true; }
     if (event === "p2p.cancel") {
-      if (o && o.id === p.id && p.from_device === o.to && !o.done) failOut("cancel");
+      const reason = p.reason === "stall" ? "stall" : "cancel";
+      if (o && o.id === p.id && p.from_device === o.to) {
+        if (!o.done) failOut(reason);
+        else setOut((x) => x?.id === o.id && x.phase === "failed" ? { ...x, reason, error: DIRECT_FAIL[reason] } : x);
+      }
       const i = incRef.current;
-      if (i && i.id === p.id && p.from_device === i.from && !i.done) failInc("cancel");
+      if (i && i.id === p.id && p.from_device === i.from) {
+        if (!i.done) failInc(reason);
+        else setInc((x) => x?.id === i.id && x.phase === "failed" ? { ...x, reason, error: DIRECT_FAIL[reason] } : x);
+      }
       if (askRef.current?.id === p.id && askRef.current.from === p.from_device) { askRef.current = null; setAsk(null); clearT("iask"); }
     }
     return true;

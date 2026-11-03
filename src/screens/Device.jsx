@@ -12,6 +12,7 @@ import { LocateResult } from "../ui/LocateMap.jsx";
 import { Crumb } from "../ui/layout.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { PREVIEW_SIZE, typeOf, DevicePreview } from "../ui/DevicePreview.jsx";
+import { ruFmt } from "../lib/ruFmt.js";
 
 export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
   const [url, setUrl] = useState("");
@@ -61,9 +62,9 @@ export function RealDeviceActions({ d, act, st = {}, linkOnline }) {
           <>
             <button type="button" className="nx-ghost-btn" disabled={!!why} onClick={() => directRef.current?.click()} style={off(pill)}
               title="Без облака: устройства должны быть в одной сети Wi-Fi">
-              {Icon.handoff({ c: why ? C.mutedSoft : C.text, s: 14 })} Файл напрямую
+              {Icon.handoff({ c: why ? C.mutedSoft : C.text, s: 14 })} Файлы напрямую
             </button>
-            <input ref={directRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act.sendDirect(d, f); }} />
+            <input ref={directRef} type="file" multiple hidden onChange={(e) => { const files = Array.from(e.target.files || []); e.target.value = ""; if (files.length) act.sendDirect(d, files); }} />
           </>
         )}
         <button type="button" className="nx-ghost-btn" disabled={(!!why && !pushFindOk) || st.locate?.state === "asking"} onClick={() => act.locate(d)} style={pushFindOk ? pill : off(pill)}>
@@ -204,7 +205,7 @@ export function BtDeviceInfo({ d }) {
       <div style={{ fontSize: 13, color: C.mutedSoft, lineHeight: 1.55 }}>
         Bluetooth · сопряжено с «{d.host_name || "телефоном"}»
         <br /><span style={{ color: d.online ? C.green : C.mutedSoft }}>{d.online ? "Подключено к телефону" : "Сейчас не подключено"}</span>
-        {d.checkedAt ? <> · по данным телефона в {new Date(d.checkedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</> : null}
+        {d.checkedAt ? <> · по данным телефона в {ruFmt({ hour: "2-digit", minute: "2-digit" }).format(new Date(d.checkedAt))}</> : null}
         <br />Найти, позвонить и менять режимы такого устройства NEXA не может — это делает его собственное приложение.
       </div>
     </div>

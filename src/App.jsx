@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense, startTransition } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
@@ -93,7 +93,9 @@ import { NoteSettings, NotesWidgetSettings, ScreenSettings } from "./screens/Set
 import { ScreenHome } from "./screens/Home.jsx";
 import { ScreenFiles } from "./screens/Files.jsx";
 import { DropBanner } from "./ui/drop.jsx";
+import { DirectTransfer } from "./ui/DirectTransfer.jsx";
 import { APP_CSS } from "./ui/appStyles.js";
+import { ruFmt } from "./lib/ruFmt.js";
 
 /* Редкие экраны — отдельными кусками кода (lazy): на старте их не нужно разбирать, это ускоряет запуск,
    особенно в приложении на слабом телефоне. Сразу после запуска, когда телефон свободен, они
@@ -372,7 +374,7 @@ export default function NexaApp() {
       if (!d.real) return d;
       const isSelf = d.device_id === link.self?.device_id, online = peerIds.has(d.device_id);
       const saved = cleanSys(d.sys);
-      return { ...d, online, isSelf, p2p: online && !!peerById.get(d.device_id)?.p2p, sys: (isSelf && thisSys) || (online && peerById.get(d.device_id)?.sys) || saved };
+      return { ...d, online, isSelf, p2p: online && !!peerById.get(d.device_id)?.p2p, p2pBatch: online && !!peerById.get(d.device_id)?.p2pBatch, sys: (isSelf && thisSys) || (online && peerById.get(d.device_id)?.sys) || saved };
     })
     .reduce(mergeSamePhone, []);
   // Названия реальных устройств по device_id — для блока «Связь устройств»
@@ -407,7 +409,7 @@ export default function NexaApp() {
     document.addEventListener("visibilitychange", away);
     return () => document.removeEventListener("visibilitychange", away);
   }, []);
-  const dayLabel = (k) => (k === dayKey() ? "" : `${dayFromKey(k).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}, `);
+  const dayLabel = (k) => (k === dayKey() ? "" : `${ruFmt({ day: "numeric", month: "short" }).format(dayFromKey(k))}, `);
   const addScheduleItem = (it) => {
     setSchedule((list) => sortSchedule([...list, { id: newId(), ...it }]));
     showToast({ title: "Дело добавлено", text: `${dayLabel(it.date)}${it.time} · ${it.title}`, kind: "schedule" });
@@ -2010,7 +2012,10 @@ export default function NexaApp() {
   useSwipeBack(overlayRef, () => window.history.back(), phoneNow && !!overlayKey, overlayKey);
   useTabSwipe(
     () => ({ tab, sub: !!openDeviceId || activityOpen || aboutOpen || securityOpen || devicesOpen || notesOpen }),
-    { onPeek: (t, dir) => setPeek(t ? { tab: t, dir } : null),
+    /* Соседа собираем «в фоне» (startTransition): React строит его порциями между кадрами, и палец двигает
+       экран без задержек. Раньше сборка шла одним куском — рывок 70–180 мс в начале жеста. Не успел собраться
+       к концу жеста — прежняя смена раздела (onSwipe) */
+    { onPeek: (t, dir) => startTransition(() => setPeek(t ? { tab: t, dir } : null)),
       // Тот же собранный экран становится текущим — в одном кадре: раздел, адрес, прокрутка к началу
       onCommit: (t) => { flushSync(() => { setQuiet(t); setPeek(null); goTab(t); }); scrollTopNow(); },
       onSwipe: (dir) => {
@@ -2749,14 +2754,15 @@ export default function NexaApp() {
   /* ── Прямая передача: отправить, сохранить принятое, плашка ── */
   const sendDirectTo = (d, file) => {
     const why = directProblem(file, d);
-    if (why) { showToast({ kind: "error", title: "Напрямую не получится", text: why, ...(d.online ? { action: { label: "Через облако", onClick: () => sendFileTo(d, file) } } : {}) }); return; }
+    if (why) { showToast({ kind: "error", title: "Напрямую не получится", text: why, ...(d.online && !Array.isArray(file) ? { action: { label: "Через облако", onClick: () => sendFileTo(d, file) } } : {}) }); return; }
     direct.send(d, file);
   };
   const pickDirect = (d) => {
     // Выбор файла — сразу по нажатию (браузер открывает окно выбора только так)
     const inp = document.createElement("input");
     inp.type = "file";
-    inp.onchange = () => { const f = inp.files?.[0]; if (f) sendDirectTo(d, f); };
+    inp.multiple = true;
+    inp.onchange = () => { const files = Array.from(inp.files || []); if (files.length) sendDirectTo(d, files); };
     inp.click();
   };
   const saveDirect = async (x) => {
@@ -2782,7 +2788,7 @@ export default function NexaApp() {
     if (o && o.phase === "failed" && o.reason === "connect" && directOutPrev.current !== o.id) {
       directOutPrev.current = o.id;
       const d = devices.find((x) => x.device_id === o.to) || (devices.find((x) => x.members?.includes?.(o.to)));
-      if (d && o.file) showToast({ kind: "error", title: "Напрямую не соединились", text: "Устройства должны быть в одной сети Wi-Fi", action: { label: "Через облако", onClick: () => sendFileTo({ ...d, device_id: o.to }, o.file) }, duration: 9000 });
+      if (d && o.file) showToast({ kind: "error", title: "Напрямую не соединились", text: "Устройства должны быть в одной сети Wi-Fi", ...(o.files?.length === 1 ? { action: { label: "Через облако", onClick: () => sendFileTo({ ...d, device_id: o.to }, o.file) } } : {}), duration: 9000 });
     }
   }, [direct.out]); // eslint-disable-line react-hooks/exhaustive-deps
   // Пришёл файл — в колокольчик и «Активность» (без содержимого)
@@ -2794,23 +2800,6 @@ export default function NexaApp() {
       notify({ cat: "files", key: `direct:${x.id}`, source: `«${x.fromName || "Устройство"}»`, title: "Получен файл напрямую", text: "Сохраните его или добавьте в «Файлы»", toast: false });
     }
   }, [direct.inc]); // eslint-disable-line react-hooks/exhaustive-deps
-  const directBanner = (() => {
-    const x = direct.inc;
-    if (x) return { key: `dir-in-${x.id}`, onClose: direct.closeInc,
-      st: { state: x.phase === "done" ? "done" : x.phase === "failed" ? "error" : "receiving", progress: x.size ? x.bytes / x.size : 0, error: x.error },
-      drop: { kind: "in", fromName: x.fromName || "Устройство", fromType: realTypes[x.from] || "laptop", name: x.name, mime: x.mime, onCancel: direct.cancelInc,
-        doneText: "получен напрямую", waitText: x.phase === "connecting" ? "Соединяемся напрямую…" : null,
-        actions: x.blob ? [
-          { label: "Сохранить", primary: true, run: () => saveDirect(x) },
-          { label: "В «Файлы»", run: () => { addFiles([new File([x.blob], safeFileName(x.name), { type: x.mime || "" })], null); goTab("files"); } },
-        ] : null } };
-    const o = direct.out;
-    if (o) return { key: `dir-out-${o.id}`, onClose: direct.closeOut,
-      st: { state: o.phase === "done" ? "done" : o.phase === "failed" ? "error" : "uploading", progress: o.total ? o.bytes / o.total : 0, error: o.error },
-      drop: { kind: "send", devName: o.toName || "Устройство", devType: o.toType || "laptop", name: o.file?.name || "файл", mime: o.file?.type || "", onCancel: direct.cancelOut,
-        waitText: o.phase === "asking" ? "Ждём «Принять»…" : o.phase === "connecting" ? "Соединяемся напрямую…" : null } };
-    return null;
-  })();
 
   const quick = (() => {
     const online = link.status === "online";
@@ -2850,7 +2839,7 @@ export default function NexaApp() {
               thumb: <FileThumb file={f} w={34} h={34} iconSize={14} radius={0} />, run: () => sendStoredFile(d, f) })),
           ] },
         })) } },
-      !!uid && live.some((d) => d.p2p && !d.bt) && { id: "direct", title: "Передать файл напрямую", sub: "Без облака — устройства в одной сети Wi-Fi", icon: Icon.handoff,
+      !!uid && live.some((d) => d.p2p && !d.bt) && { id: "direct", title: "Передать файлы напрямую", sub: "Без облака — устройства в одной сети Wi-Fi", icon: Icon.handoff,
         keywords: ["напрямую", "без облака", "передать", "отправить", "файл", "wi-fi", "локально", "большой"],
         pick: pickDevice("Куда передать напрямую?", (d) => pickDirect(d)) },
       nb.supported && { id: "nearby", title: "Отправить рядом", sub: "На соседний телефон с NEXA — без интернета", icon: Icon.signal,
@@ -3416,12 +3405,12 @@ export default function NexaApp() {
         }}
       />
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
-      {nbBanner || directBanner
-        ? <DropBanner key={(nbBanner || directBanner).key} drop={(nbBanner || directBanner).drop} st={(nbBanner || directBanner).st} onClose={(nbBanner || directBanner).onClose} />
+      {nbBanner
+        ? <DropBanner key={nbBanner.key} drop={nbBanner.drop} st={nbBanner.st} onClose={nbBanner.onClose} />
         : drop && <DropBanner key={drop.id} drop={drop} st={drop.st || sendState[drop.devKey]} onClose={() => setDrop((x) => (x?.id === drop.id ? null : x))} />}
       {nearSheet && <NearbySheet nb={nb} tab={nearSheet} myName={myNearName} onClose={() => setNearSheet(null)} />}
       {nb.ask && <NearbyAsk ask={nb.ask} onAccept={nb.acceptAsk} onReject={nb.rejectAsk} />}
-      {!nb.ask && direct.ask && <NearbyAsk direct ask={{ name: direct.ask.name, file: direct.ask.file, size: direct.ask.size }} onAccept={direct.accept} onReject={direct.reject} />}
+      <DirectTransfer direct={direct} onSave={saveDirect} onAdd={(files) => { addFiles(files.map((f) => new File([f.blob], safeFileName(f.name), { type: f.mime || "" })), null); goTab("files"); }} />
      </div>
   );
 }

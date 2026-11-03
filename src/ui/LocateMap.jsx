@@ -5,6 +5,7 @@ import { C } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { YMAPS_KEY, loadYmaps, ymapsTheme, yandexMapsUrl } from "../lib/ymaps.js";
 import { btnReset, Spinner } from "./base.jsx";
+import { ruFmt } from "../lib/ruFmt.js";
 
 // Круг точности: у JS API v3 нет готового круга — рисуем многоугольник из 64 точек.
 // Координаты у Яндекса — [долгота, широта]
@@ -128,12 +129,12 @@ export function LocateMap({ lat, lon, acc }) {
 // Когда определено: «в 14:05», «вчера в 18:40», «12 окт. в 09:10»
 function placeWhen(at) {
   const d = new Date(at), now = new Date();
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const hm = ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
   const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(now) - day(d)) / 86400000);
   if (diff <= 0) return `в ${hm}`;
   if (diff === 1) return `вчера в ${hm}`;
-  return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
+  return `${ruFmt({ day: "numeric", month: "short" }).format(d)} в ${hm}`;
 }
 
 // Почему не ответило — точнее, если телефон успел отметиться «получил» (APK 0.17.2+)

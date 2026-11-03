@@ -5,6 +5,7 @@ import { LEAVE_MS } from "../lib/hooks.js";
 import { REPLY_AURA_FADE } from "../screens/assistant/visuals.jsx";
 import { MOBILE_HOME_CSS } from "./mobileHomeStyles.js";
 import { DESKTOP_HOME_CSS } from "./desktopHomeStyles.js";
+import { DIRECT_TRANSFER_CSS } from "./directTransferStyles.js";
 
 export const APP_CSS = `
         /* Отступы под вырез камеры и системную полосу (safe area).
@@ -81,7 +82,7 @@ export const APP_CSS = `
           --bg: #01090F;  --panel: #0E1016;  --panel-2: #12141B;
           --border: #1C1E26;  --border-soft: #22242C;
           --text: #FFFFFF;  --text-strong: #FFFFFF;  --text-soft: #EAF2F7;
-          --muted: #92A2AF;  --muted-soft: #6B6B72;
+          --muted: #92A2AF;  --muted-soft: #6B6B72;  --wx-cloud: #344552;
           --blue: #4A6FFF;  --blue-dark: #1A2454;  --blue-light: #7C97FF;
           --mint: #00FFDF;  --mint-dark: #0F3D38;  --mint-light: #7EF0E0;
           --green: #47DE8E;  --red: #DE4747;
@@ -124,7 +125,7 @@ export const APP_CSS = `
           --border: #D6DDE6;  --border-soft: #E2E7EE;
           /* Текст и подписи темнее, чем были: на светлом фоне серый «тает» */
           --text: #111933;  --text-strong: #0A1024;  --text-soft: #1B2340;
-          --muted: #444E63;  --muted-soft: #667085;
+          --muted: #444E63;  --muted-soft: #667085;  --wx-cloud: #D3DCE4;
           --blue: #4A6FFF;  --blue-dark: #DCE4FF;  --blue-light: #7C97FF;
           --mint: #10BFA8;  --mint-dark: #D3F2EC;  --mint-light: #7EE6D8;
           --green: #1C9E5E;  --red: #D23C3C;
@@ -1144,13 +1145,19 @@ export const APP_CSS = `
     .nx-notepad-editor.nx-notepad-panel.is-full {
       position: fixed !important; top: calc(var(--tb-h, 0px) + 18px) !important; left: 18px; right: 18px; bottom: 18px; height: auto; z-index: 300;
       border-radius: max(28px, calc(48 * var(--mk))) !important; background: color-mix(in srgb, var(--bg) 90%, transparent);
-      box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--bg) 72%, transparent);
-      padding-left: max(28px, calc((100% - 980px) / 2)); padding-right: max(28px, calc((100% - 980px) / 2));
-      animation: nx-note-full 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+      padding-left: 28px; padding-right: 28px;
     }
+    /* Кнопки — по краям окна (крестик и «свернуть» слева, остальные справа), текст — колонкой до 980 px по центру */
+    .nx-notepad-editor.is-full > :not(.nx-notepad-bar) { width: 100%; max-width: 980px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
     .nx-notepad-editor.is-full .nx-notepad-in { padding-left: 0 !important; padding-right: 0 !important; }
-    @keyframes nx-note-full { from { opacity: 0; transform: scale(0.985); } }
-    @media (prefers-reduced-motion: reduce) { .nx-notepad-editor.is-full { animation: none; } }
+    /* Тень вокруг: проявляется при входе, гаснет при выходе (вход и выход панели — clip-path из NoteEditor.jsx) */
+    .nx-note-scrim { position: fixed; inset: var(--tb-h, 0px) 0 0 0; z-index: 299; background: color-mix(in srgb, var(--bg) 72%, transparent);
+      animation: nx-note-scrim-in 300ms ease both; pointer-events: none; }
+    .nx-note-scrim.is-leaving { animation: nx-note-scrim-out 320ms ease both; }
+    .nx-notepad-editor.is-settling { z-index: 300 !important; }
+    @keyframes nx-note-scrim-in { from { opacity: 0; } }
+    @keyframes nx-note-scrim-out { to { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .nx-note-scrim { animation: none !important; } }
   }
   body.kb-open .nx-notepad-fab { display: none !important; }
   /* «Продолжить здесь?» на телефоне — над нижней панелью (68 px + системная полоса) */
@@ -1756,7 +1763,15 @@ export const APP_CSS = `
           100% { transform: rotate(28deg) translateY(30px); opacity: 0; }
         }
         .nx-drop { animation: nx-drop-fall 1100ms cubic-bezier(0.5, 0, 0.9, 0.6) 3; }
-        @media (prefers-reduced-motion: reduce) { .nx-drop { animation: none !important; } }
+        /* Снежинки: ромбы, падают медленно и покачиваются, тоже три раза и замирают */
+        .nx-flake { transform: rotate(45deg); border-radius: 1px; animation: nx-flake-fall 2600ms ease-in-out 3; }
+        @keyframes nx-flake-fall {
+          0%   { transform: translate(0, -22px) rotate(45deg); opacity: 0; }
+          20%  { opacity: 1; }
+          50%  { transform: translate(4px, 4px) rotate(90deg); }
+          100% { transform: translate(-3px, 28px) rotate(135deg); opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) { .nx-drop, .nx-flake { animation: none !important; } }
         /* Баннер установки. Закрытие: плашка отклоняется от верхнего края и тает
            (как складка), а место под ней схлопывается */
         .nx-banner-wrap { display: grid; grid-template-rows: 1fr; margin-top: 18px; }
@@ -2117,8 +2132,8 @@ export const APP_CSS = `
         @media ${DESKTOP_MQ} { html { scrollbar-width: none; } html::-webkit-scrollbar { display: none; } }
         /* Окно файла — без видимой полосы прокрутки (2026-10-28, просьба автора: мятная полоса у края окна);
            колесо, тачпад и палец прокручивают как раньше */
-        .nx-fv { scrollbar-width: none; }
-        .nx-fv::-webkit-scrollbar { display: none; }
+        .nx-fv, .nx-viewer-panel, .nx-viewer > [role="dialog"] { scrollbar-width: none !important; }
+        :is(.nx-fv, .nx-viewer-panel, .nx-viewer > [role="dialog"])::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
         /* Размер ползунка: видимая часть — 6 px (компьютер) / 10 px (палец), а зона нажатия вокруг неё шире —
            прозрачная кайма входит в полосу (background-clip: padding-box). Короче 48 px ползунок не бывает — за него легко ухватиться */
         ::-webkit-scrollbar { width: 14px; height: 14px; }
@@ -2548,4 +2563,5 @@ export const APP_CSS = `
         
 ${MOBILE_HOME_CSS}
 ${DESKTOP_HOME_CSS}
+${DIRECT_TRANSFER_CSS}
 `;

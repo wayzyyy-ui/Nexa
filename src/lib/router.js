@@ -26,7 +26,7 @@ export const TAB_PATHS = { home: "/", today: "/today", assistant: "/assistant", 
 export const SUB_PATHS = { activity: "/activity", about: "/about", security: "/security", devices: "/devices", notes: "/notes" };
 // Под каким разделом открывается экран поверх (прямая ссылка, перезагрузка): заметки — из «Сегодня»
 const SUB_TAB = { notes: "today" };
-const TITLES = { home: "NEXA", today: "Сегодня", assistant: "ИИ — Ассистент", media: "Медиа", files: "Файлы", settings: "Настройки",
+const TITLES = { home: "NEXA", today: "Сегодня", assistant: "AI-Ассистент", media: "Медиа", files: "Файлы", settings: "Настройки",
   activity: "Активность", about: "О системе", security: "Безопасность", devices: "Все устройства", notes: "Заметки" };
 
 export const HOME = { tab: "home", sub: null, dev: null };

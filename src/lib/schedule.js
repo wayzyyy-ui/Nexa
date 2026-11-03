@@ -1,5 +1,6 @@
 // Расписание «Сегодня»: даты, сортировка, ближайшее дело, хранение nexa-schedule
 import { plural } from "./format.js";
+import { ruFmt } from "./ruFmt.js";
 
 // Старый пример расписания. Сейчас по умолчанию расписание пустое, а этот
 // список нужен только чтобы узнать и убрать пример, сохранённый раньше.
@@ -41,7 +42,7 @@ export function scheduleDayLabel(key) {
   if (key === dayKey(t)) return "Сегодня";
   if (key === dayKey(tomorrow)) return "Завтра";
   const [y, m, d] = key.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return ruFmt({ day: "numeric", month: "short" }).format(new Date(y, m - 1, d));
 }
 
 // Пример, который раньше сохранялся сам: те же дела в том же количестве

@@ -6,6 +6,7 @@ import { Icon } from "./icons.jsx";
 import { changesWord, waitWord, plural } from "../lib/format.js";
 import { useCountdown } from "../lib/hooks.js";
 import { Dot, Spinner, btnReset, StateButton } from "./base.jsx";
+import { ruFmt } from "../lib/ruFmt.js";
 
 /* Компактный индикатор связи и синхронизации (внизу слева, на телефоне — над панелью).
    Что показывает — только правду:
@@ -80,7 +81,7 @@ export function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, o
     if (st.loading) return ["Синхронизируем…", C.muted];
     if (st.text) return [`${st.text}${st.pending ? ` · ждут: ${st.pending}` : ""}${st.nextAt ? " · повторим сами" : st.gaveUp ? " · повторы кончились" : ""}`, C.red];
     if (st.pending) return [`${changesWord(st.pending)} ${waitWord(st.pending)} отправки`, C.muted];
-    return [`Сохранено в облаке${st.at ? ` · ${new Date(st.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}`, C.green];
+    return [`Сохранено в облаке${st.at ? ` · ${ruFmt({ hour: "2-digit", minute: "2-digit" }).format(new Date(st.at))}` : ""}`, C.green];
   };
   const authLost = uid && Object.values(syncState).some((st) => st?.kind === "auth");
   return createPortal(

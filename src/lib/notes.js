@@ -1,5 +1,6 @@
 // Уведомления: колокольчик (nexa-notifications), категории и настройки, ключи без дублей (claimNote)
 import { Icon } from "../ui/icons.jsx";
+import { ruFmt } from "./ruFmt.js";
 
 /* ═══ ЦЕНТР УВЕДОМЛЕНИЙ ═════════════════════════════════════
    Колокольчик в верхней строке: число непрочитанных, по нажатию —
@@ -70,9 +71,9 @@ export function noteTime(at) {
   if (min < 1) return "только что";
   if (min < 60) return `${min} мин назад`;
   const d = new Date(at);
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const hm = ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
   if (d.toDateString() === new Date().toDateString()) return `в ${hm}`;
   const y = new Date(Date.now() - 86400000);
   if (d.toDateString() === y.toDateString()) return `вчера в ${hm}`;
-  return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
+  return `${ruFmt({ day: "numeric", month: "short" }).format(d)} в ${hm}`;
 }

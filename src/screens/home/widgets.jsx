@@ -8,6 +8,7 @@ import { useLocation, weatherPlace, useWeather } from "../../lib/weather.js";
 import { WeatherAttribution } from "../today/Weather.jsx";
 import { dayKey, nextScheduleItem, scheduleDayLabel } from "../../lib/schedule.js";
 import { plural } from "../../lib/format.js";
+import { ruFmt } from "../../lib/ruFmt.js";
 
 /* ── Погода ── город и погода те же, что на «Сегодня» (кеш общий, лишних запросов нет) */
 export function useHomeWeather() {
@@ -16,7 +17,7 @@ export function useHomeWeather() {
   return { w, city: location.city };
 }
 const signedTemp = (t) => (Number.isFinite(t) ? `${t > 0 ? "+" : ""}${Math.round(t)}` : "—");
-const shortDate = (d = new Date()) => d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+const shortDate = (d = new Date()) => ruFmt({ day: "2-digit", month: "2-digit", year: "2-digit" }).format(d);
 // «ясно» → «Ясно»
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 

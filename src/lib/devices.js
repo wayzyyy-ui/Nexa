@@ -3,6 +3,7 @@ import { sysShort } from "./deviceInfo.js";
 import { isHw } from "./realtime.js";
 import { Icon } from "../ui/icons.jsx";
 import { plural } from "./format.js";
+import { ruFmt } from "./ruFmt.js";
 
 // Виды устройств: значок и название по type (phone, laptop, tablet…)
 export const DEVICE_TYPES = [
@@ -85,12 +86,12 @@ export function lastSeenText(ms, now = Date.now()) {
   if (min < 60) return `Был в сети ${min} ${plural(min, ["минуту", "минуты", "минут"])} назад`;
   const h = Math.floor(min / 60);
   const d = new Date(ms), t = new Date(now);
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const hm = ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
   if (h < 6) return `Был в сети ${h} ${plural(h, ["час", "часа", "часов"])} назад`;
   if (d.toDateString() === t.toDateString()) return `Был в сети сегодня в ${hm}`;
   const y = new Date(now); y.setDate(y.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return `Был в сети вчера в ${hm}`;
-  return `Был в сети ${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} в ${hm}`;
+  return `Был в сети ${ruFmt({ day: "numeric", month: "short" }).format(d)} в ${hm}`;
 }
 
 // Подпись реального устройства: «Онлайн» по Presence, иначе — когда был в сети

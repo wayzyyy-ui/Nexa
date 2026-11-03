@@ -9,6 +9,7 @@ import { useClock, LEAVE_MS } from "../lib/hooks.js";
 import { btnReset, EmptyState, StateButton, Spinner } from "../ui/base.jsx";
 import { condLook, WeatherCard, CityPicker, WeatherAttribution, ForecastList } from "./today/Weather.jsx";
 import { MediaLayout, MediaTitle } from "../ui/layout.jsx";
+import { ruFmt } from "../lib/ruFmt.js";
 
 /* Форма дела: дата, время, название и описание (необязательно).
    day — выбранный день (по умолчанию дело ставится на него). Enter — добавить, Esc — отмена.
@@ -73,7 +74,7 @@ export function DayStrip({ value, onChange, all }) {
       {days.map((d, i) => {
         const key = dayKey(d), on = key === value, has = all.some((it) => it.date === key);
         const top = key === today ? "Сегодня" : key === tomorrow ? "Завтра"
-          : inWeek ? d.toLocaleDateString("ru-RU", { weekday: "short" }) : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }).replace(".", "");
+          : inWeek ? ruFmt({ weekday: "short" }).format(d) : ruFmt({ day: "numeric", month: "short" }).format(d).replace(".", "");
         return (
           <button key={key} type="button" role="tab" aria-selected={on} onClick={() => onChange(key)} className="nx-day-chip" style={{
             ...btnReset, flexShrink: 0, minWidth: 64, padding: "8px 14px 7px", borderRadius: 18, textAlign: "center",
@@ -107,7 +108,7 @@ export function MonthCalendar({ value, all, onPick, onClose, leaving }) {
   const total = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cells = [...Array(first).fill(null), ...Array.from({ length: total }, (_, i) => new Date(month.getFullYear(), month.getMonth(), i + 1))];
   const shift = (n) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
-  const title = month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(" г.", "");
+  const title = ruFmt({ month: "long", year: "numeric" }).format(month).replace(" г.", "");
   const navBtn = { ...btnReset, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" };
   return (
     <div role="dialog" aria-label="Календарь" className={`nx-pop nx-month${leaving ? " nx-leaving" : ""}`} style={{ border: "1px solid " + C.lineBright, borderRadius: 24, padding: "14px 16px 16px", marginBottom: 18 }}>
@@ -126,7 +127,7 @@ export function MonthCalendar({ value, all, onPick, onClose, leaving }) {
           const key = dayKey(d), on = key === value, isToday = key === today;
           return (
             <button key={key} type="button" onClick={() => onPick(key)} aria-pressed={on}
-              aria-label={d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) + (busy.has(key) ? ", есть дела" : "")}
+              aria-label={ruFmt({ day: "numeric", month: "long" }).format(d) + (busy.has(key) ? ", есть дела" : "")}
               className="nx-month-day" style={{
                 ...btnReset, height: 42, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 fontFamily: fontDisplay, fontSize: 15, color: on ? C.onFold : key < today ? C.mutedSoft : C.text,
@@ -211,7 +212,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
   const tomorrow = weather.tomorrow;
   const nowSky = condLook(now?.cond);
   const tomorrowSky = condLook(tomorrow?.cond);
-  const hm = (ms) => (ms ? new Date(ms).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—");
+  const hm = (ms) => (ms ? ruFmt({ hour: "2-digit", minute: "2-digit" }).format(new Date(ms)) : "—");
 
   // Тихая строка под карточкой: идёт обновление или не вышло обновить
   const statusLine = { fontSize: 12, color: C.mutedSoft };
@@ -275,7 +276,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
               {next
                 ? <>{untilText(toMinutes(next.time) - nowMin)} — <span style={{ color: C.text }}>{next.title.toLowerCase()}</span></>
                 : isToday ? "На сегодня всё — дел больше нет"
-                : `${dayFromKey(day).toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })} · ${schedule.length} ${plural(schedule.length, ["дело", "дела", "дел"])}`}
+                : `${ruFmt({ weekday: "long", day: "numeric", month: "long" }).format(dayFromKey(day))} · ${schedule.length} ${plural(schedule.length, ["дело", "дела", "дел"])}`}
             </div>
           )}
 
@@ -366,7 +367,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
                 onAuto={() => { location.pick(null); setPickingCity(false); }}
               />
             )}
-            temp={now?.temp ?? null} cond={now?.text ?? "—"} feels={now?.feels ?? null} tone={nowSky.tone} rain={nowSky.rain}
+            temp={now?.temp ?? null} cond={now?.text ?? "—"} feels={now?.feels ?? null} tone={nowSky.tone} rain={nowSky.rain} snow={nowSky.snow}
             details={[
               { label: "Ветер", value: `${now?.wind ?? "—"} м/с` },
               { label: "Влажность", value: `${now?.humidity ?? "—"} %` },
@@ -413,7 +414,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
         </div>
         <div style={{ gridArea: "next", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
           <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow?.date || new Date(Date.now() + 86400000))}
-            temp={tomorrow?.temp ?? null} cond={tomorrow?.text ?? "—"} note={`Ночью ${signed(tomorrow?.min ?? null)}°`} tone={tomorrowSky.tone} rain={tomorrowSky.rain}
+            temp={tomorrow?.temp ?? null} cond={tomorrow?.text ?? "—"} note={`Ночью ${signed(tomorrow?.min ?? null)}°`} tone={tomorrowSky.tone} rain={tomorrowSky.rain} snow={tomorrowSky.snow}
             veil={veil} grow
             footer={tomorrow && <div style={{ display: "flex", justifyContent: "flex-end" }}><WeatherAttribution w={weather} /></div>} />
         </div>

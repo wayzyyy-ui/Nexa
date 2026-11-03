@@ -14,6 +14,7 @@ import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile
 import { useModalLock } from "../lib/hooks.js";
 import { useLongPress, FileMenu, SelectBar } from "../ui/fileSelect.jsx";
 import { vibrate } from "../native.js";
+import { ruFmt } from "../lib/ruFmt.js";
 
 // ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
 // filter — id категории, если пришли сюда из "Медиа" (тогда показываем
@@ -443,7 +444,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         // Ждёт в очереди (нет сети или пауза перед повтором) — содержимое сохранено на устройстве
         const waiting = u.status === "queued";
         const waitText = navigator.onLine === false ? "Нет сети — загрузится, когда связь вернётся (пока NEXA открыта)"
-          : u.nextAt ? `Не вышло — повторим в ${new Date(u.nextAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Скоро отправим";
+          : u.nextAt ? `Не вышло — повторим в ${ruFmt({ hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(u.nextAt))}` : "Скоро отправим";
         const small = { ...btnReset, fontSize: 13, padding: "4px 10px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, whiteSpace: "nowrap" };
         return (
           <div key={u.id} role={failed ? "alert" : "status"} className="nx-pop" style={{ padding: "12px 4px 10px", borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)` }}>

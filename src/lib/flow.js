@@ -1,4 +1,5 @@
 // NEXA Flow: настройки, статусы отправленного, история, копирование
+import { ruFmt } from "./ruFmt.js";
 export const LINK_STATUS = {
   online: "На связи", connecting: "Подключаемся…", offline: "Нет связи", denied: "Канал не настроен", off: "",
 };
@@ -6,8 +7,8 @@ export const LINK_STATUS = {
 // Время входящего: «14:05» сегодня, иначе «3 окт., 14:05»
 export const inboxTime = (ts) => {
   const d = new Date(ts), today = new Date().toDateString() === d.toDateString();
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  return today ? hm : `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}, ${hm}`;
+  const hm = ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
+  return today ? hm : `${ruFmt({ day: "numeric", month: "short" }).format(d)}, ${hm}`;
 };
 
 // Скопировать текст: буфер обмена, а если он недоступен — старый способ

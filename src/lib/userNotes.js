@@ -6,6 +6,7 @@
    tags и archived — колонки из notes.sql (повторный запуск добавит их в уже созданную таблицу);
    пока их в базе нет, облако их не хранит — они живут только на этом устройстве. */
 import { isSensitive } from "./textcheck.js";
+import { ruFmt } from "./ruFmt.js";
 
 export const NOTE_TITLE_MAX = 200;
 export const NOTE_TEXT_MAX = 100000;
@@ -217,12 +218,12 @@ export function saveState({ dirty, localFailed, uid, online, sync }) {
 export function noteWhen(ms, now = Date.now()) {
   if (!ms) return "";
   const d = new Date(ms), t = new Date(now);
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const hm = ruFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
   if (d.toDateString() === t.toDateString()) return `сегодня в ${hm}`;
   const y = new Date(now); y.setDate(y.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return `вчера в ${hm}`;
   const sameYear = d.getFullYear() === t.getFullYear();
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
+  return ruFmt({ day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) }).format(d);
 }
 
 /* Виджет «NEXA · Заметки» (Android, android/…/widgets/NotesWidget.java): что ему передать.

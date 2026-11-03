@@ -32,7 +32,7 @@ const ACK_WAIT_MS = 8000; // столько ждём подтверждения 
 
 // Похоже ли на пароль / ссылка ли — src/lib/textcheck.js (тут — под прежними именами)
 import { isSensitive, safeUrl } from "./textcheck.js";
-import { DIRECT_MAX } from "./directPlan.js";
+import { DIRECT_MAX, validManifest } from "./directPlan.js";
 export { isSensitive, safeUrl };
 // Для истории: секрет не сохраняем, только пометку
 const forStorage = (x) => (x.sensitive ? { ...x, text: null } : x);
@@ -76,7 +76,7 @@ export function deviceIdentity() {
   const platform = mobile ? "mobile" : "desktop";
   const name = kind === "app" ? "Приложение" : kind === "pc" ? pcName() || "Компьютер" : mobile ? "Сайт на телефоне" : "Сайт на компьютере";
   // p2p: 1 — умеет принимать файлы напрямую (src/lib/direct.js); старые версии этого поля не шлют
-  const p2p = typeof RTCPeerConnection === "function" ? { p2p: 1 } : {};
+  const p2p = typeof RTCPeerConnection === "function" ? { p2p: 1, p2pBatch: 1 } : {};
   return { device_id: id, name, kind, platform, ...p2p, ...(mobile ? { hw: phoneSignature() } : {}) };
 }
 
@@ -142,10 +142,11 @@ const SCHEMAS = {
   // Прямая передача файла (src/lib/direct.js, только одна сеть): предложение с описанием соединения (SDP),
   // ответ, отказ, отмена. Сам файл по каналу не идёт — только эти короткие сообщения
   "p2p.offer": (p) => base(p) && isId(p.id) && isId(p.to_device) && isStr(p.name, 255) && Number.isFinite(p.size) && p.size >= 0 && p.size <= DIRECT_MAX
-    && (p.mime == null || (typeof p.mime === "string" && p.mime.length <= 255)) && isSdp(p.sdp),
+    && (p.mime == null || (typeof p.mime === "string" && p.mime.length <= 255)) && isSdp(p.sdp)
+    && (p.files == null || validManifest(p.files, p.size)),
   "p2p.answer": (p) => base(p) && isId(p.id) && isId(p.to_device) && isSdp(p.sdp),
   "p2p.reject": (p) => base(p) && isId(p.id) && isId(p.to_device) && ["declined", "busy", "failed"].includes(p.reason),
-  "p2p.cancel": (p) => base(p) && isId(p.id) && isId(p.to_device),
+  "p2p.cancel": (p) => base(p) && isId(p.id) && isId(p.to_device) && (p.reason == null || ["cancel", "stall"].includes(p.reason)),
   // Список устройств аккаунта изменился — перечитать из облака
   "devices.changed": (p) => base(p),
   // В облаке новое (устройства или чаты) — перечитать эту таблицу сразу
@@ -189,6 +190,7 @@ function flattenPresence(state) {
       sys: cleanSys(m.sys),
       hw: isHw(m.hw) ? m.hw : null,
       p2p: m.p2p === 1,
+      p2pBatch: m.p2pBatch === 1,
     });
   }
   return list.sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)));
