@@ -1,11 +1,11 @@
 {
-  "version": "0.18.6",
-  "notes": "- Обновление 0.18.6\n- Улучшилось: боковое меню на компьютере — разделы с подписями, «Настройки» внизу, меню можно свернуть до значков\n- Улучшилось: заголовки разделов на компьютере стоят на одной линии, у Главной — свой заголовок\n- Улучшилось: значки нижней панели на телефоне тоньше — по толщине как раньше",
-  "pub_date": "2026-11-03T13:26:33.206Z",
+  "version": "0.18.7",
+  "notes": "- Обновление 0.18.7\n- Добавилось: общий буфер обмена работает сам — скопировали на компьютере, и текст сразу в буфере телефона, и наоборот (включается в Настройках → «Общий буфер обмена»)\n- Улучшилось: плашки устройств на Главной компьютера одной высоты\n- Улучшилось: Главная на телефоне вытянута к краям, как остальные экраны\n- Улучшилось: нижняя панель телефона выше, значки аккуратнее, звёздочка ассистента в одном ряду со всеми\n- Улучшилось: окно «Помочь ассистенту стать умнее?» написано понятнее",
+  "pub_date": "2026-11-05T09:27:23.284Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTlHcGRPdDJiWjkwWlZaRGh6OERGaEl4NXhtNnFVQXdKZllNY0ZaMTRVMnVDa2ZlZ0U3Q3pNNUpGOTFja1ZGejhHQ0RrRGY3VkxWQ29SNW5wc2prVkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzEyMzkyCWZpbGU6TkVYQV8wLjE4LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTguNgpEWWJTd0lUcjZ1dEJNSmhkV1hGdlZFVWVWM2Vnenp3ZWRjdGVhbC80ZERDdVpKL0pPeTJJaVh2L20ySUEzakl4WUR1bExkZ0dyN0NGVTIwS0tORFlBUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.18.6"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTY5UG1rRmtWdEtQcVo2YkZETG9HQ25TOGhnRjRtOW9sUmp6SzB1WnQ0Q251Nm44aE51SFlraHR6Vi80SVlkamFkMHJvYWxpam9mRkJuTHhaUmhleUFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzODcwODQyCWZpbGU6TkVYQV8wLjE4LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTguNwpjS2ZuVWJJMUF6aVVGOUNBZGhycnRnK0hqb0V5KzNmTzJ5MnBmdjdPbC95UFlDQ2orVUh2cFIwdzlVcW14eVF2T01LSElOMkdyTS9SMEc4Ty9mZEVDQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.18.7"
     }
   }
 }
