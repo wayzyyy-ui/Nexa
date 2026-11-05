@@ -70,7 +70,7 @@ export function ScreenActivity({ items, onBack, onClear }) {
   }, [confirm]);
   const ghost = { ...btnReset, padding: "7px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text };
   return (
-    <div className="ng-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 820 }}>
+    <div className="ng-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 820, marginInline: "auto" }}>
       <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap", margin: "18px 0 6px" }}>
         <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>Активность</div>
