@@ -6,7 +6,8 @@ export const MOBILE_HOME_CSS = `
 @media ${PHONE_MQ} {
   .ng-home:has(.nx-home-redesign) {
     --hm: clamp(0.85px, 0.248756vw, 1.2px);
-    padding: calc(28 * var(--hm)) calc(30 * var(--hm)) 24px !important;
+    /* Боковой отступ — 16 px, как у остальных экранов телефона (.ng-screen) */
+    padding: calc(28 * var(--hm)) 16px 24px !important;
   }
   .nx-home-redesign .nx-home-head {
     min-height: calc(36 * var(--hm)); margin: 0 calc(-4 * var(--hm)) calc(12 * var(--hm));
@@ -107,12 +108,14 @@ export const MOBILE_HOME_CSS = `
   /* Нижняя панель общая для всех мобильных разделов. */
   .ng-mobile-tabbar { padding: 0 20px calc(var(--sab) + 18px) !important; }
   .nx-tabbar-pill.nx-glass { --g-alpha: 0.65; --g-blur: 12px; padding: 0 6px !important; }
-  .nx-tabbar-pill > div { height: 54px !important; }
-  .nx-tabbar-pill button > svg { width: 32px; height: 32px; }
-  .nx-tabbar-pill button[aria-label="Главная"] > svg { width: 36px; height: 36px; }
-  /* Значки крупнее (макет), а линии — той же толщины на экране, что при 26 px: иначе они «жирнели» вместе с размером */
-  .nx-tabbar-pill button > svg, .nx-tabbar-pill button > svg * { stroke-width: 1.3; }
-  .nx-tabbar-pill button[aria-label="Главная"] > svg, .nx-tabbar-pill button[aria-label="Главная"] > svg * { stroke-width: 1.35; }
-  .nx-tab-move > div { width: 52px !important; height: 40px !important; border-color: var(--border-strong) !important; }
+  .nx-tabbar-pill > div { height: 60px !important; }
+  .nx-tabbar-pill button > svg { width: 28px; height: 28px; }
+  .nx-tabbar-pill button[aria-label="Главная"] > svg { width: 32px; height: 32px; }
+  /* Звёздочка ассистента нарисована выше центра своей рамки — опускаем, чтобы стояла в ряд с остальными */
+  .nx-tabbar-pill button[aria-label="Ассистент"] > svg { transform: translateY(6%); }
+  /* Линии той же толщины на экране, что у прежних значков 26 px: с размером они «жирнели» */
+  .nx-tabbar-pill button > svg, .nx-tabbar-pill button > svg * { stroke-width: 1.5; }
+  .nx-tabbar-pill button[aria-label="Главная"] > svg, .nx-tabbar-pill button[aria-label="Главная"] > svg * { stroke-width: 1.5; }
+  .nx-tab-move > div { width: 58px !important; height: 46px !important; border-color: var(--border-strong) !important; }
 }
 `;

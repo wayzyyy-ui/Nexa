@@ -8,14 +8,19 @@
      «вставлено из буфера») — так человек видит, что NEXA его взяла; в фоне не читаем никогда.
    Куда: запись в таблицу clipboard (для тех, кто не в сети, и для push), событие clip.new
    в закрытый канал nexa:<uid>, push приложениям на телефонах, где буфер включён, а NEXA закрыта.
-   Пришедшее само в буфер устройства не попадает — только кнопкой «Скопировать». */
+   Пришедшее (2026-11-03, просьба автора — «чтобы всё было автоматически») сразу кладётся в буфер этого
+   устройства, если включено «Сразу в буфер этого устройства» (prefs.auto, по умолчанию да); выключено —
+   как раньше, только кнопкой «Скопировать». Телефон с закрытой NEXA кладёт текст из push сам
+   (NexaClipReceiver; переключатель туда передаёт clipAutoNativeSet). Пропущенное, пока NEXA спала, —
+   при возврате: сначала свой буфер уходит (если в нём новое), потом самое свежее пришедшее кладётся в буфер,
+   если оно новее последнего события буфера здесь (clipToApply, mark — nexa-clip-mark@<uid>). */
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
 import { useSharedState } from "./shared.js";
 import { newId, isMissingTable } from "./sync.js";
-import { isNative, isDesktop, API_BASE, clipboardRead, clipboardWrite } from "../native.js";
+import { isNative, isDesktop, API_BASE, clipboardRead, clipboardWrite, clipAutoNativeSet } from "../native.js";
 import { clipWatch, onDesktopClip } from "./desktop.js";
-import { clipDecision, clipHash, clipExp, clipMerge, clipPurge, clipFromRow, loadClipPrefs, CLIP_SKIP_TEXT } from "./clipsync.js";
+import { clipDecision, clipHash, clipExp, clipMerge, clipPurge, clipFromRow, clipToApply, loadClipPrefs, CLIP_SKIP_TEXT } from "./clipsync.js";
 import { sealText, openText } from "./e2e.js";
 
 /* Шифрование (2026-10-28, e2e.js / e2eKey.js): включено для аккаунта и пароль введён здесь — текст уходит
@@ -63,6 +68,19 @@ export function useClipSync({ uid, link, online, pushTargets, onIncoming, e2e })
   const lastSent = useRef(null);
   lastSent.current ??= (() => { try { return localStorage.getItem(lastKey); } catch { return null; } })();
   const tableOk = useRef(true);  // нет таблицы clipboard — работаем только через канал
+  // Когда здесь последний раз было событие буфера (отправили своё или положили пришедшее) — переживает перезапуск
+  const markKey = "nexa-clip-mark" + scope;
+  const mark = useRef(null);
+  mark.current ??= (() => { try { return Number(localStorage.getItem(markKey)) || 0; } catch { return 0; } })();
+  const setMark = (t) => { mark.current = Math.max(mark.current || 0, t); try { localStorage.setItem(markKey, String(mark.current)); } catch {} };
+  // Положить пришедшее в буфер этого устройства (только если включено «Сразу в буфер»). ПК: оболочка помнит,
+  // что это записала NEXA, — обратно не отправит; телефон: такой текст — «пришедший», clipDecision его не шлёт
+  const apply = async (item) => {
+    if (!ctx.current.prefs.auto || item.locked || typeof item.text !== "string") return false;
+    const ok = await clipboardWrite(item.text);
+    if (ok !== false) setMark(Math.max(item.at || 0, Date.now()));
+    return ok !== false;
+  };
   const ctx = useRef({}); ctx.current = { on, prefs, selfId, link, pushTargets, onIncoming, online, e2e };
 
   const send = async (text) => {
@@ -79,6 +97,7 @@ export function useClipSync({ uid, link, online, pushTargets, onIncoming, e2e })
     lastSent.current = clipHash(text);
     try { localStorage.setItem(lastKey, lastSent.current); } catch {}
     const now = Date.now();
+    setMark(now);
     const item = { id: newId(), text, from_device: c.selfId, from_name: c.link.self?.name || "Это устройство", at: now, exp: clipExp(c.prefs.ttl, now), mine: true };
     setItems((l) => clipMerge(l, [item]));
     if (!c.online) { setNote({ kind: "skip", text: "Нет связи — скопированное осталось на этом устройстве" }); return { skip: "offline" }; }
@@ -109,9 +128,10 @@ export function useClipSync({ uid, link, online, pushTargets, onIncoming, e2e })
     if (event === "clip.clear") { setItems((l) => l.filter((x) => x.at > (p.ts || Date.now()))); return true; }
     if (!ctx.current.on || itemsRef.current.some((x) => x.id === p.id)) return true;
     const raw = { id: p.id, text: p.text, enc: p.enc === 1 ? 1 : 0, from_device: p.from_device, from_name: p.from_name || "Устройство", at: p.ts, exp: p.exp, mine: false };
-    openItem(raw, ctx.current.e2e?.key).then((item) => {
+    openItem(raw, ctx.current.e2e?.key).then(async (item) => {
       setItems((l) => clipMerge(l, [item]));
-      ctx.current.onIncoming?.(item);
+      const copied = await apply(item);
+      ctx.current.onIncoming?.(item, copied);
     });
     return true;
   };
@@ -126,6 +146,9 @@ export function useClipSync({ uid, link, online, pushTargets, onIncoming, e2e })
     const rows = (data || []).map((r) => clipFromRow(r, c.selfId)).filter(Boolean);
     const opened = await Promise.all(rows.map((r) => openItem(r, c.e2e?.key)));
     setItems((l) => clipMerge(l, opened));
+    // Пришедшее, пока NEXA спала или была не в сети, — в буфер, если оно новее своего (без уведомлений)
+    const fresh = clipToApply(opened, mark.current);
+    if (fresh) await apply(fresh);
   };
 
   const remove = async (id) => {
@@ -159,7 +182,8 @@ export function useClipSync({ uid, link, online, pushTargets, onIncoming, e2e })
     return () => { off(); clipWatch(false); };
   }, [on]);
 
-  // Телефон: при открытии NEXA и при возврате в неё — взять текст из буфера (не чаще раза в 2 с)
+  // Телефон: при открытии NEXA и при возврате в неё — взять текст из буфера (не чаще раза в 2 с), потом забрать
+  // пропущенное с других устройств (своё новое уходит раньше — и тогда старое чужое его не затрёт)
   useEffect(() => {
     if (!isNative || !on) return;
     let last = 0;
@@ -167,12 +191,16 @@ export function useClipSync({ uid, link, online, pushTargets, onIncoming, e2e })
       if (document.visibilityState !== "visible" || Date.now() - last < 2000) return;
       last = Date.now();
       const r = await clipboardRead();
-      if (r?.text) send(r.text);
+      if (r?.text) await send(r.text);
+      await refresh();
     };
     pull();
     document.addEventListener("visibilitychange", pull);
     return () => document.removeEventListener("visibilitychange", pull);
   }, [on]);
+
+  // Телефон: переключатель «Сразу в буфер» — в Android-часть (push с закрытой NEXA обрабатывается без веб-части)
+  useEffect(() => { if (isNative && uid) clipAutoNativeSet(on && prefs.auto); }, [on, prefs.auto, uid]);
 
   // Включили / вошли / вернулась связь — забрать пропущенное из облака
   // Ввели пароль на этом устройстве — закрытые записи открываются

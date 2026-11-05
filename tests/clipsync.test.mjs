@@ -1,7 +1,7 @@
 // Общий буфер обмена: что отправлять, защита от петли, срок жизни (src/lib/clipsync.js). Запуск: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clipDecision, clipHash, clipExp, clipMerge, clipPurge, clipFromRow, loadClipPrefs, CLIP_MAX } from "../src/lib/clipsync.js";
+import { clipDecision, clipHash, clipExp, clipMerge, clipPurge, clipFromRow, loadClipPrefs, clipToApply, CLIP_MAX } from "../src/lib/clipsync.js";
 
 const now = 1_800_000_000_000;
 
@@ -45,9 +45,21 @@ test("срок жизни: 1 / 10 / 60 минут, неизвестное — 10
   assert.equal(clipExp(1, now) - now, 60000);
   assert.equal(clipExp(60, now) - now, 3600000);
   assert.equal(clipExp(5, now) - now, 600000);
-  assert.deepEqual(loadClipPrefs(null), { on: false, ttl: 10 }); // по умолчанию выключено
-  assert.deepEqual(loadClipPrefs({ on: true, ttl: 60 }), { on: true, ttl: 60 });
-  assert.deepEqual(loadClipPrefs({ on: "yes", ttl: 3 }), { on: false, ttl: 10 });
+  assert.deepEqual(loadClipPrefs(null), { on: false, ttl: 10, auto: true }); // по умолчанию выключено, «сразу в буфер» — да
+  assert.deepEqual(loadClipPrefs({ on: true, ttl: 60 }), { on: true, ttl: 60, auto: true });
+  assert.deepEqual(loadClipPrefs({ on: "yes", ttl: 3, auto: false }), { on: false, ttl: 10, auto: false });
+});
+
+test("в буфер при возврате: самое свежее чужое и только новее своего события", () => {
+  const mine = { id: "m", text: "своё", mine: true, at: now - 1000, exp: now + 60000 };
+  const a = { id: "a", text: "старое", at: now - 5000, exp: now + 60000 };
+  const b = { id: "b", text: "свежее", at: now - 2000, exp: now + 60000 };
+  const locked = { id: "l", text: null, locked: true, at: now - 100, exp: now + 60000 };
+  const dead = { id: "d", text: "истекло", at: now - 50, exp: now - 1 };
+  assert.equal(clipToApply([a, b, mine, locked, dead], 0, now)?.id, "b");
+  assert.equal(clipToApply([a, b], now - 3000, now)?.id, "b");
+  assert.equal(clipToApply([a, b], now - 1500, now), null); // здесь копировали позже — не затираем
+  assert.equal(clipToApply([], 0, now), null);
 });
 
 test("список: без повторов и просроченных, новые сверху", () => {

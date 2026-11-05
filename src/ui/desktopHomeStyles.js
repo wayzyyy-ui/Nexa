@@ -43,14 +43,15 @@ export const DESKTOP_HOME_CSS = `
   .nx-home-grid2 { grid-template-columns: minmax(0, calc(718 * var(--mk))) minmax(250px, calc(389 * var(--mk))) minmax(0, 1fr); gap: calc(35 * var(--mk)) calc(37 * var(--mk)); }
   .nx-home-card { padding: calc(36 * var(--mk)) calc(48 * var(--mk)) calc(26 * var(--mk)); }
   .nx-home-card-title { font-size: max(18px, calc(25 * var(--mk))); margin-bottom: calc(32 * var(--mk)); }
-  .nx-home-devices > .nx-stagger { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(24 * var(--mk)) !important; align-items: start; }
+  .nx-home-devices > .nx-stagger { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(24 * var(--mk)) !important; align-items: stretch; }
   .nx-home-devices-empty { grid-column: 1 / -1; }
   /* Обводка 1 px полупрозрачная: 0,5 px на экране без масштаба рисовалась «лесенкой» */
-  .nx-home-devices .nx-dev-row { min-height: max(56px, calc(84 * var(--mk))); gap: calc(16 * var(--mk)); padding: calc(12 * var(--mk)) calc(24 * var(--mk)) !important;
+  /* Все плашки одной высоты — с запасом под название в две строки (2026-11-03: «Сайт на компьютере» была выше соседей) */
+  .nx-home-devices .nx-dev-row { min-height: max(64px, calc(96 * var(--mk))); gap: calc(16 * var(--mk)); padding: calc(12 * var(--mk)) calc(24 * var(--mk)) !important;
     border: 1px solid color-mix(in srgb, var(--line-bright) 55%, transparent) !important; }
   .nx-home-devices .nx-dev-row-icon { width: calc(32 * var(--mk)); }
   .nx-home-devices .nx-dev-row-icon svg { height: max(22px, calc(34 * var(--mk))) !important; }
-  .nx-home-devices .nx-dev-row-name { font-size: max(13px, calc(18 * var(--mk))); font-weight: 700; letter-spacing: -0.01em; white-space: normal; line-height: 1.2; overflow-wrap: normal; }
+  .nx-home-devices .nx-dev-row-name { font-size: max(13px, calc(18 * var(--mk))); font-weight: 700; letter-spacing: -0.01em; white-space: normal; line-height: 1.2; overflow-wrap: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .nx-home-devices .nx-dev-row-sub { font-size: max(10px, calc(12 * var(--mk))); margin-top: 3px; }
   .nx-home-devices { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
   .nx-home-devices .nx-dev-row .nx-status-dot { width: 8px; height: 8px; }

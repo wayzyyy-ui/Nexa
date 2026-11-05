@@ -341,7 +341,7 @@ export default function NexaApp() {
     pushTargets: () => Object.values(deviceStore.state)
       .filter((st) => st?.real && st.clip && st.kind === "app" && st.device_id && st.device_id !== link.self?.device_id && !peerIdsRef.current.has(st.device_id))
       .map((st) => st.device_id),
-    onIncoming: (item) => {
+    onIncoming: (item, copied) => {
       const from = item.from_name || "Устройство";
       // Пришло зашифрованное, а пароль на этом устройстве не введён — только подсказка, без текста
       if (item.locked) {
@@ -350,6 +350,13 @@ export default function NexaApp() {
         return;
       }
       const preview = item.text.replace(/\s+/g, " ").trim().slice(0, 140);
+      // Уже лежит в буфере этого устройства («Сразу в буфер») — короткая подсказка без кнопки и без
+      // уведомления системы: иначе каждое копирование на другом устройстве всплывало бы окном Windows
+      if (copied) {
+        notifyRef.current({ cat: "flow", key: `clip:${item.id}`, at: item.at, source: `«${from}»`, target: { clip: true },
+          title: `В буфере: текст с «${from}»`, text: "Можно вставлять", toastText: preview, duration: 3500, system: false });
+        return;
+      }
       // В колокольчике — без самого текста (как у Flow); текст — только во всплывающем на экране
       notifyRef.current({ cat: "flow", key: `clip:${item.id}`, at: item.at, source: `«${from}»`, target: { clip: true },
         title: `Скопировано на «${from}»`, text: "Текст в общем буфере — откройте NEXA, чтобы скопировать", toastText: preview,

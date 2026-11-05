@@ -13,7 +13,8 @@ export const CLIP_TTL_DEFAULT = 10;
 export const CLIP_KEEP = 30;            // сколько записей держим в списке на устройстве
 export const loadClipPrefs = (raw) => {
   const ttl = CLIP_TTLS.includes(raw?.ttl) ? raw.ttl : CLIP_TTL_DEFAULT;
-  return { on: raw?.on === true, ttl };
+  // auto — пришедшее с других устройств сразу кладётся в буфер этого (по умолчанию да, 2026-11-03)
+  return { on: raw?.on === true, ttl, auto: raw?.auto !== false };
 };
 
 // Короткий отпечаток текста (FNV-1a) — сравнивать, не держа лишних копий
@@ -38,6 +39,15 @@ export function clipDecision({ text, lastSent, received = [], now = Date.now() }
   // и отдельно — это ловит оболочка ПК, а здесь — то, что скопировали руками)
   if (isSensitive(t)) return { skip: "sensitive" };
   return { send: true };
+}
+
+/* Что положить в буфер этого устройства, когда пришедшее подтягивается из облака (вход, возврат в NEXA):
+   самая свежая живая запись с другого устройства, если она новее последнего события буфера здесь
+   (mark — когда здесь последний раз отправили или положили в буфер). Иначе null: своё, скопированное
+   здесь позже, не затираем старым чужим */
+export function clipToApply(items, mark = 0, now = Date.now()) {
+  const fresh = (items || []).filter((x) => x && !x.mine && !x.locked && typeof x.text === "string" && x.exp > now && x.at > mark);
+  return fresh.sort((a, b) => b.at - a.at)[0] || null;
 }
 
 // Срок жизни → время исчезновения (мс)

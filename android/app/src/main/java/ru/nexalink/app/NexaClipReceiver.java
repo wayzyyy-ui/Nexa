@@ -19,8 +19,10 @@ import java.util.Map;
  * Общий буфер обмена: push «Скопировано на …», когда NEXA на телефоне закрыта
  * (api/push.js → Firebase → NexaMessagingService → сюда).
  *
- * show() — уведомление с началом текста и кнопкой «Скопировать». Само в буфер телефона
- * ничего не кладёт: только по нажатию кнопки (onReceive). Уведомление исчезает само,
+ * show() — уведомление с началом текста. Включено «Сразу в буфер этого устройства» (по умолчанию,
+ * prefs "auto" — пишет NexaPushPlugin.setClipAuto) — текст сразу кладётся в буфер телефона
+ * (записывать в буфер Android разрешает и в фоне; читать — нет), уведомление тихое, без кнопки.
+ * Выключено — как раньше: кнопка «Скопировать» (onReceive). Уведомление исчезает само,
  * когда истекает срок записи (1, 10 или 60 минут — выбрал отправитель).
  * Длинный текст (больше, чем влезает в push) — без кнопки: «Откройте NEXA, чтобы скопировать».
  */
@@ -29,6 +31,10 @@ public class NexaClipReceiver extends BroadcastReceiver {
     static final String ACTION_COPY = "ru.nexalink.app.CLIP_COPY";
     static final String EXTRA_TEXT = "text";
     static final String EXTRA_NOTE = "note";
+
+    static android.content.SharedPreferences prefs(Context ctx) {
+        return ctx.getSharedPreferences("nexa_clip", Context.MODE_PRIVATE);
+    }
 
     static void show(Context ctx, Map<String, String> data) {
         String text = data.get("text");
@@ -53,9 +59,18 @@ public class NexaClipReceiver extends BroadcastReceiver {
         PendingIntent openPi = PendingIntent.getActivity(ctx, noteId, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         String preview = text.replaceAll("\\s+", " ").trim();
+        // Сразу в буфер телефона (длинный текст пришёл не целиком — его не кладём)
+        boolean copied = false;
+        if (!isLong && prefs(ctx).getBoolean("auto", true)) {
+            try {
+                ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(ClipData.newPlainText("NEXA", text));
+                copied = true;
+            } catch (Exception ignored) { /* система не дала — останется кнопка */ }
+        }
         NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_nexa)
-            .setContentTitle("Скопировано на «" + from + "»")
+            .setContentTitle(copied ? "В буфере: текст с «" + from + "»" : "Скопировано на «" + from + "»")
             .setContentText(isLong ? preview + "…" : preview)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(isLong ? preview + "…\nТекст длинный — откройте NEXA, чтобы скопировать целиком" : text))
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -63,7 +78,8 @@ public class NexaClipReceiver extends BroadcastReceiver {
             .setAutoCancel(true)
             .setTimeoutAfter(left)
             .setContentIntent(openPi);
-        if (!isLong) {
+        if (copied) b.setSilent(true).setPriority(NotificationCompat.PRIORITY_LOW);
+        if (!isLong && !copied) {
             Intent copy = new Intent(ctx, NexaClipReceiver.class).setAction(ACTION_COPY)
                 .putExtra(EXTRA_TEXT, text).putExtra(EXTRA_NOTE, noteId);
             PendingIntent copyPi = PendingIntent.getBroadcast(ctx, noteId, copy, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

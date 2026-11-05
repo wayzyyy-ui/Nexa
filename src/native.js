@@ -834,6 +834,11 @@ export function onPushOpen(cb) {
    locateNativeSet(allow) — передать переключатель из Настроек (push обрабатывается без веб-части);
    locateNativeStatus() — { location, background, needsBackground } или null (не приложение / старый APK);
    locateOpenSettings() — страница разрешений NEXA в настройках Android («разрешать всегда») */
+// Общий буфер: класть ли пришедшее по push сразу в буфер телефона (NexaClipReceiver; старый APK — без этого)
+export async function clipAutoNativeSet(auto) {
+  if (!pushPlugin) return false;
+  try { await pushPlugin.setClipAuto({ auto: !!auto }); return true; } catch { return false; }
+}
 export async function locateNativeSet(allow) {
   if (!pushPlugin) return false;
   try { await pushPlugin.setLocate({ allow: !!allow }); return true; } catch { return false; }

@@ -56,6 +56,14 @@ public class NexaPushPlugin extends Plugin {
         call.resolve();
     }
 
+    /* Общий буфер: класть ли пришедшее сразу в буфер телефона (Настройки → «Общий буфер обмена» →
+       «Сразу в буфер этого устройства»). Push обрабатывается без веб-части — поэтому переключатель здесь */
+    @PluginMethod
+    public void setClipAuto(PluginCall call) {
+        NexaClipReceiver.prefs(getContext()).edit().putBoolean("auto", Boolean.TRUE.equals(call.getBoolean("auto", false))).apply();
+        call.resolve();
+    }
+
     // Что разрешено: место вообще и место в фоне («разрешать всегда»; до Android 10 — то же самое)
     @PluginMethod
     public void locateStatus(PluginCall call) {
