@@ -1,11 +1,11 @@
 {
-  "version": "0.18.8",
-  "notes": "- Обновление 0.18.8\n- Улучшилось: на компьютере разделы стоят по центру, заголовки — на одной линии, складка лежит фоном за карточками",
-  "pub_date": "2026-11-05T09:46:56.841Z",
+  "version": "0.19.0",
+  "notes": "- Обновление 0.19.0\n- Добавилось: подключение Google Календаря (Настройки → Приложения) — дела из него появляются в расписании, на Главной и у ассистента; менять их можно только в самом календаре\n- Улучшилось: без сети ассистент, чужие устройства и погода становятся серыми, в поле ассистента подсказка «Нет сети — работают только команды»\n- Улучшилось: иконки нижней панели на телефоне стали меньше\n- Починилось: на айфоне не нажималась кнопка «Отправить» после выбора файла в ассистенте; убрано приближение экрана при нажатии на поле; шторки помещаются на экран; большие фото HEIC прикладываются\n- Убрали гостевой режим: войти в NEXA нужно по почте, QR или через Яндекс ID",
+  "pub_date": "2026-11-06T12:44:58.852Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTY1ay9iTkNCUjRKeGdLd216K0N2TFh5ZEtBSmUxR2Z3NHlkZ2ZnVWtKd0VnbHB6YWxYM09yOHg2d0doWkk4bHVoVTE1K2tTazdlL3pTU0M4aDQ5RUFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzODcyMDE2CWZpbGU6TkVYQV8wLjE4LjhfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTguOAowL25CMThXM21HbHEyRlorWkZJWnpZeVlDN2NwYk9xdkRsQXFidFdsTzNNR2tWNHc2SmpIZDR0d1BTVTdyTFpUalJ6M0Q1LzB6amVZYzVkUHhTaC9BUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.18.8"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXdLVmt1S25PSkVmUGFReU5TOEVlOEw1ZEdnTHZ6cURNVVBEeE5YaDRETlFxcG5iYWpDU3RkM20vZkYwMFMrYW81K3ZzQndDOEZETklNYlI3cEdWTFFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTY5MDk4CWZpbGU6TkVYQV8wLjE5LjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuMAprTGdIT2EvdGEyWDU4NmM0OHE1RE1KbStSSXZNOHZGNnNpd3pVVElENVI2MGlaWFRCVzRja2ZiY09qd3FMZm95aDlLRWh5RThVR3VObndlRENsU2tEdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.0"
     }
   }
 }
