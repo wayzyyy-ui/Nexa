@@ -11,7 +11,7 @@
 // Таблицы без правил — доступ только у сервера (ключ service role). Новая такая таблица — дописать сюда сознательно
 export const SERVER_ONLY = new Set([
   "qr_logins", "api_rate_limits", "locate_requests", "mini_phrases", "web_push_subs", "web_push_state",
-  "auth_logins", "auth_identities", "error_reports",
+  "auth_logins", "auth_identities", "error_reports", "google_calendar", "google_calendar_states",
 ]);
 // Функции, которые сознательно можно вызывать без входа (пока таких нет)
 export const ANON_FUNCTIONS = new Set([]);

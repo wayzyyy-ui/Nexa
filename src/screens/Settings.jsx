@@ -16,6 +16,7 @@ import { NOTE_CATS } from "../lib/notes.js";
 import { VERSION } from "../version.js";
 import { InstallSettings } from "../ui/install.jsx";
 import { DesktopSettings } from "../ui/desktop.jsx";
+import { GoogleCalendarSettings } from "../ui/gcal.jsx";
 import { WebPushRow } from "../ui/webpush.jsx";
 import { Avatar, ProfileSettings } from "../ui/profile.jsx";
 import { useExpUi, setExpUi } from "./home/widgets.jsx";
@@ -305,7 +306,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
       case "notes": return noteBlock;
       case "assistant": return <>{memoryBlock}{miniBlock}<AssistantInputSettings /></>;
       case "device": return <><ThisDeviceSettings sys={sys} />{flowBlock}{widgetBlock}</>;
-      case "apps": return <>{updateBlock}<DesktopSettings /><InstallSettings /></>;
+      case "apps": return <>{updateBlock}<GoogleCalendarSettings user={user} onLogin={onLogin} /><DesktopSettings /><InstallSettings /></>;
       case "account": return <>{user && <ProfileSettings user={user} />}<AccountSettings user={user} onLogin={onLogin} onDeleteData={onDeleteData} onApproveLogin={onApproveLogin} /></>;
       default: return null;
     }

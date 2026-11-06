@@ -32,7 +32,7 @@ export function nextScheduleItem(list, now = new Date()) {
   const today = dayKey(now);
   const hm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const ahead = list.map((it) => ({ ...it, date: it.date || today }))
-    .filter((it) => it.date > today || (it.date === today && (it.time || "") >= hm));
+    .filter((it) => !it.allDay && (it.date > today || (it.date === today && (it.time || "") >= hm)));
   return sortSchedule(ahead)[0] || null;
 }
 

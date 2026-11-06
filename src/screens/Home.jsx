@@ -229,7 +229,7 @@ export function LinkPulse({ p, onDone }) {
 export function DeviceRow({ d, received, onOpen }) {
   return (
     <div style={{ position: "relative" }}>
-      <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-row" data-online={d.online || d.isSelf ? "1" : "0"} onClick={() => onOpen(d.id)}
+      <button type="button" data-link-id={d.id} className="nx-row-btn nx-dev-row" data-online={d.online || d.isSelf ? "1" : "0"} data-self={d.isSelf ? "" : undefined} onClick={() => onOpen(d.id)}
         style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
         <span className="nx-dev-row-icon" aria-hidden="true">{deviceArt(d, 34)}</span>
         <span style={{ flex: 1, minWidth: 0 }}>
@@ -454,7 +454,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                 const on = d.online || d.isSelf;
                 const art = exp && device3d(d);
                 return (
-                  <button type="button" data-link-id={d.id} className={`nx-row-btn nx-dev-pill${art ? " is-3d" : ""}`} data-online={on ? "1" : "0"}
+                  <button type="button" data-link-id={d.id} className={`nx-row-btn nx-dev-pill${art ? " is-3d" : ""}`} data-online={on ? "1" : "0"} data-self={d.isSelf ? "" : undefined}
                     onClick={() => onOpenDevice(d.id)} style={{ ...btnReset, width: "100%", minWidth: 0, textAlign: "left", color: C.text }}>
                     <span className="nx-dev-pill-icon" aria-hidden="true">{art || deviceArt(d, 28)}</span>
                     <span style={{ flex: 1, minWidth: 0 }}>

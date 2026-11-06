@@ -13,7 +13,6 @@ import { forgetE2eKey } from "./e2eKey.js";
    Вход по коду из письма, без паролей. Клиент — src/lib/supabase.js,
    разрешённые почты — src/lib/allowedEmailDomains.js.
    Пока аккаунт ни к чему не привязан: устройства и чаты живут в браузере, как раньше. */
-export const GUEST_KEY = "nexa-guest";   // "1" — выбрали «Продолжить без аккаунта»
 
 export const CHATS_KEY = "nexa-chats";   // диалоги ассистента (у аккаунта — nexa-chats@id)
 
@@ -46,9 +45,7 @@ export const OTP_LIFETIME_MS = 60 * 60 * 1000; // сколько живёт ко
 
 export const CODE_MIN = 6, CODE_MAX = 8; // длина кода из письма
 
-export const readGuest = () => { try { return localStorage.getItem(GUEST_KEY) === "1"; } catch { return false; } };
 
-export const saveGuest = (on) => { try { on ? localStorage.setItem(GUEST_KEY, "1") : localStorage.removeItem(GUEST_KEY); } catch {} };
 
 /* Кто вошёл. Supabase сам хранит сессию и сам сообщает о входе и выходе
    (onAuthStateChange; первое событие приходит сразу — сессия из прошлого раза).

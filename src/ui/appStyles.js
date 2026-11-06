@@ -1881,7 +1881,10 @@ export const APP_CSS = `
            и переключателей невидимая зона нажатия растёт до ~44px (--tap).
            Сама кнопка и раскладка не меняются — ::after выходит за края */
         @media (pointer: coarse) {
-          .nx-icon-btn:not([style*="position"]), .nx-toggle:not([style*="position"]) { position: relative; }
+          /* :where — нулевой вес: любое своё правило о положении сильнее. НЕ проверять текст атрибута style:
+             Safari разворачивает background: none в background-position, и старое условие :not([style*="position"])
+             выключало это правило на айфоне — зона ::after растягивалась на весь блок и накрывала соседние кнопки */
+          :where(.nx-icon-btn, .nx-toggle) { position: relative; }
           .nx-icon-btn::after, .nx-toggle::after { content: ""; position: absolute; inset: -5px; }
           .nx-toggle::after { inset: -10px -2px; }
           /* Полноэкранное фото: на сенсорном экране листают свайпом. Стрелки у краёв
@@ -2020,6 +2023,10 @@ export const APP_CSS = `
         .nx-link-grid > * { min-width: 0; }
         /* Строка синхронизации аккаунта: на компьютере — внизу слева, у боковой панели */
         .nx-sync-status { left: calc(var(--nav-w) + 20px); bottom: 20px; }
+        /* Нет сети или автономный режим (класс ставит NexaApp): серым становится то, что без интернета не работает —
+           ассистент, другие устройства, подключение нового, погода. Заметки, расписание и файлы на устройстве остаются обычными.
+           Нажатия не запрещаем: внутри видно сохранённое и написана причина */
+        html.nx-offline :is(.nx-ai-pill, .nx-dev-pill:not([data-self]), .nx-dev-row:not([data-self]), .nx-weather, .nx-hw-main, .nx-tabbar-pill button[aria-label="Ассистент"], .nx-side-item[aria-label="Ассистент"]) { filter: grayscale(1); opacity: 0.5; }
         /* Боковое меню (2026-11-03, по образцу ChatGPT): знак и NEXA, группа «Разделы» — строки «значок + подпись»,
            внизу «Настройки». Ширина — --nav-w (232 px, свёрнутое — 72 px); к ней привязаны фон, ассистент,
            верхняя строка. Подложка выбранного раздела одна и переезжает (Sidebar в navigation.jsx) */
@@ -2407,7 +2414,8 @@ export const APP_CSS = `
           /* Окно просмотра файла на телефоне — шторка снизу */
           .nx-viewer { align-items: flex-end !important; padding: 0 !important; }
           /* Полоска-«ручка» сверху шторки: подсказка, что её можно смахнуть вниз (useSheetSwipe) */
-          .nx-viewer > [role="dialog"] { position: relative; }
+          /* Высота — по видимой области (dvh): у Safari 100vh считается без его панели, и низ окна уходил под неё */
+          .nx-viewer > [role="dialog"] { position: relative; max-height: calc(100dvh - var(--sat) - 12px) !important; }
           /* Низ шторки — над системными кнопками Android («Назад», «Домой»…) и полоской жестов:
              раньше у окон «Рядом», Flow, подключения и др. последняя строка уходила под кнопки */
           .nx-viewer > [role="dialog"]:not(.nx-viewer-panel) { padding-bottom: calc(20px + var(--sab)) !important; }

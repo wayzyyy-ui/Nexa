@@ -17,7 +17,7 @@ import { fileBytes, plural } from "../../lib/format.js";
 import { TAB_REPLIES, TAB_TITLES, NAV_DELAY, buildTodaySummary, buildDevicesSummary, ASSISTANT_HELP, parseCommand } from "../../lib/commands.js";
 import { parseMemoryCommand, pickMemory, findMemoryToForget, MEMORY_REFUSE } from "../../lib/memory.js";
 import { miniCommand, miniDecide, warmMini } from "../../lib/mini/index.js";
-import { useMediaQuery } from "../../lib/hooks.js";
+import { useMediaQuery, useOnline } from "../../lib/hooks.js";
 import { useVoiceInput } from "../../lib/voice.js";
 import { enterAction, useEnterSends } from "../../lib/composer.js";
 import { stopSpeaking, useVoiceOutput } from "../../lib/voiceOutput.js";
@@ -79,6 +79,8 @@ function warmChatServer() {
   fetch(`${API_CHAT_URL}?warm=1`, { method: "GET", mode: "no-cors", cache: "no-store" }).catch(() => {});
 }
 
+const ATTACH_PREP_MS = 45000; // столько ждём подготовку файла (большое фото на медленном телефоне — несколько секунд)
+
 export function ScreenAssistant({ initialChatId, openRequest, noteRequest, onNoteRequestDone, onOpenNote, onOpenNotes, onCurrentChat, onContinueChat, memory = [], memoryOn = true, memoryApi, chats, setChats, onToast, setTab, devices = [], onAddDevice, onUploadFiles, account, sync, files = [], uid = null, onAddFiles, miniCollect = null }) {
   const greetings = [
   "Что сегодня в повестке дня?",
@@ -102,6 +104,7 @@ useEffect(() => {
     && (!initialChatId || initialChatId === draftKeep.chatId)
     && (!draftKeep.chatId || chats.some((c) => c.id === draftKeep.chatId));
   const [currentChatId, setCurrentChatId] = useState(initialChatId || (keptDraft ? draftKeep.chatId : null));
+  const online = useOnline();
   const [input, setInput] = useState(() => (keptDraft ? draftKeep.input : ''));
 
   /* ── Вложение к вопросу (src/lib/attach.js) ──
@@ -124,7 +127,14 @@ useEffect(() => {
     const ctl = new AbortController(); attCtl.current = ctl;
     const key = `${src.name}|${src.size}|${Date.now()}`;
     setAtt({ key, name: src.name, size: src.size, status: "preparing", ...extra });
+    // Подготовка не должна висеть вечно: иначе «Отправить» остаётся серой без объяснений
+    const stuck = setTimeout(() => {
+      if (attCtl.current !== ctl) return;
+      ctl.abort();
+      setAtt((a) => (a?.key === key && a.status === "preparing" ? { ...a, status: "error", error: "Файл готовится слишком долго — попробуйте файл поменьше" } : a));
+    }, ATTACH_PREP_MS);
     prepareAttachment(src, ctl.signal)
+      .finally(() => clearTimeout(stuck))
       .then((payload) => { if (attCtl.current === ctl) setAtt((a) => (a?.key === key ? { ...a, status: "ready", payload } : a)); })
       .catch((e) => {
         if (e?.name === "AbortError" || attCtl.current !== ctl) return;
@@ -900,7 +910,7 @@ useEffect(() => {
           enterKeyHint={enterSends ? "send" : "enter"}
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
-          placeholder="Написать сообщение..."
+          placeholder={online ? "Написать сообщение..." : "Нет сети — работают только команды"}
           className="ng-input-field"
           autoComplete="off"
           autoCorrect="off"

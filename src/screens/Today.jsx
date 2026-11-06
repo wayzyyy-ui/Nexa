@@ -162,7 +162,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
   // Живое расписание: «сейчас» обновляется сам (раз в 15 секунд) — только для сегодня
   const clock = useClock();
   const nowMin = isToday ? clock.getHours() * 60 + clock.getMinutes() : -1;
-  const nextIdx = isToday ? schedule.findIndex((it) => toMinutes(it.time) >= nowMin) : -1; // -1 — всё прошло / не сегодня
+  const nextIdx = isToday ? schedule.findIndex((it) => !it.allDay && toMinutes(it.time) >= nowMin) : -1; // -1 — всё прошло / не сегодня
   const next = nextIdx >= 0 ? schedule[nextIdx] : null;
   const cursorAt = !isToday ? -1 : nextIdx >= 0 ? nextIdx : schedule.length; // курсор «сейчас» — перед ближайшим делом
   const [adding, setAdding] = useState(false);
@@ -298,7 +298,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
           <div className="nx-sched-list nx-stagger" style={{ position: "relative", "--dot-x": "12px" }}>
             <div className="nx-sched-line" style={{ position: "absolute", left: "var(--dot-x)", top: 8, bottom: -10, width: 1, background: C.muted }} />
             {schedule.flatMap((it, i) => {
-              const past = i < cursorAt;
+              const past = i < cursorAt && !it.allDay; // дело на весь день не «прошло» с утра
               const isNext = i === nextIdx;
               // Правка: на месте строки — та же форма, заполненная этим делом
               if (editing === `${it.date}|${it.time}|${it.title}`) {
@@ -322,7 +322,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
                   border: `1.5px solid ${isNext ? C.mint : C.text}`,
                   background: isNext ? C.mint : past ? C.muted : C.bg,
                 }} />
-                <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6, color: isNext ? C.mint : C.text }}>{it.time}</div>
+                <div className="nx-sched-time" style={{ gridArea: "time", fontSize: 14, fontWeight: 500, marginBottom: 6, color: isNext ? C.mint : C.text }}>{it.allDay ? "Весь день" : it.time}</div>
                 <div className="nx-sched-box" style={{
                   gridArea: "box", borderRadius: 18, padding: "9px 10px 9px 16px",
                   border: `1px solid ${isNext ? `color-mix(in srgb, ${C.mint} 70%, transparent)` : C.borderStrong}`,
@@ -336,7 +336,8 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {isNext && <span style={{ fontSize: 11, color: C.mint, letterSpacing: "0.04em" }}>скоро</span>}
-                    <button type="button" className="nx-icon-btn nx-sched-edit" onClick={() => { setAdding(false); setEditing(`${it.date}|${it.time}|${it.title}`); }} aria-label={`Изменить «${it.title}»`} title="Изменить" style={{
+                    {it.external && <span className="nx-sched-ext" title="Менять это дело можно в самом календаре" style={{ fontSize: 11, color: C.muted, padding: "0 6px" }}>Google</span>}
+                    {!it.external && <><button type="button" className="nx-icon-btn nx-sched-edit" onClick={() => { setAdding(false); setEditing(`${it.date}|${it.time}|${it.title}`); }} aria-label={`Изменить «${it.title}»`} title="Изменить" style={{
                       ...btnReset, width: 30, height: 30, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {Icon.edit({ c: C.muted, s: 15 })}
@@ -345,7 +346,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
                       ...btnReset, width: 30, height: 30, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {Icon.trash({ c: C.muted, s: 15 })}
-                    </button>
+                    </button></>}
                   </div>
                 </div>
               </div>

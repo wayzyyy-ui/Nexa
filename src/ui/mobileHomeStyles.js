@@ -109,8 +109,8 @@ export const MOBILE_HOME_CSS = `
   .ng-mobile-tabbar { padding: 0 20px calc(var(--sab) + 18px) !important; }
   .nx-tabbar-pill.nx-glass { --g-alpha: 0.65; --g-blur: 12px; padding: 0 6px !important; }
   .nx-tabbar-pill > div { height: 60px !important; }
-  .nx-tabbar-pill button > svg { width: 28px; height: 28px; }
-  .nx-tabbar-pill button[aria-label="Главная"] > svg { width: 32px; height: 32px; }
+  .nx-tabbar-pill button > svg { width: 24px; height: 24px; }
+  .nx-tabbar-pill button[aria-label="Главная"] > svg { width: 27px; height: 27px; }
   /* Звёздочка ассистента нарисована выше центра своей рамки — опускаем, чтобы стояла в ряд с остальными */
   .nx-tabbar-pill button[aria-label="Ассистент"] > svg { transform: translateY(6%); }
   /* Линии той же толщины на экране, что у прежних значков 26 px: с размером они «жирнели» */

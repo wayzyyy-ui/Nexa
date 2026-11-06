@@ -82,11 +82,11 @@ async function yandexUser(code, host) {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Страница во внешнем браузере (приложения): без скриптов, обе темы
-export function resultPage({ ok, text, client }) {
+export function resultPage({ ok, text, client, note }) {
   const title = ok ? 'Готово' : 'Не получилось';
   const back = client === 'desktop'
     ? '<a class="b" href="nexa://tab/home">Вернуться в NEXA</a>'
-    : '<p class="m">Вернитесь в приложение NEXA, вход завершится сам.</p>';
+    : `<p class="m">${esc(note || 'Вернитесь в приложение NEXA, вход завершится сам.')}</p>`;
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEXA · ${title}</title><style>
 :root{--bg:#01090F;--t:#EAF2F7;--m:#8FA3B3;--a:#5CE1C6;--r:#FF6B6B;color-scheme:dark light}
 @media (prefers-color-scheme: light){:root{--bg:#F4F7FA;--t:#0B1A24;--m:#516574;--a:#0E9F84;--r:#D93838}}

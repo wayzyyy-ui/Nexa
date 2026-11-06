@@ -11,6 +11,12 @@ import { CrashBoundary } from './ui/crash.jsx'
 installCrashReports()
 // Приложение для ПК: чужие ссылки — во внешний браузер (на сайте и в Android ничего не делает)
 installDesktopLinks()
+// Айфон приближает страницу, когда шрифт поля меньше 16 px. maximum-scale на iOS отключает только это:
+// пальцами приближать по-прежнему можно. На Android ставить нельзя — там он запретил бы приближение совсем
+if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+  const vp = document.querySelector('meta[name="viewport"]')
+  if (vp) vp.content += ", maximum-scale=1"
+}
 // Облегчённый режим (слабый телефон, экономия заряда) — до первого кадра
 initLite()
 

@@ -132,16 +132,15 @@ function decodeText(buf) {
 /* ─── Картинки: проверяем, что открываются; большие и «не те» форматы — в JPEG ─── */
 async function prepareImage(buf, ext, name, check) {
   const mime = IMAGE_MIME[ext];
-  // HEIC браузер обычно не рисует — отправляем как есть (Gemini его понимает)
-  if (ext === "heic" || ext === "heif") {
-    if (buf.length > INLINE_MAX) fail(`Картинка HEIC больше ${mb(INLINE_MAX)} — сохраните её как JPG`);
-    return { kind: "image", name, mime, data: toBase64(buf) };
-  }
+  const heic = ext === "heic" || ext === "heif";
+  // Небольшой HEIC отправляем как есть (Gemini его понимает)
+  if (heic && buf.length <= INLINE_MAX) return { kind: "image", name, mime, data: toBase64(buf) };
   let bmp;
+  // Большой HEIC — обычный снимок с айфона: Safari его открывает, дальше он уменьшается в JPEG, как и все
   try { bmp = await createImageBitmap(new Blob([buf], { type: mime || `image/${ext}` })); }
-  catch { fail("Картинка повреждена — не получилось её открыть"); }
+  catch { fail(heic ? `Картинка HEIC больше ${mb(INLINE_MAX)} — сохраните её как JPG` : "Картинка повреждена — не получилось её открыть"); }
   check();
-  if (mime && buf.length <= INLINE_MAX && Math.max(bmp.width, bmp.height) <= 3072) { bmp.close?.(); return { kind: "image", name, mime, data: toBase64(buf) }; }
+  if (mime && !heic && buf.length <= INLINE_MAX && Math.max(bmp.width, bmp.height) <= 3072) { bmp.close?.(); return { kind: "image", name, mime, data: toBase64(buf) }; }
   // Уменьшаем до 2048 точек по длинной стороне и сохраняем в JPEG
   const k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas");

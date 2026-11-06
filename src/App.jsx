@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense, startTransition } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, startTransition } from "react";
 // flushSync — смена раздела внутри View Transition (navTransition): экран обновляется сразу
 import { flushSync } from "react-dom";
 // Всё, что нужно только внутри Android-приложения (на сайте ничего не делает)
@@ -19,6 +19,8 @@ import { useDeviceLink, safeUrl, PAIR_CODE_RE, cleanSys, isHw } from "./lib/real
 import { useReturnToApp } from "./lib/lifecycle.js";
 import { useOta, otaStart, otaCheck, otaApplyNow } from "./lib/ota.js";
 import { useExtAuth, resumeExtAuth } from "./lib/extAuth.js";
+import { useGcal, useGcalSync, gcalDisconnect } from "./lib/gcal.js";
+import { mergeSchedule } from "./lib/gcalPlan.js";
 import { EXT_NAME } from "./lib/extAuthPlan.js";
 import { bootRoute, navigate, onRoute, titleOf, canGoBack, goBack, layerCount, pressEscape } from "./lib/router.js";
 // Содержимое файлов: облако (Supabase Storage) у вошедшего, IndexedDB у гостя
@@ -31,7 +33,7 @@ import { readManualCity, TODAY } from "./lib/weather.js";
 import { plural, toMb, fileBytes, formatSize, mmss, hhmm } from "./lib/format.js";
 import { SCHEDULE_KEY, dayKey, dayFromKey, sortSchedule, itemsOn, nextScheduleItem, scheduleDayLabel, SCHEDULE_MIGRATED_KEY, scheduleMigrated, loadSchedule } from "./lib/schedule.js";
 import { updResume } from "./lib/updates.js";
-import { CHATS_KEY, loadChats, chatMigration, readGuest, saveGuest, useAuth, takeManualSignOut, clearLocalAccountData } from "./lib/auth.js";
+import { CHATS_KEY, loadChats, chatMigration, useAuth, takeManualSignOut, clearLocalAccountData } from "./lib/auth.js";
 import { sessionIdOf, securityKey, loadSecurity, SECURITY_MAX, clientLabel, checkOwnSession, revokeSession, signOutOthers } from "./lib/security.js";
 import { needsSignal } from "./lib/devicePush.js";
 import { deviceType, uniqueDeviceName, DEVICES_KEY, loadDeviceStore, devicesToList, devicesFromList, deviceStatus, mergeSamePhone, peerLabel } from "./lib/devices.js";
@@ -405,11 +407,14 @@ export default function NexaApp() {
     return next.map((it) => (old.get(it.id) === it ? it : { ...it, updatedAt: Date.now(), createdAt: it.createdAt || Date.now() }));
   });
   // Ассистент, превью часов и сводка «что у меня сегодня» видят только сегодняшние дела
-  TODAY.schedule = itemsOn(schedule, dayKey());
+  // Дела из Google Календаря — только для показа: в schedule, облако и копию не попадают
+  const gcalItems = useGcal().items;
+  const scheduleView = useMemo(() => mergeSchedule(schedule, gcalItems), [schedule, gcalItems]);
+  TODAY.schedule = itemsOn(scheduleView, dayKey());
   /* Виджеты рабочего стола (только приложение): то же расписание — при запуске
      и при каждом изменении; при уходе в фон — ещё раз и перерисовать виджеты.
      Город для виджета погоды — выбранный в NEXA (не выбран — Казань) */
-  useEffect(() => { widgetsSetSchedule(schedule); }, [schedule]);
+  useEffect(() => { widgetsSetSchedule(scheduleView.filter((it) => !it.allDay)); }, [scheduleView]);
   useEffect(() => {
     widgetsSetCity(readManualCity());
     const away = () => { if (document.visibilityState === "hidden") widgetsFlush(); };
@@ -726,6 +731,11 @@ export default function NexaApp() {
   const syncNextAt = uid ? Math.min(Infinity, ...Object.values(syncState).map((st) => st?.nextAt || Infinity)) : Infinity;
   const syncGaveUp = !!uid && Object.values(syncState).some((st) => st?.gaveUp);
   const online = useOnline();
+  // Нет сети или автономный режим — то, что без интернета не работает, становится серым (appStyles.js)
+  useEffect(() => { document.documentElement.classList.toggle("nx-offline", !online); }, [online]);
+  useGcalSync(uid, online, (r) => showToast(r.ok
+    ? { title: "Google Календарь подключён", text: "Дела появятся в расписании", kind: "schedule" }
+    : { title: "Календарь не подключён", text: r.text, kind: "error" }));
   // Сбор непонятых фраз для NEXA mini-1 — только по согласию (src/lib/mini/collect.js)
   const miniCollect = useMiniCollect({ online });
   // Окно «Помочь улучшить?» — один раз, на Главной, когда больше ничего не перекрывает экран
@@ -1749,6 +1759,7 @@ export default function NexaApp() {
   const deleteMyData = async () => {
     if (!uid) return null;
     try {
+      await gcalDisconnect(); // отозвать доступ к календарю; не вышло — ключ сотрётся вместе с аккаунтом
       await deleteAllMine(uid);
     } catch (e) {
       return navigator.onLine === false || /fetch|network/i.test(String(e?.message))
@@ -2052,12 +2063,11 @@ export default function NexaApp() {
   }, [swipeDir, tab]);
   useEffect(() => onWidgetTab((t) => goTabRef.current(t)), []);
 
-  // Аккаунт: кто вошёл (Supabase) — см. начало NexaApp. Гостевой режим и окно входа
-  const [guest, setGuest] = useState(readGuest);
+  // Аккаунт: кто вошёл (Supabase) — см. начало NexaApp. Окно входа
   const [authOpen, setAuthOpen] = useState(false);
-  // Экран входа при первом запуске: аккаунты доступны, Supabase ответил,
-  // никто не вошёл и «без аккаунта» ещё не выбирали
-  const showGate = authAvailable && auth.ready && !auth.user && !guest;
+  // Экран входа: аккаунты доступны, Supabase ответил, никто не вошёл.
+  // Гостевого режима нет (решение автора 2026-11-06): без входа в NEXA не попасть
+  const showGate = authAvailable && auth.ready && !auth.user;
   /* Виджет «Заметки» (Android): одна закреплённая заметка этого аккаунта (widgetNote).
      Пока не знаем, кто вошёл, — ничего не шлём (иначе на миг ушли бы заметки гостя);
      вышли из аккаунта — виджет очищается. Нажатия на виджет открывают заметку / новую / список */
@@ -2078,10 +2088,10 @@ export default function NexaApp() {
     if (!auth.ready) return;
     const was = prevUser.current, now = auth.user;
     if (now && !was) {
-      saveGuest(false); setGuest(false); setAuthOpen(false);
+      setAuthOpen(false);
       if (authSettled.current) showToast({ title: "Вы вошли", text: now.email, kind: "success" });
     } else if (!now && was) {
-      saveGuest(false); setGuest(false); setAuthOpen(false);
+      setAuthOpen(false);
       showToast({ title: "Вы вышли из аккаунта", text: "Данные аккаунта остались в облаке — войдите снова, чтобы их увидеть", kind: "info" });
     }
     prevUser.current = now;
@@ -2817,7 +2827,7 @@ export default function NexaApp() {
       title, placeholder: "Найти устройство…", empty: "Устройства больше не в сети",
       items: live.map((d) => ({ id: d.id, title: d.name, sub: deviceStatus(d), icon: d.icon, run: () => run(d) })),
     });
-    const next = nextScheduleItem(schedule);
+    const next = nextScheduleItem(scheduleView);
     const cloudFiles = sortByRecent(files.filter((f) => f.uploaded && f.path));
     const syncText = !online ? `Нет сети${syncPending ? ` · ждут отправки: ${syncPending}` : ""}`
       : syncLoading ? "Синхронизация: загружаем данные…" : syncError ? `Синхронизация: ${syncError}`
@@ -3063,7 +3073,7 @@ export default function NexaApp() {
     <>
         {t === "home" && (
           <ScreenHome
-            schedule={schedule}
+            schedule={scheduleView}
             onNotes={() => openNotes()}
             files={files}
             onOpenCategory={openCategory}
@@ -3083,7 +3093,7 @@ export default function NexaApp() {
             onFind={findDevice}
           />
         )}
-        {t === "today" && <ScreenToday schedule={schedule} onAddItem={addScheduleItem} onUpdateItem={updateScheduleItem} onRemoveItem={removeScheduleItem} onNotes={() => openNotes()} notesCount={userNotes.filter((n) => !n.archived).length} />}
+        {t === "today" && <ScreenToday schedule={scheduleView} onAddItem={addScheduleItem} onUpdateItem={updateScheduleItem} onRemoveItem={removeScheduleItem} onNotes={() => openNotes()} notesCount={userNotes.filter((n) => !n.archived).length} />}
         {t === "media" && <ScreenMedia files={files} uid={uid} onOpenFile={setOpenFile} onOpenCategory={openCategory} onTransfer={openTransfer} onAddFiles={(list) => addFiles(list, null)} onToast={showToast} />}
         {t === "files" && (
           <ScreenFiles
@@ -3221,7 +3231,7 @@ export default function NexaApp() {
       )}
       {syncOpen && <SyncDetails online={online} uid={uid} syncState={syncState} uploads={uploads} trash={uid ? trashCount(uid) : 0}
         onRetry={retrySync} onUploadAction={uploadAction} onLogin={() => { setSyncOpen(false); setAuthOpen(true); }} onClose={() => setSyncOpen(false)} />}
-      {/* Первый запуск: экран входа (гостевого входа на нём нет — решение автора) */}
+      {/* Экран входа: без аккаунта в NEXA не попасть */}
       {showGate && <AuthGate onAbout={() => setGateAbout(true)} />}
       {showGate && gateAbout && <GateAbout onBack={() => setGateAbout(false)} installed={installedVersion} />}
       {authOpen && !auth.user && <AuthModal onClose={() => { setAuthOpen(false); setPendingPair(null); setPendingLogin(null); }}
