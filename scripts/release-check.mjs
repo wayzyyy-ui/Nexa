@@ -7,6 +7,9 @@
       в пакетах для сборки — только предупреждение (в приложение они не попадают).
    4) Правила базы на настоящем Postgres (supabase/tests, локально, к Supabase не подключается) — все сразу.
    5) ПК (--desktop): cargo audit по desktop/src-tauri/Cargo.lock, если установлен.
+   6) Облачная база (scripts/db-check.mjs): всё ли из supabase/*.sql вставлено в Supabase — только если
+      в окружении есть SUPABASE_SERVICE_ROLE_KEY; не хватает — предупреждение (код без новой таблицы
+      работает по-старому, но новая функция у людей молча не заработает).
 
    Флаги (только осознанно, выпуск печатает предупреждение): --skip-audit (нет интернета), --skip-db. */
 import { spawn, spawnSync } from "node:child_process";
@@ -103,6 +106,15 @@ if (desktop) {
     if (r.status !== 0) fails.push(`cargo audit нашёл уязвимости\n${tail(r.stdout, 20)}`);
     else console.log("  ✔ уязвимостей нет");
   }
+}
+
+// 6) Облачная база — вставлены ли все SQL-файлы (нужен ключ в окружении; без него — напоминание)
+step("Облачная база Supabase (npm run db:check)");
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) warns.push("облачная база не проверена: нет SUPABASE_SERVICE_ROLE_KEY в окружении (проверка — npm run db:check)");
+else {
+  const r = sh("node scripts/db-check.mjs --quiet");
+  if (r.status === 0) console.log("  ✔ всё из supabase/*.sql на месте");
+  else warns.push(`облачная база: ${tail(r.stdout || r.stderr, 30)}`);
 }
 
 for (const w of warns) console.log(`\n⚠ ${w}`);

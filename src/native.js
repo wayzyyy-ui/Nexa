@@ -213,10 +213,17 @@ export function setSystemBarsTheme(theme) {
    иначе в светлой теме был бы скачок */
 const SPLASH_BG = "#01090F"; // как windowSplashScreenBackground в styles.xml
 const SPLASH_BG_2 = "#031B2C"; // --home-bg-b тёмной темы: тот же градиент, что у Главной
-const BOOT_INK = "#F2FAFF", BOOT_MINT = "#00FFDF";
+const BOOT_INK = "#F2FAFF";
+// Светлая тема (2026-11-11: фон заставки всегда был тёмным): фон переходит в светлый градиент Главной
+// (--home-bg-a / --home-bg-b светлой темы), знак и слово — цветом логотипа светлой темы (--logo)
+const LIGHT_BG = "#E9E9E9", LIGHT_BG_2 = "#C6E7FF", LIGHT_INK = "#05070D";
+// Тема — прямо из localStorage (theme.js импортирует этот файл, обратный импорт был бы по кругу)
+function bootLight() {
+  try { return localStorage.getItem("nexa-theme") === "light"; } catch { return false; }
+}
 const BOOT_FACETS = [
-  ["nx-boot-f1", "M735.977 854.646L617.779 491.514L322.477 780.644Z", 'fill="#F2FAFF" fill-opacity="0.17"'],
-  ["nx-boot-f2", "M722.457 237.212L798.145 743.09L322.197 555.698Z", 'fill="#F2FAFF" fill-opacity="0.39"'],
+  ["nx-boot-f1", "M735.977 854.646L617.779 491.514L322.477 780.644Z", 'fill="INK" fill-opacity="0.17"'],
+  ["nx-boot-f2", "M722.457 237.212L798.145 743.09L322.197 555.698Z", 'fill="INK" fill-opacity="0.39"'],
   ["nx-boot-f3", "M201.633 409.381L503.169 110.956L624.687 484.289L322.501 780.716Z", 'fill="url(#nx-boot-g)"'],
 ];
 // Когда что начинается (мс от готовности интерфейса): BOOT_OUT — заставка тает, BOOT_DONE — убрана
@@ -227,11 +234,21 @@ const BOOT_OUT = 1150, BOOT_OUT_REDUCED = 700, BOOT_FADE = 360;
 const BOOT_LAND = 720, BOOT_SWAP = 180;
 function mountBootLogo() {
   const ease = "cubic-bezier(0.22, 1, 0.36, 1)", soft = "cubic-bezier(0.4, 0, 0.2, 1)";
+  const light = bootLight();
+  // В приложении первый кадр совпадает с системной заставкой Android (она тёмная) — потом фон
+  // переходит в светлый; на сайте и ПК системной заставки нет — сразу светлый фон
+  const lightStart = light && !isNative;
+  const startBg = lightStart ? LIGHT_BG : SPLASH_BG;
+  const facetInk = lightStart ? LIGHT_INK : BOOT_INK; // грани первого кадра
+  const ink = light ? LIGHT_INK : BOOT_INK; // знак линиями и слово NEXA
+  const bg = light
+    ? `linear-gradient(135deg, ${LIGHT_BG} 0%, ${LIGHT_BG_2} 100%)`
+    : `linear-gradient(160deg, ${SPLASH_BG} 0%, ${SPLASH_BG} 45%, ${SPLASH_BG_2} 100%)`;
   const style = document.createElement("style");
   style.textContent = `
-    #nx-boot { position: fixed; inset: 0; z-index: 2147483000; background: ${SPLASH_BG}; pointer-events: none; overflow: hidden; }
+    #nx-boot { position: fixed; inset: 0; z-index: 2147483000; background: ${startBg}; pointer-events: none; overflow: hidden; }
     #nx-boot > * { position: absolute; }
-    .nx-boot-bg { inset: 0; opacity: 0; background: linear-gradient(160deg, ${SPLASH_BG} 0%, ${SPLASH_BG} 45%, ${SPLASH_BG_2} 100%); }
+    .nx-boot-bg { inset: 0; opacity: 0; background: ${bg}; }
     /* Системный логотип: та же точка и размер, что у заставки Android */
     .nx-boot-splash { left: 50%; top: 50%; width: 288px; height: 288px; margin: -144px 0 0 -144px; overflow: visible; }
     .nx-boot-splash path { will-change: transform, opacity; }
@@ -244,7 +261,7 @@ function mountBootLogo() {
     .nx-boot-word { left: 50%; top: 50%; width: min(78vw, 340px); transform: translate(-50%, calc(-50% + 14px)); opacity: 0; }
     .nx-boot-word svg { display: block; width: 100%; height: auto; }
     .nx-boot-made { left: 0; right: 0; bottom: calc(7vh + var(--sab, 0px)); display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: 0;
-      font: 400 12px/1 Manrope, system-ui, sans-serif; color: ${BOOT_INK}; }
+      font: 400 12px/1 Manrope, system-ui, sans-serif; color: ${ink}; }
     .nx-boot-made span { opacity: 0.45; }
     .nx-boot-made svg { display: block; height: 15px; width: auto; }
 
@@ -286,14 +303,14 @@ function mountBootLogo() {
   el.innerHTML = `<div class="nx-boot-bg"></div>
     <svg class="nx-boot-splash" viewBox="0 0 288 288" xmlns="http://www.w3.org/2000/svg">
       <defs><linearGradient id="nx-boot-g" x1="503.169" y1="110.956" x2="322.501" y2="780.716" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#F2FAFF" stop-opacity="0.54"/><stop offset="1" stop-color="#F2FAFF" stop-opacity="0.46"/>
+        <stop stop-color="${facetInk}" stop-opacity="0.54"/><stop offset="1" stop-color="${facetInk}" stop-opacity="0.46"/>
       </linearGradient></defs>
       <g transform="translate(57.65 60.59) scale(0.1727)">
-        ${BOOT_FACETS.map(([cls, d, fill]) => `<path class="${cls}" d="${d}" ${fill}/>`).join("")}
+        ${BOOT_FACETS.map(([cls, d, fill]) => `<path class="${cls}" d="${d}" ${fill.replace("INK", facetInk)}/>`).join("")}
       </g></svg>
     <div class="nx-boot-mark"><svg viewBox="0 0 46 45" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="${LOGO_MARK_D}" pathLength="1" stroke="${BOOT_INK}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-    <div class="nx-boot-word"><svg viewBox="0 0 149 25" fill="${BOOT_INK}" xmlns="http://www.w3.org/2000/svg">${rectsSvg(WORD_RECTS)}${wordPaths}</svg></div>`;
+      <path d="${LOGO_MARK_D}" pathLength="1" stroke="${ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="nx-boot-word"><svg viewBox="0 0 149 25" fill="${ink}" xmlns="http://www.w3.org/2000/svg">${rectsSvg(WORD_RECTS)}${wordPaths}</svg></div>`;
   // «Разработано mono.engineering» внизу заставки пока убрано (просьба автора 2026-10-28);
   // вернуть — снова добавить блок .nx-boot-made (MONO_PATHS, MONO_RECTS, MONO_DOT из brandArt.js)
   document.body.appendChild(el);

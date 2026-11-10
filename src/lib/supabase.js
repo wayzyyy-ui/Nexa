@@ -26,3 +26,14 @@ export const supabase = url && key ? createClient(url, key, { global: { fetch: s
 
 // Можно ли вообще входить в аккаунт
 export const authAvailable = !!supabase;
+
+/* Заголовок с ключом входа для своих серверных функций (ассистент — api/chat.js). Не вошли или
+   Supabase не настроен — пусто. getSession берёт сессию из хранилища и сам продлевает истёкшую */
+export async function authHeaders() {
+  if (!supabase) return {};
+  try {
+    const { data } = await supabase.auth.getSession();
+    const t = data?.session?.access_token;
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  } catch { return {}; }
+}

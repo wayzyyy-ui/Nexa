@@ -18,7 +18,7 @@
         },
         {
           "key": "Content-Security-Policy-Report-Only",
-          "value": "default-src 'self'; script-src 'self' 'sha256-9QlyeutqUB+8U7kdZMtI0qOteqiDAW2FHYoXRqOuDtk=' 'sha256-9sRT1daiE2FtJo1CeaGyizmq78y6QAKb7JwQTQH4XLc=' 'wasm-unsafe-eval' https://mc.yandex.ru https://mc.yandex.com https://api-maps.yandex.ru https://*.yandex.ru https://*.yandex.net https://yastatic.net; style-src 'self' 'unsafe-inline' https://*.yandex.ru https://*.yandex.net https://yastatic.net; img-src 'self' data: blob: https://*.supabase.co https://mc.yandex.ru https://mc.yandex.com https://*.yandex.ru https://*.yandex.net https://yastatic.net; font-src 'self' data: https://*.yandex.ru https://*.yandex.net https://yastatic.net; media-src 'self' blob: data: https://*.supabase.co; connect-src 'self' blob: data: https://nexa-link.ru https://*.supabase.co wss://*.supabase.co https://mc.yandex.ru https://mc.yandex.com https://*.yandex.ru https://*.yandex.net https://ipapi.co https://ipwho.is https://get.geojs.io https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://geocoding-api.open-meteo.com; worker-src 'self' blob:; frame-src 'self' blob: https://hcaptcha.com https://*.hcaptcha.com https://*.supabase.co https://mc.yandex.ru https://mc.yandex.com; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report"
+          "value": "default-src 'self'; script-src 'self' 'sha256-9QlyeutqUB+8U7kdZMtI0qOteqiDAW2FHYoXRqOuDtk=' 'wasm-unsafe-eval' https://api-maps.yandex.ru https://*.yandex.ru https://*.yandex.net https://yastatic.net; style-src 'self' 'unsafe-inline' https://*.yandex.ru https://*.yandex.net https://yastatic.net; img-src 'self' data: blob: https://*.supabase.co https://*.yandex.ru https://*.yandex.net https://yastatic.net; font-src 'self' data: https://*.yandex.ru https://*.yandex.net https://yastatic.net; media-src 'self' blob: data: https://*.supabase.co; connect-src 'self' blob: data: https://nexa-link.ru https://*.supabase.co wss://*.supabase.co https://*.yandex.ru https://*.yandex.net https://ipapi.co https://ipwho.is https://get.geojs.io https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://geocoding-api.open-meteo.com; worker-src 'self' blob:; frame-src 'self' blob: https://hcaptcha.com https://*.hcaptcha.com https://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report"
         },
         {
           "key": "X-Frame-Options",
@@ -146,6 +146,10 @@
     {
       "path": "/api/webpush?action=kick",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/keepalive",
+      "schedule": "0 3 * * *"
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { allowEach, clientKey } from './_lib/rate-limit.js';
+import { chatAllowed } from './_lib/user.js';
 
 // Защита от злоупотреблений: длина вопроса, размер истории и частота запросов
 const MESSAGE_MAX = 4000;        // символов в одном вопросе
@@ -127,7 +128,7 @@ function applyCors(req, res) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Max-Age', '86400'); // проверку можно запомнить на сутки
   }
 }
@@ -173,10 +174,12 @@ export default async function handler(req, res) {
   // Частота: не больше LIMIT_PER_MINUTE в минуту и LIMIT_PER_DAY в сутки с одного адреса,
   // с файлом — ещё LIMIT_FILES_PER_HOUR в час. Все правила — одним заходом (одновременно)
   const who = clientKey(req);
-  const [perMinute, perDay, perFiles = true] = await allowEach([
+  // Вход (когда включён CHAT_REQUIRE_AUTH, api/_lib/user.js) — проверяется вместе с лимитами, без лишнего ожидания
+  const [signedIn, [perMinute, perDay, perFiles = true]] = await Promise.all([chatAllowed(req), allowEach([
     [`chat:m:${who}`, LIMIT_PER_MINUTE, 60], [`chat:d:${who}`, LIMIT_PER_DAY, 86400],
     ...(hasAttachment ? [[`chat:f:${who}`, LIMIT_FILES_PER_HOUR, 3600]] : []),
-  ]);
+  ])]);
+  if (!signedIn) return res.status(401).json({ error: 'Войдите в аккаунт, чтобы спросить ассистента' });
   if (!perMinute || !perDay) {
     res.setHeader('Retry-After', '60');
     return res.status(429).json({ error: 'Слишком много вопросов подряд — подождите минуту' });
@@ -404,7 +407,8 @@ async function noteMode(req, res) {
 
   const who = clientKey(req);
   const lim = suggest ? NOTE_LIMITS.suggest : NOTE_LIMITS.task, kind = suggest ? 's' : 't';
-  const [perMinute, perDay] = await allowEach([[`note:${kind}:m:${who}`, lim.m, 60], [`note:${kind}:d:${who}`, lim.d, 86400]]);
+  const [signedIn, [perMinute, perDay]] = await Promise.all([chatAllowed(req), allowEach([[`note:${kind}:m:${who}`, lim.m, 60], [`note:${kind}:d:${who}`, lim.d, 86400]])]);
+  if (!signedIn) return res.status(401).json({ error: 'Войдите в аккаунт, чтобы пользоваться ИИ в заметках' });
   if (!perMinute || !perDay) {
     res.setHeader('Retry-After', '60');
     return res.status(429).json({ error: perMinute ? 'На сегодня лимит ИИ в заметках исчерпан' : 'Слишком часто — подождите минуту' });

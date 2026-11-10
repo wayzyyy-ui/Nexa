@@ -6,6 +6,7 @@ import { C, PHONE_MQ, readTheme, switchTheme, T } from "../../ui/theme.js";
 import { Icon } from "../../ui/icons.jsx";
 import { liveAbort, useLiveChatId, isPartial, live, setLiveAbort, liveSet, STREAM_FLUSH_MS } from "../../lib/live.js";
 import { btnReset } from "../../ui/base.jsx";
+import { authHeaders } from "../../lib/supabase.js";
 import { QuickPanel } from "../../ui/QuickPanel.jsx";
 import { AssistantSpectrum, AssistantAura, ReplyAura, REPLY_AURA_HOLD, REPLY_AURA_FADE } from "./visuals.jsx";
 import { ChatHistory, assistantSuggestions } from "./ChatHistory.jsx";
@@ -521,7 +522,8 @@ useEffect(() => {
       kick();
       const res = await fetch(API_CHAT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Ключ входа: сервер требует его, когда в Vercel включено CHAT_REQUIRE_AUTH (api/_lib/user.js)
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ message: text, history, ...(attachment ? { attachment } : {}), ...(memoryPick.length ? { memory: memoryPick } : {}) }),
         signal: ctl.signal,
       });

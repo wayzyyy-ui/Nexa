@@ -11,7 +11,7 @@ const cspOf = () => {
 };
 
 test("каждый встроенный скрипт index.html разрешён своим отпечатком в CSP", () => {
-  // Поменяли скрипт в index.html (Метрика, manifest) — пересчитайте отпечаток и впишите в vercel.json
+  // Поменяли скрипт в index.html (manifest) — пересчитайте отпечаток и впишите в vercel.json
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const csp = cspOf();
   const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g;

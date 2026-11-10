@@ -3,6 +3,7 @@
    Ключей на устройстве нет. Все запросы отменяются (AbortSignal) — устаревший ответ никогда не применяется.
    Чистые правила (когда показывать подсказку, куда вставить результат) — noteText.js, под тестами. */
 import { API_CHAT_URL } from "../native.js";
+import { authHeaders } from "./supabase.js";
 
 export const NOTE_AI_TASKS = [
   { id: "shorten", label: "Сократить", hint: "Короче, главные мысли остаются" },
@@ -24,7 +25,7 @@ const failText = (status, serverMsg) => {
 async function ask(body, signal) {
   let res;
   try {
-    res = await fetch(API_CHAT_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "note", ...body }), signal });
+    res = await fetch(API_CHAT_URL, { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeaders()) }, body: JSON.stringify({ mode: "note", ...body }), signal });
   } catch (e) {
     if (e?.name === "AbortError") throw e;
     throw Object.assign(new Error("net"), { userMessage: navigator.onLine === false ? "Нет связи — ИИ недоступен" : "Не удалось связаться с ИИ" });

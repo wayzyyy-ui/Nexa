@@ -1,7 +1,7 @@
 // Вход: почта и код, вход по QR, разрешение входа, экран первого запуска, «Аккаунт», «Удалить мои данные»
 import { useState, useRef, useEffect } from "react";
 import foldSvg from "../assets/fold.svg";
-import { isNative } from "../native.js";
+import { isNative, API_BASE } from "../native.js";
 import { App as CapApp } from "@capacitor/app";
 import { supabase, authAvailable } from "../lib/supabase.js";
 import { looksLikeEmail, isAllowedEmail, DOMAIN_NOT_ALLOWED_MESSAGE } from "../lib/allowedEmailDomains.js";
@@ -214,9 +214,15 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
                 {(/телефон/i.test(st.label || "") ? Icon.phone : Icon.laptop)({ c: C.text, s: 17 })}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{st.label || "Новое устройство"}</div>
+                {/* Название придумывает само устройство, которое просит вход, — ему нельзя верить на слово */}
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Называет себя «{st.label || "Новое устройство"}»</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Код {st.code}</div>
               </div>
+            </div>
+            {/* Так крадут аккаунты: присылают ссылку или код и просят «подтвердить» */}
+            <div role="note" style={{ marginTop: 12, padding: "10px 14px", borderRadius: 14, fontSize: 13, lineHeight: 1.45,
+              color: C.text, border: `1px solid color-mix(in srgb, ${C.red} 45%, transparent)`, background: `color-mix(in srgb, ${C.red} 8%, transparent)` }}>
+              Код или ссылку вам кто-то прислал? Нажмите «Отмена». Разрешение даёт этому устройству полный доступ к вашему аккаунту.
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button type="button" onClick={onClose} disabled={st.phase === "approving"} style={{ ...ghost, flex: 1 }}>Отмена</button>
@@ -482,6 +488,8 @@ export function AuthGate({ onAbout }) {
               </button>
             </div>
             {onAbout && <button type="button" className="nx-gate-about-btn" onClick={onAbout}>Что такое NEXA — о системе</button>}
+            {/* Политика — обычная страница сайта; в приложениях открывается во внешнем браузере */}
+            <a className="nx-gate-about-btn" href={`${API_BASE}/privacy.html`} target="_blank" rel="noopener noreferrer" style={{ marginTop: 0 }}>Политика конфиденциальности</a>
           </div>
         )}
       </div>
