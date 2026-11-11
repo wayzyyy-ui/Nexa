@@ -16,15 +16,15 @@ export function useHomeWeather() {
   const w = useWeather(weatherPlace(location));
   return { w, city: location.city };
 }
-const signedTemp = (t) => (Number.isFinite(t) ? `${t > 0 ? "+" : ""}${Math.round(t)}` : "—");
+export const signedTemp = (t) => (Number.isFinite(t) ? `${t > 0 ? "+" : ""}${Math.round(t)}` : "—");
 const shortDate = (d = new Date()) => ruFmt({ day: "2-digit", month: "2-digit", year: "2-digit" }).format(d);
 // «ясно» → «Ясно»
-const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+export const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 
 // Мятный треугольник за градусом — фирменная грань из макета.
 // id градиента — свой у каждой карточки: на странице две Главные (компьютер скрыт на телефоне), и общий id
 // брался из скрытой — в Chrome грань тогда не рисовалась вовсе
-function TempFacet() {
+export function TempFacet() {
   const gid = `nx-hw-g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <svg className="nx-hw-facet" viewBox="0 0 120 80" aria-hidden="true">

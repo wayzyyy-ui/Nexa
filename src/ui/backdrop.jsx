@@ -20,6 +20,49 @@ const HF = {
   mint: "M494.686 214.986L537.137 498.722L270.189 393.618L494.686 214.986Z",
   blue: "M202.567 311.552L371.692 144.172L439.849 353.566L270.359 519.826L202.567 311.552Z",
 };
+/* Сцена Главной (макет 2026-11-12): складка фоном — три вершины вдоль нижнего края, самая высокая
+   справа. У каждой вершины две грани: светлая и тёмная; сверху грань ярче, к низу тает.
+   Цвета — токены --scene-* (в тёмной теме это прежние --fold-hf-* и --hf-glow, в светлой — «дневные»).
+   Без анимации и фильтров; растягивается на всю ширину и высоту своего блока (вершины остаются
+   вдоль нижнего края при любом окне). Грани: [класс цвета, точки] в поле 1600 × 700 */
+const SCENE_FACES = [
+  // Высокая вершина справа: луч слева, мятная грань уходит за правый край
+  ["c", "1290,40 950,700 1330,700"],
+  ["a", "1290,40 1600,290 1600,700 1330,700"],
+  // Средняя
+  ["a", "730,215 420,700 790,700"],
+  ["b", "730,215 790,700 1090,700"],
+  // Низкая слева
+  ["b", "190,368 -10,700 230,700"],
+  ["a", "190,368 230,700 520,700"],
+];
+export function FoldScene({ className, style }) {
+  const id = useId().replace(/:/g, "");
+  // Градиент грани: сверху цвет «1» плотнее, к низу цвет «2» почти прозрачный
+  const grad = (k, top, bottom) => (
+    <linearGradient id={`${id}-${k}`} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style={{ stopColor: `var(--scene-${k}1)` }} stopOpacity={top} />
+      <stop offset="1" style={{ stopColor: `var(--scene-${k}2)` }} stopOpacity={bottom} />
+    </linearGradient>
+  );
+  return (
+    <svg className={className} style={style} viewBox="0 0 1600 700" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <defs>
+        {grad("a", 0.62, 0.1)}
+        {grad("b", 0.7, 0.12)}
+        {grad("c", 0.5, 0.08)}
+        <radialGradient id={`${id}-glow`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" style={{ stopColor: "var(--scene-glow)" }} stopOpacity="0.34" />
+          <stop offset="1" style={{ stopColor: "var(--scene-glow)" }} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      {/* Мягкий свет за высокой вершиной */}
+      <ellipse cx="1290" cy="330" rx="520" ry="330" fill={`url(#${id}-glow)`} />
+      {SCENE_FACES.map(([k, pts]) => <polygon key={pts} points={pts} fill={`url(#${id}-${k})`} />)}
+    </svg>
+  );
+}
+
 // Свечение из Figma: [сдвиг, размытие, непрозрачность]
 const HF_GLOW = [[-7.99, 12.71, 0.1], [-31.95, 22.87, 0.09], [-72.6, 30.86, 0.05], [-129.24, 36.67, 0.01]];
 export function FoldArt({ className, style }) {

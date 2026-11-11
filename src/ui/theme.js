@@ -32,6 +32,9 @@ export const C = {
   hover: "var(--hover)",         // лёгкая подсветка кнопок (наведение)
   pressed: "var(--pressed)",     // подложка нажатой кнопки
   borderStrong: "var(--border-strong)", // заметная обводка карточек (Медиа, Файлы)
+  // Сцена Главной (FoldScene, макет 2026-11-12): грани-вершины фоном; в тёмной теме — цвета складки, в светлой — «дневные»
+  sceneA1: "var(--scene-a1)", sceneA2: "var(--scene-a2)", sceneB1: "var(--scene-b1)", sceneB2: "var(--scene-b2)",
+  sceneC1: "var(--scene-c1)", sceneC2: "var(--scene-c2)", sceneGlow: "var(--scene-glow)",
   lineBright: "var(--line-bright)", // яркая тонкая обводка карточек-«таблеток» (макет 2026-10)
   logo: "var(--logo)",           // цвет логотипа NEXA (в светлой теме — фирменный синий)
   actBg: "var(--act-bg)",         // фон карточки «Активность» на телефоне (макет 2026-10)

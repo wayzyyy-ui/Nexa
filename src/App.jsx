@@ -3089,6 +3089,8 @@ export default function NexaApp() {
             onSearch={() => openSearch()}
             bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
             activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
+            activity={uid ? activity : null}
+            onActivity={() => { setActivityOpen(true); setOpenDeviceId(null); }}
             findState={findState}
             onFind={findDevice}
           />

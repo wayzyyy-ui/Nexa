@@ -5,12 +5,12 @@ import { Icon } from "../ui/icons.jsx";
 import { deviceStatus } from "../lib/devices.js";
 import { EmptyState, StateButton, btnReset, Logo } from "../ui/base.jsx";
 import { QuickBtn } from "../ui/QuickPanel.jsx";
-import { FoldArt, FOLD_INTRO_KEY } from "../ui/backdrop.jsx";
-import { useBackdropMotion, reducedMotion } from "../lib/hooks.js";
+import { FoldScene } from "../ui/backdrop.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner, DesktopAppPill } from "../ui/install.jsx";
 import { isDesktop } from "../native.js";
-import { HomeWeatherCard, HomeTimeline, HomeNextCard, DevicePager, device3d, ExpStorage, ExpBlobs, useExpUi, FitName } from "./home/widgets.jsx";
+import { HomeDesktop } from "./home/desktop.jsx";
+import { HomeWeatherCard, HomeNextCard, DevicePager, device3d, ExpStorage, ExpBlobs, useExpUi, FitName } from "./home/widgets.jsx";
 
 /* ---------- 5. ЭКРАНЫ ---------- */
 // Карточка одного устройства — для мобильной 2×2 сетки.
@@ -244,81 +244,13 @@ export function DeviceRow({ d, received, onOpen }) {
   );
 }
 
-// «Добавить устройство» — пунктирная таблетка
-function AddDeviceRow({ onClick }) {
-  return (
-    <button type="button" className="nx-row-btn nx-dev-row is-add" onClick={onClick} style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
-      <span className="nx-dev-row-icon" aria-hidden="true">{Icon.plus({ c: C.mint, s: 30 })}</span>
-      <span className="nx-dev-row-name">Добавить устройство</span>
-    </button>
-  );
-}
-
-/* Складка Главной (компьютер): объёмная складка из макета, векторная (FoldArt в backdrop.jsx).
-   Движение (только transform и прозрачность граней, при «уменьшении движения» — ничего):
-   - первое открытие Главной за сессию — грани раскрываются из общего сгиба (~1,3 с);
-   - за курсором грани расходятся на разную глубину (--px / --py от useBackdropMotion);
-   - стало больше устройств — короткий «вздох» гранями.
-   count — сколько устройств */
-/* Движение граней по кадрам: frame(t) → { rotate, scale } для t от 0 до 1; грани по очереди (stagger мс).
-   Пишем transform прямо в стиль каждой грани — так Chrome перерисовывает свечение */
-const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-function foldMotion(root, { duration, stagger, frame }) {
-  const faces = ["hf-blue", "hf-mint", "hf-bottom"].map((c) => root?.querySelector("." + c)).filter(Boolean);
-  if (!faces.length) return () => {};
-  let raf = 0;
-  const start = performance.now();
-  const tick = (now) => {
-    let done = true;
-    faces.forEach((el, i) => {
-      const t = Math.min(1, Math.max(0, (now - start - i * stagger) / duration));
-      if (t < 1) done = false;
-      const { rotate, scale } = frame(t);
-      el.style.transform = t >= 1 ? "" : `rotate(${rotate}deg) scale(${scale})`;
-    });
-    if (!done) raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
-  return () => { cancelAnimationFrame(raf); faces.forEach((el) => { el.style.transform = ""; }); };
-}
-
-function HomeFoldArt({ count = 0 }) {
-  const ref = useRef(null);
-  useBackdropMotion(ref);
-  // Раскрытие — один раз за сессию: грани выходят из общего сгиба по очереди (синяя, мятная, нижняя)
-  useLayoutEffect(() => {
-    let first = false;
-    try { first = !reducedMotion() && !sessionStorage.getItem(FOLD_INTRO_KEY); if (first) sessionStorage.setItem(FOLD_INTRO_KEY, "1"); } catch {}
-    if (!first) return;
-    return foldMotion(ref.current, { duration: 1100, stagger: 140, frame: (t) => { const e = easeOut(t); return { rotate: -38 * (1 - e), scale: 0.05 + 0.95 * e }; } });
-  }, []);
-  // Стало больше устройств — короткий «вздох»: грани чуть раскрываются и возвращаются
-  const prev = useRef(count);
-  useEffect(() => {
-    const grew = count > prev.current;
-    prev.current = count;
-    if (!grew || reducedMotion()) return;
-    return foldMotion(ref.current, { duration: 800, stagger: 70, frame: (t) => { const k = Math.sin(Math.PI * t); return { rotate: -5 * k, scale: 1 + 0.06 * k }; } });
-  }, [count]);
-  return (
-    <span ref={ref} data-link-hub className="nx-hf-live" style={{ display: "block" }}>
-      <FoldArt className="nx-home-fold-art" />
-    </span>
-  );
-}
-
-// Сколько устройств видно на Главной; остальные — «Все устройства».
-// Компьютер — две, как в макете: карточка не растёт и вся Главная помещается в экран
-const HOME_DESK_MAX = 2;
-
 // schedule — дела (погода и ближайшие дела на Главной, макет 2026-10-27), files — для «Хранилища»
 // экспериментального интерфейса, onOpenCategory — открыть категорию «Медиа»
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory, onNotes }) {
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory, onNotes, activity = null, onActivity }) {
   const exp = useExpUi(); // экспериментальный интерфейс телефона (Настройки → «Внешний вид»)
   const toToday = () => onNavigate("today");
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
   const onlineCount = devices.filter((d) => d.online || d.isSelf).length;
-  const deskList = devices.slice(0, HOME_DESK_MAX);
 
   // Пустой список. Пока грузим из облака — вместо «Устройств пока нет» заготовка строк
   const empty = devices.length === 0 && (loading ? <DevicesSkeleton /> : (
@@ -358,43 +290,14 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
 
         {/* Макет 2026-10-27: слева устройства и «Активность», в середине погода с ближайшими делами,
             ассистент и «Приложение NEXA», справа складка */}
-        <div className="nx-home-grid2">
-          <div className="nx-home-colA">
-            {/* data-nosnippet — поисковики не берут отсюда текст для описания сайта (тут личные устройства) */}
-            <section className="nx-home-card nx-home-devices nx-glass nx-glass-subtle" aria-label="Мои устройства" data-nosnippet>
-              <div className="nx-home-card-title">Мои устройства</div>
-              <div className="nx-stagger" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                {empty && <div className="nx-home-devices-empty">{empty}</div>}
-                {deskList.map((d) => <DeviceRow key={d.id} d={d} received={received} onOpen={onOpenDevice} />)}
-                {devices.length > 0 && <AddDeviceRow onClick={onAddDevice} />}
-              </div>
-              {devices.length > 0 && (
-                <button type="button" className="nx-ghost-btn nx-home-all" onClick={onAllDevices}>
-                  {devices.length > HOME_DESK_MAX ? `Все устройства · ${devices.length}` : "Все устройства"}
-                </button>
-              )}
-            </section>
-            {activityBlock && <div className="nx-home-act nx-glass nx-glass-subtle" data-nosnippet>{activityBlock}</div>}
-          </div>
-          <div className="nx-home-colB">
-            <HomeWeatherCard className="nx-hw-desk" onOpen={toToday}>
-              <HomeTimeline schedule={schedule} onOpen={toToday} />
-              {/* Макет 2026-10-28: «Заметки» — внизу карточки погоды */}
-              {onNotes && (
-                <button type="button" className="nx-ghost-btn nx-hw-notes" onClick={onNotes}>
-                  {Icon.doc({ c: C.text, s: 16 })} Заметки
-                </button>
-              )}
-            </HomeWeatherCard>
-            {/* Под погодой — только ассистент (макет 2026-10-28). «Приложение NEXA» — лишь когда в приложении
-                для ПК вышло обновление: предложение скачать приложение осталось в Настройках */}
-            <div className={`nx-home-pills2${isDesktop && update ? "" : " is-single"}`}>
-              {aiPill("nx-ai-glow")}
-              {isDesktop && update && <DesktopAppPill update={update} />}
-            </div>
-          </div>
-          <div className="nx-home-fold2" aria-hidden="true"><HomeFoldArt count={devices.length} /></div>
-        </div>
+        {/* Макет 2026-11-12: компактные карточки — home/desktop.jsx. «Приложение NEXA» — лишь когда
+            в приложении для ПК вышло обновление */}
+        <HomeDesktop devices={devices} art={deviceArt} empty={empty} activity={activity} schedule={schedule}
+          extra={isDesktop && update ? <DesktopAppPill update={update} /> : null}
+          onOpenDevice={onOpenDevice} onAddDevice={onAddDevice} onAllDevices={onAllDevices} onActivity={onActivity}
+          onToday={toToday} onNotes={onNotes} onAssistant={() => onNavigate("assistant")} />
+        {/* Сцена: складка фоном всей Главной — вершины вдоль нижнего края, за карточками */}
+        <FoldScene className="nx-hd-scene" />
 
         {onAbout && (
           <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16 }}>

@@ -116,6 +116,9 @@ export const APP_CSS = `
           --fold-hf-a1: #0C336D; --fold-hf-a2: #139CB4; --fold-hf-b1: #00FFDF; --fold-hf-b2: #2DD4BF; --fold-hf-c1: #9DB1FD; --fold-hf-c2: #042AA5;
           /* Объёмная складка (FoldArt, SVG автора): грани — --fold-hf-*, свечение и тень под гранями */
           --hf-glow: #0558FF; --hf-shade: #000000;
+          /* Сцена Главной (FoldScene): a — светлая грань, b — тёмная, c — луч высокой вершины, glow — свет за ней */
+          --scene-a1: var(--fold-hf-b2); --scene-a2: var(--fold-hf-a2); --scene-b1: var(--fold-hf-c2); --scene-b2: var(--fold-hf-a1);
+          --scene-c1: var(--fold-hf-c1); --scene-c2: var(--hf-glow); --scene-glow: var(--hf-glow);
           color-scheme: dark;
         }
         :root[data-theme="light"] {
@@ -160,6 +163,9 @@ export const APP_CSS = `
           --fold-hf-a1: #0C336D; --fold-hf-a2: #139CB4; --fold-hf-b1: #00FFDF; --fold-hf-b2: #2DD4BF; --fold-hf-c1: #9DB1FD; --fold-hf-c2: #042AA5;
           /* Объёмная складка (FoldArt): те же цвета — грани полупрозрачны, на светлом фоне сами светлее */
           --hf-glow: #0558FF; --hf-shade: #000000;
+          /* Сцена Главной днём: те же грани в светлых, «дневных» цветах */
+          --scene-a1: #35D6C2; --scene-a2: #BFF1EC; --scene-b1: #6F9BFF; --scene-b2: #D5E3FF;
+          --scene-c1: #FFFFFF; --scene-c2: #A9C4FF; --scene-glow: #FFFFFF;
           color-scheme: light;
         }
         body { transition: background-color 200ms ease, color 200ms ease; }
