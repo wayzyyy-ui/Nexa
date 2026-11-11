@@ -1,11 +1,11 @@
 {
-  "version": "0.19.1",
-  "notes": "- Обновление 0.19.1\n- Починилось: в светлой теме заставка при запуске больше не тёмная\n- Улучшилось: на сайте больше нет счётчика посещений и cookie\n- Добавилось: страница «Политика конфиденциальности» — что хранит NEXA и как это удалить (ссылки на экране входа и в «О системе»)\n- Улучшилось: окно «Разрешить вход?» предупреждает, если код или ссылку прислал кто-то другой",
-  "pub_date": "2026-11-11T09:38:01.851Z",
+  "version": "0.19.2",
+  "notes": "- Обновление 0.19.2\n- Улучшилось: Главная на компьютере по новому макету — компактные карточки, устройства плитками без красной заливки, погода одной карточкой с ближайшим делом и «Заметками»\n- Улучшилось: складка на Главной компьютера стала фоном — вершины вдоль нижнего края за прозрачными карточками, в тёмной и светлой теме",
+  "pub_date": "2026-11-11T22:55:38.427Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WS9YdnFkTkN2ZzE5N0NJOHRTaGcvNGZXRVNGZ0Z1NkZGUFFWdTUzVzc3VlhON1Rvc1hhKzRqdmFnYXlVS3NVZGd6YnErS0lwN3JMakdYaWp5R2F5MndnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0Mzg5ODgxCWZpbGU6TkVYQV8wLjE5LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuMQphWUtUK01FUW9ia0IzT2U2OUxyYm5pakg3SXZpM0k3aVRwYjh3M1Jqd0Zja0ZSRmt0TkI1aG9uTm50dlNlVmNFejJJNlo0Q04vMW5zbGxpTXMranBEUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.1"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXd4VjhBWXVhd3ZRaU0rOWJUM1puRytoTXpqb0Q1TTd3WlNoOUU5dVJlMWtsSVFXT1pLUVVadkhsYWplK3p6eXZwUGJDb0ZjTXNva0FrYmUxV3hMU3dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDM3NzM4CWZpbGU6TkVYQV8wLjE5LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuMgpBbHhVU2dVZ1grQ2JUQko3NHlTTzdEaWY1bDNncFFOUUZnR01Rem40WG5XV09CVERiVVd1WjYvWXFYUWQyWG9mSWxyaU5VbHFUeVBZT2lRTDFRcmVEUT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.2"
     }
   }
 }
