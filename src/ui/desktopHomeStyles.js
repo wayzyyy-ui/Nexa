@@ -241,4 +241,40 @@ export const DESKTOP_HOME_CSS = `
   .nx-top-group { display: contents; }
   .nx-top-group::before, .nx-top-group::after { display: none !important; }
 }
+
+/* ═══ Правки по макету 2026-11-13 (компьютер) ═══ */
+@media ${DESKTOP_MQ} {
+  /* Плашки устройств — «таблетки» со светом статуса (как на макете): зелёный — в сети, красный — не в сети.
+     Заливка сверху гуще, к низу темнее, вокруг мягкое свечение того же цвета; точки статуса нет */
+  .nx-hd-devs { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .nx-hd-dev { --st: var(--red); height: 72px; padding: 0 28px 0 24px; gap: 16px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--st) 42%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--st) 36%, var(--bg)) 0%, color-mix(in srgb, var(--st) 16%, var(--bg)) 100%);
+    box-shadow: 0 0 26px -8px color-mix(in srgb, var(--st) 70%, transparent), inset 0 1px 0 color-mix(in srgb, var(--st) 45%, transparent);
+    transition: filter 160ms ease, box-shadow 160ms ease; }
+  .nx-hd-dev[data-online="1"] { --st: var(--green); }
+  .nx-hd-dev:hover { filter: brightness(1.14); border-color: color-mix(in srgb, var(--st) 70%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--st) 36%, var(--bg)) 0%, color-mix(in srgb, var(--st) 16%, var(--bg)) 100%);
+    box-shadow: 0 0 30px -6px color-mix(in srgb, var(--st) 85%, transparent), inset 0 1px 0 color-mix(in srgb, var(--st) 45%, transparent); }
+  .nx-hd-dev-ico { width: 38px; }
+  .nx-hd-dev-name { font-size: 17px; }
+  /* Светлая тема: свет мягче, заливка светлая */
+  :root[data-theme="light"] .nx-hd-dev, :root[data-theme="light"] .nx-hd-dev:hover {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--st) 30%, var(--panel)) 0%, color-mix(in srgb, var(--st) 14%, var(--panel)) 100%);
+    box-shadow: 0 0 22px -10px color-mix(in srgb, var(--st) 60%, transparent), inset 0 1px 0 color-mix(in srgb, var(--panel) 70%, transparent); }
+
+  /* Всё содержимое Главной ниже (как на макете): заголовок и таблетки справа — на одной линии.
+     Верхняя строка опускается только на Главной и переезжает плавно при смене раздела */
+  .ng-home { padding-top: 44px !important; }
+  /* Высоту окна держит сама .ng-home (min-height), прежний запас у .ng-home-desktop давал лишнюю прокрутку */
+  .ng-home-desktop { min-height: 0; }
+  .ng-topbar { transition: padding-top 240ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .ng-topbar[data-tab="home"] { padding-top: 54px !important; }
+  .nx-hd-status { margin-bottom: 26px; }
+  .nx-hd-actions { margin-bottom: 30px; }
+
+  /* Профиль со своим фото: фото занимает весь круг (раньше вокруг маленького фото оставалось толстое светлое кольцо) */
+  .nx-top-group .nx-tb-user .nx-set-avatar { width: 100% !important; height: 100% !important; }
+  @media (prefers-reduced-motion: reduce) { .ng-topbar, .nx-hd-dev { transition: none; } }
+}
 `;

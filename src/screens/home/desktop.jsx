@@ -22,17 +22,17 @@ function CardHead({ title, link, onLink }) {
   );
 }
 
-// Плашка устройства: значок, имя, «Был в сети…», точка статуса. Без заливки цветом статуса
+// Плашка устройства (макет 2026-11-13): «таблетка» со светом статуса — зелёным (в сети) или красным (не в сети);
+// значок, имя, «Был в сети…». Статус читается и без цвета — по подписи
 function DeviceTile({ d, art, onOpen }) {
   const on = d.online || d.isSelf;
   return (
-    <button type="button" className="nx-hd-dev" data-self={d.isSelf ? "" : undefined} onClick={() => onOpen(d.id)}>
-      <span className="nx-hd-dev-ico" aria-hidden="true">{art(d, 22)}</span>
+    <button type="button" className="nx-hd-dev" data-online={on ? "1" : "0"} data-self={d.isSelf ? "" : undefined} onClick={() => onOpen(d.id)}>
+      <span className="nx-hd-dev-ico" aria-hidden="true">{art(d, 30)}</span>
       <span className="nx-hd-dev-text">
         <span className="nx-hd-dev-name">{d.name}</span>
-        <span className="nx-hd-dev-sub">{d.isSelf ? "Это устройство" : deviceStatus(d)}</span>
+        <span className="nx-hd-dev-sub">{d.isSelf ? "Это устройство · в сети" : deviceStatus(d)}</span>
       </span>
-      <span className="nx-hd-dot" role="img" aria-label={on ? "В сети" : "Не в сети"} style={{ background: on ? C.green : C.red }} />
     </button>
   );
 }
