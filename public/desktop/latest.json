@@ -1,11 +1,11 @@
 {
-  "version": "0.19.2",
-  "notes": "- Обновление 0.19.2\n- Улучшилось: Главная на компьютере по новому макету — компактные карточки, устройства плитками без красной заливки, погода одной карточкой с ближайшим делом и «Заметками»\n- Улучшилось: складка на Главной компьютера стала фоном — вершины вдоль нижнего края за прозрачными карточками, в тёмной и светлой теме",
-  "pub_date": "2026-11-11T22:55:38.427Z",
+  "version": "0.19.3",
+  "notes": "- Обновление 0.19.3\n- Улучшилось: на компьютере боковое меню стало плавающей стеклянной панелью — разделы, список устройств с точкой статуса, «О системе» и версия внизу\n- Улучшилось: сверху справа поиск-таблетка и одна общая таблетка со временем, уведомлениями, быстрыми действиями и профилем\n- Добавилось: на Главной компьютера строка статуса (сколько устройств, сколько не в сети, погода), главная кнопка «Добавить устройство» и быстрые кнопки «Найти устройство» и «Общий буфер»\n- Починилось: у заголовков карточек на Главной был другой шрифт — теперь везде единый",
+  "pub_date": "2026-11-12T23:08:17.483Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXd4VjhBWXVhd3ZRaU0rOWJUM1puRytoTXpqb0Q1TTd3WlNoOUU5dVJlMWtsSVFXT1pLUVVadkhsYWplK3p6eXZwUGJDb0ZjTXNva0FrYmUxV3hMU3dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDM3NzM4CWZpbGU6TkVYQV8wLjE5LjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuMgpBbHhVU2dVZ1grQ2JUQko3NHlTTzdEaWY1bDNncFFOUUZnR01Rem40WG5XV09CVERiVVd1WjYvWXFYUWQyWG9mSWxyaU5VbHFUeVBZT2lRTDFRcmVEUT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.2"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WThrNDdYa242ZXgrUitVL1ZURUM3SFZ4bEpCNWRyOFJjRS92QVRVSzFCU2JxYzVETzlFc1pVTlF3WUl4bjVEMWFUdVdLbWxBY3RKQStUeHdWZnhRbEE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTI0ODk3CWZpbGU6TkVYQV8wLjE5LjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuMwp6NlFFcFdNWU5ZUWVVT3dHenBNZlkvYUtzYUk4UUsyZUhOakhveGtGYmdCVTlsQnFaOHRUQmFhSlZ1WCsvbjk2VkhrTks1Um1DeUl6dGNPTEZYY3dCdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.3"
     }
   }
 }
