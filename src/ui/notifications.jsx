@@ -154,6 +154,8 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
    раньше она шла дважды на каждую перерисовку приложения (замер 2026-11-03: заметная часть рывка при свайпе) */
 const TIME_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", hour12: false });
 const DATE_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", weekday: "short", day: "numeric", month: "short" });
+// Компьютер (макет 2026-11-12): «пт, 12 ноября» — месяц целиком
+const DATE_LONG_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", weekday: "short", day: "numeric", month: "long" });
 
 // memo: у часов нет пропсов — перерисовываются только от своего таймера, а не вместе со всем приложением
 export const TimeDate = memo(function TimeDate() {
@@ -170,26 +172,12 @@ export const TimeDate = memo(function TimeDate() {
   const time = TIME_FMT.format(now);
   const date = DATE_FMT.format(now).replace(/^./, (c) => c.toUpperCase()); // «Пт, 12 сент.» (макет 2026-10)
 
+ // Размеры и раскладка — в стилях (.ng-timedate): на компьютере одной строкой, на телефоне часы не показываются
  return (
-  <div className="ng-timedate" style={{ textAlign: "right" }}>
-    <div
-      style={{
-        fontSize: 20,
-        fontWeight: 400,
-        color: C.text,
-      }}
-    >
-      {time}
-    </div>
-
-    <div
-      style={{
-        fontSize: 17,
-        color: C.text,
-      }}
-    >
-      {date}
-    </div>
+  <div className="ng-timedate">
+    <div className="nx-td-time">{time}</div>
+    <div className="nx-td-date">{date}</div>
+    <div className="nx-td-date-long">{DATE_LONG_FMT.format(now)}</div>
   </div>
   );
 });

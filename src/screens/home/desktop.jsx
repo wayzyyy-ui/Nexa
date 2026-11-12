@@ -6,6 +6,8 @@ import { deviceStatus } from "../../lib/devices.js";
 import { WeatherAttribution } from "../today/Weather.jsx";
 import { ActivityList } from "../Activity.jsx";
 import { useHomeWeather, upcomingToday, TempFacet, signedTemp, cap } from "./widgets.jsx";
+import { plural } from "../../lib/format.js";
+import { openQuickPanel } from "../../ui/QuickPanel.jsx";
 
 // Сколько устройств видно на Главной компьютера; остальные — по ссылке «Все устройства»
 export const HOME_DESK_MAX = 6;
@@ -75,10 +77,49 @@ function WeatherCard({ schedule, onToday, onNotes }) {
   );
 }
 
+/* Строка под заголовком «Главная»: только настоящие данные — сколько устройств, сколько не в сети, погода.
+   Чего нет (устройств, погоды) — той части строки нет; совсем пусто — строки нет */
+export function HomeStatus({ devices }) {
+  const { w } = useHomeWeather();
+  const off = devices.filter((d) => !(d.online || d.isSelf)).length;
+  const parts = [];
+  if (devices.length) {
+    parts.push(`${devices.length} ${plural(devices.length, ["устройство", "устройства", "устройств"])}`);
+    parts.push(off ? `${off} не в сети` : "все в сети");
+  }
+  if (w.now && Number.isFinite(w.now.temp)) parts.push(`${signedTemp(w.now.temp)}°${w.now.text ? `, ${w.now.text}` : ""}`);
+  if (!parts.length) return null;
+  return <div className="nx-hd-status">{parts.join(" · ")}</div>;
+}
+
+/* Под строкой статуса: главная кнопка «Добавить устройство» и две квадратные — «Найти устройство»
+   (одно устройство в сети — зовём его сразу, иначе выбор в быстрых действиях) и «Общий буфер» (его настройки) */
+export function HomeActions({ devices, onAddDevice, onFind, onClip }) {
+  const findable = devices.filter((d) => d.real && !d.isSelf && d.online);
+  return (
+    <div className="nx-hd-actions">
+      <button type="button" className="nx-hd-add" onClick={onAddDevice}>
+        {Icon.plus({ c: C.onAccent, s: 20 })} Добавить устройство
+      </button>
+      {onFind && (
+        <button type="button" className="nx-hd-sq nx-glass" aria-label="Найти устройство" title="Найти устройство"
+          onClick={() => (findable.length === 1 ? onFind(findable[0]) : openQuickPanel())}>
+          {Icon.pin({ c: C.text, s: 22 })}
+        </button>
+      )}
+      {onClip && (
+        <button type="button" className="nx-hd-sq nx-glass" aria-label="Общий буфер обмена" title="Общий буфер обмена" onClick={onClip}>
+          {Icon.copy({ c: C.text, s: 20 })}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* devices — уже с состоянием; art(d, высота) — значок устройства (deviceArt из Home.jsx);
    empty — что показать вместо списка (заготовка или «Устройств пока нет»);
    activity — события ленты (null — не вошли); extra — что добавить под ассистентом (обновление ПК) */
-export function HomeDesktop({ devices, art, empty, activity, schedule, extra, onOpenDevice, onAddDevice, onAllDevices, onActivity, onToday, onNotes, onAssistant }) {
+export function HomeDesktop({ devices, art, empty, activity, schedule, extra, onOpenDevice, onAllDevices, onActivity, onToday, onNotes, onAssistant }) {
   const list = devices.slice(0, HOME_DESK_MAX);
   return (
     <div className="nx-hd-grid">
@@ -90,10 +131,6 @@ export function HomeDesktop({ devices, art, empty, activity, schedule, extra, on
           {empty ? <div className="nx-hd-empty">{empty}</div> : (
             <div className="nx-hd-devs">
               {list.map((d) => <DeviceTile key={d.id} d={d} art={art} onOpen={onOpenDevice} />)}
-              <button type="button" className="nx-hd-dev is-add" onClick={onAddDevice}>
-                <span className="nx-hd-dev-ico" aria-hidden="true">{Icon.plus({ c: C.mint, s: 22 })}</span>
-                <span className="nx-hd-dev-name">Добавить устройство</span>
-              </button>
             </div>
           )}
         </section>

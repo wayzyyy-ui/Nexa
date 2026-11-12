@@ -9,7 +9,7 @@ import { FoldScene } from "../ui/backdrop.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { UpdateCard, InstallBanner, DesktopAppPill } from "../ui/install.jsx";
 import { isDesktop } from "../native.js";
-import { HomeDesktop } from "./home/desktop.jsx";
+import { HomeDesktop, HomeStatus, HomeActions } from "./home/desktop.jsx";
 import { HomeWeatherCard, HomeNextCard, DevicePager, device3d, ExpStorage, ExpBlobs, useExpUi, FitName } from "./home/widgets.jsx";
 
 /* ---------- 5. ЭКРАНЫ ---------- */
@@ -246,7 +246,7 @@ export function DeviceRow({ d, received, onOpen }) {
 
 // schedule — дела (погода и ближайшие дела на Главной, макет 2026-10-27), files — для «Хранилища»
 // экспериментального интерфейса, onOpenCategory — открыть категорию «Медиа»
-export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory, onNotes, activity = null, onActivity }) {
+export function ScreenHome({ devices, received = {}, update, onUpdateLater, loading, activityBlock, onNavigate, onOpenDevice, onAddDevice, onAbout, onAllDevices, onSearch, bell, schedule = [], files = [], onOpenCategory, onNotes, activity = null, onActivity, onFind, onClip }) {
   const exp = useExpUi(); // экспериментальный интерфейс телефона (Настройки → «Внешний вид»)
   const toToday = () => onNavigate("today");
   // Сколько устройств сейчас в сети — для счётчика рядом с заголовком
@@ -285,6 +285,9 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
       <div className="ng-home-desktop">
         {/* Заголовок раздела, как у «Сегодня» и «Медиа» (2026-11-03: знак и NEXA переехали в боковое меню) */}
         <div className="ng-display nx-page-title nx-home-title">Главная</div>
+        {/* Макет 2026-11-12: строка статуса из настоящих данных, главная кнопка и две быстрые */}
+        <HomeStatus devices={devices} />
+        <HomeActions devices={devices} onAddDevice={onAddDevice} onFind={onFind} onClip={onClip} />
         {/* В приложении для ПК обновление — таблеткой рядом с ассистентом (DesktopAppPill) */}
         {update && !isDesktop && <div style={{ marginBottom: 24 }}><UpdateCard update={update} onLater={onUpdateLater} /></div>}
 
@@ -294,19 +297,11 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             в приложении для ПК вышло обновление */}
         <HomeDesktop devices={devices} art={deviceArt} empty={empty} activity={activity} schedule={schedule}
           extra={isDesktop && update ? <DesktopAppPill update={update} /> : null}
-          onOpenDevice={onOpenDevice} onAddDevice={onAddDevice} onAllDevices={onAllDevices} onActivity={onActivity}
+          onOpenDevice={onOpenDevice} onAllDevices={onAllDevices} onActivity={onActivity}
           onToday={toToday} onNotes={onNotes} onAssistant={() => onNavigate("assistant")} />
         {/* Сцена: складка фоном всей Главной — вершины вдоль нижнего края, за карточками */}
         <FoldScene className="nx-hd-scene" />
 
-        {onAbout && (
-          <div className="nx-home-about-row" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16 }}>
-            {/* Подпись студии (MadeBy) пока убрана — просьба автора 2026-10-28 */}
-            <button type="button" className="nx-link-btn nx-about-link nx-home-about" onClick={onAbout} style={{ ...btnReset, fontSize: 14, color: C.muted, display: "flex", alignItems: "center", gap: 8 }}>
-              <span aria-hidden="true">→</span> Подробнее о системе
-            </button>
-          </div>
-        )}
       </div>
 
       {/* ══════════ ТЕЛЕФОН ══════════ */}

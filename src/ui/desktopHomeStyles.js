@@ -1,5 +1,5 @@
 // Главная и боковое меню по светлому и тёмному макетам автора, ноябрь 2026.
-import { DESKTOP_MQ } from "./theme.js";
+import { DESKTOP_MQ, PHONE_MQ } from "./theme.js";
 
 export const DESKTOP_HOME_CSS = `
 /* Переливание двигается отдельным слоем: текст и значок остаются неподвижными. */
@@ -97,7 +97,7 @@ export const DESKTOP_HOME_CSS = `
   .nx-hd-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
   .nx-hd-card { border-radius: 20px; padding: 20px; box-sizing: border-box; font-size: 14px; line-height: 1.4; }
   .nx-hd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-  .nx-hd-h { display: block; margin: 0; color: var(--text); font-size: 17px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
+  .nx-hd-h { display: block; margin: 0; color: var(--text); font-family: inherit; font-size: 17px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
   .nx-hd-sub { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
   .nx-hd-link { font-size: 13px; font-weight: 500; color: var(--mint); cursor: pointer; white-space: nowrap; border-radius: 6px; }
   .nx-hd-link:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -157,5 +157,88 @@ export const DESKTOP_HOME_CSS = `
     --g-tint: linear-gradient(180deg, rgb(var(--glass-hi-rgb) / 0.9) 0, rgb(var(--glass-hi-rgb) / 0.9) 1px, transparent 1px); }
   .nx-hd-dev { background: color-mix(in srgb, var(--text) 6%, transparent); }
   @media (prefers-reduced-motion: reduce) { .nx-hd-dev { transition: none; } }
+}
+
+/* ═══ Каркас на компьютере, макет 2026-11-12 (шаг 3) ═══
+   Боковое меню — плавающая стеклянная панель 248 px с отступом 12 px (на всех разделах), справа вверху —
+   поиск-таблетка 240 × 44 и одна общая таблетка (время, уведомления, быстрые действия, профиль).
+   Главная: строка статуса, главная кнопка, содержимое сразу за панелью (без центрирования). */
+@media ${DESKTOP_MQ} {
+  /* --nav-w = отступ 12 + панель 248 (свёрнутая — 12 + 72): к ней привязаны верхняя строка, ассистент, фон */
+  :root { --nav-w: 260px; }
+  html.nx-side-min { --nav-w: 84px; }
+  .ng-sidebar.nx-side { position: sticky; top: 12px; height: calc(100vh - 24px); margin: 12px 0 12px 12px; width: 248px; min-width: 248px;
+    border-radius: 20px; border-right: 0; padding: 14px 12px 12px; --g-alpha: 0.42; --g-blur: 18px; --g-rim: 0.9; --g-depth: 0.7; }
+  html.nx-side-min .ng-sidebar.nx-side { width: 72px; min-width: 72px; }
+  /* Прежние правила делали меню прозрачным или белым — у панели остаётся заливка стекла */
+  :root:root body .ng-sidebar.nx-side.nx-glass {
+    background: linear-gradient(180deg, rgb(var(--glass-hi-rgb) / calc(0.035 * var(--g-hk))) 0%, transparent 30%), var(--g-tint), var(--g-fill) !important; }
+  :root[data-theme="light"] .ng-sidebar.nx-side { --g-alpha: 0.24; }
+  .nx-side-devs { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; margin-top: 16px; }
+  .nx-side-devs-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 4px; margin-bottom: 4px; }
+  .nx-side-devs-head .nx-side-sec { margin: 0; }
+  :is(.nx-side-dev, .nx-side-add) { appearance: none; border: 0; background: none; font: inherit; color: var(--text); text-align: left; padding: 0; margin: 0; cursor: pointer; }
+  .nx-side-add { width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    background: color-mix(in srgb, var(--mint) 14%, transparent); }
+  .nx-side-add:hover { background: color-mix(in srgb, var(--mint) 24%, transparent); }
+  .nx-side-devs-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent; }
+  .nx-side-dev { display: flex; align-items: center; gap: 12px; width: 100%; padding: 6px 10px 6px 14px; border-radius: 10px; box-sizing: border-box; flex-shrink: 0; line-height: 1.3; }
+  .nx-side-dev:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+  :is(.nx-side-dev, .nx-side-add):focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+  .nx-side-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .nx-side-dev-text { min-width: 0; flex: 1; }
+  .nx-side-dev-name { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nx-side-dev-sub { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nx-side-devs-empty { font-size: 12px; color: var(--muted); padding: 6px 10px; }
+  .nx-side-about-ico { width: 26px; display: flex; justify-content: center; flex-shrink: 0; }
+  .nx-side-ver { font-size: 12px; color: var(--muted); padding: 8px 10px 0; white-space: nowrap; }
+  .nx-side.is-min :is(.nx-side-devs, .nx-side-ver) { display: none; }
+
+  /* Верхняя строка: поиск-таблетка и одна общая таблетка */
+  .ng-topbar { gap: 12px !important; padding: 20px 32px 0 0 !important; align-items: center !important; }
+  .ng-topbar .nx-top-search { width: 240px; height: 44px; justify-content: flex-start; gap: 10px; padding: 0 18px !important;
+    font-size: 15px !important; font-weight: 600; color: var(--muted) !important; }
+  .ng-topbar .nx-top-search svg { width: 18px; height: 18px; margin-left: 0; }
+  .ng-topbar .nx-top-search svg * { stroke-width: 2.4; }
+  .nx-top-group { display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 0 0 18px; border-radius: 999px; box-sizing: border-box; }
+  .nx-top-group .ng-timedate { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; margin-right: 8px; text-align: left; }
+  .nx-top-group .ng-timedate > .nx-td-time { font-size: 15px !important; font-weight: 700; color: var(--text); }
+  .nx-top-group .ng-timedate > .nx-td-time::after { content: " ·"; color: var(--muted); font-weight: 600; }
+  .nx-top-group .ng-timedate > .nx-td-date { display: none; }
+  .nx-top-group .ng-timedate > .nx-td-date-long { font-size: 15px !important; font-weight: 600; color: var(--muted); }
+  .nx-top-group :is(.nx-tb-bell, .nx-tb-quick) { width: 34px !important; height: 34px !important; }
+  .nx-tb-row .nx-top-group :is(.nx-tb-bell, .nx-tb-quick) svg { width: 20px !important; height: 20px !important; }
+  /* Профиль — светлый круг в конце таблетки (своё фото — вместо значка) */
+  .nx-top-group .nx-tb-user { width: 44px !important; height: 44px !important; min-width: 44px; margin-left: 6px; border-radius: 50% !important; overflow: hidden;
+    background: var(--text) !important; }
+  .nx-tb-row .nx-top-group .nx-tb-user svg { width: 24px !important; height: 24px !important; }
+  .nx-top-group .nx-tb-user svg * { stroke: var(--bg); }
+
+  /* Главная: содержимое сразу за панелью, без центрирования */
+  .ng-home { padding: 24px 32px 40px 32px !important; }
+  .ng-home-desktop { max-width: none; margin: 0; }
+  .ng-home-desktop .nx-home-title { margin: 0 0 6px; }
+  .nx-hd-grid { max-width: 1480px; }
+  .nx-hd-status { font-size: 14px; color: var(--muted); margin: 0 0 20px; }
+  .nx-hd-actions { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; }
+  :is(.nx-hd-add, .nx-hd-sq) { appearance: none; border: 0; font: inherit; margin: 0; cursor: pointer; }
+  .nx-hd-add { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px 0 18px; border-radius: 16px;
+    background: var(--mint); color: var(--on-accent); font-size: 17px; font-weight: 700; transition: transform 140ms ease, filter 140ms ease; }
+  .nx-hd-add:hover { filter: brightness(1.06); }
+  .nx-hd-add:active { transform: scale(0.98); }
+  .nx-hd-sq { width: 52px; height: 52px; padding: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+  :is(.nx-hd-add, .nx-hd-sq):focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { .nx-hd-add { transition: none; } }
+}
+/* Часы: прежний вид двумя строками (вне общей таблетки компьютера) */
+.ng-timedate { text-align: right; color: var(--text); }
+.nx-td-time { font-size: 20px; font-weight: 400; }
+.nx-td-date { font-size: 17px; }
+.nx-td-date-long { display: none; }
+@media ${DESKTOP_MQ} { .nx-top-group .nx-td-date-long { display: block; } }
+/* Телефон: общей таблетки нет — обёртка «прозрачная», кнопки стоят как раньше */
+@media ${PHONE_MQ} {
+  .nx-top-group { display: contents; }
+  .nx-top-group::before, .nx-top-group::after { display: none !important; }
 }
 `;

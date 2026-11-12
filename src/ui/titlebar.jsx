@@ -89,7 +89,7 @@ export const TITLEBAR_CSS = `
   html.nx-titlebar body { padding-top: var(--tb-h); box-sizing: border-box; }
   html.nx-titlebar #root, html.nx-titlebar #root > div { min-height: calc(100vh - var(--tb-h)) !important; }
   html.nx-titlebar .ng-topbar { top: var(--tb-h) !important; }
-  html.nx-titlebar .ng-sidebar { top: var(--tb-h) !important; height: calc(100vh - var(--tb-h)) !important; }
+  html.nx-titlebar .ng-sidebar { top: calc(var(--tb-h) + 12px) !important; height: calc(100vh - var(--tb-h) - 24px) !important; }
   html.nx-titlebar .ng-assistant-wrapper { top: var(--tb-h) !important; height: calc(100% - var(--tb-h)) !important; }
   html.nx-titlebar .ng-home-desktop { min-height: calc(100vh - var(--tb-h) - 98 * var(--mk)) !important; }
   html.nx-titlebar .nx-notepad-desk { height: max(340px, calc(100vh - var(--tb-h) - 303 * var(--mk))) !important; }

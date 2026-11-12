@@ -3,6 +3,8 @@ import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { C, PHONE_MQ } from "./theme.js";
 import { Icon } from "./icons.jsx";
 import { Logo, LogoMark } from "./base.jsx";
+import { deviceStatus } from "../lib/devices.js";
+import { VERSION } from "../version.js";
 
 // Список разделов бокового меню: id (внутреннее имя), label (подпись для title),
 // icon (функция-иконка из объекта Icon выше).
@@ -163,7 +165,8 @@ const SIDE_MIN_KEY = "nexa-side-min";
 // Свёрнуто ли — до первого кадра (иначе меню на миг рисовалось бы широким)
 try { if (typeof document !== "undefined" && localStorage.getItem(SIDE_MIN_KEY) === "1") document.documentElement.classList.add("nx-side-min"); } catch { /* хранилище недоступно — меню широкое */ }
 const SIDE_MAIN = ["home", "today", "media", "files", "assistant"];
-export function Sidebar({ active, onChange }) {
+// devices, onOpenDevice, onAddDevice — блок «Устройства» в панели; onAbout — строка «О системе» внизу
+export function Sidebar({ active, onChange, devices = [], onOpenDevice, onAddDevice, onAbout }) {
   const [min, setMin] = useState(() => typeof document !== "undefined" && document.documentElement.classList.contains("nx-side-min"));
   const toggleMin = () => {
     const next = !min;
@@ -177,7 +180,7 @@ export function Sidebar({ active, onChange }) {
   useLayoutEffect(() => {
     const el = navRef.current?.querySelector(".nx-side-item[aria-current]");
     setThumb(el ? { y: el.offsetTop, h: el.offsetHeight } : null);
-  }, [active, min]);
+  }, [active, min, devices.length]);
   const item = (id) => {
     const n = NAV.find((x) => x.id === id);
     if (!n) return null;
@@ -186,12 +189,14 @@ export function Sidebar({ active, onChange }) {
       <button key={id} type="button" className="nx-side-item" title={min ? n.label : undefined} aria-label={n.label}
         aria-current={on ? "page" : undefined} onClick={() => onChange(id)}>
         <NavIcon id={id} c={on ? C.mint : C.text} s={26} w={2.4} />
-        <span className="nx-side-label">{n.label}</span>
+        <span className="nx-side-label">{id === "assistant" ? "AI-Ассистент" : n.label}</span>
       </button>
     );
   };
+  // Устройства в панели: сначала те, что в сети
+  const devList = [...devices].sort((a, b) => Number(!!(b.online || b.isSelf)) - Number(!!(a.online || a.isSelf)));
   return (
-    <nav ref={navRef} aria-label="Разделы" className={`ng-sidebar nx-side${min ? " is-min" : ""}`}>
+    <nav ref={navRef} aria-label="Разделы" className={`ng-sidebar nx-side nx-glass${min ? " is-min" : ""}`}>
       {thumb && <span aria-hidden="true" className="nx-side-thumb" style={{ transform: `translateY(${thumb.y}px)`, height: thumb.h }} />}
       <div className="nx-side-top">
         <span className="nx-side-brand" role="img" aria-label="NEXA">
@@ -205,9 +210,45 @@ export function Sidebar({ active, onChange }) {
       </div>
       <div className="nx-side-sec">Разделы</div>
       {SIDE_MAIN.map(item)}
+      {/* Устройства аккаунта (макет 2026-11-12): имя, точка статуса, когда было в сети; «+» — добавить.
+          В свёрнутом меню блока нет. data-nosnippet — поисковики не берут отсюда текст */}
+      {onOpenDevice && (
+        <div className="nx-side-devs" data-nosnippet>
+          <div className="nx-side-devs-head">
+            <span className="nx-side-sec">Устройства</span>
+            {onAddDevice && (
+              <button type="button" className="nx-side-add" onClick={onAddDevice} aria-label="Добавить устройство" title="Добавить устройство">
+                {Icon.plus({ c: C.mint, s: 16 })}
+              </button>
+            )}
+          </div>
+          <div className="nx-side-devs-list nx-scroll">
+            {devList.length === 0 && <div className="nx-side-devs-empty">Пока нет устройств</div>}
+            {devList.map((d) => {
+              const on = d.online || d.isSelf;
+              return (
+                <button key={d.id} type="button" className="nx-side-dev" onClick={() => onOpenDevice(d.id)}>
+                  <span className="nx-side-dot" style={{ background: on ? C.green : C.red }} role="img" aria-label={on ? "В сети" : "Не в сети"} />
+                  <span className="nx-side-dev-text">
+                    <span className="nx-side-dev-name">{d.name}</span>
+                    <span className="nx-side-dev-sub">{d.isSelf ? "Это устройство" : deviceStatus(d)}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="nx-side-fill" />
       <div className="nx-side-line" />
       {item("settings")}
+      {onAbout && (
+        <button type="button" className="nx-side-item nx-side-about" onClick={onAbout} title={min ? "О системе" : undefined} aria-label="О системе">
+          <span className="nx-side-about-ico" aria-hidden="true">{Icon.info({ c: C.text, s: 18 })}</span>
+          <span className="nx-side-label">О системе</span>
+        </button>
+      )}
+      <div className="nx-side-ver">NEXA {VERSION}</div>
     </nav>
   );
 }

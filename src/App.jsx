@@ -3090,6 +3090,7 @@ export default function NexaApp() {
             bell={<NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />}
             activityBlock={uid ? <ActivityBlock items={activity} onOpen={() => { setActivityOpen(true); setOpenDeviceId(null); }} /> : null}
             activity={uid ? activity : null}
+            onClip={() => openSettings("device", "nx-clip-settings")}
             onActivity={() => { setActivityOpen(true); setOpenDeviceId(null); }}
             findState={findState}
             onFind={findDevice}
@@ -3254,7 +3255,7 @@ export default function NexaApp() {
           onClose={() => { miniCollect.dismissAsk(); setMiniAskOpen(false); }} />
       )}
       {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
-      <Sidebar active={tab} onChange={navTo} />
+      <Sidebar active={tab} onChange={navTo} devices={devices} onOpenDevice={showDevice} onAddDevice={onAddDevice} onAbout={openAbout} />
           <MobileTabBar active={tab} onChange={navTo} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
@@ -3265,12 +3266,16 @@ export default function NexaApp() {
             <button type="button" className="nx-ghost-btn nx-top-search nx-glass" onClick={() => openSearch()} aria-label="Поиск">
               {Icon.search({ c: C.text, s: 16 })} <span className="nx-search-word">Поиск</span>
             </button>
+            {/* Компьютер (макет 2026-11-12): время, уведомления, быстрые действия и профиль — одна общая таблетка.
+                На телефоне обёртки «нет» (display: contents) — кнопки стоят как раньше */}
+            <div className="nx-top-group nx-glass">
             <TimeDate />
             <NotificationBell notes={notes} onSeen={() => setNotes((s) => ({ ...s, seenAt: Date.now() }))} onClear={() => setNotes({ items: [], seenAt: Date.now() })} onOpen={(t) => openTargetRef.current?.(t)} onSettings={() => openTargetRef.current?.({ tab: "settings", notes: true })} />
             <QuickBtn />
             <span className="nx-top-search-icon"><IconBtn icon={Icon.search} onClick={() => openSearch()} label="Поиск" /></span>
             {/* Своё фото в профиле — оно вместо значка человека */}
             <IconBtn icon={profileAvatar(auth.user) ? (p) => <Avatar user={auth.user} size={p.s + 8} /> : Icon.user} onClick={() => navTo("settings")} label="Настройки" className="nx-tb-user" />
+            </div>
           </TopBar>
 
         {/* maxWidth 1440 — контент не растягивается до бесконечности на
