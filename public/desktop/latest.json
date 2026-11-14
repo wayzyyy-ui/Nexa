@@ -1,11 +1,11 @@
 {
-  "version": "0.19.4",
-  "notes": "- Обновление 0.19.4\n- Улучшилось: устройства на Главной компьютера — снова «таблетки» со светом статуса: зелёным, если в сети, и красным, если нет\n- Улучшилось: содержимое Главной на компьютере стоит ниже — заголовок на одной линии с поиском и профилем\n- Починилось: вокруг фото профиля в верхней строке была толстая светлая обводка",
-  "pub_date": "2026-11-12T23:31:03.068Z",
+  "version": "0.19.5",
+  "notes": "- Обновление 0.19.5\n- Добавилось: в «Файлах» история последних 100 прямых передач — результат, повтор с новым согласием получателя и отметки сохранения\n- Улучшилось: экран «Сегодня» на компьютере — расписание слева, крупная погода и компактный прогноз на завтра справа\n- Улучшилось: кнопка AI-Ассистента на Главной компьютера — плавная цветная капсула; свёрнутая боковая панель стала компактнее\n- Улучшилось: заголовки и значки разделов на телефоне выровнены по одной линии\n- Починилось: при жестах в полноэкранном просмотре фото мог пропадать тёмный фон",
+  "pub_date": "2026-11-14T14:48:46.831Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTkyQUpldnpMZE1mZmRMbHpLZFNHRks0Q25lOWZESFA4ckpoREFHS25yTFZmQzZSSXVBalFQb2ZBNmRUekliQW1hcFZrNVd3RDZrSGNBYU83N2U5endrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTI2MjYxCWZpbGU6TkVYQV8wLjE5LjRfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuNApGT2F0QmJKQkphZXFMdXNWQ3RZVlVRVHFwVm9SbTVrT1NNa1VtVUV6MTNqeGZheDdiOGlKb1ErckJoQkc1VmgvMC95OFlzTjd1MHBqYTkwczY1S0ZCdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.4"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTd4VkthWjZEWWlpRDdLTTRHR2VoWkU0QmpwQyt0SXpQbkk3V2ZwOEdqcW9TN1ljdVRmZGorSXhJbDdlUFhqdjhtbFU5NnRiV0NXaGZkaG95STNjWUFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjY3NzI2CWZpbGU6TkVYQV8wLjE5LjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuNQpRbkFlOTJwNm15Vm41NVNtQkw0SUp4NG41aEpMMFcxcVltcGxRUzQ4WFpyNjJNTnJoamdZdWJiaU4yK1kzM3RSWHgxYVlIYkZtelcrcnVqYUVMUnJBdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.5"
     }
   }
 }
