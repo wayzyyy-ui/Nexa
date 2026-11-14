@@ -118,4 +118,19 @@ export const MOBILE_HOME_CSS = `
   .nx-tabbar-pill button[aria-label="Главная"] > svg, .nx-tabbar-pill button[aria-label="Главная"] > svg * { stroke-width: 1.5; }
   .nx-tab-move > div { width: 58px !important; height: 46px !important; border-color: var(--border-strong) !important; }
 }
+
+/* Шапки разделов на телефоне (2026-11-14): всё на одной линии со значками верхней строки
+   (поиск, колокольчик, молния: значки 26 px, центр — 46 px от верха экрана плюс вырез --sat) */
+@media ${PHONE_MQ} {
+  /* Главная: колокольчик и молния — того же размера, что на других разделах (были 23 × --hm ≈ 22 px) */
+  .nx-home-redesign .nx-home-head :is(.nx-tb-quick, .nx-tb-bell) svg { width: 26px !important; height: 26px !important; }
+  /* Настройки: QR слева — той же высоты и размера, что значки справа */
+  .nx-set-qr { top: calc(26px + var(--sat)) !important; }
+  .nx-set-qr svg { width: 26px !important; height: 26px !important; }
+  /* «Сегодня», «Медиа», «Файлы», «Заметки»: заголовок чуть ниже — середина строки на линии значков */
+  .ng-main-content .nx-page-title { position: relative; top: 4px; }
+  /* Ассистент: середина строки «AI-Ассистент» — на линии значков, версия — под ней; кнопка истории — на той же линии */
+  .nx-ai-head { padding-top: 26px !important; align-items: flex-start !important; }
+  .nx-ai-head .ng-hamburger { margin-top: -12px; }
+}
 `;

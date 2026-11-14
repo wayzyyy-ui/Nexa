@@ -47,6 +47,9 @@ import { NAV, MobileTabBar, Sidebar, TopBar, SWIPE_ORDER, useTabSwipe } from "./
 import { arrowNavTarget, isEditable } from "./lib/keynav.js";
 import { onDesktopOpen, desktopDeviceInfo, desktopSaveFile } from "./lib/desktop.js";
 import { useDirect } from "./lib/direct.js";
+import { useTransferHistory } from "./lib/transferHistory.js";
+import { splitDirectFiles } from "./lib/directPlan.js";
+import { TransferHistory } from "./ui/TransferHistory.jsx";
 import { savePlace, forgetPlace, loadPlace, markPlaceOn, PLACE_GAP_MS } from "./lib/places.js";
 import { directProblem } from "./lib/directPlan.js";
 import { buildBackup, readBackup, planRestore, backupSummary, ownerTag, backupFileName, SETTINGS_KEYS } from "./lib/backup.js";
@@ -302,6 +305,7 @@ export default function NexaApp() {
   const peerById = new Map(link.peers.map((p) => [p.device_id, p]));
   /* Прямая передача файла без облака (src/lib/direct.js): только вошедшим, сигналы — по каналу аккаунта */
   const direct = useDirect(link, !!uid);
+  const transferHistory = useTransferHistory(uid, direct);
   const directRef = useRef(direct); directRef.current = direct;
   // Последние сведения от каждого устройства (обновляются с каждым Presence):
   // когда устройство пропадёт, сохраним именно их, а не снимок на момент подключения
@@ -2340,14 +2344,14 @@ export default function NexaApp() {
     setUploads([]);
   }, [uid]);
   addFilesRef.current = (...a) => addFiles(...a);
-  const addFiles = (fileList, folder) => {
+  const addFiles = (fileList, folder, onStarted) => {
     const picked = Array.from(fileList || []);
     if (!picked.length) return;
     const rejected = [];
-    picked.forEach((file) => {
+    picked.forEach((file, index) => {
       const problem = fileProblem(file);
       if (problem) rejected.push(`«${safeFileName(file.name)}» — ${problem.toLowerCase()}`);
-      else startUpload(file, folder);
+      else { const id = startUpload(file, folder); onStarted?.(index, id); }
     });
     if (rejected.length) {
       showToast({ title: rejected.length === 1 ? "Файл не добавлен" : `Не добавлено: ${rejected.length}`, text: rejected.slice(0, 2).join("; "), kind: "error" });
@@ -2388,7 +2392,7 @@ export default function NexaApp() {
       rememberLocal("guest", id, file);
       patch({ progress: 1 });
       setTimeout(() => done({}), 250);
-      return;
+      return id;
     }
     // Нет сети — сразу в очередь: загрузится, когда связь вернётся (пока NEXA открыта)
     const toQueue = async () => {
@@ -2397,7 +2401,7 @@ export default function NexaApp() {
       if (!ok) { showToast({ title: "Файл не сохранился для отправки", text: `«${name}»: в браузере не хватило места — добавьте его, когда появится сеть`, kind: "error" }); return; }
       loadQueueRows();
     };
-    if (navigator.onLine === false) { toQueue(); return; }
+    if (navigator.onLine === false) { toQueue(); return id; }
     // Страховка на время загрузки: копия в очереди (status "active" этой вкладки — очередь её не трогает).
     // Android выгрузил NEXA посреди загрузки — при следующем открытии файл догрузится из очереди
     // (через ACTIVE_STALE_MS; тот же id — без дублей). Не сохранилась копия — загружаем всё равно
@@ -2417,6 +2421,7 @@ export default function NexaApp() {
         else if (err?.kind === "network") backup.then(toQueue); // связь оборвалась посреди загрузки
         else { fail(err?.text || "Не загрузилось — попробуйте ещё раз"); dropBackup(); }
       });
+    return id;
   };
 
   /* ── Очередь загрузок без сети (src/lib/files.js) ──
@@ -2782,7 +2787,8 @@ export default function NexaApp() {
     inp.onchange = () => { const files = Array.from(inp.files || []); if (files.length) sendDirectTo(d, files); };
     inp.click();
   };
-  const saveDirect = async (x) => {
+  const saveDirect = async (x, transferId = direct.inc?.id, index = direct.inc?.files?.indexOf(x)) => {
+    const owner = uid;
     const name = safeFileName(x.name);
     try {
       let r;
@@ -2795,7 +2801,11 @@ export default function NexaApp() {
         setTimeout(() => URL.revokeObjectURL(url), 60000);
         r = "started";
       }
-      if (r === "saved" || (isNative && r)) showToast({ title: "Файл сохранён", text: isNative ? `«${name}» — в «Загрузках»` : `«${name}»` });
+      if (r === "saved") showToast({ title: "Файл сохранён", text: isNative ? `«${name}» — в «Загрузках»` : `«${name}»` });
+      if (uploadUid.current === owner && transferId && index >= 0) {
+        if (r === "saved") transferHistory.mark(transferId, index, { device: true });
+        else if (r === "started") transferHistory.mark(transferId, index, { download: true });
+      }
     } catch { showToast({ kind: "error", title: "Не получилось сохранить", text: "Попробуйте ещё раз" }); }
   };
   // Не соединились напрямую — подсказываем облако (как раньше)
@@ -3117,6 +3127,22 @@ export default function NexaApp() {
             onCreateFolder={createFolder}
             onTransfer={openTransfer}
             onDeleteFiles={deleteFiles}
+            transferPanel={<TransferHistory history={transferHistory} direct={direct} devices={devices} files={files} onSave={saveDirect} onOpen={setOpenFile}
+              onRetry={(row, device) => {
+                const cached = transferHistory.cached(row.transferId);
+                if (cached) sendDirectTo({ ...device, device_id: row.peer }, splitDirectFiles(cached.file, cached.files).map(f => new File([f.blob], f.name, { type: f.mime })));
+                else {
+                  const owner = uid, input = document.createElement("input"); input.type = "file"; input.multiple = true;
+                  input.onchange = () => {
+                    if (uploadUid.current !== owner) return;
+                    const picked = Array.from(input.files || []);
+                    const remaining = [...picked];
+                    const ordered = row.files.map(f => { const i = remaining.findIndex(x => safeFileName(x.name) === safeFileName(f.name) && x.size === f.size); return i < 0 ? null : remaining.splice(i, 1)[0]; });
+                    if (remaining.length || ordered.some(x => !x)) { showToast({ kind: "error", title: "Выберите те же файлы", text: "Названия, размеры и количество должны совпадать с передачей" }); return; }
+                    sendDirectTo({ ...device, device_id: row.peer }, ordered);
+                  }; input.click();
+                }
+              }} />}
           />
         )}
         {t === "settings" && <ScreenSettings onAbout={openAbout}
@@ -3434,7 +3460,7 @@ export default function NexaApp() {
         : drop && <DropBanner key={drop.id} drop={drop} st={drop.st || sendState[drop.devKey]} onClose={() => setDrop((x) => (x?.id === drop.id ? null : x))} />}
       {nearSheet && <NearbySheet nb={nb} tab={nearSheet} myName={myNearName} onClose={() => setNearSheet(null)} />}
       {nb.ask && <NearbyAsk ask={nb.ask} onAccept={nb.acceptAsk} onReject={nb.rejectAsk} />}
-      <DirectTransfer direct={direct} onSave={saveDirect} onAdd={(files) => { addFiles(files.map((f) => new File([f.blob], safeFileName(f.name), { type: f.mime || "" })), null); goTab("files"); }} />
+      <DirectTransfer direct={direct} onSave={saveDirect} onAdd={(files) => { const id = direct.inc?.id; addFiles(files.map((f) => new File([f.blob], safeFileName(f.name), { type: f.mime || "" })), null, (index, fileId) => transferHistory.mark(id, index, { fileId })); goTab("files"); }} />
      </div>
   );
 }

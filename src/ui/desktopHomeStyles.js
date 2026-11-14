@@ -192,7 +192,13 @@ export const DESKTOP_HOME_CSS = `
   .nx-side-devs-empty { font-size: 12px; color: var(--muted); padding: 6px 10px; }
   .nx-side-about-ico { width: 26px; display: flex; justify-content: center; flex-shrink: 0; }
   .nx-side-ver { font-size: 12px; color: var(--muted); padding: 8px 10px 0; white-space: nowrap; }
-  .nx-side.is-min :is(.nx-side-devs, .nx-side-ver) { display: none; }
+  .nx-side.is-min .nx-side-ver { display: none; }
+  /* Свёрнутое меню (2026-11-14, просьба автора): от блока «Устройства» остаётся только «+» — по центру, размером со строку раздела */
+  .nx-side.is-min .nx-side-devs { margin-top: 12px; }
+  .nx-side.is-min :is(.nx-side-devs .nx-side-sec, .nx-side-devs-list) { display: none; }
+  .nx-side.is-min .nx-side-devs-head { justify-content: center; padding: 0; margin: 0; }
+  .nx-side.is-min .nx-side-add { width: 44px; height: 44px; border-radius: 12px; }
+  .nx-side.is-min .nx-side-add svg { width: 20px; height: 20px; }
 
   /* Верхняя строка: поиск-таблетка и одна общая таблетка */
   .ng-topbar { gap: 12px !important; padding: 20px 32px 0 0 !important; align-items: center !important; }
@@ -276,5 +282,37 @@ export const DESKTOP_HOME_CSS = `
   /* Профиль со своим фото: фото занимает весь круг (раньше вокруг маленького фото оставалось толстое светлое кольцо) */
   .nx-top-group .nx-tb-user .nx-set-avatar { width: 100% !important; height: 100% !important; }
   @media (prefers-reduced-motion: reduce) { .ng-topbar, .nx-hd-dev { transition: none; } }
+}
+
+/* ═══ Правки по макету 2026-11-14 (компьютер) ═══ */
+@media ${DESKTOP_MQ} {
+  /* Ассистент — «таблетка» как на макете: тёмно-синий слева переходит в сине-мятный справа,
+     светлая обводка, значок — сине-мятный круг. Ровная, без бликов стекла */
+  .nx-hd-ai { min-height: 76px; padding: 0 28px 0 16px; gap: 14px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--text) 26%, transparent);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 26%, var(--bg)) 0%, color-mix(in srgb, var(--mint) 30%, color-mix(in srgb, var(--blue) 40%, var(--bg))) 100%);
+    box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--mint) 60%, transparent), inset 0 1px 0 color-mix(in srgb, var(--text) 16%, transparent);
+    transition: filter 160ms ease, border-color 160ms ease; }
+  .nx-hd-ai:hover { filter: brightness(1.1); border-color: color-mix(in srgb, var(--text) 40%, transparent); }
+  .nx-hd-ai-ico { width: 46px; height: 46px; }
+  .nx-hd-ai .nx-hd-h { font-size: 20px; }
+  .nx-hd-ai .nx-hd-sub { color: color-mix(in srgb, var(--text) 78%, transparent); }
+  :root[data-theme="light"] .nx-hd-ai {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 14%, var(--panel)) 0%, color-mix(in srgb, var(--mint) 26%, var(--panel)) 100%);
+    border-color: color-mix(in srgb, var(--blue) 22%, transparent); }
+
+  /* Узкое окно: поиск-таблетка наезжала на заголовок «Главная» (верхняя строка закреплена поверх экрана).
+     До 1360 px поиск — значком внутри общей таблетки, до 1080 px — ещё и дата без дня недели и месяца */
+  @media (max-width: 1360px) {
+    .ng-topbar .nx-top-search { display: none !important; }
+    .nx-top-group .nx-top-search-icon { display: inline-flex; }
+    .nx-top-group .nx-top-search-icon > button { width: 34px !important; height: 34px !important; }
+    .nx-tb-row .nx-top-group .nx-top-search-icon svg { width: 20px !important; height: 20px !important; }
+  }
+  @media (max-width: 1080px) {
+    .nx-top-group .ng-timedate > .nx-td-time::after { content: none; }
+    .nx-top-group .ng-timedate > .nx-td-date-long { display: none !important; }
+  }
+  @media (prefers-reduced-motion: reduce) { .nx-hd-ai { transition: none; } }
 }
 `;

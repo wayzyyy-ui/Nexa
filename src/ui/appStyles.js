@@ -6,6 +6,7 @@ import { REPLY_AURA_FADE } from "../screens/assistant/visuals.jsx";
 import { MOBILE_HOME_CSS } from "./mobileHomeStyles.js";
 import { DESKTOP_HOME_CSS } from "./desktopHomeStyles.js";
 import { DIRECT_TRANSFER_CSS } from "./directTransferStyles.js";
+import { TODAY_CSS } from "./todayStyles.js";
 
 export const APP_CSS = `
         /* Отступы под вырез камеры и системную полосу (safe area).
@@ -2605,4 +2606,5 @@ export const APP_CSS = `
 ${MOBILE_HOME_CSS}
 ${DESKTOP_HOME_CSS}
 ${DIRECT_TRANSFER_CSS}
+${TODAY_CSS}
 `;

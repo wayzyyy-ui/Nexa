@@ -224,7 +224,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
     : { kind: "error", text: weather.error, onRetry: weather.refetch };
 
   return (
-    <MediaLayout hideArt={forecastOpen}>
+    <MediaLayout hideArt={forecastOpen} className="nx-today-screen">
       <MediaTitle title="Сегодня" />
 
       {/* is-fc — открыт прогноз: на широком экране он третья колонка (расписание чуть уже),
@@ -286,8 +286,10 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
           )}
 
           {schedule.length === 0 && !adding && (
-            <EmptyState compact title={isToday ? "Дел на сегодня нет" : "На этот день дел нет"} text="Добавьте дело — оно появится на таймлайне"
-              action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
+            <div className="nx-today-empty">
+              <EmptyState compact title={isToday ? "Дел на сегодня нет" : "На этот день дел нет"} text="Добавьте дело — оно появится на таймлайне"
+                action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
+            </div>
           )}
 
           {/* Вертикальная линия таймлайна — один div. --dot-x — где центр
@@ -357,7 +359,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
           )}
         </section>
 
-        <div style={{ gridArea: "now" }}>
+        <div className="nx-today-now" style={{ gridArea: "now" }}>
             <WeatherCard title="Погода" date={formatWeatherDate(now?.date || new Date())} city={location.city} cityNote={LOCATION_SOURCE_TEXT[location.source]}
             onCity={() => setPickingCity(true)}
             cityPicker={pickingCity && (
@@ -378,7 +380,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
             // Пока данных нет, о загрузке и ошибке говорит сама карточка (вуаль),
             // поэтому строку статуса показываем только когда погода уже есть
             footer={weather.now &&
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 22 }}>
+          <div className="nx-today-weather-status" style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 22 }}>
             {/* Кнопка обновления доступна всегда — можно потянуть погоду заново */}
             <button
               type="button"
@@ -386,7 +388,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
               onClick={weather.refetch}
               disabled={weather.loading}
               aria-label="Обновить погоду"
-              title="Обновить погоду"
+              title={`Обновить погоду · обновлено в ${hm(weather.updatedAt)}`}
               style={{
                 ...btnReset, width: 30, height: 30, borderRadius: 10,
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -398,7 +400,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
             </button>
 
             {/* Что происходит: обновляемся, нет связи (показаны сохранённые), источник недоступен или «обновлено в 14:32» */}
-            <div role="status" style={{ ...statusLine, flex: 1, minWidth: 0 }}>
+            <div role="status" className={`nx-today-weather-update${weather.loading || weather.offline || weather.error || weather.stale ? " is-alert" : ""}`} style={{ ...statusLine, flex: 1, minWidth: 0 }}>
               {weather.loading
                 ? "Обновление…"
                 : weather.offline
@@ -413,10 +415,10 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
           </div>
             } />
         </div>
-        <div style={{ gridArea: "next", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
+        <div className="nx-today-next" style={{ gridArea: "next", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
           <WeatherCard title="Погода (завтра)" date={formatWeatherDate(tomorrow?.date || new Date(Date.now() + 86400000))}
             temp={tomorrow?.temp ?? null} cond={tomorrow?.text ?? "—"} note={`Ночью ${signed(tomorrow?.min ?? null)}°`} tone={tomorrowSky.tone} rain={tomorrowSky.rain} snow={tomorrowSky.snow}
-            veil={veil} grow
+            veil={veil || (!tomorrow ? { kind: "error", text: "Прогноз на завтра пока недоступен", onRetry: weather.refetch } : null)} grow
             footer={tomorrow && <div style={{ display: "flex", justifyContent: "flex-end" }}><WeatherAttribution w={weather} /></div>} />
         </div>
         {/* «Заметки» — свой экран поверх «Сегодня» (src/screens/Notes.jsx, адрес /notes) */}
@@ -429,7 +431,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
               display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", fontSize: 16,
             }}>
             <span />
-            <span>Заметки</span>
+            <span className="nx-today-notes-label"><span className="nx-today-notes-icon" aria-hidden="true">{Icon.doc({ c: C.text, s: 20 })}</span>Заметки</span>
             <span style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 8, color: C.mutedSoft, fontSize: 14 }}>
               {notesCount > 0 && <span>{notesCount}</span>}
               {Icon.chevron({ c: C.text })}

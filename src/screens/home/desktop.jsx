@@ -145,13 +145,12 @@ export function HomeDesktop({ devices, art, empty, activity, schedule, extra, on
       </div>
       <div className="nx-hd-col nx-hd-side">
         <WeatherCard schedule={schedule} onToday={onToday} onNotes={onNotes} />
-        <button type="button" className="nx-hd-ai nx-glass nx-glass-prominent" onClick={onAssistant}>
+        <button type="button" className="nx-hd-ai" onClick={onAssistant}>
           <span className="nx-hd-ai-ico" aria-hidden="true">{Icon.sparkle({ c: C.onFold, s: 20 })}</span>
           <span className="nx-hd-ai-text">
             <span className="nx-hd-h">AI-Ассистент</span>
             <span className="nx-hd-sub">Чем могу помочь?</span>
           </span>
-          {Icon.chevron({ c: C.text, s: 18 })}
         </button>
         {extra}
       </div>

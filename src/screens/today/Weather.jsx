@@ -144,7 +144,7 @@ export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, no
           а поверх — сообщение: «загружаем» или «не удалось + Обновить».
           flex: 1 + центр — в растянутой карточке значения стоят посередине.
           minHeight — чтобы сообщение с кнопкой не вылезало за край карточки */}
-      <div style={{
+      <div className="nx-weather-body" style={{
         position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center",
         minHeight: veil ? 150 : undefined,
       }}>
@@ -153,9 +153,9 @@ export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, no
         } : { transition: "filter 300ms ease, opacity 300ms ease" }}>
           <div className="nx-weather-main" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 22 }}>
             <TempFold temp={temp} tone={tone} rain={rain} snow={snow} />
-            <div>
-              <div style={{ fontSize: 20 }}>{cond}</div>
-              <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
+            <div className="nx-weather-summary">
+              <div className="nx-weather-condition" style={{ fontSize: 20 }}>{cond}</div>
+              <div className="nx-weather-feels" style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{note || `Ощущается как ${signed(feels)}°`}</div>
             </div>
           </div>
 
@@ -204,7 +204,7 @@ export function WeatherCard({ title, date, city, cityNote, temp, cond, feels, no
           </div>
         )}
       </div>
-      {footer && <div style={{ marginTop: 16 }}>{footer}</div>}
+      {footer && <div className="nx-weather-footer" style={{ marginTop: 16 }}>{footer}</div>}
     </div>
   );
 }
@@ -316,7 +316,7 @@ export function CityPicker({ onPick, onAuto, onClose, isManual }) {
   }, [q]);
   const text = q.trim();
   return (
-    <div className="nx-pop" style={{ gridArea: "city", marginTop: 10 }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+    <div className="nx-pop nx-city-picker" role="dialog" aria-label="Выбрать город" style={{ gridArea: "city", marginTop: 10 }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
       <form onSubmit={(e) => { e.preventDefault(); if (state.list[0]) onPick(state.list[0]); }} style={{ display: "flex", gap: 6 }}>
         <input autoFocus className="nx-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Введите город"
           aria-label="Поиск города" style={{

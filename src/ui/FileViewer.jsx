@@ -149,7 +149,7 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
       // Второй палец пришёл чуть позже первого: первый уже начал «смахнуть вниз / листать» —
       // отменяем это (фон снова плотный, фото на месте), иначе щипок шёл бы со сдвинутого фото
       // на полупрозрачном фоне, сквозь который видно окно файла
-      if (rootRef.current) rootRef.current.style.backgroundColor = "";
+      if (rootRef.current) rootRef.current.style.backgroundColor = C.photoBg;
       if (v.s <= 1) { v.x = 0; v.y = 0; apply(false); }
       const [a, b] = [...ptrs.current.values()];
       g.current = { pinch: true, d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: v.s, moved: true };
@@ -177,7 +177,7 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
       if (Math.abs(dx) > Math.abs(dy)) { v.x = many ? dx : dx * 0.25; v.y = 0; }
       else { v.x = 0; v.y = Math.max(0, dy); }
       apply(false);
-      if (rootRef.current) rootRef.current.style.backgroundColor = v.y > 0 ? `color-mix(in srgb, ${C.photoBg} ${Math.max(40, 100 - v.y / 4)}%, transparent)` : "";
+      if (rootRef.current) rootRef.current.style.backgroundColor = v.y > 0 ? `color-mix(in srgb, ${C.photoBg} ${Math.max(40, 100 - v.y / 4)}%, transparent)` : C.photoBg;
     }
   };
   const onUp = (e) => {
@@ -186,11 +186,11 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
     const G = g.current, v = view.current;
     if (!G) return;
     if (G.pinch) {
-      if (ptrs.current.size === 0) { g.current = null; if (rootRef.current) rootRef.current.style.backgroundColor = ""; if (v.s < 1.05) resetView(true); }
+      if (ptrs.current.size === 0) { g.current = null; if (rootRef.current) rootRef.current.style.backgroundColor = C.photoBg; if (v.s < 1.05) resetView(true); }
       return;
     }
     g.current = null;
-    if (rootRef.current) rootRef.current.style.backgroundColor = "";
+    if (rootRef.current) rootRef.current.style.backgroundColor = C.photoBg;
     const dx = e.clientX - G.x0, dy = e.clientY - G.y0;
     if (!G.moved) {
       // Нажатие: два подряд — приблизить/отдалить, одно — спрятать/показать панели
@@ -249,7 +249,7 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
     <div ref={rootRef} className="nx-photo-full" role="dialog" aria-modal="true" aria-label={`Фото «${photo.name}»`} tabIndex={-1} data-no-swipe
       // Нажатия внутри фото не доходят до окна файла под ним (портал «всплывает» по дереву React)
       onClick={(e) => e.stopPropagation()}
-      style={{ position: "fixed", inset: 0, zIndex: 800, background: C.photoBg, color: onFoldC, outline: "none", display: "flex", flexDirection: "column", touchAction: "none" }}>
+      style={{ position: "fixed", inset: 0, zIndex: 800, backgroundColor: C.photoBg, color: onFoldC, outline: "none", display: "flex", flexDirection: "column", touchAction: "none" }}>
       {/* Сцена с фото. Жесты ловим здесь */}
       <div ref={stageRef}
         style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: zoomed ? "grab" : "zoom-in" }}>

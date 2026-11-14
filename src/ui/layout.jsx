@@ -6,9 +6,9 @@ import { FoldArt } from "./backdrop.jsx";
 /* Общая раскладка «Сегодня», «Медиа» и «Файлов»: слева контент, справа объёмная складка
    из макета 2026-10 (векторная, как на Главной, крупно и обрезана правым краем). На узком экране складка прячется (см. .nx-media-art). */
 // hideArt — плавно спрятать складку (например, когда справа открыт прогноз)
-export function MediaLayout({ children, hideArt }) {
+export function MediaLayout({ children, hideArt, className = "" }) {
   return (
-    <div className="ng-screen nx-media-screen" style={{ padding: "28px 40px 40px", textAlign: "left" }}>
+    <div className={`ng-screen nx-media-screen ${className}`} style={{ padding: "28px 40px 40px", textAlign: "left" }}>
       <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
         {/* nx-media-main — на большом мониторе растёт вместе с окном (--desk-zoom) */}
         <div className="nx-media-main" style={{ minWidth: 0 }}>{children}</div>

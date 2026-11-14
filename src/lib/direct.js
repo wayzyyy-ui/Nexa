@@ -228,6 +228,7 @@ export function useDirect(link, enabled) {
     const a = askRef.current;
     if (!a) return;
     askRef.current = null; setAsk(null); clearT("iask");
+    setInc({ id: a.id, from: a.from, fromName: a.name, size: a.size, files: a.files, phase: "failed", reason: "declined", error: DIRECT_FAIL.declined });
     linkRef.current.emit("p2p.reject", { id: a.id, to_device: a.from, reason: "declined" });
   }, []);
   const cancelInc = useCallback(() => failInc("cancel", true), [failInc]);
@@ -253,7 +254,7 @@ export function useDirect(link, enabled) {
       const a = { id: p.id, from: p.from_device, name: p.from_name, file: directName(p.name), size: p.size, mime: p.mime || "", files: files.map((f) => ({ ...f, name: directName(f.name) })), sdp: p.sdp };
       askRef.current = a; setAsk(a);
       // Не ответили за время ожидания отправителя — молча убираем вопрос
-      timers.current.iask = setTimeout(() => { if (askRef.current?.id === a.id) { askRef.current = null; setAsk(null); } }, ASK_MS);
+      timers.current.iask = setTimeout(() => { if (askRef.current?.id === a.id) { askRef.current = null; setAsk(null); setInc({ id: a.id, from: a.from, fromName: a.name, files: a.files, size: a.size, phase: "failed", reason: "noanswer", error: "Время ожидания истекло" }); } }, ASK_MS);
       return true;
     }
     const o = outRef.current;
@@ -276,7 +277,7 @@ export function useDirect(link, enabled) {
         if (!i.done) failInc(reason);
         else setInc((x) => x?.id === i.id && x.phase === "failed" ? { ...x, reason, error: DIRECT_FAIL[reason] } : x);
       }
-      if (askRef.current?.id === p.id && askRef.current.from === p.from_device) { askRef.current = null; setAsk(null); clearT("iask"); }
+      if (askRef.current?.id === p.id && askRef.current.from === p.from_device) { const a = askRef.current; askRef.current = null; setAsk(null); clearT("iask"); setInc({ id: a.id, from: a.from, fromName: a.name, files: a.files, size: a.size, phase: "failed", reason, error: DIRECT_FAIL[reason] }); }
     }
     return true;
   }, [enabled, failOut, failInc]);

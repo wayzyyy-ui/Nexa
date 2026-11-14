@@ -66,7 +66,7 @@ function FileRowItem({ f, idx, rowStyle, meta, selecting, selected, onOpen, onTo
   );
 }
 
-export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast, onNearby, onDeleteFiles }) {
+export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, initialFolder, folders = FOLDERS, uploads = [], onAddFiles, onCreateFolder, onTransfer, onUploadAction, onBack, onToast, onNearby, onDeleteFiles, transferPanel }) {
   // Текущая папка (null — корень хранилища)
   const [folder, setFolder] = useState(initialFolder || null);
   const fileInput = useRef(null);
@@ -318,6 +318,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   return (
     <MediaLayout>
       <MediaTitle title="Файлы" />
+      {transferPanel}
 
       {/* alignItems: flex-end — черта поиска на одной линии с чертой под путём */}
       <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-end", gap: 28, marginBottom: 26 }}>
