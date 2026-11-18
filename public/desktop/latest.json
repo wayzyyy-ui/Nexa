@@ -1,11 +1,11 @@
 {
-  "version": "0.19.5",
-  "notes": "- Обновление 0.19.5\n- Добавилось: в «Файлах» история последних 100 прямых передач — результат, повтор с новым согласием получателя и отметки сохранения\n- Улучшилось: экран «Сегодня» на компьютере — расписание слева, крупная погода и компактный прогноз на завтра справа\n- Улучшилось: кнопка AI-Ассистента на Главной компьютера — плавная цветная капсула; свёрнутая боковая панель стала компактнее\n- Улучшилось: заголовки и значки разделов на телефоне выровнены по одной линии\n- Починилось: при жестах в полноэкранном просмотре фото мог пропадать тёмный фон",
-  "pub_date": "2026-11-14T14:48:46.831Z",
+  "version": "0.19.6",
+  "notes": "- Обновление 0.19.6\n- Добавилось: приветствие тестовой версии с почтой для отзывов, перед предложением помочь нейросети\n- Улучшилось: Главная — новый фон, уменьшенные складки, единый мятный акцент и нейтральный цвет отключённых устройств\n- Улучшилось: вместо жидкого стекла — простые полупрозрачные панели с ровной обводкой и обычным размытием\n- Улучшилось: понятный текст о помощи NEXA mini; приветственные окна по центру на компьютере и телефоне\n- Починилось: плашка AI-Ассистента на Главной компьютера выровнена по низу блока активности",
+  "pub_date": "2026-11-18T17:44:08.542Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTd4VkthWjZEWWlpRDdLTTRHR2VoWkU0QmpwQyt0SXpQbkk3V2ZwOEdqcW9TN1ljdVRmZGorSXhJbDdlUFhqdjhtbFU5NnRiV0NXaGZkaG95STNjWUFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjY3NzI2CWZpbGU6TkVYQV8wLjE5LjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuNQpRbkFlOTJwNm15Vm41NVNtQkw0SUp4NG41aEpMMFcxcVltcGxRUzQ4WFpyNjJNTnJoamdZdWJiaU4yK1kzM3RSWHgxYVlIYkZtelcrcnVqYUVMUnJBdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.5"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTFDcG1LUjlNQys2aU1oVTF3YkdvdDF0Q2xVWjl2aHhTd1ZjNm84bE9hbC9ib25wekFCS09meXQxZmFmS1cxTUFsR3NWVVdyakxjYytaSlA4UEFQR3dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDIzODQ3CWZpbGU6TkVYQV8wLjE5LjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuNgowUkdrRnZkN0Q4M3cvWGZqTzIyVEFmU3V4YXUxY0Q0amNLOFZ1eGlFb0hrQkkrT2M1dm53YjBiN2pWbHJWdUU4MExJZ1ozc0p3K3FpQ2tYMko5YUhEZz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.6"
     }
   }
 }
