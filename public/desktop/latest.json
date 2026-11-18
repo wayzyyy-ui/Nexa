@@ -1,11 +1,11 @@
 {
-  "version": "0.19.7",
-  "notes": "- Обновление 0.19.7\n- Улучшилось: в строке глобального поиска теперь короткое «Найти…»\n- Улучшилось: в новом чате AI-Ассистента плавно появляется градиент Главной. После первого сообщения фон становится однотонным, а подсветка движется только во время ответа",
-  "pub_date": "2026-11-18T19:53:51.558Z",
+  "version": "0.19.8",
+  "notes": "- Обновление 0.19.8\n- Улучшилось: в пустом чате ассистента снова переливается приветствие и медленно движется градиент фона\n- Улучшилось: история чатов на ПК теперь сливается с фоном диалога\n- Добавилось: кнопка «+» под кнопкой истории открывает новый диалог",
+  "pub_date": "2026-11-18T23:27:37.804Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WStnM016NHhKZFRKd1VHaSs5VDVyTUI2cnQwUVI3dDR5Z1NwSHh4L2FLYzFCcVJ0aHU3U3RJT1RqcGUxOEtLSDhXMUVBcnBSbUM0enB6RU5PWFhoVHdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDMxNjMxCWZpbGU6TkVYQV8wLjE5LjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuNwpTU2pMZkV5enpTNjVMdm13aWk3RlpySGJrSUpkVHdPVzFtaW95ZWhJbEpZZUwrNExkRndjQ1lkSlZueXZGZEdGR1Rjb0I3emJlbGt2T3ZqQW5HUVZCdz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.7"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WS9JaUNibDdBa1IyTUNmazNJRXM5UFJqemRBSEw4SSt2cWlVT00xZUdjZXVuT3loZ0thMUR3ek1BNTIzbVBYSXh5SG5Sb1c2NDd0SVZiNDdjSFBuTUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDQ0NDU3CWZpbGU6TkVYQV8wLjE5LjhfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuOApwYVBQTk9XMWZCNFJ1bUxnSUF0VG9ablZRMGNUVnlDNnpQelhLWE8wMktmSVd0NjhQb1AyaThMS2s4TC9QODNycTNpQU5OYzE0T1NsSU5KbDQ4WTZEQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.8"
     }
   }
 }
