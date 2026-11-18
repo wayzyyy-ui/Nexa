@@ -915,14 +915,14 @@ export const APP_CSS = `
         .nx-chat-backdrop[data-empty="true"] { opacity: 1; }
         @media (prefers-reduced-motion: no-preference) {
           .nx-chat-backdrop[data-empty="true"]::before {
-            content: ""; position: absolute; inset: -12%;
-            background: radial-gradient(ellipse at 36% 40%, var(--home-bg-a), transparent 56%),
-                        radial-gradient(ellipse at 72% 64%, var(--home-bg-b), transparent 58%);
-            opacity: .68; animation: nx-chat-drift 16s ease-in-out infinite alternate;
+            content: ""; position: absolute; inset: -16%;
+            background: radial-gradient(ellipse at 28% 36%, color-mix(in srgb, var(--mint) 28%, transparent), transparent 47%),
+                        radial-gradient(ellipse at 70% 65%, color-mix(in srgb, var(--blue) 36%, transparent), transparent 49%);
+            animation: nx-chat-drift 9s ease-in-out infinite alternate;
           }
           @keyframes nx-chat-drift {
-            from { transform: translate(-5%, -3%) rotate(-4deg); }
-            to { transform: translate(5%, 3%) rotate(4deg); }
+            from { transform: translate(-8%, 5%) rotate(-8deg); }
+            to { transform: translate(9%, -6%) rotate(8deg); }
           }
         }
         @starting-style { .nx-chat-backdrop[data-empty="true"] { opacity: 0; } }

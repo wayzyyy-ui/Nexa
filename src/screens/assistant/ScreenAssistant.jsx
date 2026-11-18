@@ -25,6 +25,7 @@ import { useConversation } from "../../lib/conversation.js";
 import { ConversationBar } from "./conversation.jsx";
 import { FILE_SCOPE, sortByRecent, catOf } from "../../lib/fileStore.js";
 import { VERSION } from "../../version.js";
+import { describeUpdate } from "../../lib/releaseHistory.js";
 import { FileThumb } from "../../ui/files.jsx";
 import { LiveAnswer, AttachChip, MessageBubble, AssistantSkeleton } from "./messages.jsx";
 
@@ -570,7 +571,7 @@ useEffect(() => {
       navTimer.current = setTimeout(() => { navTimer.current = null; onOpenNotes?.(params.create ? { create: true } : undefined); }, NAV_DELAY);
       return;
     }
-    if (action === "version") return say(`Сейчас у вас **NEXA ${VERSION}**. Что нового в каждой версии — в «О системе» (внизу Главной).`, { actionLabel: "Версия NEXA" });
+    if (action === "version") return say(describeUpdate(VERSION), { actionLabel: "Обновление NEXA" });
   };
 
   // «Отменить» на плашке: тема — вернуть прежнюю, переход — не переходить

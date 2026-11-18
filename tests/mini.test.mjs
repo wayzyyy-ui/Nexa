@@ -15,6 +15,15 @@ import { decide, setMiniModel, miniCommand, INTENT_ACTIONS } from "../src/lib/mi
 register("./helpers/stub-hooks.mjs", import.meta.url);
 const { parseCommand } = await import("../src/lib/commands.js");
 
+test("вопросы об обновлении NEXA распознаются без модели", () => {
+  for (const text of ["Что за обновление?", "Что нового в NEXA?", "Что улучшили в последней версии?"]) {
+    assert.equal(parseCommand(text)?.action, "version", text);
+  }
+  for (const text of ["Что нового в мире?", "Что за обновление браузера?"]) {
+    assert.equal(parseCommand(text), null, text);
+  }
+});
+
 const weights = JSON.parse(readFileSync(new URL("../src/lib/mini/weights.json", import.meta.url), "utf8"));
 const net = modelFromJSON(weights);
 setMiniModel(net);

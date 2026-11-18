@@ -143,7 +143,7 @@ export function HomeDesktop({ devices, art, empty, activity, schedule, extra, on
           </section>
         )}
       </div>
-      <div className="nx-hd-col nx-hd-side">
+      <div className="nx-hd-col">
         <WeatherCard schedule={schedule} onToday={onToday} onNotes={onNotes} />
         <button type="button" className="nx-hd-ai" onClick={onAssistant}>
           <span className="nx-hd-ai-ico" aria-hidden="true">{Icon.sparkle({ c: C.onFold, s: 20 })}</span>

@@ -95,9 +95,6 @@ export const DESKTOP_HOME_CSS = `
   :is(.nx-hd-dev, .nx-hd-ai, .nx-hd-wx-main, .nx-hd-link) { appearance: none; font: inherit; color: var(--text); text-align: left; border: 0; background: none; padding: 0; margin: 0; }
   .nx-hd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
   .nx-hd-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-  /* Низ ассистента — на линии низа левой колонки, даже если погода короче. */
-  .nx-hd-side { align-self: stretch; }
-  .nx-hd-side > .nx-hd-ai { margin-top: auto; flex-shrink: 0; }
   .nx-hd-card { border-radius: 20px; padding: 20px; box-sizing: border-box; font-size: 14px; line-height: 1.4; }
   .nx-hd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
   .nx-hd-h { display: block; margin: 0; color: var(--text); font-family: inherit; font-size: 17px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }

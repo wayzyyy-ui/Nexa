@@ -98,7 +98,7 @@
 
 ## Выпуск
 
-- Шаги: поднять `"version"` в package.json и `VERSION` в `src/version.js` → «что нового» в `release-notes.md` (группы «Улучшилось», «Починилось», «Добавилось») и те же пункты в `ABOUT_UPDATES` (`src/screens/About.jsx`) → `npm run release:android` (APK + веб-часть) или только `npm run release:web` → проверить вывод (версия, SHA-256, ключ) → коммит «Версия X.Y.Z» (для ПК — «Версия X.Y.Z (ПК)»). Пушит автор.
+- Шаги: поднять `"version"` в package.json и `VERSION` в `src/version.js` → «что нового» в `release-notes.md` (группы «Улучшилось», «Починилось», «Добавилось») и те же пункты в `ABOUT_UPDATES` (`src/lib/releaseHistory.js`) → `npm run release:android` (APK + веб-часть) или только `npm run release:web` → проверить вывод (версия, SHA-256, ключ) → коммит «Версия X.Y.Z» (для ПК — «Версия X.Y.Z (ПК)»). Пушит автор.
 - `release:web` хватает для правок интерфейса, текстов, стилей и JavaScript. Полный `release:android` нужен для разрешений, AndroidManifest, плагинов Capacitor, своих Java-модулей, виджетов, Firebase, значка и заставки, подписи, `capacitor.config.json`, `.env.android`. Сомневаешься — полный. ПК — `npm run release:desktop`; конфиг окна по воздуху не обновляется — нужен новый установщик.
 - Перед выпуском сами запускаются проверки `npm run release:check` (SQL-правила, тесты, линтер, `npm audit`, тесты базы, облачная база при наличии ключа).
 - Подробно (подпись, OTA, проверки APK, откат) — `docs/android.md` и `docs/desktop.md`.
