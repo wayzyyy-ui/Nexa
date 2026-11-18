@@ -227,10 +227,6 @@ export const APP_CSS = `
         }
         /* Боковое меню на Главной прозрачное — градиент виден и под ним (как в макете) */
         body:has(.nx-home-glow) .ng-sidebar { background: transparent !important; }
-        /* Ассистент, открыта история диалогов (компьютер): меню получает тот же цвет, что колонка истории
-           (она — фон экрана на 72 %, см. .nx-hist), чтобы меню и история выглядели одной панелью.
-           Во всех остальных местах меню — прозрачное, как фон экрана (просьба автора 2026-10-28) */
-        body:has(.nx-hist-col:not(.is-leaving)) .ng-sidebar { background: color-mix(in srgb, var(--bg) 72%, transparent) !important; }
         .ng-home { position: relative; z-index: 1; }
 
         @media ${DESKTOP_MQ} {
@@ -917,6 +913,18 @@ export const APP_CSS = `
           opacity: 0; transition: opacity 360ms ease;
         }
         .nx-chat-backdrop[data-empty="true"] { opacity: 1; }
+        @media (prefers-reduced-motion: no-preference) {
+          .nx-chat-backdrop[data-empty="true"]::before {
+            content: ""; position: absolute; inset: -12%;
+            background: radial-gradient(ellipse at 36% 40%, var(--home-bg-a), transparent 56%),
+                        radial-gradient(ellipse at 72% 64%, var(--home-bg-b), transparent 58%);
+            opacity: .68; animation: nx-chat-drift 16s ease-in-out infinite alternate;
+          }
+          @keyframes nx-chat-drift {
+            from { transform: translate(-5%, -3%) rotate(-4deg); }
+            to { transform: translate(5%, 3%) rotate(4deg); }
+          }
+        }
         @starting-style { .nx-chat-backdrop[data-empty="true"] { opacity: 0; } }
         /* Подсветка привязана к ответу и уходит вместе с индикатором ожидания. */
         .nx-pending-reply { position: relative; isolation: isolate; }
@@ -974,7 +982,18 @@ export const APP_CSS = `
            При скрытии — уезжает обратно (is-leaving), потом колонку убирают */
         @keyframes nx-hist-in { from { margin-left: -272px; opacity: 0; } to { margin-left: 0; opacity: 1; } }
         @keyframes nx-hist-out { from { margin-left: 0; opacity: 1; } to { margin-left: -272px; opacity: 0; } }
-        .nx-hist-col { animation: nx-hist-in 280ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-hist-col { background: transparent; border-right: 0; animation: nx-hist-in 280ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .nx-hist-col :is(.nx-hist-search, .nx-hist-new, .nx-hist-account) {
+          background: color-mix(in srgb, var(--text) 4%, transparent);
+          border-color: var(--border-soft);
+        }
+        .nx-hist-col .nx-hist-list { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+        .nx-chat-tools { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+        .nx-chat-new {
+          display: grid; place-items: center; width: 40px; height: 40px;
+          background: transparent; border: 0; border-radius: 50%; cursor: pointer;
+        }
+        .nx-chat-new:hover, .nx-chat-new:focus-visible { background: var(--hover); }
         .nx-hist-col.is-leaving { animation: nx-hist-out 220ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
         @media (prefers-reduced-motion: reduce) { .nx-hist-col, .nx-hist-col.is-leaving { animation: none; } }
         /* Крестик на компьютере — маленький круг */
@@ -1301,6 +1320,12 @@ export const APP_CSS = `
           -webkit-text-fill-color: transparent;
           color: transparent;
           animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          .nx-greeting-anim {
+            background-size: 200% 100%;
+            animation: nx-greet-in 700ms ease-out both, nx-border-flow 7s linear infinite;
+          }
         }
 
         /* Новые сообщения мягко появляются снизу */
@@ -2356,7 +2381,8 @@ export const APP_CSS = `
             font-family: 'Manrope', sans-serif; font-size: 11px; line-height: 1.2; font-weight: 400; color: var(--muted-soft); letter-spacing: 0;
           }
           .ng-assistant-inner .nx-assistant-subtitle { display: none !important; }
-          .ng-hamburger { width: 40px; height: 40px; margin-left: -8px; }
+          .nx-chat-tools { margin-left: -8px; }
+          .ng-hamburger { width: 40px; height: 40px; }
           .nx-ai-head { align-items: center !important; } /* описания нет — кнопка и название (с версией под ним) по центру */
           /* Переписка вплотную к шапке и полю ввода; сообщения чуть плотнее */
           .nx-chat-area { margin: 6px 0 0 !important; }

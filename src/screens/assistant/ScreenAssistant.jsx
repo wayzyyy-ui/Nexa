@@ -323,7 +323,7 @@ useEffect(() => {
     };
   }, []);
 
-  const newChat = () => { if (currentChatId) rememberInputPos(); setCurrentChatId(null); setInput(''); };
+  const newChat = () => { if (currentChatId) rememberInputPos(); clearAtt(); setCurrentChatId(null); setInput(''); };
   // «Новый диалог» из панели быстрых действий: чистый диалог и курсор в поле
   // (на телефоне без фокуса — иначе сразу выскочит клавиатура)
   const newChatRef = useRef(newChat); newChatRef.current = newChat;
@@ -745,6 +745,7 @@ useEffect(() => {
   <div className="nx-ai-head" style={{ display: "flex", alignItems: "flex-start", gap: 12, textAlign: "left", position: "relative", zIndex: 2 }}>
     {/* Кнопка истории: на телефоне открывает шторку, на компьютере
         возвращает скрытую колонку (видна, только пока колонка скрыта) */}
+    {(mobile || histHidden) && <div className="nx-chat-tools">
     <button
       type="button"
       className={`ng-hamburger${!mobile && histHidden ? " is-shown" : ""}`}
@@ -762,6 +763,10 @@ useEffect(() => {
         <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
       </svg>
     </button>
+    <button type="button" className="nx-chat-new" aria-label="Новый диалог" title="Новый диалог" onClick={newChat}>
+      {Icon.plus({ c: C.text, s: 20 })}
+    </button>
+    </div>}
     <div style={{ textAlign: "left", minWidth: 0 }}>
       {/* На телефоне — одна строка без переноса: название и маленькая версия рядом */}
       <div className="ng-display nx-assistant-title" style={{ fontSize: T.fs.page, fontWeight: 500, textAlign: "left", lineHeight: 1.2 }}>
