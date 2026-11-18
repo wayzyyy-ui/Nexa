@@ -257,7 +257,7 @@ export function EmptyState({ title, text, action, compact }) {
 // Пульсирует только прозрачностью — минимум движения.
 export function SkeletonLine({ width }) {
   return (
-    <div style={{
+    <div className="nx-skeleton-line" style={{
       height: 12,
       width,
       borderRadius: 10,

@@ -90,7 +90,8 @@ export function GlobalSearch({ files, chats = [], folders: allFolders = FOLDERS,
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Найти файл, диалог, заметку, настройку…"
+            aria-label="Поиск по приложению"
+            placeholder="Найти…"
             style={{
               flex: 1, minWidth: 0, background: "transparent", border: "none",
               outline: "none", color: C.text, fontSize: 15,

@@ -2,7 +2,6 @@
 // Вставляются один раз блоком <style> в NexaApp. Внутри — только постоянные значения
 import { C, PHONE_MQ, DESKTOP_MQ } from "./theme.js";
 import { LEAVE_MS } from "../lib/hooks.js";
-import { REPLY_AURA_FADE } from "../screens/assistant/visuals.jsx";
 import { MOBILE_HOME_CSS } from "./mobileHomeStyles.js";
 import { DESKTOP_HOME_CSS } from "./desktopHomeStyles.js";
 import { DIRECT_TRANSFER_CSS } from "./directTransferStyles.js";
@@ -220,9 +219,11 @@ export const APP_CSS = `
         :root { --mk: 1px; }
         @media ${DESKTOP_MQ} { :root { --mk: clamp(0.62px, min(100vw / 1920, 100vh / 1080), 1.25px); } }
         /* Фон: три цвета по диагонали из макета, без дополнительных световых пятен. */
+        .nx-home-glow, .nx-chat-backdrop {
+          background: linear-gradient(to bottom right, var(--home-bg-a) 0%, var(--home-bg-mid) 50%, var(--home-bg-b) 100%);
+        }
         .nx-home-glow {
           position: fixed; inset: 0; z-index: 0; pointer-events: none;
-          background: linear-gradient(to bottom right, var(--home-bg-a) 0%, var(--home-bg-mid) 50%, var(--home-bg-b) 100%);
         }
         /* Боковое меню на Главной прозрачное — градиент виден и под ним (как в макете) */
         body:has(.nx-home-glow) .ng-sidebar { background: transparent !important; }
@@ -298,7 +299,7 @@ export const APP_CSS = `
              Внутри .nx-media-main действует zoom, поэтому размеры делим на --desk-zoom */
           .nx-media-screen .nx-page-title { font-size: max(32px, calc(50 * var(--mk) / var(--desk-zoom, 1))) !important; line-height: 1.1 !important; }
           .nx-media-screen .nx-page-gap { height: calc(75 * var(--mk) / var(--desk-zoom, 1)) !important; }
-          /* Ассистент на компьютере — фон (спектр) и под боковым меню: без тёмной полосы слева.
+          /* На компьютере фон ассистента продолжается под боковым меню.
              Меню — над ним (прозрачное), содержимое ассистента — правее меню */
           .ng-assistant-wrapper { left: 0 !important; padding-left: calc(var(--nav-w) + 1px); box-sizing: border-box; }
           /* Меню слева стоит на месте при прокрутке страницы */
@@ -910,13 +911,27 @@ export const APP_CSS = `
         .ng-devices-list { display: block; }
         .ng-devices-mobile { display: none; }
 
-        /* Спектральный фон ассистента (AssistantSpectrum): маленький холст,
-           растянутый на весь экран. Мягкое свечение и размытие разрешены только
-           здесь (см. CLAUDE.md). Без масок и фильтров: середину приглушает сам
-           холст, браузеру остаётся только растянуть готовую картинку */
-        .nx-spectrum {
-          position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
-          pointer-events: none; display: block;
+        /* В новом диалоге проявляется фон Главной, под ним — обычный фон темы. */
+        .nx-chat-backdrop {
+          position: absolute; inset: 0; pointer-events: none;
+          opacity: 0; transition: opacity 360ms ease;
+        }
+        .nx-chat-backdrop[data-empty="true"] { opacity: 1; }
+        @starting-style { .nx-chat-backdrop[data-empty="true"] { opacity: 0; } }
+        /* Подсветка привязана к ответу и уходит вместе с индикатором ожидания. */
+        .nx-pending-reply { position: relative; isolation: isolate; }
+        .nx-pending-reply::before {
+          content: ""; position: absolute; z-index: -1; pointer-events: none;
+          top: -12px; left: 0; width: min(360px, 100%); height: 160px;
+          background: radial-gradient(ellipse, color-mix(in srgb, var(--mint) 12%, transparent), transparent 72%);
+          animation: nx-reply-pulse 2s ease-in-out infinite alternate;
+        }
+        @keyframes nx-reply-pulse { from { opacity: .35; } to { opacity: 1; } }
+        .nx-lite .nx-pending-reply::before { content: none; }
+        @media (prefers-reduced-motion: reduce) {
+          .nx-chat-backdrop { transition: none; }
+          .nx-pending-reply::before { content: none; }
+          .nx-input-ring, .nx-skeleton-line { animation: none !important; }
         }
         /* Складка Главной (HomeFold): грани вращаются вокруг общего сгиба */
         .nx-homefold path { transform-box: view-box; transform-origin: 372px 663px; }
@@ -1279,19 +1294,13 @@ export const APP_CSS = `
           0%   { opacity: 0; transform: translateY(14px); filter: blur(6px); }
           100% { opacity: 1; transform: translateY(0);    filter: blur(0); }
         }
-        @keyframes nx-gradient-flow {
-          0%   { background-position: 0% 50%; }
-          100% { background-position: 200% 50%; }
-        }
         .nx-greeting-anim {
           background: linear-gradient(90deg, var(--text-strong) 0%, var(--blue-light) 30%, var(--mint) 50%, var(--blue-light) 70%, var(--text-strong) 100%);
-          background-size: 200% 100%;
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
           color: transparent;
-          animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both,
-                     nx-gradient-flow 5s linear infinite;
+          animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
         }
 
         /* Новые сообщения мягко появляются снизу */
@@ -1337,7 +1346,7 @@ export const APP_CSS = `
         /* Ассистент закреплён на всё окно и в общий снимок экрана не попадал — браузер растягивал
            старый экран в новый. Свой снимок с тем же въездом / уходом, что у остальных разделов */
         /* Как у остальных разделов: въезжает и уезжает только содержимое (nx-ai-body),
-           а фон ассистента (спектр) просто проявляется / гаснет на месте — иначе ехал весь экран с фоном */
+           а фон ассистента проявляется и гаснет на месте */
         html[data-nav-dir] .ng-assistant-wrapper { view-transition-name: nx-ai-bg; }
         html[data-nav-dir] .nx-ai-body { view-transition-name: nx-screen-ai; }
         html[data-nav-dir]::view-transition-group(nx-screen-ai),
@@ -1658,8 +1667,6 @@ export const APP_CSS = `
         /* Облегчённый режим (src/lib/lite.js): плотное стекло без размытия фона и внешних теней,
            без аур ассистента и бесконечного перелива приветствия */
         .nx-lite .nx-glass { --g-alpha: 0.82 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
-        .nx-lite .nx-aura, .nx-lite .nx-reply-aura-pos { display: none !important; }
-        .nx-lite .nx-greeting-anim { animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both !important; }
         .nx-lite .nx-ai-glow { box-shadow: none !important; }
         .nx-today-pill.nx-glass { border-radius: 999px !important; }
         /* «Активность»: стекло лежит на обёртке, а скругление задано у внутренней карточки —
@@ -1766,60 +1773,6 @@ export const APP_CSS = `
         /* backwards, а не both: «both» держит transform у #root и после конца — тогда нижняя панель,
            шапка Главной и окна (position: fixed / sticky) считаются от #root, а не от экрана */
         @media (prefers-reduced-motion: reduce) { #root, .nx-intro-go #root { animation: none; } .nx-intro-wait #root { opacity: 1; } }
-        /* Аура нового диалога: по центру за приветствием и полем ввода.
-           Края растворяются маской (не размытие). Приближение — по фокусу/тексту */
-        .nx-aura {
-          position: absolute; left: 50%; top: 50%; width: min(1120px, 150vw); height: 660px;
-          pointer-events: none; z-index: 0;
-          -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, black 30%, transparent 72%);
-          mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, black 30%, transparent 72%);
-          opacity: 0.8; transform: translate(-50%, -50%) scale(1);
-          transition: opacity 700ms ease, transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .nx-aura.is-active { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
-        :root[data-theme="light"] .nx-aura { opacity: 0.38; }
-        :root[data-theme="light"] .nx-aura.is-active { opacity: 0.55; }
-        /* Появление: каждая грань разворачивается из центра складки, по очереди */
-        @keyframes nx-aura-in {
-          from { opacity: 0; transform: scale(0.35) rotate(-14deg); }
-          to   { opacity: 1; transform: none; }
-        }
-        .nx-aura-facet { animation: nx-aura-in 1100ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
-        /* Аура за ответом: слева внизу списка, за новым сообщением */
-        .nx-reply-aura-pos {
-          position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0; pointer-events: none;
-          transition: transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .nx-reply-aura {
-          position: absolute; left: -310px; top: -180px; width: 620px; height: 360px;
-          pointer-events: none;
-          -webkit-mask-image: radial-gradient(ellipse 50% 50% at 40% 55%, black 25%, transparent 72%);
-          mask-image: radial-gradient(ellipse 50% 50% at 40% 55%, black 25%, transparent 72%);
-          filter: blur(30px); opacity: 0.7; transform-origin: 30% 70%;
-          transition: opacity ${REPLY_AURA_FADE}ms ease, transform ${REPLY_AURA_FADE}ms cubic-bezier(0.16, 1, 0.3, 1), filter ${REPLY_AURA_FADE}ms ease;
-        }
-        :root[data-theme="light"] .nx-reply-aura { opacity: 0.45; }
-        /* Испаряется: разрастается, сильнее размывается и тает */
-        .nx-reply-aura.is-fading { opacity: 0 !important; transform: scale(1.25) translateY(-20px); filter: blur(60px); }
-        @keyframes nx-reply-aura-in {
-          from { opacity: 0; transform: scale(0.6) rotate(-10deg); }
-          to   { opacity: 1; transform: none; }
-        }
-        .nx-reply-aura-in { transform-origin: 47% 56%; animation: nx-reply-aura-in 800ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
-        @media ${PHONE_MQ} { .nx-reply-aura { width: 440px; height: 300px; left: -220px; top: -150px; } }
-        @media (prefers-reduced-motion: reduce) {
-          .nx-reply-aura-in { animation: none !important; }
-          .nx-reply-aura { transition: opacity 300ms ease !important; }
-          .nx-reply-aura-pos { transition: none !important; }
-          .nx-reply-aura.is-fading { transform: none; filter: blur(30px); }
-        }
-        /* Размытие граней (исключение из правил, см. CLAUDE.md) */
-        .nx-aura-blur { filter: blur(34px); }
-        @media ${PHONE_MQ} { .nx-aura { width: 520px; height: 400px; top: var(--aura-y, 50%) !important; } .nx-aura-blur { filter: blur(24px); } }
-        @media (prefers-reduced-motion: reduce) {
-          .nx-aura-facet { animation: none !important; }
-          .nx-aura { transition: none !important; }
-        }
         /* Все кнопки — скруглённые: кнопки с текстом — «таблетки», кнопки-значки — круги.
            Скошенные чипсы пути (складка), строки списков и карточки не трогаем */
         .nx-ghost-btn, .nx-primary, .nx-icon-btn, .nx-action { border-radius: 999px !important; }

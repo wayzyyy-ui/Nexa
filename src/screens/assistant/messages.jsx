@@ -10,7 +10,7 @@ import { useLiveText } from "../../lib/live.js";
 import { Spinner, btnReset, SkeletonLine } from "../../ui/base.jsx";
 
 // Пузырь печатающегося ответа: пока текста нет — «Печатает», потом сам ответ.
-// onGrow — текст подрос (прокрутить вниз, передвинуть ауру)
+// onGrow — при появлении текста прокрутить переписку вниз
 export function LiveAnswer({ onGrow }) {
   const text = useLiveText();
   useLayoutEffect(() => { onGrow?.(); }, [text]);

@@ -8,7 +8,6 @@ import { liveAbort, useLiveChatId, isPartial, live, setLiveAbort, liveSet, STREA
 import { btnReset } from "../../ui/base.jsx";
 import { authHeaders } from "../../lib/supabase.js";
 import { QuickPanel } from "../../ui/QuickPanel.jsx";
-import { AssistantSpectrum, AssistantAura, ReplyAura, REPLY_AURA_HOLD, REPLY_AURA_FADE } from "./visuals.jsx";
 import { ChatHistory, assistantSuggestions } from "./ChatHistory.jsx";
 import { flushSync } from "react-dom";
 import { API_CHAT_URL, haptic } from "../../native.js";
@@ -165,9 +164,8 @@ useEffect(() => {
   useEffect(() => { warmMini(); warmChatServer(); }, []); // веса NEXA mini-1 подгружаются заранее, отдельным куском кода; сервер — «будим»
   // Ассистент занят: печатает ответ (общее хранилище live) или выполняет команду
   const liveChatId = useLiveChatId();
-  const [cmdBusy, setCmdBusy] = useState(false);
-  const cmdBusyRef = useRef(false); cmdBusyRef.current = cmdBusy; // для спектрального фона
-  const isLoading = cmdBusy || liveChatId !== null;
+  const [commandChatId, setCommandChatId] = useState(null);
+  const isLoading = commandChatId !== null || liveChatId !== null;
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   // Компьютер: колонку истории можно скрыть крестиком (запоминаем в браузере)
   const [histHidden, setHistHiddenState] = useState(() => { try { return localStorage.getItem("nexa-hist-hidden") === "1"; } catch { return false; } });
@@ -197,16 +195,6 @@ useEffect(() => {
   // Телефонная ширина: история — шторка; шире — постоянная колонка слева
   const mobile = useMediaQuery(PHONE_MQ);
 
-  // Аура за ответом: появляется, когда ассистент начинает думать,
-  // и исчезает через REPLY_AURA_HOLD после ответа
-  const [replyAura, setReplyAura] = useState(null); // { id, fading } или null
-  useEffect(() => {
-    if (isLoading) { setReplyAura({ id: Date.now(), fading: false }); return; }
-    const t1 = setTimeout(() => setReplyAura((a) => a && { ...a, fading: true }), REPLY_AURA_HOLD);
-    const t2 = setTimeout(() => setReplyAura(null), REPLY_AURA_HOLD + REPLY_AURA_FADE);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [isLoading]);
-
   // Переход по команде ждёт NAV_DELAY: пока ждёт, его можно отменить
   const [pendingNavId, setPendingNavId] = useState(null);
   const navTimer = useRef(null);
@@ -216,28 +204,6 @@ useEffect(() => {
   // плавно уезжает вниз (и обратно при «Новом диалоге»).
   // Запоминаем, где поле было, и после перерисовки анимируем разницу
   const inputDockRef = useRef(null);
-  const [inputFocused, setInputFocused] = useState(false); // поле в фокусе — аура «оживает»
-  // На телефоне аура стоит по центру приветствия (а не всей колонки, где внизу поле ввода):
-  // меряем, где приветствие, и кладём высоту в CSS-переменную --aura-y
-  const emptyColRef = useRef(null);
-  useLayoutEffect(() => {
-    const col = emptyColRef.current;
-    if (!col || !window.ResizeObserver) return;
-    const place = () => {
-      const g = col.querySelector(".nx-empty-greet");
-      if (!g) return;
-      const c = col.getBoundingClientRect(), r = g.getBoundingClientRect();
-      col.style.setProperty("--aura-y", `${r.top - c.top + r.height / 2}px`);
-    };
-    place();
-    // Приветствие меняет высоту (сменилась фраза, догрузился шрифт) — переставляем
-    const ro = new ResizeObserver(place);
-    ro.observe(col);
-    const g = col.querySelector(".nx-empty-greet");
-    if (g) ro.observe(g);
-    document.fonts?.ready.then(place);
-    return () => ro.disconnect();
-  });
   const flipFrom = useRef(null);
   const taRef = useRef(null);
   /* Голосовой ввод (src/lib/voice.js): распознанное дописывается в поле, отправляет человек сам */
@@ -275,37 +241,10 @@ useEffect(() => {
     if (el) el.scrollTop = prevTop + (el.scrollHeight - prevH); // остаёмся на том же месте переписки
   };
   // Новый диалог — приветствие по центру, даже если в другом диалоге ещё печатается ответ
-  const isEmpty = messages.length === 0 && !cmdBusy && !streamingHere;
+  const commandHere = commandChatId !== null && currentChatId === commandChatId;
+  const waitingHere = streamingHere || commandHere;
+  const isEmpty = messages.length === 0 && !waitingHere;
 
-  // Где аура: за последним сообщением в чате (это «печатает…» или ответ).
-  // Двигаем внешний слой напрямую, без перерисовки, не чаще раза за кадр
-  const replyAuraPos = useRef(null);
-  const placeFrame = useRef(0);
-  const placeReplyAura = () => {
-    cancelAnimationFrame(placeFrame.current);
-    placeFrame.current = requestAnimationFrame(() => {
-      const el = replyAuraPos.current, list = listRef.current;
-      if (!el || !list) return;
-      const msgs = list.querySelectorAll(".nx-msg");
-      const last = msgs[msgs.length - 1];
-      if (!last) return;
-      const box = el.parentElement.getBoundingClientRect();
-      const r = last.getBoundingClientRect();
-      el.style.transform = `translate(${r.left - box.left + Math.min(r.width / 2, 240)}px, ${r.top - box.top + r.height / 2}px)`;
-    });
-  };
-  useLayoutEffect(() => { if (replyAura) placeReplyAura(); }, [replyAura?.id, messages.length, messages[messages.length - 1]?.text, isLoading]);
-  useEffect(() => {
-    const list = listRef.current;
-    if (!replyAura || !list) return;
-    list.addEventListener("scroll", placeReplyAura, { passive: true });
-    window.addEventListener("resize", placeReplyAura);
-    return () => {
-      list.removeEventListener("scroll", placeReplyAura);
-      window.removeEventListener("resize", placeReplyAura);
-      cancelAnimationFrame(placeFrame.current);
-    };
-  }, [replyAura?.id]);
   // Поле ввода переехало (центр ↔ низ): плавно ведём его из старого места.
   // Без движения — если так настроено в системе
   useLayoutEffect(() => {
@@ -606,10 +545,13 @@ useEffect(() => {
       return;
     }
     if (action === "summary") {
-      setCmdBusy(true); // пока собираем погоду — «печатает»
-      const text = await buildTodaySummary();
-      setCmdBusy(false);
-      return say(text, { actionLabel: "Сводка на сегодня" });
+      setCommandChatId(chatId);
+      try {
+        const text = await buildTodaySummary();
+        return say(text, { actionLabel: "Сводка на сегодня" });
+      } finally {
+        setCommandChatId(null);
+      }
     }
     if (action === "devices") return say(buildDevicesSummary(devices), { actionLabel: "Устройства" });
     if (action === "addDevice") {
@@ -880,7 +822,7 @@ useEffect(() => {
     background: `linear-gradient(90deg, ${C.blue}, ${C.mint}, ${C.blue})`,
     backgroundSize: "200% 100%",
     // Пока ассистент отвечает, граница плавно перетекает
-    animation: isLoading ? "nx-border-flow 2.4s linear infinite" : "none",
+    animation: waitingHere ? "nx-border-flow 2.4s linear infinite" : "none",
     boxShadow: "var(--input-glow)",
   }}>
             <div
@@ -910,8 +852,6 @@ useEffect(() => {
           onPaste={(e) => { const f = e.clipboardData?.files?.[0]; if (f) { e.preventDefault(); attachDevice(f); } }}
           onKeyDown={onKeyDown}
           enterKeyHint={enterSends ? "send" : "enter"}
-          onFocus={() => setInputFocused(true)}
-          onBlur={() => setInputFocused(false)}
           placeholder={online ? "Написать сообщение..." : "Нет сети — работают только команды"}
           className="ng-input-field"
           autoComplete="off"
@@ -1056,7 +996,7 @@ useEffect(() => {
   };
 
   const innerStyle = {
-  position: "relative", zIndex: 1, // над спектральным фоном
+  position: "relative", zIndex: 1, // над фоном диалога
   flex: 1, display: "flex", flexDirection: "row",
   // Во всю ширину: заголовок — слева у меню (как у других разделов), а приветствие, поле
   // и переписка — по центру свободного места (у них свои ограничения ширины)
@@ -1068,8 +1008,7 @@ useEffect(() => {
   rowHandlersRef.current = { undo: (m) => undoAction(currentChatId, m), regenerate, edit: (i, t) => editMessage(i, t) };
   return (
   <div className="ng-assistant-wrapper ng-assistant-anim" style={wrapperStyle}>
-    {/* Спектральный фон — под всем содержимым, нажатия и прокрутку не перехватывает */}
-    <AssistantSpectrum busyRef={cmdBusyRef} />
+    <div className="nx-chat-backdrop" data-empty={isEmpty} aria-hidden="true" />
     {/* Выбор файла для ассистента — та же панель, что у быстрых действий */}
     {pickOpen && (
       <QuickPanel commands={pickItems} label="Приложить файл" placeholder="Найти файл…" icon={Icon.clip} keys={null}
@@ -1096,12 +1035,10 @@ useEffect(() => {
           // Новый диалог: приветствие, поле ввода и подсказки — по центру
           // На телефоне (см. .nx-empty-col в стилях): поле ввода внизу,
           // над ним компактные подсказки, приветствие — по центру свободного места
-          <div ref={emptyColRef} className="nx-empty-col" style={{
+          <div className="nx-empty-col" style={{
             flex: 1, minHeight: 0, padding: "0 16px", position: "relative",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22,
           }}>
-            {/* Аура: складка из граней позади; при наборе текста приближается */}
-            <AssistantAura active={inputFocused || !!input.trim()} />
             <div
               className="ng-greeting nx-greeting-anim nx-empty-greet"
               style={{ position: "relative", textAlign: "center", fontFamily: "'Manrope', sans-serif" }}
@@ -1131,10 +1068,7 @@ useEffect(() => {
           </div>
         ) : (
           <>
-            {/* Сообщения сверху. Обёртка нужна для ауры за ответом:
-                аура лежит под списком и не прокручивается вместе с ним */}
             <div className="nx-chat-area" style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", marginTop: 24, marginBottom: 16 }}>
-            {replyAura && <ReplyAura key={replyAura.id} fading={replyAura.fading} posRef={replyAuraPos} />}
             <div
               ref={listRef}
               className="nx-scroll nx-msg-list"
@@ -1170,9 +1104,11 @@ useEffect(() => {
                     speakId={m.role === 'ai' && !m.error && !m.partial && m.text?.trim() ? speakIdOf(m, i) : null}
                   />
                 ); })}
-                {cmdBusy && messages[messages.length - 1]?.role !== 'ai' && <AssistantSkeleton />}
-                {/* Ответ, который сейчас печатается (только в своём диалоге) */}
-                {streamingHere && <LiveAnswer onGrow={() => { scrollToBottom(); if (replyAura) placeReplyAura(); }} />}
+                {waitingHere && (
+                  <div className="nx-pending-reply">
+                    {streamingHere ? <LiveAnswer onGrow={scrollToBottom} /> : <AssistantSkeleton />}
+                  </div>
+                )}
                 <div ref={bottomRef} />
               </div>
             </div>
