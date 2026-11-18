@@ -98,12 +98,11 @@ export const APP_CSS = `
           --line-bright: rgba(255, 255, 255, 0.62);
           /* Свечение фона Главной (макет 2026-10): мятное слева сверху, синее справа */
           --home-glow-a: rgba(0, 180, 160, 0.14); --home-glow-b: rgba(40, 80, 255, 0.12);
-          /* Фон Главной (макет 2026-10): от левого верхнего угла к правому нижнему */
-          --home-bg-a: #01090F; --home-bg-b: #031B2C;
-          /* «Жидкое стекло» (nx-glass): тело — тёмное сине-чёрное (#01090F, как в Figma),
-             свет на краях — белый, тень глубины — чёрная. Числа без rgb(): материал сам задаёт прозрачность */
-          --glass-rgb: 1 9 15; --glass-k: 1; --glass-hi-rgb: 255 255 255; --glass-low-rgb: 255 255 255;
-          --glass-shade-rgb: 0 0 0; --glass-hi-k: 1; --glass-depth-k: 1; --glass-blend: plus-lighter;
+          /* Фон Главной (макет 2026-11-18): от левого верхнего угла к правому нижнему */
+          --home-bg-a: #002E28; --home-bg-mid: #001627; --home-bg-b: #002349;
+          --surface-line: #304550; --device-off: #102633; --device-online-end: #018D7B; --status-off: #82949F;
+          /* Матовые панели: цвет заливки, прозрачность задаёт сам элемент. */
+          --glass-rgb: 39 39 39; --glass-k: 1;
           /* Экран входа (макет 2026-10): тёмное «стекло» поверх рендера */
           /* Логотип NEXA и карточка «Активность» на телефоне (макет 2026-10: #0D1318) */
           --logo: #FFFFFF; --act-bg: #0D1318;
@@ -143,11 +142,10 @@ export const APP_CSS = `
           --border-strong: rgba(24, 32, 58, 0.24);
           --line-bright: rgba(24, 32, 58, 0.34);
           --home-glow-a: rgba(0, 190, 170, 0.12); --home-glow-b: rgba(60, 100, 255, 0.08);
-          --home-bg-a: #E9E9E9; --home-bg-b: #C6E7FF; /* макет 2026-10-26: светлая Главная — от серого слева сверху к голубому справа снизу */
-          /* «Жидкое стекло» в светлой теме: тело — светлое и плотнее (иначе грязно-серое), блики — ярче,
-             нижний край очерчен холодной тенью, а не светом */
-          --glass-rgb: 248 251 253; --glass-k: 2.6; --glass-hi-rgb: 255 255 255; --glass-low-rgb: 160 182 210; /* нижняя кромка стекла: была тёмно-синей (40 60 90) — читалась чёрной полосой */
-          --glass-shade-rgb: 30 50 80; --glass-hi-k: 2.4; --glass-depth-k: 0.3; --glass-blend: normal;
+          --home-bg-a: #E9E9E9; --home-bg-mid: #D8E8F4; --home-bg-b: #C6E7FF;
+          --surface-line: #B4C8D5; --device-off: #D7E3EC; --device-online-end: #A2DFD2; --status-off: #657B89;
+          /* Светлая заливка плотнее, чтобы текст читался поверх фоновых складок. */
+          --glass-rgb: 248 251 253; --glass-k: 2.6;
           /* Экран входа (макет 2026-10): серое «стекло» поверх светлого рендера, текст белый */
           /* Логотип в светлой теме — чёрный (макет); «Активность» — светлая карточка */
           --logo: #05070D; --act-bg: #F6F9FB;
@@ -221,13 +219,10 @@ export const APP_CSS = `
            Числа в calc(N * var(--mk)) — размеры прямо из макета */
         :root { --mk: 1px; }
         @media ${DESKTOP_MQ} { :root { --mk: clamp(0.62px, min(100vw / 1920, 100vh / 1080), 1.25px); } }
-        /* Фон: градиент из макета (слева сверху → справа снизу) и мягкие мятно-синие пятна */
+        /* Фон: три цвета по диагонали из макета, без дополнительных световых пятен. */
         .nx-home-glow {
           position: fixed; inset: 0; z-index: 0; pointer-events: none;
-          background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
-                      radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
-                      radial-gradient(30vw 28vh at 0% 100%, var(--home-glow-a), transparent 70%),
-                      linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
+          background: linear-gradient(to bottom right, var(--home-bg-a) 0%, var(--home-bg-mid) 50%, var(--home-bg-b) 100%);
         }
         /* Боковое меню на Главной прозрачное — градиент виден и под ним (как в макете) */
         body:has(.nx-home-glow) .ng-sidebar { background: transparent !important; }
@@ -603,9 +598,7 @@ export const APP_CSS = `
            правее меню — сдвигаем фон на его ширину), а не сплошной цвет: иначе при прокрутке сверху
            появлялась тёмная полоса. Внизу — плавный переход в прозрачность */
         body:has(.nx-home-glow) .ng-topbar::before {
-          background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
-                      radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
-                      linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
+          background: linear-gradient(to bottom right, var(--home-bg-a) 0%, var(--home-bg-mid) 50%, var(--home-bg-b) 100%);
           background-size: 100vw 100vh; background-position: calc(-1 * var(--nav-w)) 0; background-repeat: no-repeat;
           -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
           mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
@@ -629,9 +622,7 @@ export const APP_CSS = `
           .nx-home-top { position: sticky; top: var(--sat); z-index: 40; }
           .nx-home-top::before { content: ""; position: absolute; z-index: -1; pointer-events: none;
             left: calc((100% - 100vw) / 2); right: calc((100% - 100vw) / 2); top: calc(-1 * var(--sat) - 8px); bottom: -14px;
-            background: radial-gradient(42vw 38vh at 0% 0%, var(--home-glow-a), transparent 70%),
-                        radial-gradient(36vw 40vh at 52% 0%, var(--home-glow-b), transparent 70%),
-                        linear-gradient(135deg, var(--home-bg-a), var(--home-bg-b));
+            background: linear-gradient(to bottom right, var(--home-bg-a) 0%, var(--home-bg-mid) 50%, var(--home-bg-b) 100%);
             /* Не background-attachment: fixed — такой фон Android перерисовывает на каждом кадре прокрутки.
                Подложка во всю ширину экрана, когда шапка закреплена, её верх — 8 px над экраном:
                фон размером с экран, сдвинутый на эти 8 px, совпадает с .nx-home-glow */
@@ -1645,93 +1636,41 @@ export const APP_CSS = `
         }
         .nx-stagger > * { animation: nx-unfold 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards; transform-origin: 50% 0; }
         ${Array.from({ length: 14 }, (_, i) => `.nx-stagger > *:nth-child(${i + 2}) { animation-delay: ${(i + 1) * 45}ms; }`).join("\n        ")}
-        /* ── «Жидкое стекло» (nx-glass) ──
-           Многослойный материал вместо «прозрачность + размытие»:
-           1) тело: тёмная заливка (--g-alpha) + свой оттенок элемента (--g-tint) + вертикальный отлив
-              (сверху светлее, к середине прозрачно, у низа едва светлее);
-           2) фон под стеклом: размытие + насыщенность + чуть ярче (backdrop-filter) — фон «проходит» сквозь;
-           3) толщина: внутренние тени — светлая линия и мягкий свет сверху, тень глубины снизу, волосок по контуру;
-           4) контур (::before): кольцо в 1 px с НЕровным светом — ярко сверху-слева, тускло по бокам, средне снизу;
-           5) линза (::after): блик в верхней части и светлеющие края — как у толстого стекла.
-           Это имитация средствами CSS, а не физическое преломление.
-           Уровни: nx-glass-subtle / (без модификатора — standard) / nx-glass-prominent.
-           Любой параметр можно переопределить у элемента: --g-alpha, --g-blur, --g-sat, --g-bright,
-           --g-rim (яркость отражений), --g-depth (тень и толщина), --g-tint (свой оттенок), --g-outer (внешняя тень) */
+        /* Матовые панели: одна заливка, обычный блюр и ровная обводка.
+           Класс сохранён для существующих компонентов, линз и бликов больше нет. */
         .nx-glass {
-          --g-alpha: 0.2; --g-blur: 14px; --g-sat: 160%; --g-bright: 0.97; --g-rim: 1; --g-depth: 1;
-          --g-tint: linear-gradient(transparent, transparent);
-          --g-outer: 0 12px 32px -20px rgb(var(--glass-shade-rgb) / calc(0.55 * var(--g-depth) * var(--glass-depth-k)));
-          --g-hk: calc(var(--g-rim) * var(--glass-hi-k));
-          --g-fill: rgb(var(--glass-rgb) / min(0.92, calc(var(--g-alpha) * var(--glass-k))));
+          --g-alpha: 0.2; --g-blur: 12px;
+          --g-fill: rgb(var(--glass-rgb) / min(0.96, calc(var(--g-alpha) * var(--glass-k))));
           position: relative; isolation: isolate;
-          background:
-            linear-gradient(180deg, rgb(var(--glass-hi-rgb) / calc(0.035 * var(--g-hk))) 0%, transparent 30%),
-            var(--g-tint),
-            var(--g-fill) !important;
-          -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bright));
-          backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)) brightness(var(--g-bright));
+          background: var(--g-fill) !important;
+          -webkit-backdrop-filter: blur(var(--g-blur)); backdrop-filter: blur(var(--g-blur));
           border-color: transparent !important;
-          /* Толщина (как в референсе): тонкая линия сверху и снизу, мягкий светлый ободок внутри
-             закруглённых концов, тень глубины у низа */
-          box-shadow:
-            inset 0 1px 0 rgb(var(--glass-hi-rgb) / calc(0.04 * var(--g-hk))),
-            inset 0 -1px 0 rgb(var(--glass-low-rgb) / calc(0.16 * var(--g-rim))),
-            inset 18px 0 22px -14px rgb(var(--glass-hi-rgb) / calc(0.08 * var(--g-hk))),
-            inset -18px 0 22px -14px rgb(var(--glass-hi-rgb) / calc(0.11 * var(--g-hk))),
-            inset 0 12px 16px -15px rgb(var(--glass-hi-rgb) / calc(0.035 * var(--g-hk))),
-            inset 0 -18px 22px -14px rgb(var(--glass-shade-rgb) / calc(0.5 * var(--g-depth) * var(--glass-depth-k))),
-            var(--g-outer) !important;
+          /* Контур работает и у кнопок без border, не меняет их размеры. */
+          box-shadow: inset 0 0 0 1px var(--surface-line) !important;
         }
-        .nx-glass::before, .nx-glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; }
-        /* Контур: свет неравномерный — верх-лево ярче всего, бока гаснут, низ светится сдержанно */
-        .nx-glass::before {
-          padding: 1px;
-          /* Низ светится ярче всего, верх — у середины и правее, левый бок в середине почти гаснет, правый — слабо */
-          background:
-            radial-gradient(34% 40% at 62% 0%, rgb(var(--glass-hi-rgb) / calc(0.34 * var(--g-hk))), transparent 100%),
-            radial-gradient(62% 55% at 50% 100%, rgb(var(--glass-low-rgb) / calc(0.6 * var(--g-rim))), transparent 100%),
-            radial-gradient(18% 60% at 100% 50%, rgb(var(--glass-hi-rgb) / calc(0.1 * var(--g-hk))), transparent 100%),
-            linear-gradient(180deg, rgb(var(--glass-hi-rgb) / calc(0.05 * var(--g-hk))) 0%, transparent 22%, transparent 78%, rgb(var(--glass-low-rgb) / calc(0.1 * var(--g-rim))) 100%);
-          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-        }
-        /* Линза: блик сверху-слева, отсвет снизу-справа, края светлее середины (толщина стекла) */
-        .nx-glass::after {
-          background:
-            radial-gradient(45% 70% at 60% -20%, rgb(var(--glass-hi-rgb) / calc(0.05 * var(--g-hk))), transparent 70%),
-            radial-gradient(40% 60% at 50% 125%, rgb(var(--glass-hi-rgb) / calc(0.05 * var(--g-hk))), transparent 70%);
-          mix-blend-mode: var(--glass-blend);
-        }
-        .nx-glass-subtle { --g-alpha: 0.32; --g-blur: 10px; --g-sat: 140%; --g-bright: 1.02; --g-rim: 0.55; --g-depth: 0.6; }
-        .nx-glass-prominent { --g-alpha: 0.16; --g-blur: 18px; --g-sat: 175%; --g-bright: 1.06; --g-rim: 1.45; --g-depth: 1.3; }
-        /* Общие кнопки при наведении красят фон сплошным цветом — у стекла оставляем его заливку */
+        .nx-glass::before, .nx-glass::after { content: none !important; }
+        .nx-glass-subtle { --g-alpha: 0.2; --g-blur: 10px; }
+        .nx-glass-prominent { --g-alpha: 0.2; --g-blur: 12px; }
         .nx-glass:is(.nx-ghost-btn, .nx-row-btn):is(:hover, :active) { background-color: var(--g-fill) !important; }
-        /* Наведение мышью: свет на контуре чуть ярче */
-        @media (hover: hover) and (pointer: fine) { .nx-glass:is(button, a, label):hover { --g-rim: 1.3; } .nx-glass-prominent:is(button, a, label):hover { --g-rim: 1.75; } }
-        /* Нет размытия фона (старые браузеры) или система просит меньше прозрачности — стекло плотное, свет на краях остаётся */
+        /* Нет размытия фона (старые браузеры) или система просит меньше прозрачности — заливка плотнее */
         @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nx-glass { --g-alpha: 0.82 !important; } }
         @media (prefers-reduced-transparency: reduce) { .nx-glass { --g-alpha: 0.86 !important; -webkit-backdrop-filter: none; backdrop-filter: none; } }
         /* Облегчённый режим (src/lib/lite.js): плотное стекло без размытия фона и внешних теней,
            без аур ассистента и бесконечного перелива приветствия */
-        .nx-lite .nx-glass { --g-alpha: 0.82 !important; --g-outer: 0 0 0 transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+        .nx-lite .nx-glass { --g-alpha: 0.82 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
         .nx-lite .nx-aura, .nx-lite .nx-reply-aura-pos { display: none !important; }
         .nx-lite .nx-greeting-anim { animation: nx-greet-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both !important; }
         .nx-lite .nx-ai-glow { box-shadow: none !important; }
-        /* Где стекло (первый этап): поиск сверху и на телефонной Главной, ассистент и «Приложение NEXA»,
-           нижняя панель телефона, панель открытой заметки. Оттенок и свечение ассистента — по макету, поверх стекла */
-        .nx-ai-pill.nx-glass { --g-tint: linear-gradient(100deg, color-mix(in srgb, var(--blue) 12%, transparent), color-mix(in srgb, var(--mint) 7%, transparent)); }
-        .nx-ai-glow.nx-glass { --g-outer: 0 0 calc(22 * var(--mk)) color-mix(in srgb, var(--mint) 28%, transparent), 0 0 calc(44 * var(--mk)) color-mix(in srgb, var(--blue) 22%, transparent); }
-        :root[data-theme="light"] .nx-ai-glow.nx-glass { --g-tint: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--mint) 40%, transparent)); }
         .nx-today-pill.nx-glass { border-radius: 999px !important; }
         /* «Активность»: стекло лежит на обёртке, а скругление задано у внутренней карточки —
            обёртке даём тот же радиус, иначе подложка торчит прямоугольником за краями */
         .nx-home-act.nx-glass { border-radius: calc(48 * var(--mk)); }
         .nx-act-pill.nx-glass { border-radius: 33px; }
         .nx-tabbar-pill.nx-glass { --g-alpha: 0.5; --g-blur: 18px; }
-        .nx-notepad-panel.nx-glass { --g-alpha: 0.3; --g-blur: 28px; --g-rim: 1; }
+        .nx-notepad-panel.nx-glass { --g-alpha: 0.3; --g-blur: 28px; }
         /* Скорость на телефоне: «тихое» стекло карточек лежит на неподвижном плавном фоне — его размытие
            даёт ту же картинку, но видеокарта пересчитывает каждое размытие на каждом кадре прокрутки
-           (40 карточек заметок — 40 размытий). Убираем только размытие: заливка, свет и контур остаются.
+           (40 карточек заметок — 40 размытий). Убираем только размытие: заливка и контур остаются.
            Нижняя панель, поиск и шапка (под ними едет содержимое) — со своим размытием, как были */
         @media ${PHONE_MQ} {
           .nx-glass-subtle { -webkit-backdrop-filter: none; backdrop-filter: none; }

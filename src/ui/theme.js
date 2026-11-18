@@ -8,6 +8,9 @@ export const C = {
   bg: "var(--bg)",               // фон всего приложения
   panel: "var(--panel)",         // фон панелей и кнопок в навигации
   border: "var(--border)",       // основной цвет тонких границ
+  surfaceLine: "var(--surface-line)", // ровная обводка матовых панелей
+  deviceOff: "var(--device-off)", deviceOnlineEnd: "var(--device-online-end)",
+  statusOff: "var(--status-off)", // отключённое устройство — нейтральное состояние
   borderSoft: "var(--border-soft)", // граница чуть мягче, для мелких элементов
   text: "var(--text)",           // основной цвет текста
   muted: "var(--muted)",         // приглушённый текст (подписи, метаданные)

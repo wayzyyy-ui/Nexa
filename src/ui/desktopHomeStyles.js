@@ -95,6 +95,9 @@ export const DESKTOP_HOME_CSS = `
   :is(.nx-hd-dev, .nx-hd-ai, .nx-hd-wx-main, .nx-hd-link) { appearance: none; font: inherit; color: var(--text); text-align: left; border: 0; background: none; padding: 0; margin: 0; }
   .nx-hd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
   .nx-hd-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  /* Низ ассистента — на линии низа левой колонки, даже если погода короче. */
+  .nx-hd-side { align-self: stretch; }
+  .nx-hd-side > .nx-hd-ai { margin-top: auto; flex-shrink: 0; }
   .nx-hd-card { border-radius: 20px; padding: 20px; box-sizing: border-box; font-size: 14px; line-height: 1.4; }
   .nx-hd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
   .nx-hd-h { display: block; margin: 0; color: var(--text); font-family: inherit; font-size: 17px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
@@ -109,7 +112,7 @@ export const DESKTOP_HOME_CSS = `
   .nx-hd-devs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .nx-hd-dev { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 16px; box-sizing: border-box; border-radius: 14px; cursor: pointer;
     border: 1px solid var(--border-strong); background: color-mix(in srgb, var(--text) 5%, transparent); transition: border-color 160ms ease, background-color 160ms ease; }
-  .nx-hd-dev:hover { border-color: color-mix(in srgb, var(--mint) 60%, transparent); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .nx-hd-dev:hover { border-color: color-mix(in srgb, var(--mint) 60%, transparent);  }
   .nx-hd-dev:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
   .nx-hd-dev-ico { width: 26px; display: flex; justify-content: center; flex-shrink: 0; }
   .nx-hd-dev-text { flex: 1; min-width: 0; }
@@ -137,7 +140,7 @@ export const DESKTOP_HOME_CSS = `
   .nx-hd-sched-text { min-width: 0; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nx-hd-sched-text b { color: var(--text); font-weight: 700; }
   .nx-hd-notes { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 40px; margin-top: 14px; box-sizing: border-box;
-    font: inherit; font-size: 14px; color: var(--text); background: transparent; border: 1px solid var(--border-strong); cursor: pointer; }
+    font: inherit; font-size: 14px; color: var(--text); background: transparent; border: 1px solid var(--surface-line); cursor: pointer; }
 
   /* Ассистент */
   .nx-hd-ai { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 12px 20px; box-sizing: border-box; border-radius: 20px; cursor: pointer; }
@@ -148,14 +151,10 @@ export const DESKTOP_HOME_CSS = `
   /* Шаг 2 — сцена: складка фоном всей Главной (FoldScene), вершины вдоль нижнего края окна, за карточками.
      Лежит по краям .ng-home (а не .ng-home-desktop — у того ширина ограничена), не ловит нажатия */
   .ng-home { min-height: calc(100vh - var(--tb-h, 0px)); box-sizing: border-box; }
-  .nx-hd-scene { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: min(64vh, 700px); z-index: -1; pointer-events: none; display: block; }
+  .nx-hd-scene { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: min(36vh, 430px); z-index: -1; pointer-events: none; display: block; }
   .ng-home-desktop { position: static; }
-  /* Стекло поверх сцены: прозрачнее обычного «тихого», грани просвечивают; сверху тонкая светлая кромка (--g-tint) */
-  .nx-hd-card.nx-glass, .nx-hd-ai.nx-glass { --g-alpha: 0.2; --g-blur: 16px; --g-rim: 1;
-    --g-tint: linear-gradient(180deg, rgb(var(--glass-hi-rgb) / 0.34) 0, rgb(var(--glass-hi-rgb) / 0.34) 1px, transparent 1px); }
-  :root[data-theme="light"] :is(.nx-hd-card, .nx-hd-ai).nx-glass { --g-alpha: 0.2;
-    --g-tint: linear-gradient(180deg, rgb(var(--glass-hi-rgb) / 0.9) 0, rgb(var(--glass-hi-rgb) / 0.9) 1px, transparent 1px); }
-  .nx-hd-dev { background: color-mix(in srgb, var(--text) 6%, transparent); }
+  /* Обычный блюр, без слоёв жидкого стекла. */
+  .nx-hd-card.nx-glass { --g-alpha: 0.2; --g-blur: 12px; }
   @media (prefers-reduced-motion: reduce) { .nx-hd-dev { transition: none; } }
 }
 
@@ -168,12 +167,14 @@ export const DESKTOP_HOME_CSS = `
   :root { --nav-w: 260px; }
   html.nx-side-min { --nav-w: 84px; }
   .ng-sidebar.nx-side { position: sticky; top: 12px; height: calc(100vh - 24px); margin: 12px 0 12px 12px; width: 248px; min-width: 248px;
-    border-radius: 20px; border-right: 0; padding: 14px 12px 12px; --g-alpha: 0.42; --g-blur: 18px; --g-rim: 0.9; --g-depth: 0.7; }
+    border-radius: 20px; border-right: 0; padding: 14px 12px 12px; --g-alpha: 0.2; --g-blur: 12px; }
   html.nx-side-min .ng-sidebar.nx-side { width: 72px; min-width: 72px; }
   /* Прежние правила делали меню прозрачным или белым — у панели остаётся заливка стекла */
   :root:root body .ng-sidebar.nx-side.nx-glass {
-    background: linear-gradient(180deg, rgb(var(--glass-hi-rgb) / calc(0.035 * var(--g-hk))) 0%, transparent 30%), var(--g-tint), var(--g-fill) !important; }
+    background: var(--g-fill) !important; }
   :root[data-theme="light"] .ng-sidebar.nx-side { --g-alpha: 0.24; }
+  .nx-side-thumb { border-radius: 999px 0 0 999px; box-shadow: none;
+    background: linear-gradient(to right, color-mix(in srgb, var(--mint) 16%, transparent), transparent); }
   .nx-side-devs { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; margin-top: 16px; }
   .nx-side-devs-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 4px; margin-bottom: 4px; }
   .nx-side-devs-head .nx-side-sec { margin: 0; }
@@ -228,7 +229,7 @@ export const DESKTOP_HOME_CSS = `
   .nx-hd-status { font-size: 14px; color: var(--muted); margin: 0 0 20px; }
   .nx-hd-actions { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; }
   :is(.nx-hd-add, .nx-hd-sq) { appearance: none; border: 0; font: inherit; margin: 0; cursor: pointer; }
-  .nx-hd-add { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px 0 18px; border-radius: 16px;
+  .nx-hd-add { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px 0 18px; border-radius: 999px;
     background: var(--mint); color: var(--on-accent); font-size: 17px; font-weight: 700; transition: transform 140ms ease, filter 140ms ease; }
   .nx-hd-add:hover { filter: brightness(1.06); }
   .nx-hd-add:active { transform: scale(0.98); }
@@ -250,24 +251,18 @@ export const DESKTOP_HOME_CSS = `
 
 /* ═══ Правки по макету 2026-11-13 (компьютер) ═══ */
 @media ${DESKTOP_MQ} {
-  /* Плашки устройств — «таблетки» со светом статуса (как на макете): зелёный — в сети, красный — не в сети.
-     Заливка сверху гуще, к низу темнее, вокруг мягкое свечение того же цвета; точки статуса нет */
+  /* Цвет задаёт состояние, прозрачность применяется к заливке, а не к тексту. */
   .nx-hd-devs { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
-  .nx-hd-dev { --st: var(--red); height: 72px; padding: 0 28px 0 24px; gap: 16px; border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--st) 42%, transparent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--st) 36%, var(--bg)) 0%, color-mix(in srgb, var(--st) 16%, var(--bg)) 100%);
-    box-shadow: 0 0 26px -8px color-mix(in srgb, var(--st) 70%, transparent), inset 0 1px 0 color-mix(in srgb, var(--st) 45%, transparent);
-    transition: filter 160ms ease, box-shadow 160ms ease; }
-  .nx-hd-dev[data-online="1"] { --st: var(--green); }
-  .nx-hd-dev:hover { filter: brightness(1.14); border-color: color-mix(in srgb, var(--st) 70%, transparent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--st) 36%, var(--bg)) 0%, color-mix(in srgb, var(--st) 16%, var(--bg)) 100%);
-    box-shadow: 0 0 30px -6px color-mix(in srgb, var(--st) 85%, transparent), inset 0 1px 0 color-mix(in srgb, var(--st) 45%, transparent); }
+  .nx-hd-dev { height: 72px; padding: 0 28px 0 24px; gap: 16px; border-radius: 999px;
+    border: 1px solid var(--surface-line);
+    background: color-mix(in srgb, var(--device-off) 44%, transparent);
+    box-shadow: none; transition: border-color 160ms ease; }
+  .nx-hd-dev[data-online="1"] {
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--mint) 44%, transparent), color-mix(in srgb, var(--device-online-end) 44%, transparent)); }
+  .nx-hd-dev:hover { filter: none; border-color: var(--mint); }
   .nx-hd-dev-ico { width: 38px; }
   .nx-hd-dev-name { font-size: 17px; }
-  /* Светлая тема: свет мягче, заливка светлая */
-  :root[data-theme="light"] .nx-hd-dev, :root[data-theme="light"] .nx-hd-dev:hover {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--st) 30%, var(--panel)) 0%, color-mix(in srgb, var(--st) 14%, var(--panel)) 100%);
-    box-shadow: 0 0 22px -10px color-mix(in srgb, var(--st) 60%, transparent), inset 0 1px 0 color-mix(in srgb, var(--panel) 70%, transparent); }
+  .nx-hd-dev-sub { color: var(--text); }
 
   /* Всё содержимое Главной ниже (как на макете): заголовок и таблетки справа — на одной линии.
      Верхняя строка опускается только на Главной и переезжает плавно при смене раздела */
@@ -289,9 +284,9 @@ export const DESKTOP_HOME_CSS = `
   /* Ассистент — «таблетка» как на макете: тёмно-синий слева переходит в сине-мятный справа,
      светлая обводка, значок — сине-мятный круг. Ровная, без бликов стекла */
   .nx-hd-ai { min-height: 76px; padding: 0 28px 0 16px; gap: 14px; border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--text) 26%, transparent);
+    border: 1px solid var(--surface-line);
     background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 26%, var(--bg)) 0%, color-mix(in srgb, var(--mint) 30%, color-mix(in srgb, var(--blue) 40%, var(--bg))) 100%);
-    box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--mint) 60%, transparent), inset 0 1px 0 color-mix(in srgb, var(--text) 16%, transparent);
+    box-shadow: none;
     transition: filter 160ms ease, border-color 160ms ease; }
   .nx-hd-ai:hover { filter: brightness(1.1); border-color: color-mix(in srgb, var(--text) 40%, transparent); }
   .nx-hd-ai-ico { width: 46px; height: 46px; }
@@ -299,7 +294,7 @@ export const DESKTOP_HOME_CSS = `
   .nx-hd-ai .nx-hd-sub { color: color-mix(in srgb, var(--text) 78%, transparent); }
   :root[data-theme="light"] .nx-hd-ai {
     background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 14%, var(--panel)) 0%, color-mix(in srgb, var(--mint) 26%, var(--panel)) 100%);
-    border-color: color-mix(in srgb, var(--blue) 22%, transparent); }
+    border-color: var(--surface-line); }
 
   /* Узкое окно: поиск-таблетка наезжала на заголовок «Главная» (верхняя строка закреплена поверх экрана).
      До 1360 px поиск — значком внутри общей таблетки, до 1080 px — ещё и дата без дня недели и месяца */

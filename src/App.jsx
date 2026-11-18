@@ -77,9 +77,9 @@ import { Avatar } from "./ui/profile.jsx";
 import { DesktopTitleBar, TITLEBAR_CSS, hasTitleBar } from "./ui/titlebar.jsx";
 import { profileAvatar } from "./lib/profile.js";
 import { MemorySettings } from "./ui/memory.jsx";
-import { MiniHelpSettings, MiniAskDialog } from "./ui/miniHelp.jsx";
+import { MiniHelpSettings } from "./ui/miniHelp.jsx";
 import { useMiniCollect } from "./lib/mini/collectHook.js";
-import { COLLECT_ASK_DELAY_MS } from "./lib/mini/collect.js";
+import { HomeWelcome } from "./ui/HomeWelcome.jsx";
 import { loadSeen, saveSeen, unseenAnnouncements } from "./lib/announce.js";
 import { memoryKey, memoryOnKey, loadMemory, loadMemoryOn, MEMORY_ROWS, MEMORY_MAX, checkMemoryText, findSameMemory, isStyleMemory } from "./lib/memory.js";
 import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
@@ -742,8 +742,6 @@ export default function NexaApp() {
     : { title: "Календарь не подключён", text: r.text, kind: "error" }));
   // Сбор непонятых фраз для NEXA mini-1 — только по согласию (src/lib/mini/collect.js)
   const miniCollect = useMiniCollect({ online });
-  // Окно «Помочь улучшить?» — один раз, на Главной, когда больше ничего не перекрывает экран
-  const [miniAskOpen, setMiniAskOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false); // окно «Связь и синхронизация»
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
@@ -2191,18 +2189,8 @@ export default function NexaApp() {
 
   // Свежие значения для обработчика «Назад» (он подключается один раз)
   const backState = useRef({});
-  // Окно «Помочь улучшить ассистента?»: на Главной, не на экране входа / обновления / блокировки, не поверх другого окна и не под заставкой запуска
-  const miniAskReady = tab === "home" && !showGate && !appUpdate?.required && !locked && !authOpen && miniCollect.showAsk;
-  useEffect(() => {
-    if (!miniAskReady) return;
-    let t;
-    const tryOpen = () => {
-      const busy = document.querySelector('[aria-modal="true"], [role="menu"], .nx-auth-gate, .nx-gate-about, #nx-boot, [data-nx-noback]') || document.documentElement.classList.contains("nx-intro-wait");
-      if (busy) t = setTimeout(tryOpen, 1500); else setMiniAskOpen(true);
-    };
-    t = setTimeout(tryOpen, COLLECT_ASK_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [miniAskReady]);
+  // Приветствие и вопрос о нейросети — последовательно, только на самой Главной.
+  const welcomeReady = tab === "home" && !screenSub && !openDeviceId && !showGate && !appUpdate?.required && !locked && !authOpen;
   backState.current = { tab, blocked: !!appUpdate?.required, plain: !screenSub && !openDeviceId, locked: !!locked };
   useEffect(() => {
     if (!isNative) return;
@@ -3276,10 +3264,7 @@ export default function NexaApp() {
         onApproved={() => logSecurity("approve", "Разрешён вход на новом устройстве", "По QR-коду или коду с экрана")} />}
       {/* Это устройство ищут */}
       {locked && <LockOverlay from={locked.from} onUnlock={unlockSelf} />}
-      {miniAskOpen && miniCollect.showAsk && (
-        <MiniAskDialog onYes={() => { miniCollect.answerAsk(true); setMiniAskOpen(false); }} onNo={() => { miniCollect.answerAsk(false); setMiniAskOpen(false); }}
-          onClose={() => { miniCollect.dismissAsk(); setMiniAskOpen(false); }} />
-      )}
+      <HomeWelcome ready={welcomeReady} miniCollect={miniCollect} />
       {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
       <Sidebar active={tab} onChange={navTo} devices={devices} onOpenDevice={showDevice} onAddDevice={onAddDevice} onAbout={openAbout} />
           <MobileTabBar active={tab} onChange={navTo} />

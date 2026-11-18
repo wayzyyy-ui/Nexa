@@ -66,7 +66,7 @@ export function MobileTabBar({ active, onChange }) {
     >
       {/* Сама панель (макет 2026-10): плавающая «таблетка» с отступами от краёв экрана,
           над системной полоской телефона */}
-      {/* «Жидкое стекло» (nx-glass в appStyles.js): заливка, размытие фона, свет на краях */}
+      {/* Матовая панель: заливка, размытие фона и тонкий контур. */}
       <div className="nx-tabbar-pill nx-glass" style={{
         border: "1px solid transparent",
         borderRadius: 999,
@@ -228,7 +228,7 @@ export function Sidebar({ active, onChange, devices = [], onOpenDevice, onAddDev
               const on = d.online || d.isSelf;
               return (
                 <button key={d.id} type="button" className="nx-side-dev" onClick={() => onOpenDevice(d.id)}>
-                  <span className="nx-side-dot" style={{ background: on ? C.green : C.red }} role="img" aria-label={on ? "В сети" : "Не в сети"} />
+                  <span className="nx-side-dot" style={{ background: on ? C.mint : C.statusOff }} role="img" aria-label={on ? "В сети" : "Не в сети"} />
                   <span className="nx-side-dev-text">
                     <span className="nx-side-dev-name">{d.name}</span>
                     <span className="nx-side-dev-sub">{d.isSelf ? "Это устройство" : deviceStatus(d)}</span>

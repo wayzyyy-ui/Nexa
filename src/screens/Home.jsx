@@ -342,7 +342,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
             <button type="button" className="nx-row-btn" title="В сети · все устройства" onClick={onAllDevices}
               style={{ ...btnReset, display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 18, fontWeight: 600 }}>
               <span>{onlineCount}</span>
-              <span className="nx-status-dot" style={{ color: C.green, background: C.green }} />
+              <span className="nx-status-dot" style={{ color: C.mint, background: C.mint }} />
             </button>
           </div>
           {empty && <div className="nx-pill-card" style={{ borderRadius: 32 }}>{empty}</div>}
@@ -362,7 +362,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
                         ? <span style={{ display: "block", marginTop: 3 }}><ReceivedTag name={received[d.id].name} compact /></span>
                         : <span className="nx-dev-pill-status" style={{ display: "block", fontSize: 11, lineHeight: 1.25, color: C.muted, marginTop: 3 }}>{d.isSelf ? "Это устройство" : on ? "В сети" : "Не в сети"}</span>}
                     </span>
-                    <span className="nx-status-dot" style={{ color: on ? C.green : C.red, background: on ? C.green : C.red }} />
+                    <span className="nx-status-dot" style={{ color: on ? C.mint : C.statusOff, background: on ? C.mint : C.statusOff }} />
                   </button>
                 );
               }}
