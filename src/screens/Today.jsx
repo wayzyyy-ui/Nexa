@@ -76,7 +76,7 @@ export function DayStrip({ value, onChange, all }) {
         const top = key === today ? "Сегодня" : key === tomorrow ? "Завтра"
           : inWeek ? ruFmt({ weekday: "short" }).format(d) : ruFmt({ day: "numeric", month: "short" }).format(d).replace(".", "");
         return (
-          <button key={key} type="button" role="tab" aria-selected={on} onClick={() => onChange(key)} className="nx-day-chip" style={{
+          <button key={key} type="button" role="tab" aria-selected={on} aria-label={ruFmt({ weekday: "long", day: "numeric", month: "long" }).format(d)} onClick={() => onChange(key)} className="nx-day-chip" style={{
             ...btnReset, flexShrink: 0, minWidth: 64, padding: "8px 14px 7px", borderRadius: 18, textAlign: "center",
             border: `1px solid ${on ? "transparent" : C.borderStrong}`,
             background: on ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})` : "transparent",
@@ -84,7 +84,7 @@ export function DayStrip({ value, onChange, all }) {
           }}>
             <span style={{ display: "block", fontSize: 12, opacity: on ? 0.9 : 0.7, whiteSpace: "nowrap" }}>{top}</span>
             <span className="nx-day-num" style={{ display: "block", fontFamily: fontDisplay, fontSize: 18, lineHeight: 1.2, marginTop: 1 }}>{d.getDate()}</span>
-            <span style={{ display: "block", width: 4, height: 4, margin: "3px auto 0", borderRadius: "50%", background: has ? (on ? C.onFold : C.mint) : "transparent" }} />
+            <span className="nx-day-dot" style={{ display: "block", width: 4, height: 4, margin: "3px auto 0", borderRadius: "50%", background: has ? (on ? "currentColor" : C.mint) : "transparent" }} />
           </button>
         );
       })}
@@ -422,7 +422,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
             footer={tomorrow && <div style={{ display: "flex", justifyContent: "flex-end" }}><WeatherAttribution w={weather} /></div>} />
         </div>
         {/* «Заметки» — свой экран поверх «Сегодня» (src/screens/Notes.jsx, адрес /notes) */}
-        <div style={{ gridArea: "notes", alignSelf: "end" }}>
+        <div style={{ gridArea: "notes", alignSelf: "start" }}>
           <button type="button" className="nx-ghost-btn nx-notepad-entry nx-today-pill nx-glass" onClick={onNotes}
             aria-label={notesCount ? `Заметки, ${notesCount}` : "Заметки"}
             style={{

@@ -3,9 +3,10 @@ import { useState, useEffect, useRef } from "react";
 import { formatBytes } from "../lib/deviceInfo.js";
 import { cloudBytes, localBytes, CLOUD_QUOTA_BYTES } from "../lib/files.js";
 import { C, T } from "../ui/theme.js";
+import "./media.css";
 import { Icon } from "../ui/icons.jsx";
 import { fileBytes, plural } from "../lib/format.js";
-import { btnReset, foldFill } from "../ui/base.jsx";
+import { btnReset } from "../ui/base.jsx";
 import { MEDIA_CATS, sortByRecent, fileMeta } from "../lib/fileStore.js";
 import { MediaLayout, MediaTitle } from "../ui/layout.jsx";
 import { FileThumb } from "../ui/files.jsx";
@@ -21,17 +22,17 @@ import { readClipForFile, clipDefaultName, clipFinalName } from "../lib/clipFile
    pts — углы складки в координатах 1000×150, label — где подпись (x%, y%),
    from / to — цвета градиента, edge — светлая грань у правого края */
 export const STORAGE_FOLDS = {
-  photo: { pts: "0,140 118,20 362,4 244,128",          label: [13, 36],  from: C.foldDeep, to: C.foldBlue, edge: C.foldCyan },
-  video: { pts: "188,148 425,26 558,132 420,144",       label: [37, 56], from: C.foldDeep, to: C.foldBlue, edge: C.foldBlue },
-  doc:   { pts: "470,48 716,2 676,134 560,130",         label: [56, 34], from: C.foldBlue, to: C.foldCyan, edge: C.foldCyan },
-  music: { pts: "600,150 742,30 880,12 800,142",        label: [72, 38], from: C.foldCyan, to: C.foldMint, edge: C.foldMint },
-  other: { pts: "806,138 848,26 1000,44 990,138",       label: [88, 40], from: C.foldMint, to: C.foldGreen, edge: C.foldMint },
+  photo: { pts: "0,138 113,30 362,15 254,127", view: "0 15 362 123", label: [9, 43],  from: C.foldDeep, to: C.foldBlue, edge: C.foldCyan },
+  video: { pts: "189,150 283,51 433,31 561,137", view: "189 31 372 119", label: [30.5, 54], from: C.foldDeep, to: C.foldBlue, edge: C.foldBlue },
+  doc:   { pts: "451,48 720,0 674,134 561,137", view: "451 0 269 137", label: [53, 36], from: C.foldBlue, to: C.foldCyan, edge: C.foldCyan },
+  music: { pts: "621,149 665,44 837,11 791,145", view: "621 11 216 138", label: [71, 40], from: C.foldCyan, to: C.foldMint, edge: C.foldMint },
+  other: { pts: "790,140 834,22 1000,44 989,140", view: "790 22 210 118", label: [88, 43], from: C.foldMint, to: C.foldGreen, edge: C.foldMint },
 };
 
 // Вся лента: складки-кнопки (нажатие — подробности категории) и подписи
 export function StorageFolds({ cats, selected, onSelect }) {
   return (
-    <div className="ng-storage-folds" style={{ position: "relative", flex: 1, height: 132, minWidth: 0 }}>
+    <div className="ng-storage-folds" style={{ position: "relative", flex: 1, height: 148, minWidth: 0 }}>
       <svg viewBox="0 0 1000 150" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
         <defs>
           {cats.map((c) => {
@@ -46,7 +47,7 @@ export function StorageFolds({ cats, selected, onSelect }) {
             );
           })}
         </defs>
-        {cats.map((c) => {
+        {cats.slice().reverse().map((c) => {
           const f = STORAGE_FOLDS[c.id];
           const dimmed = selected !== null && selected !== c.id;
           return (
@@ -148,7 +149,7 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
     const byDevice = {};
     real.filter((f) => f.cat === c.id).forEach((f) => { const n = f.device || "Это устройство"; byDevice[n] = (byDevice[n] || 0) + sizeOf(f); });
     return {
-      ...c, bytes,
+      ...c, label: c.id === "photo" ? "Фотографии" : c.label, bytes,
       pct: total > 0 ? Math.round((bytes / total) * 100) : 0,
       devices: Object.entries(byDevice).filter(([, b]) => b > 0),
     };
@@ -175,20 +176,9 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
   const recent = sortByRecent(files).slice(0, 6);
 
   return (
-    <MediaLayout>
-      <MediaTitle title="Медиа и файлы" action={onAddFiles && (
-        <>
-          {/* Быстрая кнопка: выбрать файлы с устройства прямо отсюда, без перехода в «Файлы» */}
-          <button type="button" className="nx-primary nx-media-add" onClick={() => pickRef.current?.click()} aria-label="Добавить файлы" title="Добавить файлы" style={{
-            ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap", flexShrink: 0,
-            border: "1px solid transparent", borderRadius: 999, padding: "10px 18px", fontSize: 14, fontWeight: 500,
-            color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-          }}>
-            {Icon.plus({ c: C.onFold, s: 16 })} <span className="nx-media-add-label">Добавить файлы</span>
-          </button>
-          <input ref={pickRef} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) onAddFiles(e.target.files); e.target.value = ""; }} />
-        </>
-      )} />
+    <MediaLayout className="nx-media-library">
+      <MediaTitle title="Медиа и файлы" />
+      {onAddFiles && <input ref={pickRef} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) onAddFiles(e.target.files); e.target.value = ""; }} />}
 
       {/* Только на телефоне: заголовок хранилища над карточкой, как в макете */}
       <div className="nx-only-mobile nx-storage-head" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
@@ -196,10 +186,10 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>{usedLabel}</div>
       </div>
 
-      <div className="nx-storage-box nx-glass nx-glass-subtle" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 48, padding: "22px 30px 20px", marginBottom: 34 }}>
+      <div className="nx-storage-box nx-glass nx-glass-subtle" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, padding: "22px 24px 18px", marginBottom: 34 }}>
         <div className="ng-storage-card" style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
-          <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 180 }}>
-            {Icon.drive({ c: C.text, s: 24 })}
+          <div className="nx-storage-label" style={{ flexShrink: 0, display: "flex", gap: 10, alignItems: "flex-start", width: 174 }}>
+            {Icon.drive({ c: C.text, s: 38 })}
             {/* Колонка узкая: только объём и полоска. Пояснение — внизу карточки,
                 во всю ширину (в узкой колонке оно рвалось на шесть строк) */}
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -211,7 +201,9 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
           {/* Собираем диаграмму из массива MEDIA_CATS — чтобы поменять пропорции
               или форму складки, меняй объект в этом массиве */}
           {/* Повторное нажатие на складку снимает выделение */}
-          <StorageFolds cats={cats} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} />
+          <div className="nx-media-chart nx-scroll" data-no-swipe>
+            <StorageFolds cats={cats} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} />
+          </div>
         </div>
 
         {/* Подробности по выбранной складке. key={sel.id} нужен,
@@ -277,8 +269,11 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
       )}
       {clip && <ClipFileDialog clip={clip} setClip={setClip} onCreate={createClipFile} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
-        <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600 }}>Категории</div>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
+        <div className="ng-display" style={{ flex: 1, fontSize: T.fs.section, fontWeight: 600 }}>Категории</div>
+        {onAddFiles && <button type="button" className="nx-ghost-btn nx-media-add" onClick={() => pickRef.current?.click()}>
+          {Icon.plus({ c: C.mint, s: 16 })} Добавить файлы
+        </button>}
         <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{
           ...btnReset, fontSize: 12, color: C.mutedSoft, borderBottom: `1px solid ${C.borderStrong}`, paddingBottom: 2,
         }}>
@@ -286,7 +281,8 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         </button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 14, marginBottom: 34 }} className="ng-cat-grid nx-stagger">
-        {MEDIA_CATS.map((cat) => {
+        {cats.map((cat) => {
+          const fold = STORAGE_FOLDS[cat.id];
           const n = countOf(cat.id);
           return (
             <button type="button" key={cat.id} className={`nx-cat-card nx-glass nx-glass-subtle${cat.id === "other" ? " is-other" : ""}`} onClick={() => onOpenCategory(cat.id)} style={{
@@ -297,10 +293,9 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
               transition: "border-color 160ms ease",
             }}>
               {/* Маленькая складка той же формы и цвета, что и на диаграмме */}
-              <div className="nx-cat-fold" style={{
-                width: "58%", maxWidth: 130, height: 46, alignSelf: "center",
-                clipPath: cat.clip, background: foldFill(cat),
-              }} />
+              <svg className="nx-cat-fold" viewBox={fold.view} aria-hidden="true" focusable="false">
+                <polygon points={fold.pts} fill={`url(#nx-sf-${cat.id})`} />
+              </svg>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", width: "100%" }}>
                 <div>
                   <div style={{ fontSize: 14 }}>{cat.label}</div>
@@ -323,11 +318,9 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         </div>
       )}
       {/* Лента: вертикальная линия слева и кружок у каждого файла */}
-      <div className="nx-stagger" style={{ position: "relative", paddingLeft: 26 }}>
-        <div style={{ position: "absolute", left: 6, top: 24, bottom: 24, width: 1, background: C.text, opacity: 0.6 }} />
+      <div className="nx-media-timeline">
         {recent.map((f) => (
-          <div key={f.id} style={{ position: "relative", marginBottom: 10 }}>
-            <span style={{ position: "absolute", left: -26, top: "50%", marginTop: -7, width: 14, height: 14, boxSizing: "border-box", borderRadius: "50%", border: `1.5px solid ${C.text}`, background: C.bg }} />
+          <div key={f.id} className="nx-media-event">
             {/* Карточка файла: нажатие открывает файл, справа — «Передать на…» */}
             <div data-transfer-card className="nx-recent-row" style={{
               display: "flex", alignItems: "center", gap: 8, paddingRight: 4, borderRadius: 14,
@@ -336,14 +329,14 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
                 ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 14, padding: "7px 8px",
                 display: "flex", alignItems: "center", gap: 14,
               }}>
-                <FileThumb file={f} />
+                <FileThumb file={f} radius={10} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
                   <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
                 </div>
+                <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7 }}>{Icon.chevron({ c: C.text, s: 18 })}</span>
               </button>
               {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
-              <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7 }}>{Icon.chevron({ c: C.text, s: 18 })}</span>
             </div>
           </div>
         ))}

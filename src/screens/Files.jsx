@@ -15,6 +15,7 @@ import { useModalLock } from "../lib/hooks.js";
 import { useLongPress, FileMenu, SelectBar } from "../ui/fileSelect.jsx";
 import { vibrate } from "../native.js";
 import { ruFmt } from "../lib/ruFmt.js";
+import { filesStyles } from "./filesStyles.js";
 
 // ЭКРАН "ФАЙЛЫ" — путь навигации (хлебные крошки), поиск, папки и файлы.
 // filter — id категории, если пришли сюда из "Медиа" (тогда показываем
@@ -54,7 +55,7 @@ function FileRowItem({ f, idx, rowStyle, meta, selecting, selected, onOpen, onTo
             border: `1.5px solid ${selected ? C.mint : C.borderStrong}`, background: selected ? C.mint : "transparent",
           }}>{selected && Icon.check({ c: C.onAccent, s: 14 })}</span>
         )}
-        <FileThumb file={f} />
+        <FileThumb file={f} w="var(--files-thumb-w)" h="var(--files-thumb-h)" radius={12} iconSize={20} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</div>
@@ -79,6 +80,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   const [dragging, setDragging] = useState(false);
   // Строка поиска: ищет только в текущей папке (или категории)
   const [query, setQuery] = useState("");
+  const [actionsOpen, setActionsOpen] = useState(false);
   // Положение прокрутки строки пути: для полоски под чипсами и затухания справа
   const [scroll, setScroll] = useState({ left: 0, ratio: 1, more: false });
   const crumbsRef = useRef(null);
@@ -311,14 +313,14 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
 
   const rowStyle = {
     ...btnReset, width: "100%", boxSizing: "border-box",
-    borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)`, padding: "12px 4px",
-    display: "flex", alignItems: "center", gap: 14,
+    borderBottom: `1px solid color-mix(in srgb, ${C.borderStrong} 55%, transparent)`, padding: "var(--files-row-pad) 0",
+    display: "flex", alignItems: "center", gap: "var(--files-row-gap)",
   };
 
   return (
-    <MediaLayout>
+    <MediaLayout className="nx-files-screen">
+      <style>{filesStyles}</style>
       <MediaTitle title="Файлы" />
-      {transferPanel}
 
       {/* alignItems: flex-end — черта поиска на одной линии с чертой под путём */}
       <div className="nx-files-top" style={{ display: "flex", alignItems: "flex-end", gap: 28, marginBottom: 26 }}>
@@ -327,7 +329,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
               показываем фильтр и кнопку, чтобы его сбросить.
               Справа путь плавно затухает, если дальше есть ещё чипсы */}
           <div
-            ref={crumbsRef} onScroll={measure} className="ng-crumbs nx-no-scrollbar"
+            ref={crumbsRef} onScroll={measure} className="ng-crumbs nx-no-scrollbar nx-scroll" data-no-swipe role="navigation" aria-label="Путь к папке"
             style={{
               display: "flex", gap: 6, overflowX: "auto",
               maskImage: scroll.more ? "linear-gradient(90deg, black 82%, transparent)" : "none",
@@ -360,7 +362,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             )}
           </div>
           {/* Полоска под путём: показывает, какая часть пути сейчас видна */}
-          <div style={{ position: "relative", height: 2, background: C.border, marginTop: 14 }}>
+          <div aria-hidden="true" className="nx-files-track">
             <div style={{
               position: "absolute", top: 0, bottom: 0,
               left: `${scroll.left * 100}%`, width: `${scroll.ratio * 100}%`,
@@ -387,19 +389,12 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         </label>
       </div>
 
-      {/* Заголовок папки, справа — "Новая папка" и "Добавить файл".
-          На телефоне кнопки встают под заголовок на всю ширину */}
-      <div className="nx-files-head" style={{
-        display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12,
-        paddingBottom: 10, borderBottom: `1px solid ${C.borderStrong}`,
-      }}>
-        <div className="nx-files-heading" style={{
-          // Как в макете 2026-10: название папки прописными, без жирности
-          fontFamily: fontDisplay, fontSize: 18, fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em",
-          minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
-          {heading}
-        </div>
+      <div className="nx-files-caption">
+        <h2 title={heading}>{heading}</h2>
+        <button type="button" className="nx-ghost-btn" style={btnReset} aria-expanded={actionsOpen}
+          onClick={() => setActionsOpen(!actionsOpen)}>Действия {actionsOpen ? "−" : "+"}</button>
+      </div>
+      <div data-open={actionsOpen} className="nx-files-tools">
         <div className="nx-files-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           {(
             <button type="button" className="nx-ghost-btn nx-fa-folder nx-glass" onClick={startNewFolder} disabled={newFolder !== null} style={{
@@ -438,6 +433,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           />
         </div>
       </div>
+      {transferPanel}
 
       {/* Загрузки: имя, настоящий процент, отмена; ошибка — «Повторить» и «Убрать» */}
       {uploads.map((u) => {
@@ -502,7 +498,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
       {/* Список прокручивается внутри себя, как в макете.
           key меняется при смене папки — список появляется заново с анимацией */}
       <div key={device ? `dev-${device.id}` : cat ? `cat-${cat.id}` : `f-${folder}`} className="nx-stagger nx-scroll nx-files-list" style={{
-        maxHeight: "calc(100vh - 400px)", minHeight: 260, overflowY: "auto", paddingRight: 14,
+        maxHeight: "max(260px, calc(100dvh - 315px))", overflowY: "auto",
       }}>
         {/* Новая папка: строка с полем имени. Enter — создать, Esc — отменить */}
         {newFolder !== null && (

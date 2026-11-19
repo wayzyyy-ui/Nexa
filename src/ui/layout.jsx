@@ -9,23 +9,15 @@ import { FoldArt } from "./backdrop.jsx";
 export function MediaLayout({ children, hideArt, className = "" }) {
   return (
     <div className={`ng-screen nx-media-screen ${className}`} style={{ padding: "28px 40px 40px", textAlign: "left" }}>
-      <div className="nx-media-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 48, alignItems: "start" }}>
+      <div className="nx-media-grid">
         {/* nx-media-main — на большом мониторе растёт вместе с окном (--desk-zoom) */}
         <div className="nx-media-main" style={{ minWidth: 0 }}>{children}</div>
-        <div className="nx-media-art" aria-hidden={hideArt || undefined} style={{
-          position: "sticky", top: 120, display: "flex", justifyContent: "flex-end", paddingTop: 40, marginRight: -40,
-          opacity: hideArt ? 0 : 1, transition: "opacity 240ms ease",
-        }}>
-          <MediaFold />
+        <div className="nx-media-art" aria-hidden={hideArt || undefined}>
+          <FoldArt className="nx-media-fold" />
         </div>
       </div>
     </div>
   );
-}
-
-// Складка справа — та же векторная, что на Главной (FoldArt), крупнее
-function MediaFold() {
-  return <FoldArt className="nx-media-fold" />;
 }
 
 // Заголовок экрана: крупный и лёгкий, как в макете.

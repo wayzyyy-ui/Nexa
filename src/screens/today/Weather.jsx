@@ -25,7 +25,7 @@ export function TempFold({ temp, tone, rain, snow }) {
       {rain && <RainDrops />}
       {snow && <SnowFlakes />}
       {/* Складка: светлая у верхней вершины и тающая книзу */}
-      <div aria-hidden="true" style={{
+      <div className="nx-temp-fold" aria-hidden="true" style={{
         position: "absolute", top: -8, bottom: 0, left: "36%", right: 0,
         clipPath: "polygon(0 22%, 100% 0, 42% 100%)",
         background: `linear-gradient(to bottom left, ${tone}, transparent 80%)`,

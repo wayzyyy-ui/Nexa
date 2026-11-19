@@ -1,0 +1,131 @@
+.nx-set-desk.nx-settings {
+  container-type: inline-size;
+}
+
+.nx-set-desk.nx-settings > * {
+  max-width: 1480px;
+  margin-inline: 0;
+}
+
+.nx-set-page .nx-theme-gallery {
+  padding: 6px 4px 32px;
+}
+
+.nx-set-desk .nx-set-layout {
+  grid-template-columns: minmax(228px, 31.5%) minmax(0, 1fr);
+  gap: 14px 2.3%;
+}
+
+.nx-set-desk .nx-set-side {
+  gap: 12px;
+}
+
+.nx-set-desk .nx-set-side-title {
+  height: 26px;
+  line-height: 26px;
+  font-size: 22px;
+  margin: 0 0 -6px;
+}
+
+.nx-set-desk :is(.nx-set-account, .nx-set-navcard, .nx-set-panel) {
+  border-radius: 24px;
+}
+
+.nx-set-desk .nx-set-account {
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.nx-set-desk .nx-set-navcard {
+  padding: 16px;
+}
+
+.nx-set-desk .nx-set-panel {
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 32px;
+  padding: clamp(18px, 3.6cqw, 52px);
+}
+
+.nx-set-desk .nx-set-panel-title {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: auto;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: 16px;
+  margin-bottom: 0;
+}
+
+.nx-set-desk .nx-set-panel-title + .nx-set-body {
+  margin-top: 24px;
+}
+
+.nx-theme-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5%;
+  padding: 6% 2% 24px 6%;
+}
+
+.nx-theme-card {
+  --theme-edge: var(--on-fold);
+  box-sizing: border-box;
+  position: relative;
+  padding: 0;
+  aspect-ratio: 1;
+  border: 3px solid var(--theme-edge);
+  border-radius: 29%;
+  background: var(--theme-edge);
+  color: var(--avatar-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.nx-theme-card[aria-pressed="true"] {
+  --theme-edge: var(--mint);
+  color: var(--on-accent);
+}
+
+.nx-theme-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.nx-theme-card span {
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  transform: translate(-50%, 50%);
+  border-radius: 999px;
+  padding: 0.5em 1.5em;
+  background: var(--theme-edge);
+  font-size: clamp(12px, 1.35cqw, 18px);
+}
+
+.nx-theme-card:focus-visible, .nx-set-extra summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 5px;
+}
+
+.nx-set-extra {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.nx-set-extra summary {
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+@container (max-width: 660px) {
+  .nx-set-desk .nx-set-layout { grid-template-columns: minmax(0, 1fr); }
+  .nx-set-desk .nx-set-side { position: static; }
+  .nx-set-desk .nx-set-panel { margin-top: 0; }
+  .nx-set-extra { grid-column: 1; }
+}

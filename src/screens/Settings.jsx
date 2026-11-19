@@ -22,6 +22,9 @@ import { Avatar, ProfileSettings } from "../ui/profile.jsx";
 import { useExpUi, setExpUi } from "./home/widgets.jsx";
 import { profileName } from "../lib/profile.js";
 import { useEnterSends, touchLike } from "../lib/composer.js";
+import dayArt from "../assets/settings-day.webp";
+import nightArt from "../assets/settings-night.webp";
+import "./settings.css";
 
 // ЭКРАН "НАСТРОЙКИ": аккаунт, тема, уведомления, приложение
 /* «Это устройство» в Настройках: только настоящие сведения (src/lib/deviceInfo.js).
@@ -235,15 +238,15 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
     }}>{label}</button>
   );
 
-  // Кнопка сегментированного переключателя темы
-  const segBtn = (value, label) => (
-    <button onClick={() => setTheme(value)} style={{
-      flex: 1, padding: "8px 18px", fontSize: 13, border: "none", cursor: "pointer", whiteSpace: "nowrap",
-      fontFamily: "inherit",
-      background: theme === value ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
-      color: theme === value ? C.onAccent : C.muted,
-      fontWeight: theme === value ? 500 : 400,
-    }}>{label}</button>
+  const themeGallery = (
+    <div className="nx-theme-gallery" role="group" aria-label="Тема оформления">
+      {[["light", "Светлая", dayArt], ["dark", "Тёмная", nightArt]].map(([value, label, src]) => (
+        <button key={value} type="button" className="nx-theme-card" aria-pressed={theme === value} onClick={() => setTheme(value)}>
+          <img src={src} alt="" width="768" height="768" />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
   );
 
   // Что лежит в каждом разделе (раскладку утвердил автор 2026-10-26)
@@ -251,23 +254,6 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
     switch (id) {
       case "appearance": return (
         <SettingsGroup>
-          <SettingsRow
-            last={!touch} wrap
-            icon={
-              // Мини-складка: меняет цвет вместе с темой
-              <svg viewBox="0 0 24 24" width="18" height="18">
-                <polygon points="4,14 12,4 12,20 7,22" fill={theme === "dark" ? C.blue : C.mint} />
-              </svg>
-            }
-            title="Тема оформления"
-            subtitle={theme === "dark" ? "Тёмная" : "Светлая"}
-            right={
-              <div className="nx-seg" style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 999, overflow: "hidden" }}>
-                {segBtn("light", "Светлая")}
-                {segBtn("dark", "Тёмная")}
-              </div>
-            }
-          />
           {touch && (
             <SettingsRow
               icon={<span style={{ display: "flex", transform: "rotate(-14deg)" }}>{Icon.phone({ c: C.muted, s: 18 })}</span>}
@@ -373,7 +359,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
         <div ref={pageRef} className={`ng-screen nx-settings nx-set-page${leaving ? " is-leaving" : ""}`} role={leaving ? undefined : "dialog"} aria-label={m.title} data-no-swipe>
           <Crumb onClick={closeSection}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
           <div className="ng-display nx-page-title nx-set-page-title">{m.title}</div>
-          <div className={`nx-set-body${m.notitle ? " nx-set-notitle" : ""}`}>{content(open)}</div>
+          <div className={`nx-set-body${m.notitle ? " nx-set-notitle" : ""}`}>{open === "appearance" && themeGallery}{content(open)}</div>
         </div>
       );
     }
@@ -435,9 +421,13 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
           {aboutCard}
         </aside>
         <section className="nx-set-panel nx-glass nx-glass-subtle" aria-label={m.title}>
-          <div className="ng-display nx-set-panel-title nx-glass">{m.title}</div>
-          <div key={sec} className={`nx-set-body nx-pop${m.notitle ? " nx-set-notitle" : ""}`}>{content(sec)}</div>
+          <div className="ng-display nx-set-panel-title nx-glass">{sec === "appearance" ? "Внешний вид (тема)" : m.title}</div>
+          {sec === "appearance" ? themeGallery : <div key={sec} className={`nx-set-body nx-pop${m.notitle ? " nx-set-notitle" : ""}`}>{content(sec)}</div>}
         </section>
+        {sec === "appearance" && <details className="nx-set-extra">
+          <summary>Дополнительные настройки вида</summary>
+          {content(sec)}
+        </details>}
       </div>
     </div>
   );

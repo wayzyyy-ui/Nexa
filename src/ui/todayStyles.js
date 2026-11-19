@@ -9,9 +9,6 @@ export const TODAY_CSS = `
   .nx-today-screen .nx-media-main { zoom: 1; }
   .nx-today-screen .nx-page-title { font-size: 64px !important; font-weight: 700 !important; line-height: 1.1 !important; }
   .nx-today-screen .nx-page-gap { height: 78px !important; }
-  .ng-topbar[data-tab="today"] { padding-top: 54px !important; }
-  .nx-today-screen .nx-media-art { top: 194px !important; }
-  .nx-today-screen .nx-media-fold { width: 650px; margin-right: -235px; }
 
   .nx-today-screen .nx-today-grid,
   .nx-today-screen .nx-today-grid.is-fc {
@@ -36,11 +33,15 @@ export const TODAY_CSS = `
   }
   .nx-today-screen .nx-day-num { font-size: 36px !important; line-height: 1.15; }
   .nx-today-screen .nx-day-chip[aria-selected="false"] { border-color: color-mix(in srgb, var(--text) 35%, transparent) !important; }
-  .nx-today-screen .nx-day-chip[aria-selected="true"] .nx-day-num { font-weight: 700 !important; }
+  .nx-today-screen .nx-day-chip[aria-selected="true"] {
+    position: relative; background: var(--mint) !important; color: var(--on-accent) !important;
+  }
+  .nx-today-screen .nx-day-chip[aria-selected="true"] .nx-day-num { font-size: 44px !important; line-height: 1; font-weight: 700 !important; }
+  .nx-today-screen .nx-day-chip[aria-selected="true"] .nx-day-dot { position: absolute; bottom: 3px; left: calc(50% - 2px); }
   .nx-today-screen .nx-sched-tools > button { min-height: 46px; font-weight: 600; }
   .nx-today-screen .nx-today-empty { padding-top: 0; }
   .nx-today-screen .nx-today-empty > div { padding: 26px 0 !important; }
-  .nx-today-screen .nx-today-empty svg[aria-hidden="true"] { display: none; }
+  .nx-today-screen .nx-today-empty > div > svg { display: none; }
   .nx-today-screen .nx-today-empty > div > div:first-of-type { font-size: 21px !important; font-weight: 500 !important; }
   .nx-today-screen .nx-today-empty > div > div:nth-of-type(2) { font-size: 20px !important; max-width: none !important; }
 
@@ -59,6 +60,8 @@ export const TODAY_CSS = `
   .nx-today-screen .nx-weather-summary { min-width: 0; }
   .nx-today-screen .nx-today-now .nx-weather-main { flex-direction: column; align-items: stretch !important; gap: 6px !important; }
   .nx-today-screen .nx-today-now .nx-temp { align-self: center; padding-right: 36px !important; }
+  .nx-today-screen .nx-today-now .nx-temp-fold { top: -18px !important; bottom: -6px !important; }
+  .nx-today-screen .nx-today-next .nx-weather-main { justify-content: center; }
   .nx-today-screen .nx-today-now .nx-temp > span:first-of-type { font-size: 104px !important; }
   .nx-today-screen .nx-today-now .nx-temp > span:last-of-type { font-size: 58px !important; color: var(--muted); }
   .nx-today-screen .nx-weather-footer { margin-top: 4px !important; }

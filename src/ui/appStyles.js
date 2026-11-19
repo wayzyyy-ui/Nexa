@@ -278,23 +278,23 @@ export const APP_CSS = `
         :root[data-theme="light"] .nx-dev-row[data-online="0"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--red) 52%, var(--home-gray)), color-mix(in srgb, var(--red) 34%, var(--home-gray)) 85%) !important; color: var(--on-red) !important; }
         :root[data-theme="light"] .nx-dev-row[data-online="0"] .nx-dev-row-sub { color: color-mix(in srgb, var(--on-red) 78%, transparent) !important; }
         :root[data-theme="light"] .nx-dev-row[data-online="1"] { background-image: linear-gradient(100deg, color-mix(in srgb, var(--green) 30%, var(--home-add)), color-mix(in srgb, var(--green) 12%, var(--home-add)) 85%) !important; }
-        /* «Сегодня», «Медиа», «Файлы» на компьютере: во всю ширину окна — содержимое слева (до 1120 px),
-           складка прижата к правому краю окна (макет 2026-10) */
+        /* Рабочая колонка начинается у меню, свободное место справа занимает складка. */
         @media ${DESKTOP_MQ} {
           .ng-main-content:has(.nx-media-grid) { max-width: none !important; }
-          /* --desk-zoom (theme.js): 1 на ноутбуке, до 1,3 на большом мониторе — содержимое растёт
-             пропорционально и заполняет окно, как на макете, а не жмётся в левый верхний угол */
-          .nx-media-grid { grid-template-columns: minmax(0, var(--page-w)) !important; justify-content: center; gap: 0 !important; }
-          /* Содержимое — по центру свободной области (2026-11-05, просьба автора), складка — фоном у правого края, за карточками */
-          .nx-media-screen { isolation: isolate; padding-right: var(--page-x) !important; }
-          .nx-media-art { position: fixed !important; top: 120px !important; right: 0; z-index: -1; margin: 0 !important; padding: 0 !important; pointer-events: none; }
+          .nx-media-grid { display: grid; grid-template-columns: minmax(0, var(--page-w)); }
+          .nx-media-screen { isolation: isolate; padding: 44px 32px 48px !important; }
+          .nx-media-art { position: fixed; top: 11vh; right: 0; z-index: -1; pointer-events: none; transition: opacity 240ms ease; }
+          .nx-media-art[aria-hidden="true"] { opacity: 0; }
           .nx-media-main { zoom: var(--desk-zoom, 1); }
-          /* Отступ слева — как на Главной: содержимое с 270 px макета 1920 × 1080 */
-          .nx-media-screen { padding-left: var(--page-x) !important; padding-top: calc(38 * var(--mk)) !important; }
-          /* Заголовок — по макету: крупнее и на одной линии с верхней строкой (поиск, часы); карточки — ниже.
-             Внутри .nx-media-main действует zoom, поэтому размеры делим на --desk-zoom */
-          .nx-media-screen .nx-page-title { font-size: max(32px, calc(50 * var(--mk) / var(--desk-zoom, 1))) !important; line-height: 1.1 !important; }
-          .nx-media-screen .nx-page-gap { height: calc(75 * var(--mk) / var(--desk-zoom, 1)) !important; }
+          .nx-media-screen .nx-page-title { font-size: calc(clamp(38px, 4vw, 64px) / var(--desk-zoom, 1)) !important; font-weight: 650 !important; line-height: 1.1 !important; }
+          .nx-media-screen .nx-page-gap { height: calc(clamp(38px, 5vh, 64px) / var(--desk-zoom, 1)) !important; }
+          .ng-topbar:is([data-tab="media"], [data-tab="files"], [data-tab="today"], [data-tab="settings"]) { padding-top: 54px !important; }
+          @media (max-width: 1080px) {
+            .nx-media-screen .nx-page-title, .nx-set-desk .nx-settings-title {
+              max-width: calc(100vw - var(--nav-w) - 300px);
+            }
+          }
+          @media (prefers-reduced-motion: reduce) { .nx-media-art { transition: none; } }
           /* На компьютере фон ассистента продолжается под боковым меню.
              Меню — над ним (прозрачное), содержимое ассистента — правее меню */
           .ng-assistant-wrapper { left: 0 !important; padding-left: calc(var(--nav-w) + 1px); box-sizing: border-box; }
@@ -302,7 +302,7 @@ export const APP_CSS = `
           .ng-sidebar { position: sticky; top: 0; height: 100vh; align-self: flex-start; z-index: 6; }
         }
         /* Складка справа на «Сегодня», «Медиа», «Файлах»: крупно, обрезана правым краем окна */
-        .nx-media-fold { width: 600px; max-width: none; height: auto; display: block; margin-right: -130px; user-select: none; pointer-events: none; overflow: visible; }
+        .nx-media-fold { width: clamp(480px, 33vw, 800px); max-width: none; height: auto; display: block; margin-right: -8vw; user-select: none; pointer-events: none; overflow: visible; }
         /* Ноутбук (до 1500 px): складка уже и прижата к краю — рабочая колонка («Файлы», «Медиа», «Сегодня»)
            получает ~130 px ширины, которые раньше занимала декорация */
         @media (min-width: 769px) and (max-width: 1500px) {
@@ -754,9 +754,9 @@ export const APP_CSS = `
         .nx-set-notitle > .nx-section-title:first-child, .nx-set-notitle > :first-child > .nx-section-title:first-child { display: none !important; }
         .nx-set-body > :first-child .nx-section-title:first-child, .nx-set-body > .nx-section-title:first-child { margin-top: 0 !important; }
         @media ${DESKTOP_MQ} {
-          .nx-set-desk { padding: calc(38 * var(--mk)) var(--page-x) 40px !important; text-align: left; box-sizing: border-box; }
+          .nx-set-desk { padding: 44px 32px 48px !important; text-align: left; box-sizing: border-box; }
           .nx-set-desk > * { max-width: var(--page-w); margin-inline: auto; }
-          .nx-settings-title { font-size: max(32px, calc(50 * var(--mk))) !important; line-height: 1.1 !important; margin-bottom: calc(60 * var(--mk)); }
+          .nx-settings-title { font-size: clamp(38px, 4vw, 64px) !important; font-weight: 650; line-height: 1.1 !important; margin-bottom: clamp(38px, 5vh, 64px); }
           .nx-set-layout { display: grid; grid-template-columns: minmax(300px, calc(480 * var(--mk))) minmax(0, 1fr); gap: calc(48 * var(--mk)); align-items: start; }
           .nx-set-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: calc(140 * var(--mk)); }
           /* Заголовок «Аккаунт» — своей строкой фиксированной высоты, панель справа начинается вровень с карточкой аккаунта */
@@ -2292,7 +2292,7 @@ export const APP_CSS = `
           .ng-cat-grid > .is-other { display: none !important; }
           .nx-title-row { justify-content: space-between; }
           /* «Медиа и файлы» — в одну строку рядом с кнопкой «+» (раньше «файлы» переносились) */
-          .nx-title-row .nx-page-title { white-space: nowrap; font-size: min(25px, 6.4vw) !important; min-width: 0; letter-spacing: -0.01em; }
+          .nx-title-row .nx-page-title, .nx-media-library .nx-page-title { white-space: nowrap; font-size: min(25px, 6.4vw) !important; min-width: 0; letter-spacing: -0.01em; }
           /* Заголовок раздела не уходит под значки справа (3 × 40 + отступы) */
           .ng-main-content .nx-page-title { max-width: calc(100% - 116px); overflow: hidden; text-overflow: ellipsis; }
           /* Дата и время — две равные колонки: поле времени в Android шире 124 px и вылезало за рамку формы */

@@ -1,0 +1,93 @@
+.nx-media-library .nx-media-main {
+  container-type: inline-size;
+}
+
+.nx-media-library .nx-media-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.nx-media-chart {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.nx-media-chart .ng-storage-folds {
+  min-width: 530px !important;
+}
+
+.nx-media-chart .nx-sf:focus-visible polygon:last-child {
+  stroke: var(--text) !important;
+  stroke-width: 3;
+}
+
+.nx-media-library .nx-cat-fold {
+  align-self: center;
+  width: 88%;
+  max-width: 132px;
+  height: 54px;
+}
+
+.nx-media-event {
+  position: relative;
+  padding-left: 30px;
+}
+
+.nx-media-event + .nx-media-event {
+  margin-top: 10px;
+}
+
+.nx-media-event::before,
+.nx-media-event::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+}
+
+.nx-media-event:not(:last-child)::before {
+  width: 1px;
+  height: calc(100% + 10px);
+  background: var(--text);
+}
+
+.nx-media-event::after {
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--text);
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+@container (max-width: 770px) {
+  .nx-media-library .ng-storage-card {
+    flex-direction: column;
+  }
+
+  .nx-media-chart {
+    flex: none;
+    width: 100%;
+  }
+
+  .nx-media-library .ng-cat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-media-library .nx-sf,
+  .nx-media-library .nx-seg-label {
+    transition: none !important;
+  }
+}
