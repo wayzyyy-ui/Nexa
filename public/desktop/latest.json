@@ -1,11 +1,11 @@
 {
-  "version": "0.19.9",
-  "notes": "- Обновление 0.19.9\n- Улучшилось: в пустом чате ассистента движение цветов фона стало заметнее\n- Починилось: на Главной ПК плашка ассистента теперь сразу под погодой\n- Добавилось: ассистент рассказывает, что нового в текущей версии NEXA, даже без интернета",
-  "pub_date": "2026-11-18T23:59:27.935Z",
+  "version": "0.20.0",
+  "notes": "- Обновление 0.20.0\n- Улучшилось: в «Медиа» обновились диаграмма хранилища, карточки категорий и список недавних файлов\n- Улучшилось: в «Файлах» обновились путь к папке, список и панель действий\n- Улучшилось: у раздела «Сегодня» новый вид расписания и карточек погоды\n- Добавилось: в настройках ПК и телефона светлую и тёмную темы можно выбрать по иллюстрациям «День» и «Ночь»",
+  "pub_date": "2026-11-19T13:06:33.174Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXlQaU8xcCtkTm1oZ2QzNEtJZVhSZEx1d0RVRVZDOWQ2R0hGOEVhcFh3Q0JlTDlod1VGTVV0Q3BkZWhqS0RndU1XU0JISWtKRXBmWlMva2dOa1c0b3dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDQ2MzY3CWZpbGU6TkVYQV8wLjE5LjlfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTkuOQpBNThvMG1BQ0l5SG5mUVRsRUxqNVpKOWFTSDd2MTlxdEMyUVlqRSt2Umd1UkNMYzcxelhKQkE2Y2tFb0RIZWlKNDF2S0o1MGRTY2FTSFJiWmg0QjdCQT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.19.9"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTU0azlHNnVQN1hvd3dWMmdrbjVub0p1SkZUaHA2MGh1MWNMcHBPZis3UkVPNFhBaWU5MEI1Mmh2aDByRFpWL0hxbThiSERGWmFmRGt6YlczbitkMEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDkzNTkyCWZpbGU6TkVYQV8wLjIwLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMjAuMApMUjF6VjdkL1ZVMEZrbDQ2NWE4TnEyczdacVUzSGVnRzNYeVpUTGU3czRPOUdPQko2OEprbzZKVzczb1kxUnJzYU53bkpnMzNQTWtpeEdPTHVlSVpEQT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.20.0"
     }
   }
 }
