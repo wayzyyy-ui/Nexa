@@ -1,11 +1,11 @@
 {
-  "version": "0.20.0",
-  "notes": "- Обновление 0.20.0\n- Улучшилось: в «Медиа» обновились диаграмма хранилища, карточки категорий и список недавних файлов\n- Улучшилось: в «Файлах» обновились путь к папке, список и панель действий\n- Улучшилось: у раздела «Сегодня» новый вид расписания и карточек погоды\n- Добавилось: в настройках ПК и телефона светлую и тёмную темы можно выбрать по иллюстрациям «День» и «Ночь»",
-  "pub_date": "2026-11-19T13:06:33.174Z",
+  "version": "0.20.1",
+  "notes": "- Обновление 0.20.1\n- Улучшилось: NEXA mini лучше распознаёт команды об устройствах и заметках. Ассистент учитывает запреты и уточняет, какой список открыть\n- Улучшилось: в истории диалогов ярче кнопка «Новый диалог» и поле поиска, фон ассистента стал спокойнее\n- Улучшилось: в «Файлах» все доступные действия сразу видны под заголовком\n- Починилось: в расписании числа подняты выше, а кнопка «Добавить дело» стала мятной\n- Починилось: на Главной контур значка телефона помещается целиком",
+  "pub_date": "2026-11-20T12:46:44.875Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTU0azlHNnVQN1hvd3dWMmdrbjVub0p1SkZUaHA2MGh1MWNMcHBPZis3UkVPNFhBaWU5MEI1Mmh2aDByRFpWL0hxbThiSERGWmFmRGt6YlczbitkMEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDkzNTkyCWZpbGU6TkVYQV8wLjIwLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMjAuMApMUjF6VjdkL1ZVMEZrbDQ2NWE4TnEyczdacVUzSGVnRzNYeVpUTGU3czRPOUdPQko2OEprbzZKVzczb1kxUnJzYU53bkpnMzNQTWtpeEdPTHVlSVpEQT09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.20.0"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXpRTUsrMGhqLzZaSytCc2d0Njc3S2syRzZFUk1JcTl4YTRrejRDcEpPeVcybmlmRWpZN0RJWFR2Qmk0MjFXNGxJekFuYStxbHF5RVlGVDdVSlNQK1FzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MTc4ODA0CWZpbGU6TkVYQV8wLjIwLjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMjAuMQpJcjNwVkJVZUxDOE5PRDBTU3hCTWtiOVJ5NXBQc0ZxTURISUk5RFEzQUVtV2YvMlJKOTNaY0Vhd2srWmppWXVaeEZwc3lsaEdoS2FGeHJZbTVxUzBDUT09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.20.1"
     }
   }
 }
