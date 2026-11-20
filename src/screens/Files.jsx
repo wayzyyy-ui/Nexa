@@ -80,7 +80,6 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
   const [dragging, setDragging] = useState(false);
   // Строка поиска: ищет только в текущей папке (или категории)
   const [query, setQuery] = useState("");
-  const [actionsOpen, setActionsOpen] = useState(false);
   // Положение прокрутки строки пути: для полоски под чипсами и затухания справа
   const [scroll, setScroll] = useState({ left: 0, ratio: 1, more: false });
   const crumbsRef = useRef(null);
@@ -389,12 +388,8 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
         </label>
       </div>
 
-      <div className="nx-files-caption">
-        <h2 title={heading}>{heading}</h2>
-        <button type="button" className="nx-ghost-btn" style={btnReset} aria-expanded={actionsOpen}
-          onClick={() => setActionsOpen(!actionsOpen)}>Действия {actionsOpen ? "−" : "+"}</button>
-      </div>
-      <div data-open={actionsOpen} className="nx-files-tools">
+      <h2 className="nx-files-caption" title={heading}>{heading}</h2>
+      <div className="nx-files-tools">
         <div className="nx-files-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           {(
             <button type="button" className="nx-ghost-btn nx-fa-folder nx-glass" onClick={startNewFolder} disabled={newFolder !== null} style={{

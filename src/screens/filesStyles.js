@@ -23,29 +23,13 @@ export const filesStyles = `
     background: ${C.border};
   }
   .nx-files-caption {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid ${C.borderStrong};
-  }
-  .nx-files-caption h2 {
     min-width: 0;
     margin: 0;
     font: 400 18px/1.3 ${fontDisplay};
     text-transform: uppercase;
     overflow-wrap: anywhere;
   }
-  .nx-files-caption button {
-    flex: none;
-    padding: 8px 14px !important;
-    color: ${C.muted};
-    border: 1px solid ${C.borderStrong} !important;
-    border-radius: 999px;
-  }
   .nx-files-tools { padding-block: 14px; }
-  .nx-files-tools[data-open="false"] { display: none; }
   .nx-files-tools .nx-files-actions { flex-wrap: wrap; }
   .nx-files-screen .nx-files-list {
     scrollbar-width: thin;
@@ -68,8 +52,5 @@ export const filesStyles = `
       --files-row-gap: 12px;
     }
     .nx-files-screen .ng-crumbs > button { padding-inline: 26px !important; }
-    .nx-files-caption { padding-bottom: 10px; }
-    .nx-files-caption button { display: none; }
-    .nx-files-tools[data-open="false"] { display: block; }
   }
 `;

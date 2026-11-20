@@ -58,7 +58,7 @@ export function DeviceCard({ device }) {
 }
 
 export const DEVICE_ART = {
-  phone: { vb: "0 0 24 41", w: 24, h: 41, body: (
+  phone: { vb: "-1 -1 26 43", w: 26, h: 43, body: (
     <><rect x="0.5" y="0.5" width="22.6" height="39.37" rx="6.5" stroke="currentColor" strokeLinejoin="round" />
       <rect x="8.82" y="3.91" width="5.96" height="0.87" rx="0.44" fill="currentColor" /></>) },
   laptop: { vb: "0 0 37 28", w: 37, h: 28, body: (

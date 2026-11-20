@@ -2,6 +2,7 @@
 import { getTodayWeather, TODAY } from "./weather.js";
 import { signed, plural } from "./format.js";
 import { ruFmt } from "./ruFmt.js";
+import { EXPLAIN_START, HOW_TO, PROHIBITION } from "./commandLanguage.js";
 
 // ЭКРАН "АССИСТЕНТ" — поле ввода по центру + правая панель (новый диалог/поиск/...)
 /* ═══ КОМАНДЫ АССИСТЕНТА ══════════════════════════════════════
@@ -32,10 +33,6 @@ export const ACTION_VERBS = [
   "перейд", "перейти", "переход", "зайд", "верн", "давай", "добав", "загруз", "закач",
   "подключи", "вывед", "отобраз", "иди", "запуст", "выбер", "хочу", "нужн",
 ];
-
-// С таких слов начинаются вопросы «про что-то» — это не команды
-// «Как подключить…», «как удалить…» (вопрос «как сделать», а не просьба сделать) и «что делать» — тоже вопросы
-export const EXPLAIN_START = /^(расскаж|объясн|почему|зачем|что такое|что значит|в чем разница|чем отлича|напиши|придумай|переведи|сравни|что делать|как \S+(ть|ти|чь)( |$))/;
 
 // Удалить ассистент ничего не умеет — «удали устройство», «сотри файлы» уходят в чат (там объяснят, как это сделать),
 // а не открывают похожий экран
@@ -88,12 +85,20 @@ export const ASSISTANT_COMMANDS = [
   { action: "navigate", params: { tab: "home" }, when: "verb", test: ({ has }) => has("главн", "домой") },
 ];
 
-// Текст → { action, params } или null (тогда это обычный вопрос)
-export function parseCommand(text) {
+export const LIST_QUESTION = "Какой список показать — устройства или заметки?";
+
+export function parseCommand(text, previousReply) {
   const n = normalizeCommand(text || "");
   if (!n) return null;
   const words = n.split(" ");
   if (words.length > 12) return null; // длинное сообщение — точно разговор, не команда
+  if (HOW_TO.test(n)) return null;
+  if (PROHIBITION.test(n)) return { action: "skipAction", params: {} };
+  if (/^(?:покажи|открой) (?:мой )?список$/.test(n)) return { action: "clarifyList", params: {} };
+  if (previousReply?.role === "ai" && previousReply.action && previousReply.text === LIST_QUESTION) {
+    if (/^(?:первый|первое|устройства|устройств|список устройств)$/.test(n)) return { action: "devices", params: {} };
+    if (/^(?:второй|второе|заметки|заметок|список заметок)$/.test(n)) return { action: "notes", params: {} };
+  }
   const has = (...stems) => words.some((w) => stems.some((st) => w.startsWith(st)));
   if (has(...NOT_COMMAND)) return null;
   const ctx = {
@@ -103,9 +108,10 @@ export function parseCommand(text) {
   };
   const explain = EXPLAIN_START.test(n);
   for (const c of ASSISTANT_COMMANDS) {
+    if (explain && c.action !== "version") continue;
     if (!c.test(ctx)) continue;
     if (c.when === "free") return { action: c.action, params: c.params || {} };
-    if (!explain && (ctx.hasVerb || ctx.short)) return { action: c.action, params: c.params || {} };
+    if (ctx.hasVerb || ctx.short) return { action: c.action, params: c.params || {} };
   }
   return null;
 }

@@ -5,6 +5,7 @@
    и вопрос уходит в Gemini как раньше. Это классификатор намерений, а не языковая модель. */
 import { modelFromJSON, predict } from "./model.js";
 import { normalize } from "./features.js";
+import { EXPLAIN_START, HOW_TO, PROHIBITION } from "../commandLanguage.js";
 
 // Что значит каждое намерение для runCommand (null — сеть узнала, но выполнять не будет)
 export const INTENT_ACTIONS = {
@@ -27,9 +28,6 @@ export const INTENT_ACTIONS = {
   GENERAL: null,
 };
 
-// Сообщения, которые начинаются как просьба что-то рассказать или написать, командами не бывают.
-// «Как включить…», «как подключить…» (вопрос «как сделать», а не просьба сделать) и «что делать» — тоже вопросы.
-const EXPLAIN_START = /^(расскаж|объясн|почему|зачем|что такое|что значит|в чем разница|чем отлича|напиши|придумай|переведи|сравни|что делать|как \S+(ть|ти|чь)( |$))/;
 const MAX_WORDS = 12; // длинное сообщение — разговор, как и в правилах
 // Удалять Mini не умеет: «удали устройство» не должно открывать список устройств — уходит в Gemini
 const NOT_COMMAND = /(^| )(удал|стер|сотр|очист)/;
@@ -69,6 +67,7 @@ const DARK = stems(["темн", "ночн", "ночь", "черн", "потем�
 
 // Есть ли у фразы подтверждение выбранного намерения. Для тем: слова «светлая» и «тёмная» вместе — неясно, какая нужна
 function confirmed(label, n) {
+  if (label === "NAV_NOTES" && /(?:^| )(?:новую|новой|новая|создай|создать)(?: |$)/.test(n)) return false;
   if (label === "THEME_LIGHT") return LIGHT.test(n) && !DARK.test(n);
   if (label === "THEME_DARK") return DARK.test(n) && !LIGHT.test(n);
   if (label === "ADD_DEVICE" && NOT_ADD_DEVICE.test(n + " ")) return false;
@@ -105,7 +104,7 @@ export function decide(net, text, opts = {}) {
   const n = normalize(text);
   if (!n) return { run: null, reason: "empty" };
   if (n.split(" ").length > MAX_WORDS) return { run: null, reason: "long" };
-  if (EXPLAIN_START.test(n) || NOT_COMMAND.test(n)) return { run: null, reason: "question" };
+  if (HOW_TO.test(n) || EXPLAIN_START.test(n) || PROHIBITION.test(n) || NOT_COMMAND.test(n)) return { run: null, reason: "question" };
   const threshold = opts.threshold ?? net.meta?.threshold ?? 0.9;
   const minMargin = opts.margin ?? net.meta?.margin ?? 0.3;
   const r = predict(net, n);

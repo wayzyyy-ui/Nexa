@@ -20,6 +20,7 @@ export const C = {
   blueDark: "var(--blue-dark)",  // синий для теневой стороны градиентов
   blueLight: "var(--blue-light)",// синий для световой стороны градиентов
   mint: "var(--mint)",           // фирменный мятный (связь, облако)
+  actionMint: "var(--action-mint)", // яркая заливка кнопки в обеих темах
   mintDark: "var(--mint-dark)",  // мятный для теней и фона активных элементов
   mintLight: "var(--mint-light)",// мятный для света
   green: "var(--green)",         // статус "онлайн"

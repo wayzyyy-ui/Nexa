@@ -13,7 +13,7 @@ import { normalize, featurize, DIM } from "../src/lib/mini/features.js";
 import { decide, setMiniModel, miniCommand, INTENT_ACTIONS } from "../src/lib/mini/index.js";
 
 register("./helpers/stub-hooks.mjs", import.meta.url);
-const { parseCommand } = await import("../src/lib/commands.js");
+const { parseCommand, LIST_QUESTION } = await import("../src/lib/commands.js");
 
 test("вопросы об обновлении NEXA распознаются без модели", () => {
   for (const text of ["Что за обновление?", "Что нового в NEXA?", "Что улучшили в последней версии?"]) {
@@ -28,6 +28,31 @@ const weights = JSON.parse(readFileSync(new URL("../src/lib/mini/weights.json", 
 const net = modelFromJSON(weights);
 setMiniModel(net);
 const holdout = flatten(HOLDOUT);
+
+test("просьба, запрет и вопрос о том же действии дают разные результаты", () => {
+  const resolve = text => parseCommand(text) || miniCommand(text);
+  for (const [request, prohibition, question, expected] of [
+    ["открой заметки", "не открывай заметки", "как открыть заметки?", "notes"],
+    ["включи тёмную тему", "не включай тёмную тему", "как мне включить тёмную тему?", "theme"],
+    ["подключи устройство", "пожалуйста, не подключай устройство", "как мне подключить устройство?", "addDevice"],
+    ["открой файлы", "не надо открывать файлы", "где хранятся файлы в телефоне?", "navigate"],
+  ]) {
+    assert.equal(resolve(request)?.action, expected, request);
+    assert.equal(resolve(prohibition)?.action, "skipAction", prohibition);
+    assert.equal(miniCommand(prohibition), null, prohibition);
+    assert.equal(resolve(question), null, question);
+  }
+});
+
+test("уточнение списка относится только к следующей реплике этого диалога", () => {
+  assert.equal(parseCommand("Открой мой список!")?.action, "clarifyList");
+  const previous = { role: "ai", action: true, text: LIST_QUESTION };
+  assert.equal(parseCommand("Первый", previous)?.action, "devices");
+  assert.equal(parseCommand("Заметки", previous)?.action, "notes");
+  assert.equal(parseCommand("второй"), null);
+  assert.equal(parseCommand("второй", { ...previous, role: "user" }), null);
+  assert.equal(parseCommand("что за обновление?", previous)?.action, "version");
+});
 
 test("обучающие данные: нет одинаковых фраз у разных намерений, holdout не пересекается с обучением", () => {
   const seen = new Map();

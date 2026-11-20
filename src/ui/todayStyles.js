@@ -29,15 +29,16 @@ export const TODAY_CSS = `
   .nx-today-screen .nx-day-strip { margin-bottom: 14px !important; }
   .nx-today-screen .nx-day-chip {
     box-sizing: border-box; flex: 0 0 calc((100% - 48px) / 7); min-width: 62px !important;
-    height: 80px; padding: 8px 6px !important; border-radius: 20px !important;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;
+    height: 80px; padding: 4px 6px 12px !important; border-radius: 20px !important;
   }
-  .nx-today-screen .nx-day-num { font-size: 36px !important; line-height: 1.15; }
+  .nx-today-screen .nx-day-num { font-size: 36px !important; line-height: 1 !important; }
   .nx-today-screen .nx-day-chip[aria-selected="false"] { border-color: color-mix(in srgb, var(--text) 35%, transparent) !important; }
   .nx-today-screen .nx-day-chip[aria-selected="true"] {
-    position: relative; background: var(--mint) !important; color: var(--on-accent) !important;
+    background: var(--mint) !important; color: var(--on-accent) !important;
   }
   .nx-today-screen .nx-day-chip[aria-selected="true"] .nx-day-num { font-size: 44px !important; line-height: 1; font-weight: 700 !important; }
-  .nx-today-screen .nx-day-chip[aria-selected="true"] .nx-day-dot { position: absolute; bottom: 3px; left: calc(50% - 2px); }
+  .nx-today-screen .nx-day-dot { position: absolute; bottom: 5px; left: calc(50% - 2px); }
   .nx-today-screen .nx-sched-tools > button { min-height: 46px; font-weight: 600; }
   .nx-today-screen .nx-today-empty { padding-top: 0; }
   .nx-today-screen .nx-today-empty > div { padding: 26px 0 !important; }

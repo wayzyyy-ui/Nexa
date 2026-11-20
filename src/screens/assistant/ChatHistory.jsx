@@ -204,16 +204,16 @@ export function ChatHistory({ onContinue, chats, setChats, currentChatId, onOpen
           {Icon.close({ c: C.text, s: mobile ? 16 : 14 })}
         </button>
       </div>
-      <button type="button" className="nx-ghost-btn nx-hist-new" onClick={onNew}>
-        {Icon.plus({ c: C.mint, s: 15 })} Новый диалог
+      <button type="button" className="nx-primary nx-hist-new" onClick={onNew}>
+        {Icon.plus({ c: C.onAccent, s: 15 })} Новый диалог
       </button>
       <label className="nx-hist-search">
-        {Icon.search({ c: C.mutedSoft, s: 14 })}
+        {Icon.search({ c: C.muted, s: 14 })}
         <input value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder="Поиск по диалогам" aria-label="Поиск по диалогам" enterKeyHint="search" />
         {query && (
           <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" style={{ ...btnReset, display: "flex", padding: 2 }}>
-            {Icon.close({ c: C.mutedSoft, s: 12 })}
+            {Icon.close({ c: C.muted, s: 12 })}
           </button>
         )}
       </label>

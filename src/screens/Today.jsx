@@ -288,7 +288,7 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
           {schedule.length === 0 && !adding && (
             <div className="nx-today-empty">
               <EmptyState compact title={isToday ? "Дел на сегодня нет" : "На этот день дел нет"} text="Добавьте дело — оно появится на таймлайне"
-                action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
+                action={<StateButton variant="primary" style={{ background: C.actionMint, color: C.onAccent }} icon={Icon.plus({ c: C.onAccent, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
             </div>
           )}
 

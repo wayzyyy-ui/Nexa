@@ -86,7 +86,7 @@ export const APP_CSS = `
           --blue: #4A6FFF;  --blue-dark: #1A2454;  --blue-light: #7C97FF;
           --mint: #00FFDF;  --mint-dark: #0F3D38;  --mint-light: #7EF0E0;
           --green: #47DE8E;  --red: #DE4747;
-          --on-accent: #07080C;  --chip: #2A2C34;
+          --action-mint: #00FFDF; --on-accent: #07080C;  --chip: #2A2C34;
           --avatar-bg: #E3E4E8; --avatar-ink: #0B0F16;
           --glass: rgba(20, 22, 28, 0.92);
           --glass-border: rgba(255, 255, 255, 0.08);
@@ -131,7 +131,7 @@ export const APP_CSS = `
           --blue: #4A6FFF;  --blue-dark: #DCE4FF;  --blue-light: #7C97FF;
           --mint: #10BFA8;  --mint-dark: #D3F2EC;  --mint-light: #7EE6D8;
           --green: #1C9E5E;  --red: #D23C3C;
-          --on-accent: #07080C;  --chip: #CBD3DE;
+          --action-mint: #00FFDF; --on-accent: #07080C;  --chip: #CBD3DE;
           --avatar-bg: #FFFFFF; --avatar-ink: #111933;
           --glass: rgba(248, 250, 252, 0.9);
           --glass-border: rgba(24, 32, 58, 0.10);
@@ -916,7 +916,7 @@ export const APP_CSS = `
         @media (prefers-reduced-motion: no-preference) {
           .nx-chat-backdrop[data-empty="true"]::before {
             content: ""; position: absolute; inset: -16%;
-            background: radial-gradient(ellipse at 28% 36%, color-mix(in srgb, var(--mint) 28%, transparent), transparent 47%),
+            background: radial-gradient(ellipse at 28% 36%, var(--home-bg-a), transparent 47%),
                         radial-gradient(ellipse at 70% 65%, color-mix(in srgb, var(--blue) 36%, transparent), transparent 49%);
             animation: nx-chat-drift 9s ease-in-out infinite alternate;
           }
@@ -983,7 +983,7 @@ export const APP_CSS = `
         @keyframes nx-hist-in { from { margin-left: -272px; opacity: 0; } to { margin-left: 0; opacity: 1; } }
         @keyframes nx-hist-out { from { margin-left: 0; opacity: 1; } to { margin-left: -272px; opacity: 0; } }
         .nx-hist-col { background: transparent; border-right: 0; animation: nx-hist-in 280ms cubic-bezier(0.16, 1, 0.3, 1); }
-        .nx-hist-col :is(.nx-hist-search, .nx-hist-new, .nx-hist-account) {
+        .nx-hist-col .nx-hist-account {
           background: color-mix(in srgb, var(--text) 4%, transparent);
           border-color: var(--border-soft);
         }
@@ -1002,18 +1002,20 @@ export const APP_CSS = `
         .nx-hist-label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted-soft); padding-left: 4px; }
         .nx-hist-new {
           display: flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0;
-          padding: 10px 14px; border: 1px solid var(--border-strong); background: var(--panel);
-          color: var(--text); font: inherit; font-size: 14px; cursor: pointer;
+          padding: 10px 14px; border: 1px solid transparent; background: var(--mint);
+          color: var(--on-accent); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
         }
         .nx-hist-search {
           display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 8px 10px;
-          border: 1px solid var(--border); border-radius: 10px; background: var(--panel); cursor: text;
+          border: 1px solid var(--border-strong); border-radius: 10px;
+          background: color-mix(in srgb, var(--text) 8%, transparent); cursor: text;
         }
-        .nx-hist-search:focus-within { border-color: var(--border-strong); }
+        .nx-hist-search:focus-within { border-color: var(--mint); }
         .nx-hist-search input {
           flex: 1; min-width: 0; background: transparent; border: none; outline: none;
           color: var(--text); font: inherit; font-size: 13px; padding: 0;
         }
+        .nx-hist-search input::placeholder { color: color-mix(in srgb, var(--text) 30%, var(--muted)); opacity: 1; }
         .nx-hist-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px 4px; }
         .nx-hist-section + .nx-hist-section { margin-top: 10px; }
         .nx-hist-group {
