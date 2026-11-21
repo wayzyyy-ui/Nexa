@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { C, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
-import { Crumb } from "../ui/layout.jsx";
+import { BackCrumb } from "../ui/layout.jsx";
 import { EmptyState, StateButton } from "../ui/base.jsx";
 import { DeviceRow } from "./Home.jsx";
 import { plural } from "../lib/format.js";
@@ -34,7 +34,7 @@ export function ScreenDevices({ devices, received, onOpenDevice, onAddDevice, on
   return (
     <div className="ng-screen nx-all-devices" style={{ padding: "calc(max(20px, calc(40 * var(--mk))) + 6px) 40px 40px", textAlign: "left", maxWidth: 1080, marginInline: "auto", boxSizing: "border-box" }}>
       {/* Отступ сверху — как у верхней строки: «Назад» на одной высоте с поиском */}
-      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+      <BackCrumb onClick={onBack} />
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 26 }}>
         <div>
           <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1 }}>Все устройства</div>

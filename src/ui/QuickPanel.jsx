@@ -122,9 +122,9 @@ export function QuickPanel({ commands, note, onClose: closeNow, onSearch, label 
         {/* Шаг выбора: назад и где мы */}
         {depth > 0 && (
           <div className="nx-quick-step">
-            <button type="button" className="nx-icon-btn" onClick={back} aria-label="Назад"
+            <button type="button" className="nx-primary nx-back-btn" onClick={back} aria-label="Назад"
               style={{ ...btnReset, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {Icon.arrowLeft({ c: C.muted, s: 15 })}
+              {Icon.arrowLeft({ c: "currentColor", s: 15 })}
             </button>
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {crumbs.join(" → ")}{step?.title ? <span style={{ color: C.text }}> · {step.title}</span> : null}

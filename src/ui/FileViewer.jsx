@@ -110,7 +110,6 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast, onDeletePho
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeRef.current(); }
-      else if (e.target.type === "range") return;
       else if (e.key === "ArrowLeft") { e.stopPropagation(); go(-1); }
       else if (e.key === "ArrowRight") { e.stopPropagation(); go(1); }
     };
@@ -323,11 +322,6 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast, onDeletePho
         </button>
       </div>
 
-      {onDeletePhoto && many && (
-        <input type="range" aria-label="Выбор картинки" aria-valuetext={(idx + 1) + " из " + photos.length}
-          min={1} max={photos.length} value={idx + 1} onChange={(e) => setIdx(Number(e.target.value) - 1)}
-          style={{ position: "absolute", bottom: "calc(var(--sab) + 22px)", alignSelf: "center", width: "min(65%, 340px)", accentColor: C.actionMint, ...fade }} />
-      )}
       {/* Стрелки листания — по краям, по центру высоты */}
       {many && idx > 0 && (
         <button type="button" className="nx-icon-btn nx-photo-arrow" onClick={() => go(-1)} aria-label="Предыдущее фото"

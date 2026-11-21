@@ -739,7 +739,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
         style={{ position: "fixed", inset: 0, zIndex: 250, background: C.bg, display: "flex", flexDirection: "column", boxSizing: "border-box", touchAction: "pan-y",
           padding: "calc(var(--sat) + 6px) 14px calc(var(--sab) + 6px)" }}>
         <div className="nx-note-bar" style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 46, marginBottom: 4, flexShrink: 0 }}>
-          <button type="button" className="nx-icon-btn" onClick={close} aria-label="К списку заметок" style={round}>{Icon.arrowLeft({ c: C.text, s: 16 })}</button>
+          <button type="button" className="nx-primary nx-back-btn" onClick={close} aria-label="К списку заметок" style={round}>{Icon.arrowLeft({ c: "currentColor", s: 16 })}</button>
           {titleInput}
           {aiButton}
           {moreButton}
@@ -763,8 +763,8 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       className={`nx-notepad-editor nx-notepad-panel nx-glass nx-glass-subtle${full ? " is-full" : fullLeaving ? " is-settling" : ""}`} data-no-swipe
       style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, display: "flex", flexDirection: "column", boxSizing: "border-box", position: "sticky", top: 100 }}>
       <div className="nx-notepad-bar" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <button type="button" className="nx-icon-btn" onClick={full ? () => toggleFull(false) : close}
-          aria-label={full ? "Назад" : "Закрыть заметку"} style={round}>{(full ? Icon.arrowLeft : Icon.close)({ c: C.text, s: 15 })}</button>
+        <button type="button" className={full ? "nx-primary nx-back-btn" : "nx-icon-btn"} onClick={full ? () => toggleFull(false) : close}
+          aria-label={full ? "Назад" : "Закрыть заметку"} style={round}>{(full ? Icon.arrowLeft : Icon.close)({ c: full ? "currentColor" : C.text, s: 15 })}</button>
         {!full && <button type="button" className="nx-icon-btn" onClick={() => toggleFull(true)} aria-label="Заметка на весь экран" title="На весь экран" style={round}>
           {Icon.expand({ c: C.text, s: 15 })}
         </button>}

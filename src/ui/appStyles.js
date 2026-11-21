@@ -913,6 +913,9 @@ export const APP_CSS = `
           opacity: 0; transition: opacity 360ms ease;
         }
         .nx-chat-backdrop[data-empty="true"] { opacity: 1; }
+        :root[data-theme="light"] .nx-chat-backdrop {
+          --home-bg-a: color-mix(in srgb, var(--action-mint) 32%, var(--bg));
+        }
         @media (prefers-reduced-motion: no-preference) {
           .nx-chat-backdrop[data-empty="true"]::before {
             content: ""; position: absolute; inset: 0;
@@ -1804,6 +1807,7 @@ export const APP_CSS = `
         /* Все кнопки — скруглённые: кнопки с текстом — «таблетки», кнопки-значки — круги.
            Скошенные чипсы пути (складка), строки списков и карточки не трогаем */
         .nx-ghost-btn, .nx-primary, .nx-icon-btn, .nx-action { border-radius: 999px !important; }
+        button.nx-back-btn { background: var(--action-mint) !important; color: var(--on-accent) !important; }
         /* Палец больше курсора: на сенсорном экране у маленьких кнопок-значков
            и переключателей невидимая зона нажатия растёт до ~44px (--tap).
            Сама кнопка и раскладка не меняются — ::after выходит за края */

@@ -12,9 +12,10 @@ export const filesStyles = `
     padding-inline: 34px !important;
   }
   .nx-files-screen .ng-crumbs > button + button { margin-left: -10px; }
-  .nx-files-screen .ng-crumbs > button:nth-child(3n+2) {
+  .nx-files-screen .ng-crumbs > button:nth-child(3n+2):not(.nx-storage-crumb, .nx-back-btn) {
     background: linear-gradient(110deg, ${C.foldDeep}, ${C.foldGreen}) !important;
   }
+  .nx-files-screen .nx-storage-crumb { background: ${C.foldDeep} !important; color: ${C.actionMint} !important; }
   .nx-files-screen .ng-crumbs > button:focus-visible { text-decoration: underline; }
   .nx-files-track {
     position: relative;
@@ -25,6 +26,7 @@ export const filesStyles = `
   .nx-files-caption {
     min-width: 0;
     margin: 0;
+    color: ${C.text};
     font: 400 18px/1.3 ${fontDisplay};
     text-transform: uppercase;
     overflow-wrap: anywhere;

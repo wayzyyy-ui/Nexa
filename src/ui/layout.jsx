@@ -2,6 +2,7 @@
 import { T, C } from "./theme.js";
 import { btnReset } from "./base.jsx";
 import { FoldArt } from "./backdrop.jsx";
+import { Icon } from "./icons.jsx";
 
 /* Общая раскладка «Сегодня», «Медиа» и «Файлов»: слева контент, справа объёмная складка
    из макета 2026-10 (векторная, как на Главной, крупно и обрезана правым краем). На узком экране складка прячется (см. .nx-media-art). */
@@ -38,9 +39,9 @@ export function MediaTitle({ title, subtitle, action }) {
 
 // Один чипс в строке пути (хлебных крошек) — скошенная цветная плашка.
 // active — текущая папка: она ярче остальных и не нажимается.
-export function Crumb({ children, active, onClick }) {
+export function Crumb({ children, active, onClick, className = "" }) {
   return (
-    <button type="button" disabled={active} onClick={onClick} className={active ? undefined : "nx-crumb"} style={{
+    <button type="button" disabled={active} onClick={onClick} className={`${active ? "" : "nx-crumb"} ${className}`.trim()} style={{
       ...btnReset,
       cursor: active ? "default" : "pointer",
       height: 40, padding: "0 26px 0 22px", fontSize: 15, whiteSpace: "nowrap", flexShrink: 0,
@@ -55,4 +56,8 @@ export function Crumb({ children, active, onClick }) {
       {children}
     </button>
   );
+}
+
+export function BackCrumb({ onClick, children = "Назад" }) {
+  return <Crumb className="nx-back-btn" onClick={onClick}>{Icon.arrowLeft({ c: "currentColor", s: 14 })} {children}</Crumb>;
 }

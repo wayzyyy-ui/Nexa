@@ -9,7 +9,7 @@ import { Icon } from "../ui/icons.jsx";
 import { sysTime } from "../lib/format.js";
 import { readTilt, saveTilt, tiltNeedsPermission, useMediaQuery, useSwipeBack } from "../lib/hooks.js";
 import { readLitePref, liteActive, liteAutoReason, setLitePref, LITE_EVENT } from "../lib/lite.js";
-import { Crumb } from "../ui/layout.jsx";
+import { BackCrumb } from "../ui/layout.jsx";
 import { SectionTitle, SettingsGroup, SettingsRow, btnReset, Toggle } from "../ui/base.jsx";
 import { AccountSettings } from "./auth.jsx";
 import { NOTE_CATS } from "../lib/notes.js";
@@ -357,7 +357,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
       return (
         // Уходящий раздел — без role="dialog": для «Назад» он уже закрыт
         <div ref={pageRef} className={`ng-screen nx-settings nx-set-page${leaving ? " is-leaving" : ""}`} role={leaving ? undefined : "dialog"} aria-label={m.title} data-no-swipe>
-          <Crumb onClick={closeSection}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+          <BackCrumb onClick={closeSection} />
           <div className="ng-display nx-page-title nx-set-page-title">{m.title}</div>
           <div className={`nx-set-body${m.notitle ? " nx-set-notitle" : ""}`}>{open === "appearance" && themeGallery}{content(open)}</div>
         </div>

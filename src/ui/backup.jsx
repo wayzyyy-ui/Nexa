@@ -339,7 +339,7 @@ function RestoreBackup({ api, onClose }) {
         <div style={{ fontSize: 13, color: C.red, marginTop: 10, lineHeight: 1.45 }}>Того, чего нет в копии, не станет — на всех устройствах вашего аккаунта. Отменить замену нельзя.</div>
         <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Файлы не удаляются никогда — из копии они только добавляются.</div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
-          <button type="button" className="nx-ghost-btn" style={ghost} onClick={() => setPhase("preview")}>Назад</button>
+          <button type="button" className="nx-primary nx-back-btn" style={ghost} onClick={() => setPhase("preview")}>Назад</button>
           <button type="button" className="nx-ghost-btn" style={danger} onClick={run}>Заменить</button>
         </div>
       </Shell>

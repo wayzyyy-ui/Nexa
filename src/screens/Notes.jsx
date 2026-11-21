@@ -8,7 +8,7 @@ import { C, T, fontDisplay, PHONE_MQ } from "../ui/theme.js";
 import { NoteMenu } from "./notes/NoteMenu.jsx";
 import { Icon } from "../ui/icons.jsx";
 import { btnReset, EmptyState } from "../ui/base.jsx";
-import { Crumb } from "../ui/layout.jsx";
+import { BackCrumb } from "../ui/layout.jsx";
 import { FoldArt } from "../ui/backdrop.jsx";
 import { useMediaQuery } from "../lib/hooks.js";
 import { newId } from "../lib/sync.js";
@@ -235,7 +235,7 @@ ${n.text || ""}`)), [t9Sig]); // eslint-disable-line react-hooks/exhaustive-deps
     <div ref={screenRef} className="ng-screen nx-notepad" style={phone ? { padding: "28px 40px 40px", textAlign: "left" } : { textAlign: "left" }}>
       {phone ? (
         <>
-          <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Сегодня</Crumb>
+          <BackCrumb onClick={onBack}>Сегодня</BackCrumb>
           <div className="nx-notepad-head" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", margin: "24px 0 20px" }}>
             <div className="ng-display nx-page-title" style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1, flex: "1 1 auto" }}>Заметки</div>
           </div>
@@ -244,7 +244,7 @@ ${n.text || ""}`)), [t9Sig]); // eslint-disable-line react-hooks/exhaustive-deps
       ) : (
         // Компьютер (макет): «Назад» и заголовок в одну строку с верхней строкой (поиск, часы…)
         <div className="nx-notepad-top">
-          <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+          <BackCrumb onClick={onBack} />
           <div className="ng-display nx-page-title nx-notepad-title" style={{ fontWeight: 500, lineHeight: 1.1 }}>Заметки</div>
         </div>
       )}

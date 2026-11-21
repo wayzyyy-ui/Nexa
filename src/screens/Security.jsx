@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C, T } from "../ui/theme.js";
 import { Icon } from "../ui/icons.jsx";
-import { Crumb } from "../ui/layout.jsx";
+import { BackCrumb } from "../ui/layout.jsx";
 import { SectionTitle, SettingsGroup, SettingsRow, Dot, Toggle, btnReset } from "../ui/base.jsx";
 import { useCrashReportsOn, setCrashReports } from "../lib/crashes.js";
 import { listSessions, clientLabel, SECURITY_ERROR_TEXT } from "../lib/security.js";
@@ -91,7 +91,7 @@ export function ScreenSecurity({
   // Обёртка (обычная функция, не компонент — иначе поля внутри теряли бы фокус при каждой перерисовке): свой экран (шапка, «Назад») или содержимое раздела Настроек
   const shell = (children) => embedded ? <div className="nx-sec-embed" style={{ textAlign: "left" }}>{children}</div> : (
     <div className="ng-screen nx-security" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 920, marginInline: "auto", boxSizing: "border-box" }}>
-      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+      <BackCrumb onClick={onBack} />
       {h1}
       {children}
     </div>

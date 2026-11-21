@@ -5,7 +5,7 @@ import { Icon } from "../ui/icons.jsx";
 import { plural } from "../lib/format.js";
 import { btnReset, Spinner, EmptyState } from "../ui/base.jsx";
 import { FOLDERS, MEDIA_CATS, sortByRecent, folderName, fileMeta } from "../lib/fileStore.js";
-import { MediaLayout, MediaTitle, Crumb } from "../ui/layout.jsx";
+import { MediaLayout, MediaTitle, BackCrumb, Crumb } from "../ui/layout.jsx";
 import { FolderThumb, FileThumb } from "../ui/files.jsx";
 import { TransferBtn, openFileContent } from "../ui/FileViewer.jsx";
 import { FILE_SCOPE } from "../lib/fileStore.js";
@@ -337,7 +337,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           >
             {flat ? (
               <>
-                <Crumb onClick={onBack || onClearFilter}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} {onBack ? "Назад" : "Все папки"}</Crumb>
+                <BackCrumb onClick={onBack || onClearFilter}>{onBack ? "Назад" : "Все папки"}</BackCrumb>
                 <Crumb active>
                   {(device || cat).icon({ c: C.onFold, s: 15 })} {device ? device.name : cat.label} · {list.length} {plural(list.length, ["файл", "файла", "файлов"])}
                 </Crumb>
@@ -345,13 +345,11 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
             ) : (
               <>
                 {folder ? (
-                  <Crumb onClick={() => setFolder(folderById(folder).parent)}>
-                    {Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад
-                  </Crumb>
+                  <BackCrumb onClick={() => setFolder(folderById(folder).parent)} />
                 ) : onBack && (
-                  <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+                  <BackCrumb onClick={onBack} />
                 )}
-                <Crumb active={!folder} onClick={() => setFolder(null)}>{Icon.drive({ c: C.onFold, s: 15 })} Хранилище</Crumb>
+                <Crumb className="nx-storage-crumb" active={!folder} onClick={() => setFolder(null)}>{Icon.drive({ c: "currentColor", s: 15 })} Хранилище</Crumb>
                 {path.map((p, i) => (
                   <Crumb key={p.id} active={i === path.length - 1} onClick={() => setFolder(p.id)}>
                     {Icon.folder({ c: C.onFold, s: 15 })} {p.name}

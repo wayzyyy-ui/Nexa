@@ -5,7 +5,7 @@ import { Icon } from "../ui/icons.jsx";
 import { ABOUT_UPDATES } from "../lib/releaseHistory.js";
 import { VERSION } from "../version.js";
 import { API_BASE } from "../native.js";
-import { Crumb } from "../ui/layout.jsx";
+import { BackCrumb } from "../ui/layout.jsx";
 import { btnReset } from "../ui/base.jsx";
 
 // Отдельный экран «Активность»: все события и «Очистить» с подтверждением
@@ -52,7 +52,7 @@ export function ScreenAbout({ onBack, installed }) {
   const h2 = { fontSize: T.fs.section, fontWeight: 600, margin: "34px 0 14px" };
   return (
     <div className="ng-screen nx-about" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 980, marginInline: "auto" }}>
-      <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+      <BackCrumb onClick={onBack} />
 
       {/* Шапка: что это такое */}
       <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap", margin: "26px 0 8px" }}>

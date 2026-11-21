@@ -9,7 +9,7 @@ import { lastSeenText, peerLabel, deviceStatus } from "../lib/devices.js";
 import { btnReset, Spinner } from "../ui/base.jsx";
 import { FindChip } from "../ui/overlays.jsx";
 import { LocateResult } from "../ui/LocateMap.jsx";
-import { Crumb } from "../ui/layout.jsx";
+import { BackCrumb } from "../ui/layout.jsx";
 import { ReceivedTag } from "../ui/FileViewer.jsx";
 import { PREVIEW_SIZE, typeOf, DevicePreview } from "../ui/DevicePreview.jsx";
 import { ruFmt } from "../lib/ruFmt.js";
@@ -384,7 +384,7 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
     <div className="ng-screen nx-device-screen" style={{ padding: "28px 40px 40px", textAlign: "left", maxWidth: 1440 }}>
       {/* «Назад» — такой же скошенный чипс, как путь в «Файлах» */}
       <div style={{ display: "flex" }}>
-        <Crumb onClick={onBack}>{Icon.arrowLeft({ c: C.onFold, s: 14 })} Назад</Crumb>
+        <BackCrumb onClick={onBack} />
       </div>
 
       {/* Шапка: крупное название, карандаш (переименовать) и статус */}
