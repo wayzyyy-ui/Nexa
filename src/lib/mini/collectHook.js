@@ -14,10 +14,10 @@ const loadConsent = (key) => readJSON(key, false) === true;
 const loadAsked = (key) => readJSON(key, { asked: false });
 const loadQueue = (key) => ({ ...emptyQueue(), ...readJSON(key, {}) });
 
-export function useMiniCollect({ online }) {
-  const [consent, setConsentRaw] = useSharedState(CONSENT_KEY, loadConsent);
-  const [ask, setAsk] = useSharedState(ASKED_KEY, loadAsked);
-  const [queue, setQueue] = useSharedState(QUEUE_KEY, loadQueue);
+export function useMiniCollect({ online, scope }) {
+  const [consent, setConsentRaw] = useSharedState(CONSENT_KEY + scope, loadConsent);
+  const [ask, setAsk] = useSharedState(ASKED_KEY + scope, loadAsked);
+  const [queue, setQueue] = useSharedState(QUEUE_KEY + scope, loadQueue);
   const queueRef = useRef(queue); queueRef.current = queue;
   const sending = useRef(false);
 

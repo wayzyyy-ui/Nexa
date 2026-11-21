@@ -11,7 +11,7 @@ import { formatBytes } from "../lib/deviceInfo.js";
 import { leftText } from "../lib/nearby.js";
 
 const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "9px 16px", borderRadius: 999, fontSize: 13, whiteSpace: "nowrap" };
-const primary = { ...pill, fontWeight: 500, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` };
+const primary = { ...pill, fontWeight: 500, color: C.onAccent, background: C.actionMint };
 const ghost = { ...pill, color: C.text, border: `1px solid ${C.borderStrong}` };
 
 // Окно поверх всего: затемнение, Esc закрывает (на телефоне — шторка снизу, её смахивают вниз)

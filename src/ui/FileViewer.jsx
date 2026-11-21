@@ -34,7 +34,7 @@ export const PHOTO_ZOOM = 2.5;   // во сколько раз приближа�
 export const PHOTO_MAX = 5;      // больше не приближаем
 
 // onToast — у фото из «Файлов» и картинок заметок: тогда наверху «Копировать» и «Скачать»
-export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
+export function PhotoFullscreen({ photos, startId, onClose, onToast, onDeletePhoto }) {
   const [idx, setIdx] = useState(() => Math.max(0, photos.findIndex((p) => p.id === startId)));
   const photo = photos[Math.min(idx, photos.length - 1)];
   const [load, setLoad] = useState({ url: null, state: "loading" }); // loading | ready | error
@@ -110,6 +110,7 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeRef.current(); }
+      else if (e.target.type === "range") return;
       else if (e.key === "ArrowLeft") { e.stopPropagation(); go(-1); }
       else if (e.key === "ArrowRight") { e.stopPropagation(); go(1); }
     };
@@ -307,6 +308,11 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
             {Icon.shrink({ c: onFoldC, s: 18 })}
           </button>
         )}
+        {onDeletePhoto && (
+          <button type="button" className="nx-icon-btn" aria-label="Удалить картинку" title="Удалить картинку" style={pill} onClick={() => onDeletePhoto(photo)}>
+            {Icon.trash({ c: onFoldC, s: 18 })}
+          </button>
+        )}
         {canFull && (
           <button type="button" className="nx-icon-btn" onClick={toggleFull} aria-label={isFull ? "Выйти из полноэкранного режима" : "На весь экран"} title={isFull ? "Выйти из полноэкранного режима" : "На весь экран"} style={pill}>
             {(isFull ? Icon.shrink : Icon.expand)({ c: onFoldC, s: 18 })}
@@ -317,6 +323,11 @@ export function PhotoFullscreen({ photos, startId, onClose, onToast }) {
         </button>
       </div>
 
+      {onDeletePhoto && many && (
+        <input type="range" aria-label="Выбор картинки" aria-valuetext={(idx + 1) + " из " + photos.length}
+          min={1} max={photos.length} value={idx + 1} onChange={(e) => setIdx(Number(e.target.value) - 1)}
+          style={{ position: "absolute", bottom: "calc(var(--sab) + 22px)", alignSelf: "center", width: "min(65%, 340px)", accentColor: C.actionMint, ...fade }} />
+      )}
       {/* Стрелки листания — по краям, по центру высоты */}
       {many && idx > 0 && (
         <button type="button" className="nx-icon-btn nx-photo-arrow" onClick={() => go(-1)} aria-label="Предыдущее фото"
@@ -613,9 +624,9 @@ export function FileViewer({ file, folders = FOLDERS, devices = [], photos = [],
 
         <button type="button" className="nx-primary nx-fv-send" onClick={() => { setSendOpen(!sendOpen); setSend(null); }} aria-expanded={sendOpen} style={{
           ...btnReset, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-          borderRadius: 999, color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          borderRadius: 999, color: C.onAccent, fontWeight: 500, background: C.actionMint,
         }}>
-          {Icon.send({ c: C.onFold, s: 16 })} Отправить на устройство
+          {Icon.send({ c: C.onAccent, s: 16 })} Отправить на устройство
         </button>
         {/* Открыть этот же файл на другом своём устройстве (только файлы в облаке аккаунта) */}
         {onContinue && file.path && (

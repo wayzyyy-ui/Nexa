@@ -259,8 +259,8 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
       {onAddFiles && (
         <div className="nx-only-mobile nx-media-acts">
           <button type="button" className="nx-primary" onClick={() => pickRef.current?.click()} style={{
-            ...btnReset, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, border: "1px solid transparent" }}>
-            {Icon.plus({ c: C.onFold, s: 18 })} Добавить файл
+            ...btnReset, color: C.onAccent, background: C.actionMint, border: "1px solid transparent" }}>
+            {Icon.plus({ c: C.onAccent, s: 18 })} Добавить файл
           </button>
           <button type="button" className="nx-ghost-btn" onClick={fromClipboard} disabled={clipBusy} style={{ ...btnReset, color: C.text, border: `1px solid ${C.lineBright}` }}>
             {Icon.copy({ c: C.text, s: 16 })} Из буфера
@@ -307,40 +307,42 @@ export function ScreenMedia({ files, uid = null, onOpenFile, onOpenCategory, onT
         })}
       </div>
 
-      <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600, marginBottom: T.sp[3] }}>Недавние файлы</div>
-      {/* Файлов ещё нет (новый аккаунт) — подсказка вместо пустой ленты */}
-      {recent.length === 0 && (
-        <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", fontSize: 14, color: C.muted, lineHeight: 1.5 }}>
-          Пока пусто. Добавьте файлы в разделе{" "}
-          <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{ ...btnReset, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
-            «Файлы»
-          </button>{" "}— они появятся здесь.
-        </div>
-      )}
-      {/* Лента: вертикальная линия слева и кружок у каждого файла */}
-      <div className="nx-media-timeline">
-        {recent.map((f) => (
-          <div key={f.id} className="nx-media-event">
-            {/* Карточка файла: нажатие открывает файл, справа — «Передать на…» */}
-            <div data-transfer-card className="nx-recent-row" style={{
-              display: "flex", alignItems: "center", gap: 8, paddingRight: 4, borderRadius: 14,
-            }}>
-              <button type="button" className="nx-row-btn" onClick={() => onOpenFile({ id: f.id, list: recent.map((x) => x.id) })} style={{
-                ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 14, padding: "7px 8px",
-                display: "flex", alignItems: "center", gap: 14,
-              }}>
-                <FileThumb file={f} radius={10} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
-                </div>
-                <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7 }}>{Icon.chevron({ c: C.text, s: 18 })}</span>
-              </button>
-              {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
-            </div>
+      <section aria-label="Недавние файлы" className="nx-media-recent">
+        <div className="ng-display" style={{ fontSize: T.fs.section, fontWeight: 600, marginBottom: T.sp[3] }}>Недавние файлы</div>
+        {/* Файлов ещё нет (новый аккаунт) — подсказка вместо пустой ленты */}
+        {recent.length === 0 && (
+          <div style={{ border: `1px dashed ${C.borderStrong}`, borderRadius: 16, padding: "18px 20px", fontSize: 14, color: C.muted, lineHeight: 1.5 }}>
+            Пока пусто. Добавьте файлы в разделе{" "}
+            <button type="button" className="nx-link-btn" onClick={() => onOpenCategory(null)} style={{ ...btnReset, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3 }}>
+              «Файлы»
+            </button>{" "}— они появятся здесь.
           </div>
-        ))}
-      </div>
+        )}
+        {/* Лента: вертикальная линия слева и кружок у каждого файла */}
+        <div className="nx-media-timeline">
+          {recent.map((f) => (
+            <div key={f.id} className="nx-media-event">
+              {/* Карточка файла: нажатие открывает файл, справа — «Передать на…» */}
+              <div data-transfer-card className="nx-recent-row" style={{
+                display: "flex", alignItems: "center", gap: 8, paddingRight: 4, borderRadius: 14,
+              }}>
+                <button type="button" className="nx-row-btn" onClick={() => onOpenFile({ id: f.id, list: recent.map((x) => x.id) })} style={{
+                  ...btnReset, flex: 1, minWidth: 0, boxSizing: "border-box", borderRadius: 14, padding: "7px 8px",
+                  display: "flex", alignItems: "center", gap: 14,
+                }}>
+                  <FileThumb file={f} radius={10} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileMeta(f)}</div>
+                  </div>
+                  <span aria-hidden="true" className="nx-hide-mobile" style={{ display: "flex", opacity: 0.7 }}>{Icon.chevron({ c: C.text, s: 18 })}</span>
+                </button>
+                {onTransfer && <TransferBtn onClick={(e) => onTransfer(f, e.currentTarget.closest("[data-transfer-card]"), e.currentTarget)} />}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </MediaLayout>
   );
 }

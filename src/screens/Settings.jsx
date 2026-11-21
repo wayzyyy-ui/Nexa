@@ -74,12 +74,12 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
   const on = NOTE_CATS.some((c) => prefs[c.id]?.app);
   const flipAll = () => setPrefs(() => Object.fromEntries(NOTE_CATS.map((c) => [c.id, { app: !on, system: !on && sysOn }])));
   const where = kind === "desktop"
-    ? "Ещё и системные — когда окно NEXA свёрнуто, закрыто в трей или не в фокусе. Выключить их можно и в настройках уведомлений компьютера"
+    ? "Системные уведомления приходят, когда окно NEXA неактивно."
     : kind === "none"
-    ? "В браузере телефона — только внутри NEXA. Системные есть в приложении для Android"
+    ? "В браузере телефона уведомления видны внутри NEXA."
     : kind === "web"
-      ? "Ещё и системные — пока вкладка NEXA открыта (можно свёрнутой)"
-      : "Ещё и системные. Напоминания о делах придут, даже если NEXA закрыта";
+      ? "Системные уведомления приходят, пока вкладка открыта."
+      : "Напоминания приходят даже при закрытой NEXA.";
   const sysLine = kind === "none" ? null
     : perm === "granted" ? <span style={{ color: C.green }}>Системные разрешены</span>
     : perm === "denied" ? <span style={{ color: C.red }}>Системные запрещены — разрешите в настройках {kind === "app" ? "телефона" : "браузера"}</span>
@@ -90,7 +90,7 @@ export function NoteSettings({ prefs, setPrefs, perm, onAsk, account }) {
       <SettingsGroup>
         <SettingsRow last={isNative || isDesktop} icon={Icon.bell({ c: C.muted, s: 18 })} title="Уведомления"
           subtitle={<>
-            {on ? `Файлы, текст и ссылки, устройства, синхронизация, расписание, обновления. ${where}` : "Выключены — NEXA ничего не показывает"}
+            {on ? where : "Выключены — NEXA ничего не показывает"}
             {on && sysLine && <span style={{ display: "block", marginTop: 6 }}>{sysLine}</span>}
             {account && <span style={{ display: "block", marginTop: 6, color: C.mutedSoft }}>Одинаково на всех ваших устройствах</span>}
           </>}
@@ -129,10 +129,10 @@ export function NotesWidgetSettings({ hide, setHide, onNotes }) {
       <SectionTitle>Виджет «Заметки»</SectionTitle>
       <SettingsGroup>
         <SettingsRow icon={Icon.pin({ c: C.mint, s: 18 })} title="Что показывает виджет"
-          subtitle="Закреплённую заметку (из нескольких — изменённую последней). Закрепить — булавкой в «Заметках»"
+          subtitle="Последнюю изменённую среди закреплённых заметок."
           right={Icon.chevron({})} onClick={onNotes} />
         <SettingsRow last icon={Icon.lock({ c: hide ? C.mint : C.muted, s: 18 })} title="Скрывать текст на виджете"
-          subtitle={hide ? "На экране «Домой» видно только, что заметка есть — откроется в NEXA" : "Заголовок и начало текста видны на экране «Домой». Похожее на пароли и ключи скрывается всегда"}
+          subtitle={hide ? "Текст виден при открытии заметки." : "Видны заголовок и начало текста. Пароли и ключи скрыты."}
           right={<Toggle on={hide} onClick={() => setHide(!hide)} label="Скрывать текст на виджете" />} />
       </SettingsGroup>
     </>
@@ -233,7 +233,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
   const liteBtn = (value, label) => (
     <button key={value} onClick={() => setLitePref(value)} style={{
       flex: 1, padding: "8px 14px", fontSize: 13, border: "none", cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit",
-      background: lite.pref === value ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : "transparent",
+      background: lite.pref === value ? C.actionMint : "transparent",
       color: lite.pref === value ? C.onAccent : C.muted, fontWeight: lite.pref === value ? 500 : 400,
     }}>{label}</button>
   );
@@ -282,7 +282,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
               last
               icon={Icon.sparkle({ c: expUi ? C.mint : C.muted, s: 18 })}
               title="Экспериментальный интерфейс"
-              subtitle="Новая Главная: объёмные устройства, хранилище, ближайшее дело и погода крупно. Можно выключить в любой момент"
+              subtitle="Объёмные устройства, хранилище, дела и погода на Главной."
               right={<Toggle on={expUi} onClick={() => setExpUi(!expUi)} label="Экспериментальный интерфейс" />}
             />
           )}
@@ -414,7 +414,7 @@ export function ScreenSettings({ onAbout, user, onLogin, onDeleteData, onApprove
               </button>
             ) : (
               <button type="button" className="nx-primary" onClick={onLogin}
-                style={{ ...btnReset, borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, flexShrink: 0 }}>Войти</button>
+                style={{ ...btnReset, borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, color: C.onAccent, background: C.actionMint, flexShrink: 0 }}>Войти</button>
             )}
           </div>
           <div className="nx-set-navcard nx-glass nx-glass-subtle">{navList}</div>

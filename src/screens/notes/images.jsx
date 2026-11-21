@@ -36,7 +36,7 @@ function Thumb({ img, uid, scope, h, onOpen, onRemove }) {
 export function NoteImages({ images, uid, scope, phone, onOpen, onRemove }) {
   if (!images.length) return null;
   return (
-    <div className="nx-note-images nx-scroll nx-no-scrollbar" data-no-swipe data-no-note-swipe role="list" aria-label="Картинки в заметке"
+    <div className="nx-note-images nx-scroll" data-no-swipe data-no-note-swipe role="list" aria-label="Картинки в заметке"
       style={{ display: "flex", gap: 10, overflowX: "auto", padding: "2px 0 12px", marginBottom: 2, overscrollBehaviorX: "none", touchAction: "pan-x pan-y" }}>
       {images.map((img) => (
         <div role="listitem" key={img.id} style={{ display: "contents" }}>

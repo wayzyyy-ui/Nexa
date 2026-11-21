@@ -36,7 +36,7 @@ export const DIRECT_TRANSFER_CSS = `
 .is-done .nx-transfer-status { color: var(--green); }
 .nx-transfer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .nx-transfer-card :is(.nx-primary, .nx-ghost-btn) { font: inherit; font-size: 12px; min-height: 40px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--border-strong); color: var(--text); background: transparent; }
-.nx-transfer-card .nx-primary { background: var(--mint); color: var(--on-accent); border-color: transparent; }
+.nx-transfer-card .nx-primary { background: var(--action-mint); color: var(--on-accent); border-color: transparent; }
 .nx-transfer-card button:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
 .is-received { animation: nx-transfer-reveal 500ms ease-out both; }
 @keyframes nx-transfer-appear { from { opacity: 0; transform: translateY(-10px) scale(0.98); } to { opacity: 1; transform: none; } }

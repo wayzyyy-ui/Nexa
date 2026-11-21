@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { btnReset } from "../../ui/base.jsx";
 
 export const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 16px", fontSize: 14, borderRadius: 999, whiteSpace: "nowrap" };
-export const primary = { ...pill, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, border: "1px solid transparent", fontWeight: 500 };
+export const primary = { ...pill, color: C.onAccent, background: C.actionMint, border: "1px solid transparent", fontWeight: 500 };
 export const ghost = { ...pill, border: `1px solid ${C.borderStrong}`, color: C.text };
 export const round = { ...btnReset, width: 38, height: 38, borderRadius: 999, border: `1px solid ${C.borderStrong}`, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 export const linkBtn = { ...btnReset, fontSize: 12, color: C.mint, textDecoration: "underline", textUnderlineOffset: 3, flexShrink: 0 };

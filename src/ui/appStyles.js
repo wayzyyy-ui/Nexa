@@ -463,8 +463,8 @@ export const APP_CSS = `
 
         /* Экспериментальный интерфейс (Настройки → «Внешний вид»), только телефон */
         .nx-home-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: stretch; }
-        .nx-exp-ai { display: flex !important; align-items: center; justify-content: center; padding: 0 22px !important; border-radius: 999px; font-size: 20px; font-weight: 700; color: var(--on-fold) !important;
-          background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 70%, white), var(--mint)) !important; box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--mint) 70%, transparent); }
+        .nx-exp-ai { display: flex !important; align-items: center; justify-content: center; padding: 0 22px !important; border-radius: 999px; font-size: 20px; font-weight: 700; color: var(--on-accent) !important;
+          background: var(--action-mint) !important; box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--mint) 70%, transparent); }
         .nx-dev-pill.is-3d { padding-left: 6px !important; }
         .nx-dev-pill.is-3d .nx-dev-pill-icon { width: 54px; height: 44px; position: relative; overflow: visible; }
         .nx-d3 { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -58%); height: 68px; width: auto; max-width: 72px; object-fit: contain; pointer-events: none; user-select: none;
@@ -736,7 +736,7 @@ export const APP_CSS = `
           border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 16px; color: var(--text); transition: background-color 160ms ease; }
         .nx-set-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
         .nx-set-nav-item:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
-        .nx-set-nav-item.is-active { background: var(--mint); color: var(--on-accent); font-weight: 600; }
+        .nx-set-nav-item.is-active { background: var(--action-mint); color: var(--on-accent); font-weight: 600; }
         /* Компьютер: подложка выбранного раздела — общая таблетка nx-set-thumb, переезжает между строками */
         .nx-set-nav.has-thumb { position: relative; }
         .nx-set-nav.has-thumb .nx-set-nav-item { position: relative; z-index: 1; transition: background-color 160ms ease, color 220ms ease; }
@@ -915,14 +915,15 @@ export const APP_CSS = `
         .nx-chat-backdrop[data-empty="true"] { opacity: 1; }
         @media (prefers-reduced-motion: no-preference) {
           .nx-chat-backdrop[data-empty="true"]::before {
-            content: ""; position: absolute; inset: -16%;
+            content: ""; position: absolute; inset: 0;
             background: radial-gradient(ellipse at 28% 36%, var(--home-bg-a), transparent 47%),
                         radial-gradient(ellipse at 70% 65%, color-mix(in srgb, var(--blue) 36%, transparent), transparent 49%);
+            background-size: 135% 135%; background-repeat: no-repeat;
             animation: nx-chat-drift 9s ease-in-out infinite alternate;
           }
           @keyframes nx-chat-drift {
-            from { transform: translate(-8%, 5%) rotate(-8deg); }
-            to { transform: translate(9%, -6%) rotate(8deg); }
+            from { background-position: 0% 75%, 100% 25%; }
+            to { background-position: 100% 25%, 0% 75%; }
           }
         }
         @starting-style { .nx-chat-backdrop[data-empty="true"] { opacity: 0; } }
@@ -1002,7 +1003,7 @@ export const APP_CSS = `
         .nx-hist-label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted-soft); padding-left: 4px; }
         .nx-hist-new {
           display: flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0;
-          padding: 10px 14px; border: 1px solid transparent; background: var(--mint);
+          padding: 10px 14px; border: 1px solid transparent; background: var(--action-mint);
           color: var(--on-accent); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
         }
         .nx-hist-search {
@@ -1142,15 +1143,14 @@ export const APP_CSS = `
     .nx-notepad > * { max-width: var(--page-w); margin-inline: auto; }
     .nx-notepad-top { display: flex; align-items: center; gap: calc(44 * var(--mk)); min-height: max(40px, calc(50 * var(--mk))); }
     .nx-notepad-title { font-size: max(30px, calc(52 * var(--mk))); }
-    /* Две колонки на всю оставшуюся высоту окна: список прокручивается сам (тонкая полоса), заметка — справа */
-    .nx-notepad-desk { position: relative; display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(72 * var(--mk)); align-items: stretch; margin-top: calc(63 * var(--mk));
-      height: max(340px, calc(100vh - 303 * var(--mk))); } /* низ — не меньше 340: на невысоком окне панель с текстом раньше уходила под нижний край окна и текст обрезался */
+    /* Карточки прокручиваются вместе со страницей. Редактор остаётся в поле зрения. */
+    .nx-notepad-desk { position: relative; display: grid; grid-template-columns: minmax(300px, calc(484 * var(--mk))) minmax(0, 1fr); gap: calc(72 * var(--mk)); align-items: start; margin-top: calc(63 * var(--mk));
+      --note-panel-height: max(340px, calc(100dvh - 225 * var(--mk) - var(--tb-h, 0px))); }
     .nx-notepad-side { display: flex; flex-direction: column; min-height: 0; position: relative; z-index: 1; }
     .nx-notepad-side > * { flex-shrink: 0; }
     .nx-notepad-desk .nx-notepad-ctags { padding-left: max(26px, calc(40 * var(--mk))) !important; margin-top: -10px; }
     .nx-notepad-desk .nx-notepad-group { margin-bottom: calc(-18 * var(--mk)) !important; }
-    .nx-notepad-desk .nx-notepad-list { flex: 1 1 auto !important; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: calc(16 * var(--mk)); margin-right: calc(-16 * var(--mk)); /* запас сверху: карточка при наведении поднимается на 2 px, и прокрутка срезала её верхнюю рамку */ padding-top: 4px; margin-top: -4px; gap: calc(33 * var(--mk)) !important; }
-    .nx-notepad-desk .nx-notepad-list::-webkit-scrollbar { width: 4px; }
+    .nx-notepad-desk .nx-notepad-list { overflow: visible; gap: calc(33 * var(--mk)) !important; }
     /* Складка у правого края окна (макет 2026-10): видна справа от панели, край заходит под «стекло» и просвечивает светом */
     .nx-notepad-fold { position: absolute; left: calc(100% - 320 * var(--mk)); top: calc(-70 * var(--mk)); width: calc(640 * var(--mk)); pointer-events: none; z-index: 0; }
     .nx-notepad-fold svg { width: 100%; height: auto; display: block; overflow: visible; }
@@ -1163,13 +1163,13 @@ export const APP_CSS = `
     .nx-notepad-desk .nx-notepad-search:focus-within .nx-notepad-search-input { flex: 1 1 auto !important; }
     .nx-notepad-tools { display: flex; gap: calc(27 * var(--mk)); height: max(44px, calc(53 * var(--mk))); }
     .nx-notepad-add { flex-shrink: 0; width: auto; min-width: max(124px, calc(152 * var(--mk))); white-space: nowrap; padding: 0 max(16px, calc(22 * var(--mk))); border-radius: 999px; border: 1px solid transparent; cursor: pointer;
-      background: linear-gradient(90deg, var(--fold-cyan), var(--fold-blue)); color: var(--on-fold); font: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; white-space: normal; }
+      background: var(--action-mint); color: var(--on-accent); font: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; white-space: normal; }
     .nx-notepad-desk .nx-notepad-filters { margin: 16px 0 0 !important; }
     .nx-notepad-subtitle { font-size: max(18px, calc(24 * var(--mk))); margin: calc(42 * var(--mk)) 4px calc(20 * var(--mk)); }
     .nx-notepad-desk .nx-notepad-card { border-radius: max(28px, calc(60 * var(--mk))) !important; }
     .nx-notepad-desk .nx-notepad-open { padding-left: max(26px, calc(40 * var(--mk))) !important; min-height: calc(132 * var(--mk)); display: flex !important; flex-direction: column; justify-content: center; }
     /* Панель заметки — «стекло» (макет 2026-10): сквозь неё видна складка */
-    .nx-notepad-panel { position: relative !important; top: auto !important; z-index: 1; min-height: 0 !important; height: 100%;
+    .nx-notepad-panel { position: sticky !important; top: 12px !important; z-index: 1; min-height: 0 !important; height: var(--note-panel-height); box-sizing: border-box;
       border-radius: max(32px, calc(60 * var(--mk))) !important; background: color-mix(in srgb, var(--panel) 22%, transparent);
       -webkit-backdrop-filter: blur(28px); backdrop-filter: blur(28px); }
     .nx-notepad-editor.nx-notepad-panel { padding: max(20px, calc(30 * var(--mk))) max(20px, calc(30 * var(--mk))) max(22px, calc(36 * var(--mk))); overflow: hidden; }
@@ -1239,9 +1239,9 @@ export const APP_CSS = `
   /* Слой «О системе» поверх экрана входа (выше .nx-auth-gate) */
   .nx-gate-about { position: fixed; inset: 0; z-index: 950; overflow-y: auto; overscroll-behavior: contain; background: var(--bg); padding-top: var(--sat); padding-bottom: var(--sab); }
   .nx-gate-enter {
-    border: none; cursor: pointer; font-family: inherit; color: var(--on-fold);
+    border: none; cursor: pointer; font-family: inherit; color: var(--on-accent);
     font-size: clamp(16px, 1.5vw, 28px); height: clamp(52px, 5.2vw, 100px); padding: 0 clamp(48px, 5.4vw, 104px); border-radius: 999px;
-    background: linear-gradient(90deg, var(--fold-blue), var(--fold-cyan));
+    background: var(--action-mint);
   }
   .nx-gate-qr {
     border: 1px solid var(--gate-border); cursor: pointer; background: color-mix(in srgb, var(--gate-text) 6%, transparent);
@@ -1600,7 +1600,7 @@ export const APP_CSS = `
         @keyframes nx-toast-in  { from { opacity: 0; transform: translateY(-14px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes nx-toast-out { to   { opacity: 0; transform: translateY(-8px) scale(0.98); } }
         .nx-toast-host {
-          position: fixed; top: 16px; right: 16px; z-index: 500;
+          position: fixed; top: calc(var(--tb-h, 0px) + 16px); inset-inline: 0; margin-inline: auto; z-index: 500;
           display: flex; flex-direction: column; gap: 10px;
           width: 380px; max-width: calc(100vw - 32px);
           pointer-events: none;
@@ -1727,6 +1727,7 @@ export const APP_CSS = `
         .nx-home-grid > * { animation-delay: 90ms; }
         .nx-home-grid > *:nth-child(2) { animation-delay: 170ms; }
         .nx-notepad-desk > .nx-notepad-side { animation: none; }
+        .nx-media-library .nx-media-main > section.nx-media-recent { animation-delay: 560ms; }
         .ng-home-desktop > .nx-home-act { animation-delay: 250ms; }
         .ng-home-desktop > .nx-home-about-row { animation-delay: 330ms; }
         :is(.nx-panel[data-quiet], .nx-panel[aria-hidden]) :is(.ng-home-desktop, .ng-home-mobile, .nx-home-grid, .nx-media-main, .nx-notepad-side, .nx-notepad-desk, .nx-about, .nx-security, .nx-all-devices, .nx-device-screen, .ng-screen, .nx-notepad-list) > * { animation: none !important; }
@@ -1864,7 +1865,7 @@ export const APP_CSS = `
              loading  — aria-busy: не бледнеет, курсор «ждите».
            Чтобы новая кнопка вела себя так же, дай ей один из классов:
              nx-row-btn   — строка списка        nx-ghost-btn — кнопка с рамкой
-             nx-icon-btn  — кнопка-иконка        nx-primary   — главная (градиент)
+             nx-icon-btn  — кнопка-иконка        nx-primary   — главная (мятная)
              nx-cat-card  — карточка             nx-link-btn  — текстовая ссылка
              nx-crumb, nx-seg-btn — скошенные складки (путь и хранилище)
            Состояния loading / success / error / empty — компоненты
@@ -1997,9 +1998,8 @@ export const APP_CSS = `
         /* disabled — нельзя нажать */
         :is(.nx-row-btn, .nx-ghost-btn, .nx-icon-btn, .nx-primary, .nx-cat-card, .nx-link-btn):disabled {
           opacity: 0.45; cursor: default !important; transform: none !important;
-          filter: none !important; background-color: transparent !important;
+          filter: none !important;
         }
-        .nx-primary:disabled { background-color: initial !important; }
         /* loading — кнопка занята, но не бледнеет */
         :is(.nx-ghost-btn, .nx-primary)[aria-busy="true"] { opacity: 1; cursor: progress !important; }
 

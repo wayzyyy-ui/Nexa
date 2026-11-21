@@ -32,7 +32,6 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
   const [seenBefore, setSeenBefore] = useState(0); // что было новым в момент открытия
   const ref = useRef(null);
   const panelRef = useRef(null);
-  const [pos, setPos] = useState({ top: 0, right: 0 }); // где показать панель (под колокольчиком)
   const unread = notes.items.filter((n) => n.at > notes.seenAt).length;
 
   // Закрываем по клику мимо и по Esc
@@ -60,8 +59,6 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
     if (!open) {
       setSeenBefore(notes.seenAt);
       onSeen(); // открыли — всё прочитано
-      const r = ref.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
     }
     setOpen(!open);
   };
@@ -90,7 +87,7 @@ export function NotificationBell({ notes, onSeen, onClear, onOpen, onSettings })
           всплывающих тостов, а не внутри слоя верхней строки */}
       {open && createPortal(
         <div ref={panelRef} role="dialog" aria-label="Уведомления" className={`nx-pop nx-notes${leaving ? " nx-leaving" : ""}`} style={{
-          position: "fixed", top: pos.top, right: pos.right, width: 340, zIndex: 600, textAlign: "left",
+          position: "fixed", top: "calc(var(--tb-h, 0px) + 16px)", insetInline: 0, marginInline: "auto", width: 340, zIndex: 600, textAlign: "left",
           background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 14, overflow: "hidden",
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.border}` }}>

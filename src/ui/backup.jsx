@@ -16,7 +16,7 @@ const passField = { background: "transparent", color: C.text, border: `1px solid
 
 const when = (ms) => ruFmt({ day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
 const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 18px", fontSize: 14, borderRadius: 999, whiteSpace: "nowrap" };
-const primary = { ...pill, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, border: "1px solid transparent", fontWeight: 500 };
+const primary = { ...pill, color: C.onAccent, background: C.actionMint, border: "1px solid transparent", fontWeight: 500 };
 const ghost = { ...pill, border: `1px solid ${C.borderStrong}`, color: C.text };
 const danger = { ...pill, border: `1px solid ${C.red}`, color: C.red };
 

@@ -126,13 +126,13 @@ export function DropBanner({ drop, st, onClose }) {
         {actions && actions.map((a) => (
           <button key={a.label} type="button" className={a.primary ? "nx-primary" : "nx-ghost-btn"} onClick={() => { a.run(); if (a.primary) leave(); }}
             style={{ ...btnReset, padding: "7px 12px", borderRadius: 999, fontSize: 13, fontWeight: 500, whiteSpace: "nowrap",
-              ...(a.primary ? { color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` } : { color: C.text, border: `1px solid ${C.borderStrong}` }) }}>
+              ...(a.primary ? { color: C.onAccent, background: C.actionMint } : { color: C.text, border: `1px solid ${C.borderStrong}` }) }}>
             {a.label}
           </button>
         ))}
         {!send && !recv && drop.onOpen && (
           <button type="button" className="nx-primary" onClick={() => { drop.onOpen(); leave(); }}
-            style={{ ...btnReset, padding: "7px 14px", borderRadius: 999, fontSize: 13, fontWeight: 500, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>
+            style={{ ...btnReset, padding: "7px 14px", borderRadius: 999, fontSize: 13, fontWeight: 500, color: C.onAccent, background: C.actionMint }}>
             Открыть
           </button>
         )}

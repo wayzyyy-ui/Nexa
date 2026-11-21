@@ -43,13 +43,13 @@ export function ScreenDevices({ devices, received, onOpenDevice, onAddDevice, on
           </div>
         </div>
         {devices.length > 0 && (
-          <StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>
+          <StateButton variant="primary" icon={Icon.plus({ c: C.onAccent, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>
         )}
       </div>
       {devices.length === 0 && (
         <div style={{ marginTop: 30 }}>
           <EmptyState compact title="Устройств пока нет" text="Войдите в ту же почту на другом устройстве — оно появится здесь само"
-            action={<StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>} />
+            action={<StateButton variant="primary" icon={Icon.plus({ c: C.onAccent, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>} />
         </div>
       )}
       {group("В сети", on)}

@@ -155,7 +155,7 @@ export function Spinner({ s = 14, c = C.mint }) {
 
 /* Кнопка с состоянием.
    state: "idle" (обычная) | "loading" (идёт действие) | "success" | "error".
-   variant: "primary" — главная, с градиентом; "ghost" — с рамкой.
+   variant: "primary" — главная, с мятной заливкой; "ghost" — с рамкой.
    Подписи для каждого состояния передаются отдельно; если не переданы,
    остаётся основная подпись (children). */
 export function StateButton({ state = "idle", variant = "ghost", icon, children, labels = {}, onClick, disabled, style }) {
@@ -170,11 +170,11 @@ export function StateButton({ state = "idle", variant = "ghost", icon, children,
     state === "success" ? { borderColor: C.green, color: C.green } :
     state === "error"   ? { borderColor: C.red, color: C.red } :
     primary ? {
-      border: "1px solid transparent", color: C.onFold, fontWeight: 500,
-      background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+      border: "1px solid transparent", color: C.onAccent, fontWeight: 500,
+      background: C.actionMint,
     } : {};
   const mark =
-    state === "loading" ? <Spinner c={primary ? C.onFold : C.mint} /> :
+    state === "loading" ? <Spinner c={primary ? C.onAccent : C.mint} /> :
     state === "success" ? Icon.check({ c: C.green, s: 16 }) :
     state === "error"   ? Icon.alert({ c: C.red, s: 16 }) :
     icon;
@@ -235,17 +235,17 @@ export function MadeBy({ style, h = 13 }) {
   );
 }
 
-export function EmptyState({ title, text, action, compact }) {
+export function EmptyState({ title, text, action, compact, illustration = true }) {
   return (
     <div className="nx-pop" style={{
       padding: compact ? "26px 18px" : "48px 16px", textAlign: "center",
       display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
     }}>
       {/* Пустая складка: только контур и линия сгиба */}
-      <svg viewBox="0 0 64 44" width={compact ? 52 : 64} height={compact ? 36 : 44} fill="none" aria-hidden="true" style={{ marginBottom: 6 }}>
+      {illustration && <svg viewBox="0 0 64 44" width={compact ? 52 : 64} height={compact ? 36 : 44} fill="none" aria-hidden="true" style={{ marginBottom: 6 }}>
         <path d="M10 4 62 1 54 41 2 43Z" stroke={C.borderStrong} strokeWidth="1.4" strokeLinejoin="round" />
         <path d="M62 1 34 22 54 41" stroke={C.borderStrong} strokeWidth="1.4" strokeDasharray="3 3" strokeLinejoin="round" />
-      </svg>
+      </svg>}
       <div style={{ fontSize: T.fs.row, fontWeight: 500 }}>{title}</div>
       {text && <div style={{ fontSize: T.fs.sub, color: C.muted, maxWidth: 320, lineHeight: 1.5 }}>{text}</div>}
       {action && <div style={{ marginTop: 8 }}>{action}</div>}
@@ -280,15 +280,15 @@ export function Toggle({ on, onClick, label, disabled }) {
       style={{
         border: "none", opacity: disabled ? 0.45 : 1,
         width: 42, height: 24, borderRadius: 999, padding: 3, boxSizing: "border-box",
-        // включён: градиент, выключен: нейтральный фон
-        background: on ? `linear-gradient(90deg, ${C.blue}, ${C.mint})` : C.chip,
+        // включён: мятный фон, выключен: нейтральный фон
+        background: on ? C.actionMint : C.chip,
         cursor: "pointer", flexShrink: 0,
         transition: "background 200ms ease",
       }}
     >
       {/* Кружок сдвигается на 18px вправо, когда переключатель включён */}
       <div style={{
-        width: 18, height: 18, borderRadius: "50%", background: C.onFold,
+        width: 18, height: 18, borderRadius: "50%", background: on ? C.onAccent : C.onFold,
         transform: on ? "translateX(18px)" : "translateX(0)",
         // Пружинистая кривая: кружок чуть проскакивает и встаёт на место
         transition: "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",

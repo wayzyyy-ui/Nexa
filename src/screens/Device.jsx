@@ -256,7 +256,7 @@ export function DeviceTitle({ name, onRename }) {
         onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); } }}
         style={{ fontSize: T.fs.page, fontWeight: 500, lineHeight: 1.1, color: C.text, background: "transparent", fontFamily: "inherit",
           border: `1px solid ${C.borderStrong}`, borderRadius: 14, padding: "2px 12px", outline: "none", minWidth: 0, width: "min(380px, 100%)", boxSizing: "border-box" }} />
-      <button type="submit" className="nx-primary" disabled={!clean} style={{ ...btnReset, padding: "9px 16px", fontSize: 13, fontWeight: 500, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Сохранить</button>
+      <button type="submit" className="nx-primary" disabled={!clean} style={{ ...btnReset, padding: "9px 16px", fontSize: 13, fontWeight: 500, color: C.onAccent, background: C.actionMint }}>Сохранить</button>
       <button type="button" className="nx-ghost-btn" onClick={cancel} style={{ ...btnReset, padding: "9px 16px", fontSize: 13, border: `1px solid ${C.borderStrong}`, color: C.text }}>Отмена</button>
     </form>
   );
@@ -405,7 +405,7 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
             // Высота — от окна (было 500 px): на ноутбуке картинка занимала первый экран, а действия уходили вниз
             position: "relative", height: "clamp(300px, 44vh, 460px)", borderRadius: 56, overflow: "hidden",
             border: `1px solid ${C.lineBright}`,
-            background: C.panel,
+            background: "transparent",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             {/* Складка-«конверт»: четыре треугольника сходятся к центру.
@@ -471,7 +471,7 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
       {/* Обе карточки одной высоты (stretch), кнопка «Файлы» — внизу левой */}
       <div data-keep style={{ display: "flex", flexDirection: "column" }}>
         {/* Карточка «Состояние»: заряд, память, сеть и кнопки — как карточка справа */}
-        <div className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px", background: C.panel, flex: 1, display: "flex", flexDirection: "column" }}>
+        <div className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: "26px 28px", background: "transparent", flex: 1, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 20 }}>
           <span style={{ fontSize: 17, color: C.muted }}>Состояние</span>
           {/* Когда сведения получены: у отключённого — последние достоверные */}
@@ -514,14 +514,9 @@ export function DeviceScreen({ device: d, fileCount, devices, files, folders, re
           </button>
         </div>
         </div>
-        {d.isSelf && (
-          <div style={{ padding: "10px 0 0", fontSize: 12, color: C.mutedSoft }}>
-            Это устройство — вы держите его в руках
-          </div>
-        )}
       </div>
 
-      <div data-keep className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: 22, background: C.panel }}>
+      <div data-keep className="nx-dev-card" style={{ border: `1px solid ${C.lineBright}`, borderRadius: 40, padding: 22, background: "transparent" }}>
         {/* Только настоящее: имя и что это за устройство. Выдуманных переключателей нет */}
         {d.real && <RealDeviceInfo d={d} actions={realActions} />}
         {d.bt && <BtDeviceInfo d={d} />}

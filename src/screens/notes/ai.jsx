@@ -2,6 +2,7 @@
 // Запросы — src/lib/noteAi.js, правила — src/lib/noteText.js. Здесь только вид.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C } from "../../ui/theme.js";
+import { NoteMenu } from "./NoteMenu.jsx";
 import { Icon } from "../../ui/icons.jsx";
 import { btnReset } from "../../ui/base.jsx";
 import { NOTE_AI_TASKS, NOTE_PROMPT_MAX } from "../../lib/noteAi.js";
@@ -25,10 +26,7 @@ export function AiMenu({ onClose, onPick, onDiscuss, onAnalyze, canDiscuss, sugg
   const [prompt, setPrompt] = useState("");
   const sendPrompt = (e) => { e.preventDefault(); const p = prompt.trim(); if (p) onPick("custom", p); };
   return (
-    <div ref={box} role="menu" aria-label="ИИ в заметке" className="nx-pop nx-note-menu" style={{
-      position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 40, width: 262, padding: 6, boxSizing: "border-box",
-      background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 20, boxShadow: `0 14px 36px color-mix(in srgb, ${C.bg} 65%, transparent)`,
-    }}>
+    <NoteMenu anchorRef={anchorRef} menuRef={box} label="ИИ в заметке" width={262}>
       <div style={{ fontSize: 12, color: C.mutedSoft, padding: "6px 12px 4px" }}>{hasSelection ? "Для выделенного фрагмента" : "Для всей заметки"}</div>
       <form onSubmit={sendPrompt} style={{ display: "flex", gap: 6, padding: "4px 6px 6px" }}>
         <input value={prompt} onChange={(e) => setPrompt(e.target.value.slice(0, NOTE_PROMPT_MAX))} maxLength={NOTE_PROMPT_MAX}
@@ -57,7 +55,7 @@ export function AiMenu({ onClose, onPick, onDiscuss, onAnalyze, canDiscuss, sugg
         <span style={{ fontSize: 14, flex: 1 }}>Подсказки при наборе</span>
         <span style={{ fontSize: 12, color: suggestOn ? C.mint : C.mutedSoft }}>{suggestOn ? "Вкл." : "Выкл."}</span>
       </button>
-    </div>
+    </NoteMenu>
   );
 }
 

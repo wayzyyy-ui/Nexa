@@ -155,7 +155,7 @@ export function SyncDetails({ online, uid, syncState, uploads, trash, onRetry, o
           без сети не копятся — их нужно повторить, когда связь вернётся.
         </div>
         {uid && (
-          <StateButton variant="primary" disabled={!online} onClick={onRetry} icon={Icon.refresh({ c: C.onFold, s: 14 })}
+          <StateButton variant="primary" disabled={!online} onClick={onRetry} icon={Icon.refresh({ c: C.onAccent, s: 14 })}
             style={{ width: "100%", marginTop: 16, borderRadius: 999, padding: "11px 16px" }}>
             {online ? "Повторить сейчас" : "Повторим, когда появится сеть"}
           </StateButton>

@@ -53,7 +53,7 @@ export function ScheduleForm({ existing, day, initialTitle = "", item = null, on
         </button>
         <button type="submit" className="nx-primary" disabled={!t || !!error} style={{
           ...btnReset, fontSize: 13, padding: "7px 14px", borderRadius: 999, border: "1px solid transparent",
-          color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+          color: C.onAccent, fontWeight: 500, background: C.actionMint,
         }}>
           {item ? "Сохранить" : "Добавить"}
         </button>
@@ -79,8 +79,8 @@ export function DayStrip({ value, onChange, all }) {
           <button key={key} type="button" role="tab" aria-selected={on} aria-label={ruFmt({ weekday: "long", day: "numeric", month: "long" }).format(d)} onClick={() => onChange(key)} className="nx-day-chip" style={{
             ...btnReset, flexShrink: 0, minWidth: 64, padding: "8px 14px 7px", borderRadius: 18, textAlign: "center",
             border: `1px solid ${on ? "transparent" : C.borderStrong}`,
-            background: on ? `linear-gradient(135deg, ${C.foldBlue}, ${C.foldCyan})` : "transparent",
-            color: on ? C.onFold : C.text,
+            background: on ? C.actionMint : "transparent",
+            color: on ? C.onAccent : C.text,
           }}>
             <span style={{ display: "block", fontSize: 12, opacity: on ? 0.9 : 0.7, whiteSpace: "nowrap" }}>{top}</span>
             <span className="nx-day-num" style={{ display: "block", fontFamily: fontDisplay, fontSize: 18, lineHeight: 1.2, marginTop: 1 }}>{d.getDate()}</span>
@@ -130,12 +130,12 @@ export function MonthCalendar({ value, all, onPick, onClose, leaving }) {
               aria-label={ruFmt({ day: "numeric", month: "long" }).format(d) + (busy.has(key) ? ", есть дела" : "")}
               className="nx-month-day" style={{
                 ...btnReset, height: 42, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                fontFamily: fontDisplay, fontSize: 15, color: on ? C.onFold : key < today ? C.mutedSoft : C.text,
-                background: on ? "linear-gradient(135deg, " + C.foldBlue + ", " + C.foldCyan + ")" : "transparent",
+                fontFamily: fontDisplay, fontSize: 15, color: on ? C.onAccent : key < today ? C.mutedSoft : C.text,
+                background: on ? C.actionMint : "transparent",
                 border: "1px solid " + (isToday && !on ? C.mint : "transparent"),
               }}>
               {d.getDate()}
-              <span style={{ width: 4, height: 4, marginTop: 2, borderRadius: "50%", background: busy.has(key) ? (on ? C.onFold : C.mint) : "transparent" }} />
+              <span style={{ width: 4, height: 4, marginTop: 2, borderRadius: "50%", background: busy.has(key) ? (on ? C.onAccent : C.mint) : "transparent" }} />
             </button>
           );
         })}
@@ -287,8 +287,8 @@ export function ScreenToday({ schedule: all = TODAY.schedule, onAddItem, onUpdat
 
           {schedule.length === 0 && !adding && (
             <div className="nx-today-empty">
-              <EmptyState compact title={isToday ? "Дел на сегодня нет" : "На этот день дел нет"} text="Добавьте дело — оно появится на таймлайне"
-                action={<StateButton variant="primary" style={{ background: C.actionMint, color: C.onAccent }} icon={Icon.plus({ c: C.onAccent, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
+              <EmptyState compact illustration={false} title={isToday ? "Дел на сегодня нет" : "На этот день дел нет"}
+                action={<StateButton variant="primary" icon={Icon.plus({ c: C.onAccent, s: 15 })} onClick={() => { setEditing(null); setAdding(true); }}>Добавить дело</StateButton>} />
             </div>
           )}
 

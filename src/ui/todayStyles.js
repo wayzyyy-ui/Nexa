@@ -34,17 +34,12 @@ export const TODAY_CSS = `
   }
   .nx-today-screen .nx-day-num { font-size: 36px !important; line-height: 1 !important; }
   .nx-today-screen .nx-day-chip[aria-selected="false"] { border-color: color-mix(in srgb, var(--text) 35%, transparent) !important; }
-  .nx-today-screen .nx-day-chip[aria-selected="true"] {
-    background: var(--mint) !important; color: var(--on-accent) !important;
-  }
   .nx-today-screen .nx-day-chip[aria-selected="true"] .nx-day-num { font-size: 44px !important; line-height: 1; font-weight: 700 !important; }
   .nx-today-screen .nx-day-dot { position: absolute; bottom: 5px; left: calc(50% - 2px); }
   .nx-today-screen .nx-sched-tools > button { min-height: 46px; font-weight: 600; }
   .nx-today-screen .nx-today-empty { padding-top: 0; }
   .nx-today-screen .nx-today-empty > div { padding: 26px 0 !important; }
-  .nx-today-screen .nx-today-empty > div > svg { display: none; }
   .nx-today-screen .nx-today-empty > div > div:first-of-type { font-size: 21px !important; font-weight: 500 !important; }
-  .nx-today-screen .nx-today-empty > div > div:nth-of-type(2) { font-size: 20px !important; max-width: none !important; }
 
   .nx-today-screen .nx-weather { padding: 26px 32px !important; height: 100%; }
   .nx-today-screen .nx-today-now { align-self: stretch; min-width: 0; }

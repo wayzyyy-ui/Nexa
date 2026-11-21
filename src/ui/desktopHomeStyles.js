@@ -28,6 +28,19 @@ export const DESKTOP_HOME_CSS = `
   50% { transform: translate3d(3%, 4%, 0) rotate(3deg); }
   100% { transform: translate3d(10%, -2%, 0) rotate(10deg); }
 }
+.nx-ai-pill-rim { display: none; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .nx-ai-pill:is(:hover, :focus-visible) > .nx-ai-pill-rim {
+    display: block; position: absolute; inset: 0; border-radius: inherit; padding: 2px;
+    pointer-events: none;
+    background: linear-gradient(110deg, transparent 32%, var(--blue) 42%, var(--action-mint) 50%, var(--on-fold) 53%, transparent 65%) 100% 0 / 300% 100%;
+    -webkit-mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+    mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: nx-pill-wave 1.4s ease-in-out;
+  }
+}
+@keyframes nx-pill-wave { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 .nx-lite .nx-ai-flow-art { animation: none; }
 @media (prefers-reduced-motion: reduce) { .nx-ai-pill .nx-ai-flow-art { animation: none; } }
 @media ${DESKTOP_MQ} {
@@ -227,7 +240,7 @@ export const DESKTOP_HOME_CSS = `
   .nx-hd-actions { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; }
   :is(.nx-hd-add, .nx-hd-sq) { appearance: none; border: 0; font: inherit; margin: 0; cursor: pointer; }
   .nx-hd-add { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px 0 18px; border-radius: 999px;
-    background: var(--mint); color: var(--on-accent); font-size: 17px; font-weight: 700; transition: transform 140ms ease, filter 140ms ease; }
+    background: var(--action-mint); color: var(--on-accent); font-size: 17px; font-weight: 700; transition: transform 140ms ease, filter 140ms ease; }
   .nx-hd-add:hover { filter: brightness(1.06); }
   .nx-hd-add:active { transform: scale(0.98); }
   .nx-hd-sq { width: 52px; height: 52px; padding: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: var(--text); }

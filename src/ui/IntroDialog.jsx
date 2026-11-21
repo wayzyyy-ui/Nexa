@@ -18,7 +18,7 @@ const CSS = `
 .nx-intro-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
 .nx-intro-actions button { min-height: 44px; padding: 10px 20px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer;
   border: 1px solid var(--surface-line); color: var(--text); background: transparent; }
-.nx-intro-actions .nx-primary { background: var(--mint); color: var(--on-accent); border-color: transparent; }
+.nx-intro-actions .nx-primary { background: var(--action-mint); color: var(--on-accent); border-color: transparent; }
 .nx-intro-dialog details { font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 16px; }
 .nx-intro-dialog summary { cursor: pointer; color: var(--text); padding: 5px 0; }
 .nx-intro-dialog details p { font-size: 12px; }

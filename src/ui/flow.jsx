@@ -203,13 +203,13 @@ export function FlowSettings({ flow, setFlow, count, onSend, onClear }) {
       <SectionTitle>NEXA Flow</SectionTitle>
       <SettingsGroup>
         <SettingsRow icon={Icon.send({ c: C.mint, s: 18 })} title="Передача текста и ссылок"
-          subtitle={flow.on ? "Между вашими устройствами. Буфер обмена читаем только по нажатию «Вставить скопированное»" : "Выключено — это устройство не отправляет и не принимает"}
+          subtitle={flow.on ? "Буфер читается по нажатию «Вставить скопированное»." : "Передача выключена."}
           right={<Toggle on={flow.on} label="Передача текста и ссылок" onClick={() => setFlow((f) => ({ ...f, on: !f.on }))} />} />
         <SettingsRow icon={Icon.shareUp({ c: C.text, s: 18 })} title="Отправить в NEXA"
-          subtitle={isNative ? "Или из любого приложения: «Поделиться» → «Отправить в NEXA»" : "Текст или ссылку — на другое ваше устройство"}
+          subtitle={isNative ? "Из другого приложения — через «Поделиться»." : "Текст или ссылку — на другое ваше устройство"}
           right={<button type="button" className="nx-ghost-btn" disabled={!flow.on} onClick={onSend} style={{ ...btnReset, padding: "7px 14px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text }}>Открыть</button>} />
         <SettingsRow last icon={Icon.trash({ c: C.text, s: 18 })} title="История передач"
-          subtitle={confirm ? "Удалить историю на этом устройстве? На других она останется" : count ? `${count} ${plural(count, ["запись", "записи", "записей"])} на этом устройстве. Пароли и ключи не сохраняются` : "Пусто. Пароли и ключи в историю не сохраняются"}
+          subtitle={confirm ? "Очистить историю только здесь?" : count ? `${count} ${plural(count, ["запись", "записи", "записей"])} на этом устройстве. Пароли и ключи не сохраняются` : "Пока пусто"}
           right={confirm ? (
             <div style={{ display: "flex", gap: 6 }}>
               <button type="button" className="nx-ghost-btn" onClick={() => setConfirm(false)} style={{ ...btnReset, padding: "7px 12px", fontSize: 13, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text }}>Отмена</button>

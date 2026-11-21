@@ -37,9 +37,9 @@ export function ApkButton({ label = "Скачать приложение", small
       style={{
       display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", whiteSpace: "nowrap",
       padding: small ? "7px 14px" : "9px 18px", fontSize: small ? 12.5 : 13.5, fontWeight: 500, borderRadius: 999,
-      color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+      color: C.onAccent, background: C.actionMint,
     }}>
-      {Icon.download({ c: C.onFold, s: small ? 14 : 16 })} {label}
+      {Icon.download({ c: C.onAccent, s: small ? 14 : 16 })} {label}
     </a>
   );
 }
@@ -156,8 +156,8 @@ export function InstallSettings() {
             <SettingsRow wrap icon={Icon.laptop({ c: C.mint, s: 18 })} title="NEXA для компьютера"
               subtitle={`Версия ${pcRelease.version}${pcRelease.size ? ` · ${mbText(pcRelease.size)}` : ""} · в трее, уведомления, запуск вместе с компьютером, обновляется сама`}
               right={<a className="nx-primary" href={pcRelease.exeUrl || "/nexa-setup.exe"} download="NEXA-setup.exe"
-                style={{ ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", fontSize: 13, fontWeight: 500, borderRadius: 999, color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, textDecoration: "none", whiteSpace: "nowrap" }}>
-                {Icon.download({ c: C.onFold, s: 14 })} Скачать</a>} />
+                style={{ ...btnReset, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", fontSize: 13, fontWeight: 500, borderRadius: 999, color: C.onAccent, background: C.actionMint, textDecoration: "none", whiteSpace: "nowrap" }}>
+                {Icon.download({ c: C.onAccent, s: 14 })} Скачать</a>} />
             <SettingsRow icon={Icon.list({ c: C.muted, s: 18 })} title="Как установить" subtitle={<InstallSteps steps={SMARTSCREEN_STEPS} />} />
           </>
         )}
@@ -272,8 +272,8 @@ export function UpdateActions({ update, onLater, big }) {
   const mine = st.version === update.version ? st : { state: "idle" };
   const pill = { ...btnReset, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, whiteSpace: "nowrap", padding: big ? "12px 22px" : "8px 16px", fontSize: big ? 15 : 13, fontWeight: 500, borderRadius: 999 };
   const primary = (label, onClick, icon = Icon.download) => (
-    <button type="button" className="nx-primary" onClick={onClick} style={{ ...pill, border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>
-      {icon({ c: C.onFold, s: big ? 16 : 14 })} {label}
+    <button type="button" className="nx-primary" onClick={onClick} style={{ ...pill, border: "1px solid transparent", color: C.onAccent, background: C.actionMint }}>
+      {icon({ c: C.onAccent, s: big ? 16 : 14 })} {label}
     </button>
   );
   const ghost = (label, onClick) => <button type="button" className="nx-ghost-btn" onClick={onClick} style={{ ...pill, fontWeight: 400, border: `1px solid ${C.borderStrong}`, color: C.text }}>{label}</button>;

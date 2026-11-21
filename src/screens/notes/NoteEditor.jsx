@@ -10,6 +10,7 @@
    (Enter — принять, Backspace сразу после — вернуть). Картинки — полоса над текстом (images.jsx). */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C, fontDisplay } from "../../ui/theme.js";
+import { NoteMenu } from "./NoteMenu.jsx";
 import { Icon } from "../../ui/icons.jsx";
 import { btnReset } from "../../ui/base.jsx";
 import { dayKey } from "../../lib/schedule.js";
@@ -598,48 +599,26 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       )}
     </div>
   );
-  const attachBtn = (
-    <button type="button" className="nx-icon-btn" {...keep} onClick={() => fileRef.current?.click()} disabled={uploading > 0 || images.length >= NOTE_IMAGES_MAX}
-      aria-label="Добавить картинку" title="Картинка" style={{ ...round, opacity: images.length >= NOTE_IMAGES_MAX ? 0.4 : 1 }}>
-      {uploading > 0 ? <span aria-hidden="true" className="nx-spin" style={{ width: 14, height: 14, borderRadius: 999, border: `2px solid ${C.border}`, borderTopColor: C.mint }} /> : Icon.image({ c: C.text, s: 16 })}
-    </button>
-  );
-  const clipBtn = (
-    <button type="button" className="nx-icon-btn" {...keep} onClick={pasteImage} disabled={uploading > 0 || images.length >= NOTE_IMAGES_MAX}
-      aria-label="Вставить фото из буфера обмена" title="Фото из буфера" style={{ ...round, opacity: images.length >= NOTE_IMAGES_MAX ? 0.4 : 1 }}>
-      {Icon.copy({ c: C.text, s: 15 })}
-    </button>
-  );
-  const checkBtn = (
-    <button type="button" className="nx-icon-btn" {...keep} onClick={toggleList} aria-label="Чек-лист: сделать строки пунктами" title="Чек-лист" style={round}>
-      {Icon.check({ c: C.text, s: 15 })}
-    </button>
-  );
-  const schedBtn = (
-    <button type="button" className="nx-icon-btn" onClick={() => setSched((v) => !v)} disabled={!canAct} aria-expanded={sched}
-      aria-label="Добавить в расписание" title="В расписание" style={{ ...round, borderColor: sched ? C.mint : C.borderStrong, opacity: canAct ? 1 : 0.4 }}>
-      {Icon.calendar({ c: sched ? C.mint : C.text, s: 15 })}
-    </button>
-  );
-  const archBtn = (
-    <button type="button" className="nx-icon-btn" onClick={toggleArchive} disabled={!canAct} aria-label={note?.archived ? "Вернуть из архива" : "Убрать в архив"} title={note?.archived ? "Вернуть из архива" : "В архив"}
-      style={{ ...round, borderColor: note?.archived ? C.mint : C.borderStrong, opacity: canAct ? 1 : 0.4 }}>
-      {Icon.archive({ c: note?.archived ? C.mint : C.text, s: 15 })}
-    </button>
-  );
-  const delBtn = (
-    <button type="button" className="nx-icon-btn" onClick={() => setConfirmDel(true)} aria-label="Удалить заметку" title="Удалить" style={round}>
-      {Icon.trash({ c: C.text, s: 15 })}
-    </button>
-  );
-  // Телефон: остальное — в меню «⋯»
+  const imagesBusy = uploading > 0 || images.length >= NOTE_IMAGES_MAX;
   const moreMenu = menu === "more" && (
     <MoreMenu anchorRef={moreBtnRef} onClose={() => setMenu(null)} items={[
+      { label: "Чек-лист", icon: Icon.check({ c: C.muted, s: 15 }), run: toggleList },
+      { label: "Добавить картинку", icon: Icon.image({ c: C.muted, s: 15 }), disabled: imagesBusy, run: () => fileRef.current?.click() },
+      { label: "Вставить фото из буфера", icon: Icon.copy({ c: C.muted, s: 15 }), disabled: imagesBusy, run: pasteImage },
       { label: "В расписание", icon: Icon.calendar({ c: C.muted, s: 15 }), disabled: !canAct, run: () => setSched(true) },
       ...(note?.archived ? [] : [{ label: note?.pinned ? "Открепить" : "Закрепить", icon: Icon.pin({ c: note?.pinned ? C.mint : C.muted, s: 15 }), disabled: !exists, run: togglePin }]),
       { label: note?.archived ? "Вернуть из архива" : "В архив", icon: Icon.archive({ c: C.muted, s: 15 }), disabled: !canAct, run: toggleArchive },
       { label: "Удалить", icon: Icon.trash({ c: C.red, s: 15 }), danger: true, run: () => setConfirmDel(true) },
     ]} />
+  );
+
+  const moreButton = (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <button ref={moreBtnRef} type="button" className="nx-icon-btn" {...keep} onClick={pop("more")} aria-haspopup="menu" aria-expanded={menu === "more"} aria-label="Ещё" title="Ещё" style={round}>
+        {Icon.dots({ c: C.text, s: 16 })}
+      </button>
+      {moreMenu}
+    </div>
   );
 
   const errorLine = failed && (
@@ -748,7 +727,10 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   const fileInput = (
     <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addImages(e.target.files); e.target.value = ""; }} />
   );
-  const viewer = viewImg && <PhotoFullscreen photos={photos} startId={viewImg} onClose={() => setViewImg(null)} onToast={toast} />;
+  const viewer = viewImg && <PhotoFullscreen photos={photos} startId={viewImg} onClose={() => setViewImg(null)} onToast={toast} onDeletePhoto={(photo) => {
+    const img = images.find((item) => item.id === photo.id);
+    if (img) removeImage(img);
+  }} />;
 
   if (phone) {
     return (
@@ -760,18 +742,10 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
           <button type="button" className="nx-icon-btn" onClick={close} aria-label="К списку заметок" style={round}>{Icon.arrowLeft({ c: C.text, s: 16 })}</button>
           {titleInput}
           {aiButton}
-          <div style={{ position: "relative", flexShrink: 0 }}>
-            <button ref={moreBtnRef} type="button" className="nx-icon-btn" onClick={pop("more")} aria-haspopup="menu" aria-expanded={menu === "more"} aria-label="Ещё" title="Ещё" style={round}>
-              {Icon.dots({ c: C.text, s: 16 })}
-            </button>
-            {moreMenu}
-          </div>
+          {moreButton}
         </div>
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{common}</div>
         <div className="nx-note-tools" style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, flexShrink: 0 }}>
-          {checkBtn}
-          {attachBtn}
-          {clipBtn}
           <span style={{ flex: 1 }} />
           {exists && <span style={{ fontSize: 12, color: C.mutedSoft }}>Изменено {noteWhen(note.updatedAt)}</span>}
         </div>
@@ -789,18 +763,13 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
       className={`nx-notepad-editor nx-notepad-panel nx-glass nx-glass-subtle${full ? " is-full" : fullLeaving ? " is-settling" : ""}`} data-no-swipe
       style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, display: "flex", flexDirection: "column", boxSizing: "border-box", position: "sticky", top: 100 }}>
       <div className="nx-notepad-bar" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <button type="button" className="nx-icon-btn" onClick={close} aria-label="Закрыть заметку" style={round}>{Icon.close({ c: C.text, s: 15 })}</button>
-        <button type="button" className="nx-icon-btn" onClick={() => toggleFull(!full)} aria-pressed={full}
-          aria-label={full ? "Свернуть заметку" : "Заметка на весь экран"} title={full ? "Свернуть (Esc)" : "На весь экран"} style={round}>
-          {(full ? Icon.shrink : Icon.expand)({ c: C.text, s: 15 })}
-        </button>
+        <button type="button" className="nx-icon-btn" onClick={full ? () => toggleFull(false) : close}
+          aria-label={full ? "Назад" : "Закрыть заметку"} style={round}>{(full ? Icon.arrowLeft : Icon.close)({ c: C.text, s: 15 })}</button>
+        {!full && <button type="button" className="nx-icon-btn" onClick={() => toggleFull(true)} aria-label="Заметка на весь экран" title="На весь экран" style={round}>
+          {Icon.expand({ c: C.text, s: 15 })}
+        </button>}
         <div style={{ flex: 1 }} />
-        {checkBtn}
-        {attachBtn}
-        {clipBtn}
-        {schedBtn}
-        {archBtn}
-        {delBtn}
+        {moreButton}
         {aiButton}
       </div>
       <div style={{ marginTop: 26 }}>{titleInput}</div>
@@ -813,7 +782,7 @@ export function NoteEditor({ id, note, isNew, phone, api, uid, knownTags, t9 = n
   );
 }
 
-// Меню «⋯» на телефоне: остальные действия с заметкой
+// Меню действий с заметкой
 function MoreMenu({ items, onClose, anchorRef }) {
   const box = useRef(null);
   useEffect(() => {
@@ -824,17 +793,14 @@ function MoreMenu({ items, onClose, anchorRef }) {
     return () => { window.removeEventListener("keydown", onKey, true); document.removeEventListener("pointerdown", onDown); };
   }, [onClose, anchorRef]);
   return (
-    <div ref={box} role="menu" aria-label="Действия с заметкой" className="nx-pop" style={{
-      position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 40, minWidth: 220, padding: 6, boxSizing: "border-box",
-      background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 20, boxShadow: `0 14px 36px color-mix(in srgb, ${C.bg} 65%, transparent)`,
-    }}>
+    <NoteMenu anchorRef={anchorRef} menuRef={box} label="Действия с заметкой" width={220}>
       {items.map((it) => (
         <button key={it.label} type="button" role="menuitem" className="nx-row-btn" disabled={it.disabled}
-          onClick={() => { onClose(); it.run(); }}
+          onMouseDown={(e) => e.preventDefault()} onClick={() => { onClose(); it.run(); }}
           style={{ ...btnReset, display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 12px", borderRadius: 12, fontSize: 14, textAlign: "left", color: it.danger ? C.red : C.text, opacity: it.disabled ? 0.4 : 1 }}>
           {it.icon} {it.label}
         </button>
       ))}
-    </div>
+    </NoteMenu>
   );
 }

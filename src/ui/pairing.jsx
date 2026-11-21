@@ -65,7 +65,7 @@ export function PairModal({ session, online, onNewCode, onClose, onClaim, onScan
           {/* Подсветка выбранной вкладки — одна плашка, переезжает при переключении */}
           <span aria-hidden="true" className="nx-seg-thumb" style={{
             position: "absolute", top: 0, bottom: 0, left: 0, width: "50%", borderRadius: 999,
-            background: `linear-gradient(90deg, ${C.blue}, ${C.mint})`,
+            background: C.actionMint,
             transform: mode === "enter" ? "translateX(100%)" : "none",
           }} />
           {[["show", "Показать код"], ["enter", "У меня есть код"]].map(([id, label]) => (
@@ -136,10 +136,10 @@ export function PairModal({ session, online, onNewCode, onClose, onClaim, onScan
               {(expired || locked) && (
                 <button type="button" className="nx-primary" onClick={onNewCode} style={{
                   ...btnReset, marginTop: 12, alignSelf: "flex-start", padding: "8px 16px", fontSize: 13, fontWeight: 500, borderRadius: 999,
-                  border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+                  border: "1px solid transparent", color: C.onAccent, background: C.actionMint,
                   display: "inline-flex", alignItems: "center", gap: 6,
                 }}>
-                  {Icon.refresh({ c: C.onFold, s: 14 })} Новый код
+                  {Icon.refresh({ c: C.onAccent, s: 14 })} Новый код
                 </button>
               )}
             </div>
@@ -218,7 +218,7 @@ export function PairCodeForm({ onClaim }) {
         <button type="submit" className={clean.length === 6 ? "nx-primary" : "nx-ghost-btn"} disabled={clean.length !== 6} style={{
           ...btnReset, flexShrink: 0, padding: "8px 16px", fontSize: 13, borderRadius: 999, fontWeight: 500,
           ...(clean.length === 6
-            ? { border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }
+            ? { border: "1px solid transparent", color: C.onAccent, background: C.actionMint }
             : { border: `1px solid ${C.borderStrong}`, color: C.mutedSoft }),
         }}>
           Подключить

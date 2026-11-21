@@ -96,7 +96,7 @@ export function ContinueDialog({ item, devices, user, online, linkOnline, job, o
           ) : pending ? (
             <button type="button" className="nx-ghost-btn" onClick={onCancelJob} style={{ ...pill, flex: 1, border: `1px solid ${C.borderStrong}`, color: C.text }}>Отменить</button>
           ) : (
-            <StateButton variant="primary" icon={Icon.send({ c: C.onFold, s: 14 })} disabled={!!why || !target}
+            <StateButton variant="primary" icon={Icon.send({ c: C.onAccent, s: 14 })} disabled={!!why || !target}
               onClick={() => onSend(target, item)} style={{ flex: 1, borderRadius: 999, padding: "11px 16px" }}>
               {mine?.status === "failed" ? "Повторить" : target ? `Продолжить на «${target.name}»` : "Продолжить"}
             </StateButton>

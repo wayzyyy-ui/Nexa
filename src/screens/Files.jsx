@@ -416,9 +416,9 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           <button type="button" className="nx-primary nx-fa-add" onClick={() => fileInput.current?.click()} style={{
             ...btnReset, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, whiteSpace: "nowrap",
             border: "1px solid transparent", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500,
-            color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+            color: C.onAccent, background: C.actionMint,
           }}>
-            {Icon.plus({ c: C.onFold, s: 15 })} Добавить файл
+            {Icon.plus({ c: C.onAccent, s: 15 })} Добавить файл
           </button>
           {/* Обычный выбор файлов системы. value сбрасываем,
               чтобы тот же файл можно было выбрать ещё раз */}
@@ -428,7 +428,6 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           />
         </div>
       </div>
-      {transferPanel}
 
       {/* Загрузки: имя, настоящий процент, отмена; ошибка — «Повторить» и «Убрать» */}
       {uploads.map((u) => {
@@ -599,6 +598,7 @@ export function ScreenFiles({ files, filter, device, onClearFilter, onOpenFile, 
           )
         )}
       </div>
+      {!device && !folder && !filter && !q && transferPanel}
       {clip && <ClipFileDialog clip={clip} setClip={setClip} onCreate={createClipFile} />}
     </MediaLayout>
   );
@@ -639,8 +639,8 @@ export function ClipFileDialog({ clip, setClip, onCreate }) {
         </label>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button type="button" className="nx-ghost-btn" onClick={() => setClip(null)} style={{ ...btnReset, border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 16px", fontSize: 13 }}>Отмена</button>
-          <button type="button" className="nx-primary" onClick={onCreate} disabled={bad} style={{ ...btnReset, borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, color: C.onFold,
-            background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, opacity: bad ? 0.5 : 1 }}>Создать</button>
+          <button type="button" className="nx-primary" onClick={onCreate} disabled={bad} style={{ ...btnReset, borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, color: C.onAccent,
+            background: C.actionMint, opacity: bad ? 0.5 : 1 }}>Создать</button>
         </div>
       </div>
     </div>

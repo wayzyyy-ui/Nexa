@@ -25,7 +25,7 @@ export function LockOverlay({ from, onUnlock }) {
       </div>
       <button type="button" className="nx-primary" onClick={onUnlock} autoFocus style={{
         ...btnReset, marginTop: 28, padding: "14px 40px", fontSize: 16, fontWeight: 500, borderRadius: 999,
-        border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+        border: "1px solid transparent", color: C.onAccent, background: C.actionMint,
       }}>
         Разблокировать
       </button>
@@ -120,10 +120,10 @@ export function FindOverlay({ from, onFound, onTimeout }) {
       </div>
       <button type="button" className="nx-primary" onClick={() => found.current?.()} autoFocus style={{
         ...btnReset, marginTop: 30, padding: "16px 48px", fontSize: 17, fontWeight: 500, borderRadius: 999,
-        border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+        border: "1px solid transparent", color: C.onAccent, background: C.actionMint,
         display: "inline-flex", alignItems: "center", gap: 10,
       }}>
-        {Icon.check({ c: C.onFold, s: 18 })} Нашёл
+        {Icon.check({ c: C.onAccent, s: 18 })} Нашёл
       </button>
       <div style={{ fontSize: 12, color: C.mutedSoft, marginTop: 16 }}>Сигнал выключится сам через минуту</div>
     </div>

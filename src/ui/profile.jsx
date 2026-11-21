@@ -97,7 +97,7 @@ export function ProfileSettings({ user }) {
               border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "9px 16px", outline: "none", boxSizing: "border-box" }} />
           <button type="submit" className="nx-primary" disabled={!changed || !!busy} style={{
             ...btnReset, borderRadius: 999, padding: "9px 18px", fontSize: 13, fontWeight: 500, border: "1px solid transparent",
-            color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, opacity: changed ? 1 : 0.5,
+            color: C.onAccent, background: C.actionMint, opacity: changed ? 1 : 0.5,
           }}>
             {busy === "name" ? "Сохраняем…" : "Сохранить"}
           </button>

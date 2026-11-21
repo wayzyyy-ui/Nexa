@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, T, fontDisplay, PHONE_MQ } from "../ui/theme.js";
+import { NoteMenu } from "./notes/NoteMenu.jsx";
 import { Icon } from "../ui/icons.jsx";
 import { btnReset, EmptyState } from "../ui/base.jsx";
 import { Crumb } from "../ui/layout.jsx";
@@ -295,7 +296,7 @@ ${n.text || ""}`)), [t9Sig]); // eslint-disable-line react-hooks/exhaustive-deps
         <div style={{ border: `1px solid ${C.lineBright}`, borderRadius: 32, maxWidth: 640 }}>
           <EmptyState title="Заметок пока нет"
             text={uid ? "Списки, мысли и планы — сохранятся в аккаунте и будут на всех ваших устройствах" : "Списки, мысли и планы — сохранятся в этом браузере. Войдите в аккаунт, чтобы они были на всех устройствах"}
-            action={<button type="button" className="nx-primary" onClick={create} style={primary}>{Icon.plus({ c: C.onFold, s: 16 })} Создать первую заметку</button>} />
+            action={<button type="button" className="nx-primary" onClick={create} style={primary}>{Icon.plus({ c: C.onAccent, s: 16 })} Создать первую заметку</button>} />
         </div>
       ) : (
         <div className="nx-notepad-body" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 24, alignItems: "start" }}>
@@ -320,8 +321,8 @@ ${n.text || ""}`)), [t9Sig]); // eslint-disable-line react-hooks/exhaustive-deps
         <button type="button" className="nx-primary nx-notepad-fab" onClick={create} aria-label="Новая заметка" style={{
           ...btnReset, position: "fixed", right: 16, bottom: "calc(var(--sab) + 88px)", zIndex: 30, width: 56, height: 56, borderRadius: 999,
           display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent",
-          background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
-        }}>{Icon.plus({ c: C.onFold, s: 22 })}</button>,
+          background: C.actionMint,
+        }}>{Icon.plus({ c: C.onAccent, s: 22 })}</button>,
         document.body,
       )}
       {/* На телефоне редактор — поверх всего (и нижней панели), в body: у экрана есть анимация с transform */}
@@ -340,11 +341,13 @@ function NoteCard({ note, active, archived, onOpen, onPin, onArchive, onDelete, 
   const [menu, setMenu] = useState(false);
   const [sure, setSure] = useState(false); // «Удалить?» — второй шаг в меню
   const box = useRef(null);
+  const trigger = useRef(null);
+  const menuBox = useRef(null);
   // Меню закрывается по Esc и нажатию мимо
   useEffect(() => {
     if (!menu) return;
     const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); setSure(false); } };
-    const onDown = (e) => { if (!box.current?.contains(e.target)) { setMenu(false); setSure(false); } };
+    const onDown = (e) => { if (!box.current?.contains(e.target) && !menuBox.current?.contains(e.target)) { setMenu(false); setSure(false); } };
     window.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", onDown);
     return () => { window.removeEventListener("keydown", onKey, true); document.removeEventListener("pointerdown", onDown); };
@@ -378,17 +381,14 @@ function NoteCard({ note, active, archived, onOpen, onPin, onArchive, onDelete, 
           {tags.length > 5 && <span style={{ fontSize: 12, color: C.mutedSoft, alignSelf: "center" }}>+{tags.length - 5}</span>}
         </div>
       )}
-      <button type="button" className="nx-icon-btn nx-notepad-more" onClick={() => { setMenu((v) => !v); setSure(false); }} aria-haspopup="menu" aria-expanded={menu}
+      <button type="button" ref={trigger} className="nx-icon-btn nx-notepad-more" onClick={() => { setMenu((v) => !v); setSure(false); }} aria-haspopup="menu" aria-expanded={menu}
         aria-label={`Действия с заметкой «${noteTitle(note)}»`} title="Ещё"
         style={{ ...btnReset, position: "absolute", top: "50%", right: 14, transform: "translateY(-50%)", width: 28, height: 28, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
           background: `color-mix(in srgb, ${C.text} ${menu ? 14 : 8}%, transparent)` }}>
         {Icon.dots({ c: C.muted, s: 14 })}
       </button>
       {menu && (
-        <div role="menu" aria-label={`Заметка «${noteTitle(note)}»`} className="nx-pop" style={{
-          position: "absolute", top: "calc(50% + 20px)", right: 10, zIndex: 20, minWidth: 210, padding: 6, boxSizing: "border-box",
-          background: C.panel, border: `1px solid ${C.borderStrong}`, borderRadius: 18, boxShadow: `0 12px 32px color-mix(in srgb, ${C.bg} 60%, transparent)`,
-        }}>
+        <NoteMenu anchorRef={trigger} menuRef={menuBox} label={`Заметка «${noteTitle(note)}»`} width={220}>
           {sure ? (
             <div style={{ padding: "6px 8px", display: "grid", gap: 8 }}>
               <span style={{ fontSize: 13, lineHeight: 1.4 }}>Удалить заметку? Вернуть нельзя</span>
@@ -412,7 +412,7 @@ function NoteCard({ note, active, archived, onOpen, onPin, onArchive, onDelete, 
               </button>
             </>
           )}
-        </div>
+        </NoteMenu>
       )}
     </div>
   );

@@ -55,7 +55,7 @@ function RenameField({ name, onSave, onCancel }) {
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }}>
       <input ref={ref} value={v} maxLength={40} onChange={(e) => setV(e.target.value)} aria-label="Новое название"
         className="nx-input" style={{ flex: "1 1 160px", minWidth: 0, fontSize: 14, padding: "7px 14px", borderRadius: 999, border: `1px solid ${C.borderStrong}`, background: "transparent", color: C.text, fontFamily: "inherit", outline: "none" }} />
-      <button type="submit" className="nx-primary" style={{ ...pill, border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Сохранить</button>
+      <button type="submit" className="nx-primary" style={{ ...pill, border: "1px solid transparent", color: C.onAccent, background: C.actionMint }}>Сохранить</button>
       <button type="button" className="nx-ghost-btn" onClick={onCancel} style={ghost}>Отмена</button>
     </form>
   );
@@ -142,7 +142,7 @@ export function ScreenSecurity({
             subtitle="Подключение устройств, синхронизация через облако, Flow, «Найти» и «Где устройство?», вход по QR. Здесь же появятся устройства и сеансы входа" />
           <SettingsRow icon={Icon.alert({ c: C.muted, s: 18 })} title="Если браузер общий"
             subtitle="Данные гостя видит любой, кто откроет NEXA в этом браузере. Удалить их можно, очистив данные сайта в настройках браузера"
-            right={onLogin && <button type="button" className="nx-primary" onClick={onLogin} style={{ ...pill, border: "1px solid transparent", color: C.onFold, fontWeight: 500, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})` }}>Войти</button>} />
+            right={onLogin && <button type="button" className="nx-primary" onClick={onLogin} style={{ ...pill, border: "1px solid transparent", color: C.onAccent, fontWeight: 500, background: C.actionMint }}>Войти</button>} />
           <CrashRow last />
         </SettingsGroup>
       </>)

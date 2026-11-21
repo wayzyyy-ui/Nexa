@@ -15,13 +15,11 @@ const TTL_LABEL = { 1: "1 мин", 10: "10 мин", 60: "1 час" };
 
 // Что делает переключатель — по-разному на ПК и на телефоне
 const WHAT = isDesktop
-  ? "Скопированный на этом компьютере текст сразу уходит на ваши устройства, где буфер тоже включён. Пароли из менеджеров паролей и похожее на пароль не отправляются"
-  : "Когда вы открываете NEXA или возвращаетесь в неё, она берёт текст из буфера телефона (система покажет, что буфер прочитан) и отправляет на ваши устройства, где буфер тоже включён. Пока NEXA в фоне, Android не даёт приложениям читать буфер — поэтому скопированное в других приложениях уйдёт, когда вы откроете NEXA";
-// Что происходит с пришедшим — зависит от переключателя «Сразу в буфер этого устройства»
+  ? "При копировании NEXA отправляет текст на ваши устройства с общим буфером."
+  : "При открытии NEXA читает буфер телефона и отправляет текст на ваши устройства с общим буфером.";
 const INCOMING = (auto) => auto
-  ? (isDesktop ? "Текст, скопированный на других ваших устройствах, сразу оказывается в буфере этого компьютера — можно вставлять"
-    : "Текст, скопированный на других ваших устройствах, сразу оказывается в буфере телефона — даже если NEXA закрыта (через push-сервис телефона)")
-  : "Пришедшее — уведомлением с кнопкой «Скопировать», само в буфер не попадает";
+  ? (isDesktop ? "Текст с других устройств сразу можно вставить." : "Полученный текст можно сразу вставить, даже если NEXA закрыта.")
+  : "Копируйте полученный текст из уведомления.";
 
 export function ClipboardSettings({ clip, e2e, account, onLogin }) {
   const [confirm, setConfirm] = useState(false);
@@ -39,29 +37,27 @@ export function ClipboardSettings({ clip, e2e, account, onLogin }) {
       <SettingsGroup>
         {!available ? (
           <SettingsRow last icon={Icon.clip({ c: C.muted, s: 18 })} title="Только в приложениях NEXA"
-            subtitle="Буфер обмена синхронизируют приложение для телефона и приложение для компьютера — сайт к буферу доступа не имеет" />
+            subtitle="Доступно на телефоне и компьютере." />
         ) : !account ? (
           <SettingsRow last icon={Icon.clip({ c: C.muted, s: 18 })} title="Нужен вход в аккаунт"
-            subtitle="Буфер передаётся только между устройствами одного аккаунта"
+            subtitle="Войдите в один аккаунт на обоих устройствах."
             right={<button type="button" className="nx-ghost-btn" onClick={onLogin} style={pill}>Войти</button>} />
         ) : (
           <>
-            <SettingsRow wrap icon={Icon.clip({ c: clip.on ? C.mint : C.muted, s: 18 })} title="Синхронизировать буфер этого устройства"
+            <SettingsRow wrap icon={Icon.clip({ c: clip.on ? C.mint : C.muted, s: 18 })} title="Синхронизировать буфер"
               subtitle={<>
-                {clip.on ? WHAT : "Выключено — это устройство буфер не читает, не отправляет и не принимает. Включается отдельно на каждом устройстве"}
-                {clip.on && <span style={{ display: "block", marginTop: 6, color: C.mutedSoft }}>
-                  {e2e?.status === "ready" ? "Текст шифруется на этом устройстве паролем — в облаке он лежит зашифрованным и прочитать его можете только вы"
-                    : "Текст хранится в облаке аккаунта до конца срока и виден только вам. Чтобы облако его не видело вовсе — включите шифрование ниже"}</span>}
+                {clip.on ? WHAT : "Включите на каждом устройстве, чтобы передавать скопированный текст."}
+                <span style={{ display: "block", marginTop: 6, color: C.muted }}>При синхронизации текст временно хранится в облаке.</span>
                 {clip.note && <span role="status" style={{ display: "block", marginTop: 6, color: clip.note.kind === "error" ? C.red : C.muted }}>{clip.note.text}</span>}
               </>}
-              right={<Toggle on={clip.on} label="Синхронизировать буфер этого устройства" onClick={() => clip.setPrefs((p) => ({ ...p, on: !p.on }))} />} />
+              right={<Toggle on={clip.on} label="Синхронизировать буфер" onClick={() => clip.setPrefs((p) => ({ ...p, on: !p.on }))} />} />
             {clip.on && (
-              <SettingsRow wrap icon={Icon.download({ c: clip.prefs.auto ? C.mint : C.muted, s: 18 })} title="Сразу в буфер этого устройства"
+              <SettingsRow wrap icon={Icon.download({ c: clip.prefs.auto ? C.mint : C.muted, s: 18 })} title="Автокопирование"
                 subtitle={INCOMING(clip.prefs.auto)}
-                right={<Toggle on={clip.prefs.auto} label="Сразу в буфер этого устройства" onClick={() => clip.setPrefs((p) => ({ ...p, auto: !p.auto }))} />} />
+                right={<Toggle on={clip.prefs.auto} label="Автокопирование" onClick={() => clip.setPrefs((p) => ({ ...p, auto: !p.auto }))} />} />
             )}
             <SettingsRow wrap icon={Icon.calendar({ c: C.muted, s: 18 })} title="Сколько хранить"
-              subtitle="Потом запись исчезает на всех устройствах и в облаке"
+              subtitle="После этого текст удаляется со всех устройств и из облака."
               right={
                 <div role="radiogroup" aria-label="Сколько хранить скопированное" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {CLIP_TTLS.map((m) => {
@@ -125,10 +121,10 @@ function E2eRow({ e2e }) {
     run(() => e2e.setup(p1));
   };
   const s = e2e.status;
-  const subtitle = s === "ready" ? "Включено. Пароль введён на этом устройстве — скопированное шифруется здесь же. На телефон с закрытой NEXA придёт без уведомления: сервер не видит текст"
-    : s === "locked" ? "Включено для аккаунта, но на этом устройстве пароль не введён — отсюда буфер не отправляется, пришедшее не открывается"
+  const subtitle = s === "ready" ? "Включено. Текст шифруется перед отправкой. При закрытой NEXA уведомления нет."
+    : s === "locked" ? "Введите пароль, чтобы отправлять и читать текст."
     : s === "loading" ? "Проверяем…"
-    : "Выключено. Включите — и текст буфера будут видеть только ваши устройства: облако получит его зашифрованным";
+    : "Выключено. Включите, чтобы только ваши устройства могли читать текст.";
   const input = (v, set, label) => (
     <input type="password" value={v} onChange={(e) => { set(e.target.value); setErr(null); }} placeholder={label} aria-label={label}
       autoComplete="new-password" onKeyDown={(e) => { if (e.key === "Enter") (s === "locked" ? run(() => e2e.unlock(p1)) : enable()); }} style={field} />
@@ -141,7 +137,7 @@ function E2eRow({ e2e }) {
           <span style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
             {input(p1, setP1, s === "locked" ? "Пароль шифрования" : "Придумайте пароль")}
             {s !== "locked" && input(p2, setP2, "Повторите пароль")}
-            {s !== "locked" && <span style={{ color: C.mutedSoft, lineHeight: 1.4 }}>Пароль не восстановить: забудете — зашифрованное не открыть. На каждом своём устройстве его нужно ввести один раз.</span>}
+            {s !== "locked" && <span style={{ color: C.mutedSoft, lineHeight: 1.4 }}>Сохраните пароль. Без него записи не открыть. Введите его один раз на каждом устройстве.</span>}
             <span style={{ display: "flex", gap: 6 }}>
               {s !== "locked" && <button type="button" className="nx-ghost-btn" onClick={reset} style={pill}>Отмена</button>}
               <button type="button" className="nx-ghost-btn" disabled={busy || !p1} onClick={() => (s === "locked" ? run(() => e2e.unlock(p1)) : enable())}

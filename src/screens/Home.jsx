@@ -259,7 +259,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
       title="Устройств пока нет"
       text="Войдите в ту же почту на другом устройстве — оно появится здесь само"
       action={
-        <StateButton variant="primary" icon={Icon.plus({ c: C.onFold, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>
+        <StateButton variant="primary" icon={Icon.plus({ c: C.onAccent, s: 15 })} onClick={onAddDevice}>Добавить устройство</StateButton>
       }
     />
   ));
@@ -269,6 +269,7 @@ export function ScreenHome({ devices, received = {}, update, onUpdateLater, load
     <button type="button" className={`nx-row-btn nx-pill-card nx-ai-pill nx-ai-flow nx-glass nx-glass-prominent ${cls || ""}`} onClick={() => onNavigate("assistant")}
       style={{ ...btnReset, width: "100%", textAlign: "left", color: C.text }}>
       <span className="nx-ai-flow-art" aria-hidden="true" />
+      <span className="nx-ai-pill-rim" aria-hidden="true" />
       <span aria-hidden="true" className="nx-ai-pill-icon">{Icon.sparkle({ c: C.onFold, s: 22 })}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="ng-display nx-ai-pill-title">AI-Ассистент</span>

@@ -225,7 +225,12 @@ useEffect(() => {
     if (el) flipFrom.current = { top: el.getBoundingClientRect().top, focused: document.activeElement === taRef.current };
   };
 
-  const currentChat = chats.find(c => c.id === currentChatId);
+  // Готовая подсказка открывает временный диалог. Первый собственный вопрос сохраняет его в историю.
+  const [quickChats, setQuickChats] = useState([]);
+  const isQuick = (id) => typeof id === "string" && id.startsWith("quick:");
+  const writeChat = (id, update) => (isQuick(id) ? setQuickChats : setChats)(update);
+  const currentChat = (isQuick(currentChatId) ? quickChats : chats).find(c => c.id === currentChatId);
+  const savedChatId = isQuick(currentChatId) ? null : currentChatId;
   // Пока ответ в этом диалоге печатается, сохранённый на всякий случай кусок
   // не показываем — его место занимает LiveAnswer
   const streamingHere = liveChatId !== null && liveChatId === currentChatId;
@@ -357,7 +362,7 @@ useEffect(() => {
     const p = pendingNote.current;
     if (!p || att?.from !== "note") return;
     if (att.status === "error") { pendingNote.current = null; return; }
-    if (att.status === "ready" && !isLoading) { pendingNote.current = null; sendMessage(p.text); }
+    if (att.status === "ready" && !isLoading) { pendingNote.current = null; sendMessage(p.text, true); }
   }, [att, isLoading]);
   const openChat = (id) => { setCurrentChatId(id); setInput(''); };
   // Открыть диалог по просьбе извне (продолжение с другого устройства), даже если экран уже открыт
@@ -366,7 +371,7 @@ useEffect(() => {
     openChat(openRequest.id); setIsHistoryOpen(false);
   }, [openRequest?.n]);
   // Какой диалог открыт — NexaApp (для «Продолжить на устройстве» в быстрых действиях)
-  useEffect(() => { onCurrentChat?.(currentChatId); }, [currentChatId]);
+  useEffect(() => { onCurrentChat?.(savedChatId); }, [savedChatId]);
   /* Озвучка ответов (src/lib/voiceOutput.js): номер ответа — «диалог:время». Замолкаем при смене
      диалога, уходе с экрана ассистента и когда читаемый ответ исчез (повтор ответа, удаление) */
   const speakIdOf = (m, i) => `${currentChatId}:${m.at || i}`;
@@ -416,7 +421,7 @@ useEffect(() => {
 
     // Ответ в историю чата: последний сохранённый «на всякий случай» кусок
     // заменяем, иначе добавляем новое сообщение. Так ответ не задваивается
-    const putAnswer = (answer) => setChats(prev => prev.map(c => {
+    const putAnswer = (answer) => writeChat(chatId, prev => prev.map(c => {
       if (c.id !== chatId) return c;
       const msgs = [...c.messages];
       if (isPartial(msgs[msgs.length - 1])) msgs[msgs.length - 1] = { ...answer, at: msgs[msgs.length - 1].at || answer.at };
@@ -516,9 +521,9 @@ useEffect(() => {
   };
 
   // Добавить сообщение в конец чата / поменять сообщение по id
-  const pushMsg = (chatId, msg) => setChats(prev => prev.map(c =>
+  const pushMsg = (chatId, msg) => writeChat(chatId, prev => prev.map(c =>
     c.id === chatId ? { ...c, messages: [...c.messages, { at: Date.now(), ...msg }] } : c));
-  const patchMsg = (chatId, id, patch) => setChats(prev => prev.map(c =>
+  const patchMsg = (chatId, id, patch) => writeChat(chatId, prev => prev.map(c =>
     c.id === chatId ? { ...c, messages: c.messages.map(m => (m.id === id ? { ...m, ...patch } : m)) } : c));
 
   /* Выполнить команду и ответить от имени ассистента.
@@ -526,12 +531,12 @@ useEffect(() => {
      на сервер), actionLabel — подпись на плашке, undo — как отменить.
      ВАЖНО: всё до первого await выполняется сразу по нажатию — поэтому
      окно выбора файлов браузер откроет без вопросов */
-  const runCommand = async (chatId, { action, params, text: memText }) => {
+  const runCommand = async (chatId, { action, params, text: memText }, previous) => {
     const id = `a${Date.now()}`;
     const say = (text, extra) => pushMsg(chatId, { role: 'ai', text, action: true, id, ...extra });
     if (action === "skipAction") return say("Хорошо, оставлю всё как есть.");
     if (action === "clarifyList") return say(LIST_QUESTION);
-    if (action.startsWith("mem")) return runMemory(chatId, action, memText, say);
+    if (action.startsWith("mem")) return runMemory(chatId, action, memText, say, previous);
     if (action === "theme") {
       const prev = readTheme();
       const next = params.mode === "toggle" ? (prev === "dark" ? "light" : "dark") : params.mode;
@@ -579,8 +584,7 @@ useEffect(() => {
   // «Отменить» на плашке: тема — вернуть прежнюю, переход — не переходить
   /* Команды памяти. Пишется только то, что человек сам сказал запомнить; модель в память не пишет.
      «Запомни это» без текста — прошлое сообщение человека в этом диалоге */
-  const runMemory = (chatId, action, memText, say) => {
-    const chatMsgs = chats.find((c) => c.id === chatId)?.messages || [];
+  const runMemory = (chatId, action, memText, say, chatMsgs) => {
     const label = "Память ассистента";
     const where = "Посмотреть и изменить — Настройки → «Память ассистента»";
     if (!memoryApi) return say("Память сейчас недоступна", { actionLabel: label });
@@ -632,13 +636,15 @@ useEffect(() => {
   const chatTitle = (t) => { const s = t.replace(/\s+/g, " ").trim(); return s.length > 40 ? s.slice(0, 40) + "…" : s; };
   // Два быстрых нажатия (Enter + кнопка, двойное касание) — одна отправка
   const sendLock = useRef(0);
-  const sendMessage = async (preset) => {
+  const sendMessage = async (preset, suggested = false) => {
     if (Date.now() - sendLock.current < 400) return;
     // Вложение: пока готовится или с ошибкой — не отправляем; готово — уходит с вопросом.
     // Без текста — просим краткое содержание
     if (att && att.status !== "ready") return;
     const withFile = att?.status === "ready" ? att : null;
-    const text = (typeof preset === "string" ? preset : input).trim() || (withFile ? "Кратко перескажи этот файл" : "");
+    const question = (typeof preset === "string" ? preset : input).trim();
+    const automatic = suggested || !question;
+    const text = question || (withFile ? "Кратко перескажи этот файл" : "");
     if (!text || isLoading) return;
     sendLock.current = Date.now();
 
@@ -648,7 +654,7 @@ useEffect(() => {
     const mini = withFile || ruleCmd ? null : miniDecide(text);
     const cmd = ruleCmd || mini?.run || null;
     // Сбор непонятых фраз (только с согласием; без файла — с файлом это вопрос по файлу, его не берём)
-    if (!withFile) miniCollect?.onMessage(text, mini);
+    if (!automatic && !withFile) miniCollect?.onMessage(text, mini);
     if (isEmpty) rememberInputPos();
     // at — когда написано (мс): по нему история делится на «Сегодня», «Вчера»…
     // file — только сведения (имя, формат, размер), содержимое в историю не пишем
@@ -657,18 +663,19 @@ useEffect(() => {
     const before = currentChat?.messages || [];
     let chatId = currentChatId;
 
-    if (!chatId) {
-      chatId = newId(); // uuid — такой же id будет у диалога в облаке
-      setChats(prev => [{
+    if (!currentChat || (isQuick(chatId) && !automatic)) {
+      chatId = automatic ? "quick:" + newId() : newId();
+      const next = {
         id: chatId,
-        // Название — в одну строку (переносы в самом сообщении сохраняются)
         title: fileInfo && !input.trim() ? `Файл «${fileInfo.name.slice(0, 30)}»` : chatTitle(text),
-        messages: [userMsg],
+        messages: [...before, userMsg],
         createdAt: Date.now(),
-      }, ...prev]);
+      };
+      if (automatic) setQuickChats([next]);
+      else { setChats(prev => [next, ...prev]); setQuickChats([]); }
       setCurrentChatId(chatId);
     } else {
-      setChats(prev => prev.map(c =>
+      writeChat(chatId, prev => prev.map(c =>
         c.id === chatId ? { ...c, messages: [...c.messages, userMsg] } : c
       ));
     }
@@ -676,7 +683,7 @@ useEffect(() => {
     setInput('');
     // Файл остаётся в этом диалоге — следующий вопрос тоже уйдёт с ним, пока его не убрали
     if (withFile) setAtt((a) => (a?.key === withFile.key ? { ...a, sent: true, chatId } : a));
-    if (cmd) await runCommand(chatId, cmd);
+    if (cmd) await runCommand(chatId, cmd, before);
     else await streamAnswer(chatId, before, text, withFile?.payload || null);
   };
   // Вложение для повтора / правки: только если тот же файл ещё приложен
@@ -704,7 +711,7 @@ useEffect(() => {
     const previous = messages.slice(0, lastUserIdx);
 
     // Оставляем чат до вопроса включительно, старый ответ убираем
-    setChats(prev => prev.map(c =>
+    writeChat(currentChatId, prev => prev.map(c =>
       c.id === currentChatId ? { ...c, messages: messages.slice(0, lastUserIdx + 1) } : c
     ));
     streamAnswer(currentChatId, previous, questionText, fileFor(messages[lastUserIdx]));
@@ -717,19 +724,17 @@ useEffect(() => {
 
     const previous = messages.slice(0, index);
     const cmd = messages[index].file ? null : (parseMemoryCommand(newText) || parseCommand(newText, previous.at(-1)) || miniCommand(newText)); // вопрос по файлу — не команда
-    setChats(prev => prev.map(c => {
-      if (c.id !== currentChatId) return c;
-      return {
-        ...c,
-        // Если правим самое первое сообщение, обновляем и название чата в истории
-        title: index === 0
-          ? chatTitle(newText)
-          : c.title,
-        messages: [...previous, { role: 'user', text: newText, at: Date.now(), ...(cmd ? { action: true } : {}), ...(messages[index].file ? { file: messages[index].file } : {}) }],
-      };
-    }));
-    if (cmd) runCommand(currentChatId, cmd);
-    else streamAnswer(currentChatId, previous, newText, fileFor(messages[index]));
+    const promoted = isQuick(currentChatId);
+    const id = promoted ? newId() : currentChatId;
+    const edited = {
+      ...currentChat, id,
+      title: promoted || index === 0 ? chatTitle(newText) : currentChat.title,
+      messages: [...previous, { role: 'user', text: newText, at: Date.now(), ...(cmd ? { action: true } : {}), ...(messages[index].file ? { file: messages[index].file } : {}) }],
+    };
+    setChats(prev => promoted ? [edited, ...prev] : prev.map(c => c.id === id ? edited : c));
+    if (promoted) { setQuickChats([]); setCurrentChatId(id); }
+    if (cmd) runCommand(id, cmd, previous);
+    else streamAnswer(id, previous, newText, fileFor(messages[index]));
   };
   
   // Enter: на компьютере — отправить (Shift+Enter — новая строка), на телефоне — новая строка
@@ -809,7 +814,7 @@ useEffect(() => {
   {att?.status === "ready" && !input.trim() && !isLoading && (
     <div className="nx-file-asks nx-no-scrollbar" style={{ display: "flex", gap: 6, overflowX: "auto" }} data-no-swipe>
       {fileAsks.map(([label, q]) => (
-        <button key={label} type="button" className="nx-ghost-btn" onClick={() => sendMessage(q)} style={{
+        <button key={label} type="button" className="nx-ghost-btn" onClick={() => sendMessage(q, true)} style={{
           ...btnReset, flexShrink: 0, whiteSpace: "nowrap", border: `1px solid ${C.borderStrong}`, borderRadius: 999,
           padding: "6px 12px", fontSize: 13, color: C.text, background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,
         }}>{label}</button>
@@ -822,24 +827,20 @@ useEffect(() => {
   )}
   <div className="nx-input-ring" style={{
     width: "100%",
-    padding: 1,
-    // 25 = половина высоты однострочного поля: одна строка — «таблетка»,
-    // несколько строк — прямоугольник со скруглёнными углами
-    borderRadius: 25,
+    boxSizing: "border-box", border: "2px solid transparent", borderRadius: 26,
     // Градиент симметричный (синий, мятный, синий), чтобы при движении не было шва
-    background: `linear-gradient(90deg, ${C.blue}, ${C.mint}, ${C.blue})`,
-    backgroundSize: "200% 100%",
+    background: `linear-gradient(${C.bg}, ${C.bg}) padding-box, linear-gradient(90deg, ${C.blue}, ${C.mint}, ${C.blue}) border-box`,
+    backgroundSize: "100% 100%, 200% 100%",
     // Пока ассистент отвечает, граница плавно перетекает
     animation: waitingHere ? "nx-border-flow 2.4s linear infinite" : "none",
     boxShadow: "var(--input-glow)",
   }}>
-            <div
+      <div
         onClick={() => document.querySelector('.ng-input-field')?.focus()}
         style={{
           // flex-end: кнопка отправки остаётся внизу, когда текст в несколько строк
           width: "100%", display: "flex", alignItems: "flex-end", gap: 10,
-          padding: "8px 8px 8px 8px", borderRadius: 24,
-          background: C.bg, boxSizing: "border-box",
+          padding: 8, boxSizing: "border-box",
           cursor: "text",
         }}
       >
@@ -1064,7 +1065,7 @@ useEffect(() => {
               position: "relative", display: att ? "none" : "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 820,
             }}>
               {assistantSuggestions().map((sg) => (
-                <button key={sg.text} type="button" className="nx-ghost-btn" onClick={() => sendMessage(sg.text)} style={{
+                <button key={sg.text} type="button" className="nx-ghost-btn" onClick={() => sendMessage(sg.text, true)} style={{
                   ...btnReset, display: "flex", alignItems: "center", gap: 7, flexShrink: 0, whiteSpace: "nowrap",
                   border: `1px solid ${C.borderStrong}`, borderRadius: 999, padding: "8px 14px", fontSize: 13, color: C.text,
                   background: `color-mix(in srgb, ${C.bg} 70%, transparent)`,

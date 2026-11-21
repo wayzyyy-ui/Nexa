@@ -99,10 +99,10 @@ export function QrLoginView({ onBack }) {
         {(st.phase === "expired" || st.phase === "error") && (
           <button type="button" className="nx-primary" onClick={start} style={{
             ...btnReset, padding: "8px 16px", fontSize: 13, fontWeight: 500, borderRadius: 999,
-            border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+            border: "1px solid transparent", color: C.onAccent, background: C.actionMint,
             display: "inline-flex", alignItems: "center", gap: 6,
           }}>
-            {Icon.refresh({ c: C.onFold, s: 14 })} Новый код
+            {Icon.refresh({ c: C.onAccent, s: 14 })} Новый код
           </button>
         )}
         <button type="button" onClick={onBack} style={authLink}>Войти по почте</button>
@@ -159,7 +159,7 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
     } catch { setError("Нет связи с сервером. Проверьте интернет."); setSt({ phase: "enter" }); }
   };
 
-  const primary = { ...btnReset, padding: "11px 18px", fontSize: 14, fontWeight: 500, borderRadius: 999, border: "1px solid transparent", color: C.onFold, background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
+  const primary = { ...btnReset, padding: "11px 18px", fontSize: 14, fontWeight: 500, borderRadius: 999, border: "1px solid transparent", color: C.onAccent, background: C.actionMint, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
   const ghost = { ...btnReset, padding: "11px 18px", fontSize: 14, borderRadius: 999, border: `1px solid ${C.borderStrong}`, color: C.text, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
   return (
     <div className="nx-viewer" onClick={onClose} style={{
@@ -176,7 +176,7 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
             <div style={{ fontSize: 13, color: C.mutedSoft, marginTop: 6, lineHeight: 1.45 }}>
               {st.phase === "done" ? "Через пару секунд там откроется ваш аккаунт"
                 : st.phase === "confirm" || st.phase === "approving" ? "Разрешайте, только если этот код сейчас на вашем экране"
-                : "На новом устройстве: «Войти» → «Войти по QR». Отсканируйте QR или введите код"}
+                : "На новом устройстве выберите «Войти по QR»."}
             </div>
           </div>
           <button type="button" className="nx-icon-btn" onClick={onClose} aria-label="Закрыть" style={{ ...btnReset, width: 34, height: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -188,7 +188,7 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
           <form onSubmit={(e) => { e.preventDefault(); check(); }} style={{ marginTop: 18 }}>
             {onScan && (
               <button type="button" onClick={() => { onClose(); onScan(); }} style={{ ...primary, width: "100%", marginBottom: 14 }}>
-                {Icon.search({ c: C.onFold, s: 15 })} Сканировать QR
+                {Icon.search({ c: C.onAccent, s: 15 })} Сканировать QR
               </button>
             )}
             <label htmlFor="nx-approve-code" style={{ fontSize: 13, color: C.mutedSoft }}>{onScan ? "Или введите код" : "Код с экрана нового устройства"}</label>
@@ -201,7 +201,7 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
                   border: `1px solid ${error ? C.red : C.borderStrong}`, borderRadius: 10, padding: "8px 10px", outline: "none",
                 }} />
               <button type="submit" disabled={clean.length !== 6 || st.phase === "checking"} style={clean.length === 6 ? primary : { ...ghost, color: C.mutedSoft }}>
-                {st.phase === "checking" ? <Spinner s={13} c={C.onFold} /> : "Дальше"}
+                {st.phase === "checking" ? <Spinner s={13} c={C.onAccent} /> : "Дальше"}
               </button>
             </div>
           </form>
@@ -227,7 +227,7 @@ export function ApproveLoginModal({ initialCode, onClose, onScan, onApproved }) 
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button type="button" onClick={onClose} disabled={st.phase === "approving"} style={{ ...ghost, flex: 1 }}>Отмена</button>
               <button type="button" onClick={approve} disabled={st.phase === "approving"} style={{ ...primary, flex: 1 }}>
-                {st.phase === "approving" ? <Spinner s={13} c={C.onFold} /> : Icon.check({ c: C.onFold, s: 15 })} Разрешить
+                {st.phase === "approving" ? <Spinner s={13} c={C.onAccent} /> : Icon.check({ c: C.onAccent, s: 15 })} Разрешить
               </button>
             </div>
           </div>
@@ -577,8 +577,8 @@ export function AccountSettings({ user, onLogin, onDeleteData, onApproveLogin })
             subtitle={authAvailable ? "Вход по почте, без пароля" : "Аккаунты сейчас недоступны"}
             right={
               <button type="button" className="nx-primary" onClick={onLogin} style={{
-                ...pill, border: "1px solid transparent", color: C.onFold, fontWeight: 500,
-                background: `linear-gradient(90deg, ${C.foldBlue}, ${C.foldCyan})`,
+                ...pill, border: "1px solid transparent", color: C.onAccent, fontWeight: 500,
+                background: C.actionMint,
               }}>
                 Войти
               </button>

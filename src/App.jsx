@@ -80,6 +80,7 @@ import { MemorySettings } from "./ui/memory.jsx";
 import { MiniHelpSettings } from "./ui/miniHelp.jsx";
 import { useMiniCollect } from "./lib/mini/collectHook.js";
 import { HomeWelcome } from "./ui/HomeWelcome.jsx";
+import { useWelcomeSteps } from "./lib/welcome.js";
 import { loadSeen, saveSeen, unseenAnnouncements } from "./lib/announce.js";
 import { memoryKey, memoryOnKey, loadMemory, loadMemoryOn, MEMORY_ROWS, MEMORY_MAX, checkMemoryText, findSameMemory, isStyleMemory } from "./lib/memory.js";
 import { ContinueDialog, ContinueOffer } from "./ui/continuity.jsx";
@@ -741,7 +742,10 @@ export default function NexaApp() {
     ? { title: "Google Календарь подключён", text: "Дела появятся в расписании", kind: "schedule" }
     : { title: "Календарь не подключён", text: r.text, kind: "error" }));
   // Сбор непонятых фраз для NEXA mini-1 — только по согласию (src/lib/mini/collect.js)
-  const miniCollect = useMiniCollect({ online });
+  const welcomeScope = authAvailable && !uid ? "@signed-out" : scope;
+  const miniCollect = useMiniCollect({ online, scope: welcomeScope });
+  const welcome = useWelcomeSteps({ uid: auth.ready ? uid : null, scope: welcomeScope, miniAnswered: !miniCollect.showAsk,
+    onPushed: () => link.emit("sync.changed", { table: "welcome" }) });
   const [syncOpen, setSyncOpen] = useState(false); // окно «Связь и синхронизация»
 
   /* Потянули экран вниз в приложении: облако аккаунта, погода, проверка обновления */
@@ -836,6 +840,7 @@ export default function NexaApp() {
   // Несколько сигналов подряд (например, ответ ассистента) — перечитываем один раз
   const refreshTimers = useRef({});
   const refreshTableSoon = (table) => {
+    if (table === "welcome") return welcome.refresh();
     if (table === "settings") return settingsSync.pull(); // категории уведомлений поменяли на другом устройстве
     clearTimeout(refreshTimers.current[table]);
     const hook = { chats: chatsSync, files: filesSync, file_folders: foldersSync, schedule: scheduleSync, memory: memorySyncRef.current, notes: notesSyncRef.current }[table] || devicesSync;
@@ -3264,7 +3269,7 @@ export default function NexaApp() {
         onApproved={() => logSecurity("approve", "Разрешён вход на новом устройстве", "По QR-коду или коду с экрана")} />}
       {/* Это устройство ищут */}
       {locked && <LockOverlay from={locked.from} onUnlock={unlockSelf} />}
-      <HomeWelcome ready={welcomeReady} miniCollect={miniCollect} />
+      <HomeWelcome key={welcomeScope} ready={welcomeReady && welcome.ready} welcome={welcome} miniCollect={miniCollect} />
       {finding && <FindOverlay from={finding.from} onFound={() => stopFinding(true)} onTimeout={() => stopFinding(false)} />}
       <Sidebar active={tab} onChange={navTo} devices={devices} onOpenDevice={showDevice} onAddDevice={onAddDevice} onAbout={openAbout} />
           <MobileTabBar active={tab} onChange={navTo} />
