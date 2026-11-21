@@ -1,11 +1,11 @@
 {
-  "version": "0.20.2",
-  "notes": "- Обновление 0.20.2\n- Добавилось: ползунок и удаление фото при просмотре вложений в заметках\n- Улучшилось: действия в заметках получили подписи, а ассистент остался под рукой\n- Улучшилось: приветственные окна запоминаются для всего аккаунта\n- Улучшилось: короткие подсказки для буфера обмена, мятные кнопки и прозрачные карточки устройств\n- Починилось: в заметках карточки больше не обрезаются, уведомления открываются сверху по центру, а недавние файлы появляются после категорий\n- Починилось: у поля сообщения ассистента ровная обводка, а готовые команды без своего вопроса не засоряют историю",
-  "pub_date": "2026-11-21T18:26:54.009Z",
+  "version": "0.20.3",
+  "notes": "- Обновление 0.20.3\n- Улучшилось: кнопки «Назад» и надпись на плашке «Хранилище» стали мятными\n- Улучшилось: в светлой теме у нового чата появился мятный оттенок, а из просмотра фотографий в заметках убрали ползунок\n- Починилось: заголовок «Хранилище» читается в светлой теме",
+  "pub_date": "2026-11-21T18:56:28.035Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WTJGQnJOL3czcWZSR25sajJCYmRDdjR5ZHJEeFlsTEc1YmVmQzBiN3RsbkJUVjgrVXVrYkpsRUhNelVuOGRidWV1WThvWGVwK0NQMzB5N0JZSkx2WXd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1Mjg1NjEzCWZpbGU6TkVYQV8wLjIwLjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMjAuMgpDYW90RWFRekM3MVZYbkNKZkJNd1VHbVg5bGhUOXNtbzNqcTNONHNVU24xT3BDMnRKMEIzbkRYWHJ6WmppYXJmSmwzZ1R2QTZGV1dPcysyZGNqbVlCZz09Cg==",
-      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.20.2"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUc1VnSFdoVW85WXhxRGNud3MrTzc4TFNhb1k4REd0SExCWnVPQlY5bVB0enBSamxFTXdaOEVWTCtSaUtBQ2dkRE9tcDl4anN0ZnRQd2xjdnNGd1VOZTVQakhnUCtFSkE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1Mjg3Mzg3CWZpbGU6TkVYQV8wLjIwLjNfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMjAuMwpnZGh2dXFMY0tNVDhKY3JFU01seHZpZThmczRRSC9SaFFkNmt0L1lOa1oyaTJCVWF4RzNoa3poYlFMR1U5Rml5amNpaTFsVlQwZ2NqaDhJSkRVdjdCdz09Cg==",
+      "url": "https://nexa-link.ru/nexa-setup.exe?v=0.20.3"
     }
   }
 }
